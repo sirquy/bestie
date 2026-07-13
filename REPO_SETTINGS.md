@@ -20,6 +20,7 @@ Use this checklist after creating the new public GitHub repository.
 - Push protection
 - Private vulnerability reporting
 - Code scanning with CodeQL
+- Copilot code review or another automated review integration for pull requests
 
 ## Branch Protection For `main`
 
@@ -34,6 +35,8 @@ Recommended rules:
 - Require branches to be up to date before merging.
 - Required status checks:
   - `build-test (20.x)`
+  - `gitleaks`
+  - `scorecard`
 - Block force pushes.
 - Block branch deletion.
 - Restrict direct pushes to maintainers only, or disallow direct pushes completely.
@@ -64,6 +67,12 @@ Potential future secrets:
 - `NPM_TOKEN` for npm publish
 - `BESTIE_TELEGRAM_REAL_SMOKE` only in a manual, protected workflow if ever needed
 
+## Protected Environments
+
+- Create an `npm` environment before enabling package publishing.
+- Require maintainer approval for the `npm` environment.
+- Store `NPM_TOKEN` there unless npm trusted publishing is configured for this package.
+
 ## Release Hygiene
 
 Before first public release:
@@ -73,3 +82,5 @@ Before first public release:
 - Add `CHANGELOG.md`.
 - Tag releases as `v0.x.y`.
 - Use GitHub Releases for human-readable release notes.
+- Keep npm publishing behind a protected environment with trusted publishing or an `NPM_TOKEN` secret.
+- Publish with provenance once the package is public.

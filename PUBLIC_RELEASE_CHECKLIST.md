@@ -13,11 +13,15 @@ Use this before making the new repository public.
 - [ ] Add issue templates.
 - [ ] Add pull request template.
 - [ ] Add CI workflow.
+- [ ] Add CodeQL workflow.
 - [ ] Add Dependabot config.
 - [ ] Add `.env.example` with empty values only.
 - [ ] Ensure `.gitignore` excludes `.bestie/`, `.env*`, logs, databases, build outputs, and `node_modules/`.
+- [ ] Replace placeholder repository URLs in install scripts, templates, and docs.
 - [ ] Remove raw vendor notes, scraped docs, private planning notes, and local transcripts.
+- [ ] Confirm generated build output such as `dist/` is not tracked.
 - [ ] Run a secret scan before first push.
+- [ ] Confirm Security Scan workflow passes on the public default branch.
 - [ ] Run `npm ci`, `npm run build`, and `npm test` from a clean checkout.
 
 ## Should Do
@@ -30,12 +34,12 @@ Use this before making the new repository public.
 - [ ] Enable branch protection for `main`.
 - [ ] Create labels: `bug`, `docs`, `good first issue`, `help wanted`, `security`, `privacy`, `telegram`, `memory`, `provider`, `mcp`.
 - [ ] Create 3-5 good first issues before announcing publicly.
+- [ ] Enable Copilot code review or another auto-review gate for new pull requests.
+- [ ] Confirm release automation for `v*` tags and document who can publish packages.
 
 ## Nice Later
 
-- [ ] CodeQL workflow.
-- [ ] Release workflow.
-- [ ] npm publish workflow.
+- [ ] Confirm npm publish workflow uses provenance and a protected `npm` environment.
 - [ ] Docs site.
 - [ ] Community discussions.
 - [ ] Project board.

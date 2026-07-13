@@ -1,6 +1,9 @@
-# Update maintainers after creating the public repository.
-# Examples:
-# * @owner
-# /src/runtime/ @owner
-# /src/safety/ @owner
-# /docs/ @owner
+* @sirquy
+
+/src/runtime/ @sirquy
+/src/safety/ @sirquy
+/src/llm/ @sirquy
+/src/memory/ @sirquy
+/src/tools/ @sirquy
+/docs/ @sirquy
+/.github/ @sirquy
