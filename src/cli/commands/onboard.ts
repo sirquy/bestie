@@ -19,6 +19,7 @@ const ANSI_DIM = "\x1b[2m";
 const ANSI_CYAN = "\x1b[36m";
 const ANSI_GREEN = "\x1b[32m";
 const ANSI_YELLOW = "\x1b[33m";
+const ANSI_MAGENTA = "\x1b[35m";
 
 type LanguageMode = AppConfig["agent"]["language"];
 type MemoryWritePolicy = NonNullable<AppConfig["memory"]>["writePolicy"];
@@ -48,7 +49,25 @@ interface OnboardCommandOptions {
   questioner?: Questioner;
   providerTest?: (config: AppConfig, apiKey: string, paths: RuntimePaths, writeLine: (message: string) => void) => Promise<void>;
   writeLine?: (message: string) => void;
+  useColor?: boolean;
 }
+
+interface OnboardUi {
+  intro: (paths: RuntimePaths, shouldSkipProviderTest: boolean) => void;
+  section: (title: string, detail?: string) => void;
+  success: (message: string) => void;
+  info: (message: string) => void;
+  savedPath: (label: string, path: string) => void;
+  final: () => void;
+}
+
+interface PromptTheme {
+  step: (step: number, label: string, text: string) => string;
+  defaultValue: (value: string) => string;
+  warning: (message: string) => string;
+}
+
+let promptTheme: PromptTheme = createPromptTheme(output.isTTY);
 
 export async function runOnboardCommand(optionsOrArgv: string[] | OnboardCommandOptions = process.argv): Promise<void> {
   const options = Array.isArray(optionsOrArgv) ? { argv: optionsOrArgv } : optionsOrArgv;
@@ -57,16 +76,22 @@ export async function runOnboardCommand(optionsOrArgv: string[] | OnboardCommand
   const providerTest = options.providerTest ?? runProviderTest;
   const argv = options.argv ?? process.argv;
   const shouldSkipProviderTest = argv.includes("--skip-provider-test");
+  const ui = createOnboardUi(writeLine, options.useColor ?? output.isTTY);
+  promptTheme = createPromptTheme(options.useColor ?? output.isTTY);
   await mkdir(paths.appDir, { recursive: true });
   await mkdir(paths.logsDir, { recursive: true });
   await appendLog({ event: "command_start", detail: { command: "onboard" } }, { paths });
 
-  writeOnboardIntro(writeLine, paths, shouldSkipProviderTest);
+  ui.intro(paths, shouldSkipProviderTest);
 
   const questioner = options.questioner ?? (await createQuestioner());
 
   try {
+    ui.section("Profile", "Choose the name, language, tone, and memory policy.");
     const answers = await collectAnswers(questioner);
+    ui.success("Profile and provider details collected.");
+
+    ui.section("Generate", "Building local character files and provider config.");
     const config = buildConfig(answers);
     const character = generateCharacterConfig({
       name: answers.agentName,
@@ -79,20 +104,22 @@ export async function runOnboardCommand(optionsOrArgv: string[] | OnboardCommand
     await writeConfig(config, paths);
     await writeEnvFile({ [DEFAULT_API_KEY_ENV]: answers.apiKey }, paths);
     await writeCharacterFiles(character, systemPrompt, paths);
+    ui.success("Local runtime files written.");
 
-    writeLine(color("\nSaved local files", ANSI_GREEN));
-    writeLine(formatSavedPath("Config", paths.configPath));
-    writeLine(formatSavedPath("Secrets", paths.envPath));
-    writeLine(formatSavedPath("Character", paths.characterPath));
-    writeLine(formatSavedPath("System prompt", paths.systemPromptPath));
+    ui.section("Files", "Everything is stored under your home runtime.");
+    ui.savedPath("Config", paths.configPath);
+    ui.savedPath("Secrets", paths.envPath);
+    ui.savedPath("Character", paths.characterPath);
+    ui.savedPath("System prompt", paths.systemPromptPath);
 
     if (shouldSkipProviderTest) {
       await appendLog({ event: "provider_test_skipped", detail: { reason: "skip_provider_test_flag" } }, { paths });
-      writeLine("\nProvider test skipped. Run `bestie doctor` and try chat when your provider is ready.");
+      ui.info("Provider test skipped. Run `bestie doctor` and try chat when your provider is ready.");
     } else {
+      ui.section("Provider test", "Sending one tiny completion to check your setup.");
       await providerTest(config, answers.apiKey, paths, writeLine);
     }
-    writeLine("\nOnboarding complete. Next: run `bestie status` or `bestie chat` to start chatting.");
+    ui.final();
   } finally {
     questioner.close();
   }
@@ -135,15 +162,15 @@ async function createQuestioner(): Promise<Questioner> {
 
 async function collectAnswers(questioner: Pick<Questioner, "ask" | "askHidden">): Promise<OnboardingAnswers> {
   const { ask, askHidden } = questioner;
-  const agentName = await askNonEmpty(ask, question(1, "Bestie name", "What should your bestie be called?"), "Bestie");
-  const ownerName = await askNonEmpty(ask, question(2, "Your name", "What should it call you?"), "boss");
+  const agentName = await askNonEmpty(ask, promptTheme.step(1, "Bestie name", "What should your bestie be called?"), "Bestie");
+  const ownerName = await askNonEmpty(ask, promptTheme.step(2, "Your name", "What should it call you?"), "boss");
   const language = await askLanguage(ask);
   const toneIntensity = await askToneIntensity(ask);
   const memoryWritePolicy = await askMemoryWritePolicy(ask);
-  const provider = await askNonEmpty(ask, question(6, "Provider", "Provider label?"), "openai-compatible");
-  const baseUrl = await askNonEmpty(ask, question(7, "Base URL", "OpenAI-compatible base URL?"), "https://api.openai.com/v1");
-  const model = await askNonEmpty(ask, question(8, "Model", "Model name?"), "gpt-4o-mini");
-  const apiKey = await askNonEmpty(askHidden, question(9, "API key", `Paste your provider API key. It will be saved as ${DEFAULT_API_KEY_ENV} and hidden while typing.`));
+  const provider = await askNonEmpty(ask, promptTheme.step(6, "Provider", "Provider label?"), "openai-compatible");
+  const baseUrl = await askNonEmpty(ask, promptTheme.step(7, "Base URL", "OpenAI-compatible base URL?"), "https://api.openai.com/v1");
+  const model = await askNonEmpty(ask, promptTheme.step(8, "Model", "Model name?"), "gpt-4o-mini");
+  const apiKey = await askNonEmpty(askHidden, promptTheme.step(9, "API key", `Paste your provider API key. It will be saved as ${DEFAULT_API_KEY_ENV} and hidden while typing.`));
 
   return { agentName, ownerName, language, toneIntensity, memoryWritePolicy, provider, baseUrl, model, apiKey };
 }
@@ -154,7 +181,7 @@ async function askNonEmpty(
   defaultValue?: string,
 ): Promise<string> {
   while (true) {
-    const suffix = defaultValue ? `${color(`[${defaultValue}]`, ANSI_DIM)} ` : "";
+    const suffix = defaultValue ? `${promptTheme.defaultValue(defaultValue)} ` : "";
     const answer = (await ask(`${question}${suffix}`)).trim();
     const value = answer || defaultValue;
 
@@ -162,13 +189,13 @@ async function askNonEmpty(
       return value;
     }
 
-    console.log(color("Please enter a value.", ANSI_YELLOW));
+    console.log(promptTheme.warning("Please enter a value."));
   }
 }
 
 async function askLanguage(ask: AskLine): Promise<LanguageMode> {
   while (true) {
-    const answer = (await ask(`${question(3, "Language", "Default language code or auto? Examples: vi, en, ja, ko, fr, pt-BR, auto.")}${color("[vi]", ANSI_DIM)} `)).trim();
+    const answer = (await ask(`${promptTheme.step(3, "Language", "Default language code or auto? Examples: vi, en, ja, ko, fr, pt-BR, auto.")}${promptTheme.defaultValue("vi")} `)).trim();
     const normalized = answer.toLowerCase();
 
     if (!answer || normalized === "vietnamese") {
@@ -189,20 +216,20 @@ async function askLanguage(ask: AskLine): Promise<LanguageMode> {
 
 async function askToneIntensity(ask: AskLine): Promise<number> {
   while (true) {
-    const answer = (await ask(`${question(4, "Tone", "Tone intensity from 1 to 10?")}${color("[7]", ANSI_DIM)} `)).trim();
+    const answer = (await ask(`${promptTheme.step(4, "Tone", "Tone intensity from 1 to 10?")}${promptTheme.defaultValue("7")} `)).trim();
     const value = Number(answer || "7");
 
     if (Number.isInteger(value) && value >= 1 && value <= 10) {
       return value;
     }
 
-    console.log(color("Choose a whole number from 1 to 10.", ANSI_YELLOW));
+    console.log(promptTheme.warning("Choose a whole number from 1 to 10."));
   }
 }
 
 async function askMemoryWritePolicy(ask: AskLine): Promise<MemoryWritePolicy> {
   while (true) {
-    const answer = (await ask(`${question(5, "Memory", "Memory write policy: ask, allow, or deny?")}${color("[ask]", ANSI_DIM)} `)).trim().toLowerCase();
+    const answer = (await ask(`${promptTheme.step(5, "Memory", "Memory write policy: ask, allow, or deny?")}${promptTheme.defaultValue("ask")} `)).trim().toLowerCase();
 
     if (!answer || answer === "ask") {
       return "ask";
@@ -212,24 +239,46 @@ async function askMemoryWritePolicy(ask: AskLine): Promise<MemoryWritePolicy> {
       return answer;
     }
 
-    console.log(color("Choose ask, allow, or deny.", ANSI_YELLOW));
+    console.log(promptTheme.warning("Choose ask, allow, or deny."));
   }
 }
 
-function writeOnboardIntro(writeLine: (message: string) => void, paths: RuntimePaths, shouldSkipProviderTest: boolean): void {
-  writeLine(color(`${ANSI_BOLD}Bestie onboarding${ANSI_RESET}`, ANSI_CYAN));
-  writeLine("Set up your local Bestie runtime in a few guided steps.");
-  writeLine(`${color("Home runtime", ANSI_GREEN)} ${paths.appDir}`);
-  writeLine(color("Secrets stay local in .bestie/.env and are hidden while typing.", ANSI_DIM));
-  writeLine(shouldSkipProviderTest ? "We'll create character and provider config.\n" : "We'll create character config, provider config, and run a quick provider test.\n");
+function createOnboardUi(writeLine: (message: string) => void, useColor: boolean): OnboardUi {
+  const paint = (text: string, code: string) => useColor ? color(text, code) : text;
+  const dim = (text: string) => paint(text, ANSI_DIM);
+  const accent = (text: string) => paint(text, ANSI_CYAN);
+  const ok = (text: string) => paint(text, ANSI_GREEN);
+  const title = (text: string) => useColor ? `${ANSI_BOLD}${ANSI_MAGENTA}${text}${ANSI_RESET}` : text;
+
+  return {
+    intro: (paths, shouldSkipProviderTest) => {
+      writeLine(title("Bestie onboarding"));
+      writeLine(dim("A local-first setup wizard for your companion runtime."));
+      writeLine(`${accent("Runtime")} ${paths.appDir}`);
+      writeLine(`${accent("Privacy")} Secrets stay local in .bestie/.env and are hidden while typing.`);
+      writeLine(shouldSkipProviderTest ? `${dim("Plan")} Profile -> Generate -> Files\n` : `${dim("Plan")} Profile -> Generate -> Files -> Provider test\n`);
+    },
+    section: (sectionTitle, detail) => {
+      writeLine(`${accent("\n>")} ${paint(sectionTitle, ANSI_BOLD)}${detail ? ` ${dim(detail)}` : ""}`);
+    },
+    success: (message) => writeLine(`${ok("OK")} ${message}`),
+    info: (message) => writeLine(`${paint("INFO", ANSI_YELLOW)} ${message}`),
+    savedPath: (label, path) => writeLine(`  ${accent(label.padEnd(13))} ${path}`),
+    final: () => {
+      writeLine(`${ok("\nDone")} Onboarding complete.`);
+      writeLine(`${dim("Next")} Run \`bestie status\` or \`bestie chat\` to start chatting.`);
+    },
+  };
 }
 
-function question(step: number, label: string, text: string): string {
-  return `${color(`[${step}/9]`, ANSI_DIM)} ${color(label, ANSI_CYAN)} ${text} `;
-}
+function createPromptTheme(useColor: boolean): PromptTheme {
+  const paint = (text: string, code: string) => useColor ? color(text, code) : text;
 
-function formatSavedPath(label: string, path: string): string {
-  return `- ${color(label.padEnd(13), ANSI_CYAN)} ${path}`;
+  return {
+    step: (step, label, text) => `${paint(`[${step}/9]`, ANSI_DIM)} ${paint(label, ANSI_CYAN)} ${text} `,
+    defaultValue: (value) => paint(`[${value}]`, ANSI_DIM),
+    warning: (message) => paint(message, ANSI_YELLOW),
+  };
 }
 
 function color(text: string, code: string): string {

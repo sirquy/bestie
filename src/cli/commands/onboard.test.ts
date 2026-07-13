@@ -53,10 +53,11 @@ test("runOnboardCommand writes local files and skips provider test when requeste
     assert.equal(config.memory?.writePolicy, "ask");
     assert.match(envText, /BESTIE_LLM_API_KEY="test-key"/);
     assert.match(logText, /provider_test_skipped/);
-    assert.ok(output.some((line) => line.includes("Home runtime")));
-    assert.ok(output.some((line) => line.includes("character and provider config")));
-    assert.ok(output.every((line) => !line.includes("quick provider test")));
-    assert.ok(output.some((line) => line.includes("Provider test skipped")));
+    assert.ok(output.some((line) => line.includes("Runtime")));
+    assert.ok(output.some((line) => line.includes("Profile -> Generate -> Files")));
+    assert.ok(output.some((line) => line.includes("OK") && line.includes("Local runtime files written")));
+    assert.ok(output.every((line) => !line.includes("Provider test Sending")));
+    assert.ok(output.some((line) => line.includes("INFO") && line.includes("Provider test skipped")));
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
   }
@@ -83,9 +84,9 @@ test("runOnboardCommand runs provider test when not skipped", async () => {
 
     assert.equal(providerTestConfig?.llm.model, "test-model");
     assert.equal(providerTestApiKey, "test-key");
-    assert.ok(output.some((line) => line.includes("quick provider test")));
+    assert.ok(output.some((line) => line.includes("Provider test")));
     assert.ok(output.some((line) => line.includes("mocked provider unavailable")));
-    assert.ok(output.some((line) => line.includes("Onboarding complete")));
+    assert.ok(output.some((line) => line.includes("Done") && line.includes("Onboarding complete")));
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
   }
