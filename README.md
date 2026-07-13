@@ -58,6 +58,15 @@ bestie doctor
 bestie chat
 ```
 
+For npm install:
+
+```bash
+npm install -g bestie-agent
+bestie onboard
+bestie doctor
+bestie chat
+```
+
 ## Configuration
 
 Bestie keeps local runtime files under `.bestie/`. Secrets belong in `.bestie/.env`; config files store environment variable names, not secret values.

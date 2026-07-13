@@ -1,8 +1,15 @@
 {
-  "name": "bestie",
+  "name": "bestie-agent",
   "version": "0.1.1",
   "description": "Vietnamese-first bestie agent CLI.",
   "type": "module",
+  "files": [
+    "dist/**/*.js",
+    "!dist/**/*.test.js",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ],
   "bin": {
     "bestie": "dist/cli/index.js"
   },
