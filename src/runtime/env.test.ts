@@ -8,8 +8,8 @@ import { loadEnvFile, parseEnv, writeEnvFile } from "./env.js";
 import type { RuntimePaths } from "./paths.js";
 
 test("parseEnv reads JSON-quoted values", () => {
-  assert.deepEqual(parseEnv('BESTIE_LLM_API_KEY="sk value # with spaces"\n'), {
-    BESTIE_LLM_API_KEY: "sk value # with spaces",
+  assert.deepEqual(parseEnv('OPENAI_API_KEY="sk value # with spaces"\n'), {
+    OPENAI_API_KEY: "sk value # with spaces",
   });
 });
 
@@ -17,9 +17,9 @@ test("writeEnvFile round-trips values with spaces and symbols", async () => {
   const paths = await createTempPaths();
 
   try {
-    await writeEnvFile({ BESTIE_LLM_API_KEY: 'sk value # "quoted"' }, paths);
+    await writeEnvFile({ OPENAI_API_KEY: 'sk value # "quoted"' }, paths);
     assert.deepEqual(await loadEnvFile(paths), {
-      BESTIE_LLM_API_KEY: 'sk value # "quoted"',
+      OPENAI_API_KEY: 'sk value # "quoted"',
     });
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });

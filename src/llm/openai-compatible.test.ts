@@ -21,7 +21,7 @@ const config: AppConfig = {
     provider: "openai-compatible",
     baseUrl: "https://example.com/v1",
     model: "example-model",
-    apiKeyEnv: "BESTIE_LLM_API_KEY",
+    apiKeyEnv: "OPENAI_API_KEY",
   },
 };
 
@@ -223,7 +223,7 @@ test("sendChatCompletionWithFallbacks tries configured fallback model and provid
 
   try {
     await mkdir(paths.appDir, { recursive: true });
-    await writeFile(paths.envPath, 'BESTIE_LLM_API_KEY="primary-secret"\nFALLBACK_LLM_API_KEY="fallback-secret"\n');
+    await writeFile(paths.envPath, 'OPENAI_API_KEY="primary-secret"\nFALLBACK_LLM_API_KEY="fallback-secret"\n');
     const fetchImpl = async (url: string | URL | Request, init?: RequestInit) => {
       const body = JSON.parse(String(init?.body)) as { model: string };
       const headers = new Headers(init?.headers);
@@ -260,7 +260,7 @@ test("sendChatCompletionWithFallbacks reports every failed fallback attempt", as
 
   try {
     await mkdir(paths.appDir, { recursive: true });
-    await writeFile(paths.envPath, 'BESTIE_LLM_API_KEY="primary-secret"\nFALLBACK_LLM_API_KEY="fallback-secret"\n');
+    await writeFile(paths.envPath, 'OPENAI_API_KEY="primary-secret"\nFALLBACK_LLM_API_KEY="fallback-secret"\n');
     const fetchImpl = async () => new Response("nope", { status: 502, statusText: "Bad Gateway" });
 
     await assert.rejects(

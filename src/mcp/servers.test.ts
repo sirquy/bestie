@@ -7,7 +7,7 @@ import { findMcpServer, listMcpServers, testMcpServerConfig } from "./servers.js
 const configWithServer: AppConfig = {
   version: 1,
   agent: { name: "Miu", ownerName: "Boss", language: "vi", toneIntensity: 7 },
-  llm: { provider: "openai-compatible", baseUrl: "https://example.com/v1", model: "model", apiKeyEnv: "BESTIE_LLM_API_KEY" },
+  llm: { provider: "openai-compatible", baseUrl: "https://example.com/v1", model: "model", apiKeyEnv: "OPENAI_API_KEY" },
   mcp: {
     servers: [{ name: "fs", enabled: true, command: "node", args: ["server.js"], env: { SECRET_TOKEN: "should-not-print", MODE: "readonly" } }],
   },
@@ -36,7 +36,7 @@ test("listMcpServers returns an empty list when MCP is not configured", () => {
   const config: AppConfig = {
     version: 1,
     agent: { name: "Miu", ownerName: "Boss", language: "vi", toneIntensity: 7 },
-    llm: { provider: "openai-compatible", baseUrl: "https://example.com/v1", model: "model", apiKeyEnv: "BESTIE_LLM_API_KEY" },
+    llm: { provider: "openai-compatible", baseUrl: "https://example.com/v1", model: "model", apiKeyEnv: "OPENAI_API_KEY" },
   };
 
   assert.deepEqual(listMcpServers(config), []);

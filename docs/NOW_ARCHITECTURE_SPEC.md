@@ -162,7 +162,7 @@ Stores non-secret configuration only.
     "provider": "openai-compatible",
     "baseUrl": "",
     "model": "provider-model-name",
-    "apiKeyEnv": "BESTIE_LLM_API_KEY"
+    "apiKeyEnv": "OPENAI_API_KEY"
   }
 }
 ```
@@ -172,7 +172,7 @@ Stores non-secret configuration only.
 Stores secrets.
 
 ```bash
-BESTIE_LLM_API_KEY=...
+OPENAI_API_KEY=...
 ```
 
 Rules:
@@ -289,7 +289,7 @@ Required error categories:
 Example behavior:
 
 ```text
-Missing API key for BESTIE_LLM_API_KEY.
+Missing API key for OPENAI_API_KEY.
 Run `bestie onboard` or add the key to .bestie/.env.
 ```
 

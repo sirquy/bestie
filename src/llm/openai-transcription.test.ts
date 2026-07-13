@@ -12,7 +12,7 @@ import { createAudioTranscription, sendAudioTranscription, sendElevenLabsAudioTr
 const config: AppConfig = {
   version: 1,
   agent: { name: "Miu", ownerName: "Sep", language: "vi", toneIntensity: 7 },
-  llm: { provider: "openai-compatible", baseUrl: "https://example.com/v1", model: "chat-model", apiKeyEnv: "BESTIE_LLM_API_KEY" },
+  llm: { provider: "openai-compatible", baseUrl: "https://example.com/v1", model: "chat-model", apiKeyEnv: "OPENAI_API_KEY" },
   transcription: { provider: "openai-compatible", baseUrl: "https://audio.example.com/v1", model: "whisper-1", apiKeyEnv: "BESTIE_TRANSCRIPTION_API_KEY" },
 };
 

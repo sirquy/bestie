@@ -46,7 +46,7 @@ Phase Now config started with non-secret `agent` and `llm` fields. The current l
     "provider": "openai-compatible",
     "baseUrl": "https://api.openai.com/v1",
     "model": "provider-model-name",
-    "apiKeyEnv": "BESTIE_LLM_API_KEY",
+    "apiKeyEnv": "OPENAI_API_KEY",
     "timeoutMs": 60000,
     "maxRetries": 1,
     "retryDelayMs": 500
@@ -201,7 +201,7 @@ For compatibility with common MCP config snippets, a top-level `mcpServers` obje
 Phase Now should write only the LLM API key unless the user is explicitly configuring a later feature. The Zep and Telegram entries below are future placeholders, not required setup.
 
 ```bash
-BESTIE_LLM_API_KEY=
+OPENAI_API_KEY=
 ZEP_API_KEY=
 BESTIE_TELEGRAM_BOT_TOKEN=
 COMPOSIO_CONSUMER_API_KEY=

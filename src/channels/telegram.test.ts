@@ -21,7 +21,7 @@ import { TelegramHttpClient, createTelegramOutboundAdapter, createTelegramRuntim
 const config: AppConfig = {
   version: 1,
   agent: { name: "Miu", ownerName: "Boss", language: "vi", toneIntensity: 7 },
-  llm: { provider: "openai-compatible", baseUrl: "https://example.com/v1", model: "example-model", apiKeyEnv: "BESTIE_LLM_API_KEY" },
+  llm: { provider: "openai-compatible", baseUrl: "https://example.com/v1", model: "example-model", apiKeyEnv: "OPENAI_API_KEY" },
   channels: { telegram: { enabled: true, botTokenEnv: "BESTIE_TELEGRAM_BOT_TOKEN", ownerUserId: "12345" } },
 };
 
@@ -2266,6 +2266,6 @@ async function createTempPaths(): Promise<RuntimePaths> {
 
 async function writeRuntimeFiles(paths: RuntimePaths): Promise<void> {
   await mkdir(paths.appDir, { recursive: true });
-  await writeEnvFile({ BESTIE_LLM_API_KEY: "sk-test" }, paths);
+  await writeEnvFile({ OPENAI_API_KEY: "sk-test" }, paths);
   await writeFile(paths.systemPromptPath, "You are Miu.\n");
 }

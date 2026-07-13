@@ -11,7 +11,7 @@ import { buildLocalWhisperArgs, createLocalAudioTranscription } from "./local-tr
 const baseConfig: AppConfig = {
   version: 1,
   agent: { name: "Miu", ownerName: "Sep", language: "vi", toneIntensity: 7 },
-  llm: { provider: "openai-compatible", baseUrl: "https://example.com/v1", model: "chat-model", apiKeyEnv: "BESTIE_LLM_API_KEY" },
+  llm: { provider: "openai-compatible", baseUrl: "https://example.com/v1", model: "chat-model", apiKeyEnv: "OPENAI_API_KEY" },
 };
 
 test("buildLocalWhisperArgs substitutes paths without shell parsing", () => {

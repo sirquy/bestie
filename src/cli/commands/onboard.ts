@@ -12,7 +12,7 @@ import { writeEnvFile } from "../../runtime/env.js";
 import { appendLog } from "../../runtime/logger.js";
 import { getRuntimePaths, type RuntimePaths } from "../../runtime/paths.js";
 
-const DEFAULT_API_KEY_ENV = "BESTIE_LLM_API_KEY";
+const DEFAULT_API_KEY_ENV = "OPENAI_API_KEY";
 const ANSI_RESET = "\x1b[0m";
 const ANSI_BOLD = "\x1b[1m";
 const ANSI_DIM = "\x1b[2m";

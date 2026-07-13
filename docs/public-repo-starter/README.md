@@ -65,7 +65,7 @@ Bestie keeps local runtime files under `.bestie/`. Secrets belong in `.bestie/.e
 Example `.bestie/.env`:
 
 ```bash
-BESTIE_LLM_API_KEY=your-provider-key
+OPENAI_API_KEY=your-provider-key
 BESTIE_TELEGRAM_BOT_TOKEN=your-telegram-token
 ```
 
@@ -77,7 +77,7 @@ Example provider config:
     "provider": "openai-compatible",
     "baseUrl": "https://api.example.com/v1",
     "model": "provider-model-name",
-    "apiKeyEnv": "BESTIE_LLM_API_KEY"
+    "apiKeyEnv": "OPENAI_API_KEY"
   }
 }
 ```

@@ -136,7 +136,7 @@ Config may include:
     "provider": "openai-compatible",
     "baseUrl": "",
     "model": "provider-model-name",
-    "apiKeyEnv": "BESTIE_LLM_API_KEY"
+    "apiKeyEnv": "OPENAI_API_KEY"
   },
   "memory": {
     "writePolicy": "ask"

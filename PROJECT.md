@@ -622,7 +622,7 @@ Config should look like:
   "llm": {
     "provider": "openai-compatible",
     "baseUrl": "https://api.openai.com/v1",
-    "apiKeyEnv": "BESTIE_LLM_API_KEY",
+    "apiKeyEnv": "OPENAI_API_KEY",
     "model": "provider-model-name"
   }
 }
@@ -893,7 +893,7 @@ Example:
     "provider": "openai-compatible",
     "baseUrl": "https://api.openai.com/v1",
     "model": "provider-model-name",
-    "apiKeyEnv": "BESTIE_LLM_API_KEY"
+    "apiKeyEnv": "OPENAI_API_KEY"
   },
   "memory": {
     "provider": "sqlite",
@@ -919,7 +919,7 @@ Secrets:
 Example:
 
 ```bash
-BESTIE_LLM_API_KEY=...
+OPENAI_API_KEY=...
 ZEP_API_KEY=...
 TELEGRAM_BOT_TOKEN=...
 ```

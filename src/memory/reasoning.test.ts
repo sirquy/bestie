@@ -136,7 +136,7 @@ function createConfig(): AppConfig {
   return {
     version: 1,
     agent: { name: "Miu", ownerName: "Boss", language: "vi", toneIntensity: 7 },
-    llm: { provider: "openai-compatible", baseUrl: "https://example.com/v1", model: "test-model", apiKeyEnv: "BESTIE_LLM_API_KEY" },
+    llm: { provider: "openai-compatible", baseUrl: "https://example.com/v1", model: "test-model", apiKeyEnv: "OPENAI_API_KEY" },
   };
 }
 

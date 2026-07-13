@@ -17,7 +17,7 @@ try {
   const memoryDbPath = resolve(dataDir, "memory.sqlite");
 
   await mkdir(logsDir, { recursive: true });
-  await writeFile(envPath, 'BESTIE_LLM_API_KEY="sk-smoke-secret"\n', { mode: 0o644 });
+  await writeFile(envPath, 'OPENAI_API_KEY="sk-smoke-secret"\n', { mode: 0o644 });
   await writeFile(appLogPath, '{"event":"smoke"}\n', { mode: 0o644 });
 
   const result = spawnSync(process.execPath, [cliPath, "doctor", "--fix", "--json"], {

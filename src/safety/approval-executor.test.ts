@@ -192,6 +192,6 @@ function createConfig() {
   return {
     version: 1,
     agent: { name: "Bea", ownerName: "Andy", language: "vi", toneIntensity: 7 },
-    llm: { provider: "openai-compatible", baseUrl: "http://127.0.0.1:9/v1", model: "test-model", apiKeyEnv: "BESTIE_LLM_API_KEY" },
+    llm: { provider: "openai-compatible", baseUrl: "http://127.0.0.1:9/v1", model: "test-model", apiKeyEnv: "OPENAI_API_KEY" },
   } as const;
 }

@@ -22,11 +22,11 @@ test("runTelegramCommand setup writes Telegram config and token env", async () =
       {
         version: 1,
         agent: { name: "Miu", ownerName: "Boss", language: "vi", toneIntensity: 7 },
-        llm: { provider: "openai-compatible", baseUrl: "https://example.com/v1", model: "example-model", apiKeyEnv: "BESTIE_LLM_API_KEY" },
+        llm: { provider: "openai-compatible", baseUrl: "https://example.com/v1", model: "example-model", apiKeyEnv: "OPENAI_API_KEY" },
       },
       paths,
     );
-    await writeEnvFile({ BESTIE_LLM_API_KEY: "sk-test" }, paths);
+    await writeEnvFile({ OPENAI_API_KEY: "sk-test" }, paths);
 
     await runTelegramCommand({
       argv: ["node", "bestie", "telegram", "setup"],
@@ -50,7 +50,7 @@ test("runTelegramCommand setup writes Telegram config and token env", async () =
     assert.equal(config.channels?.telegram?.enabled, true);
     assert.equal(config.channels?.telegram?.botTokenEnv, "BESTIE_TELEGRAM_BOT_TOKEN");
     assert.equal(config.channels?.telegram?.ownerUserId, "12345");
-    assert.match(envText, /BESTIE_LLM_API_KEY="sk-test"/);
+    assert.match(envText, /OPENAI_API_KEY="sk-test"/);
     assert.match(envText, /BESTIE_TELEGRAM_BOT_TOKEN="telegram-secret-token"/);
     assert.ok(output.some((line) => line.includes("Telegram setup saved")));
     assert.ok(output.every((line) => !line.includes("telegram-secret-token")));
@@ -79,7 +79,7 @@ test("runTelegramCommand voice setup-local writes wrapper and local transcriptio
       {
         version: 1,
         agent: { name: "Miu", ownerName: "Boss", language: "vi", toneIntensity: 7 },
-        llm: { provider: "openai-compatible", baseUrl: "https://example.com/v1", model: "example-model", apiKeyEnv: "BESTIE_LLM_API_KEY" },
+        llm: { provider: "openai-compatible", baseUrl: "https://example.com/v1", model: "example-model", apiKeyEnv: "OPENAI_API_KEY" },
         channels: { telegram: { enabled: true, botTokenEnv: "BESTIE_TELEGRAM_BOT_TOKEN", ownerUserId: "12345", attachments: { allowedMimeTypes: ["text/*"] } } },
       },
       paths,
@@ -133,7 +133,7 @@ test("runTelegramCommand voice setup-local uses agent language for local transcr
       {
         version: 1,
         agent: { name: "Miu", ownerName: "Boss", language: "mixed", toneIntensity: 7 },
-        llm: { provider: "openai-compatible", baseUrl: "https://example.com/v1", model: "example-model", apiKeyEnv: "BESTIE_LLM_API_KEY" },
+        llm: { provider: "openai-compatible", baseUrl: "https://example.com/v1", model: "example-model", apiKeyEnv: "OPENAI_API_KEY" },
       },
       paths,
     );
@@ -159,12 +159,12 @@ test("runTelegramCommand voice setup-elevenlabs writes speech config and API key
       {
         version: 1,
         agent: { name: "Miu", ownerName: "Boss", language: "vi", toneIntensity: 7 },
-        llm: { provider: "openai-compatible", baseUrl: "https://example.com/v1", model: "example-model", apiKeyEnv: "BESTIE_LLM_API_KEY" },
+        llm: { provider: "openai-compatible", baseUrl: "https://example.com/v1", model: "example-model", apiKeyEnv: "OPENAI_API_KEY" },
         channels: { telegram: { enabled: true, botTokenEnv: "BESTIE_TELEGRAM_BOT_TOKEN", ownerUserId: "12345", attachments: { transcriptionPolicy: "allow" } } },
       },
       paths,
     );
-    await writeEnvFile({ BESTIE_LLM_API_KEY: "sk-test" }, paths);
+    await writeEnvFile({ OPENAI_API_KEY: "sk-test" }, paths);
 
     await runTelegramCommand({
       argv: ["node", "bestie", "telegram", "voice", "setup-elevenlabs"],
@@ -209,7 +209,7 @@ test("runTelegramCommand voice setup-elevenlabs writes speech config and API key
     assert.equal(config.channels?.telegram?.attachments?.transcriptionPolicy, "allow");
     assert.deepEqual(config.channels?.telegram?.attachments?.deleteAfterProcessingKinds, ["voice", "audio"]);
     assert.deepEqual(config.channels?.telegram?.attachments?.allowedMimeTypes, ["audio/*"]);
-    assert.match(envText, /BESTIE_LLM_API_KEY="sk-test"/);
+    assert.match(envText, /OPENAI_API_KEY="sk-test"/);
     assert.match(envText, /ELEVENLABS_API_KEY="elevenlabs-secret-token"/);
     assert.ok(output.some((line) => line.includes("Telegram ElevenLabs voice reply setup saved")));
     assert.ok(output.every((line) => !line.includes("elevenlabs-secret-token")));
@@ -227,7 +227,7 @@ test("runTelegramCommand voice setup-elevenlabs omits language code for mixed la
       {
         version: 1,
         agent: { name: "Miu", ownerName: "Boss", language: "mixed", toneIntensity: 7 },
-        llm: { provider: "openai-compatible", baseUrl: "https://example.com/v1", model: "example-model", apiKeyEnv: "BESTIE_LLM_API_KEY" },
+        llm: { provider: "openai-compatible", baseUrl: "https://example.com/v1", model: "example-model", apiKeyEnv: "OPENAI_API_KEY" },
       },
       paths,
     );
@@ -269,7 +269,7 @@ test("runTelegramCommand voice setup-local fails before writing config when mode
       {
         version: 1,
         agent: { name: "Miu", ownerName: "Boss", language: "vi", toneIntensity: 7 },
-        llm: { provider: "openai-compatible", baseUrl: "https://example.com/v1", model: "example-model", apiKeyEnv: "BESTIE_LLM_API_KEY" },
+        llm: { provider: "openai-compatible", baseUrl: "https://example.com/v1", model: "example-model", apiKeyEnv: "OPENAI_API_KEY" },
       },
       paths,
     );
@@ -297,7 +297,7 @@ test("runTelegramCommand voice models lists local models and marks configured mo
       {
         version: 1,
         agent: { name: "Miu", ownerName: "Boss", language: "vi", toneIntensity: 7 },
-        llm: { provider: "openai-compatible", baseUrl: "https://example.com/v1", model: "example-model", apiKeyEnv: "BESTIE_LLM_API_KEY" },
+        llm: { provider: "openai-compatible", baseUrl: "https://example.com/v1", model: "example-model", apiKeyEnv: "OPENAI_API_KEY" },
         transcription: { provider: "local-whisper", command: ".bestie/tools/local-whisper-transcribe.sh", args: ["{modelPath}", "{audioPath}", "-l", "vi"], modelPath: ".bestie/models/ggml-small.bin" },
       },
       paths,
@@ -324,7 +324,7 @@ test("runTelegramCommand voice models reports when no local models exist", async
       {
         version: 1,
         agent: { name: "Miu", ownerName: "Boss", language: "vi", toneIntensity: 7 },
-        llm: { provider: "openai-compatible", baseUrl: "https://example.com/v1", model: "example-model", apiKeyEnv: "BESTIE_LLM_API_KEY" },
+        llm: { provider: "openai-compatible", baseUrl: "https://example.com/v1", model: "example-model", apiKeyEnv: "OPENAI_API_KEY" },
       },
       paths,
     );
@@ -348,7 +348,7 @@ test("runTelegramCommand voice download-model previews without downloading by de
       {
         version: 1,
         agent: { name: "Miu", ownerName: "Boss", language: "vi", toneIntensity: 7 },
-        llm: { provider: "openai-compatible", baseUrl: "https://example.com/v1", model: "example-model", apiKeyEnv: "BESTIE_LLM_API_KEY" },
+        llm: { provider: "openai-compatible", baseUrl: "https://example.com/v1", model: "example-model", apiKeyEnv: "OPENAI_API_KEY" },
       },
       paths,
     );
@@ -381,7 +381,7 @@ test("runTelegramCommand voice download-model downloads and can update config", 
       {
         version: 1,
         agent: { name: "Miu", ownerName: "Boss", language: "en", toneIntensity: 7 },
-        llm: { provider: "openai-compatible", baseUrl: "https://example.com/v1", model: "example-model", apiKeyEnv: "BESTIE_LLM_API_KEY" },
+        llm: { provider: "openai-compatible", baseUrl: "https://example.com/v1", model: "example-model", apiKeyEnv: "OPENAI_API_KEY" },
       },
       paths,
     );
@@ -416,7 +416,7 @@ test("runTelegramCommand voice download-model refuses to overwrite without force
       {
         version: 1,
         agent: { name: "Miu", ownerName: "Boss", language: "vi", toneIntensity: 7 },
-        llm: { provider: "openai-compatible", baseUrl: "https://example.com/v1", model: "example-model", apiKeyEnv: "BESTIE_LLM_API_KEY" },
+        llm: { provider: "openai-compatible", baseUrl: "https://example.com/v1", model: "example-model", apiKeyEnv: "OPENAI_API_KEY" },
       },
       paths,
     );
@@ -448,12 +448,12 @@ test("runTelegramCommand writes a redacted Telegram smoke transcript", async () 
       {
         version: 1,
         agent: { name: "Miu", ownerName: "Boss", language: "vi", toneIntensity: 7 },
-        llm: { provider: "openai-compatible", baseUrl: "https://example.com/v1", model: "example-model", apiKeyEnv: "BESTIE_LLM_API_KEY" },
+        llm: { provider: "openai-compatible", baseUrl: "https://example.com/v1", model: "example-model", apiKeyEnv: "OPENAI_API_KEY" },
         channels: { telegram: { enabled: true, botTokenEnv: "BESTIE_TELEGRAM_BOT_TOKEN", ownerUserId: "12345" } },
       },
       paths,
     );
-    await writeEnvFile({ BESTIE_LLM_API_KEY: "sk-test", BESTIE_TELEGRAM_BOT_TOKEN: "telegram-secret-token" }, paths);
+    await writeEnvFile({ OPENAI_API_KEY: "sk-test", BESTIE_TELEGRAM_BOT_TOKEN: "telegram-secret-token" }, paths);
 
     await runTelegramCommand({
       argv: ["node", "bestie", "telegram", "--once", "--transcript", ".bestie/logs/telegram-smoke.jsonl"],
@@ -510,12 +510,12 @@ test("runTelegramCommand writes redacted Telegram attachment transcript events",
       {
         version: 1,
         agent: { name: "Miu", ownerName: "Boss", language: "vi", toneIntensity: 7 },
-        llm: { provider: "openai-compatible", baseUrl: "https://example.com/v1", model: "example-model", apiKeyEnv: "BESTIE_LLM_API_KEY" },
+        llm: { provider: "openai-compatible", baseUrl: "https://example.com/v1", model: "example-model", apiKeyEnv: "OPENAI_API_KEY" },
         channels: { telegram: { enabled: true, botTokenEnv: "BESTIE_TELEGRAM_BOT_TOKEN", ownerUserId: "12345" } },
       },
       paths,
     );
-    await writeEnvFile({ BESTIE_LLM_API_KEY: "sk-test", BESTIE_TELEGRAM_BOT_TOKEN: "telegram-secret-token" }, paths);
+    await writeEnvFile({ OPENAI_API_KEY: "sk-test", BESTIE_TELEGRAM_BOT_TOKEN: "telegram-secret-token" }, paths);
 
     await runTelegramCommand({
       argv: ["node", "bestie", "telegram", "--once", "--transcript", ".bestie/logs/telegram-attachment-smoke.jsonl"],
@@ -600,13 +600,13 @@ test("runTelegramCommand wires configured audio transcription for Telegram voice
       {
         version: 1,
         agent: { name: "Miu", ownerName: "Boss", language: "vi", toneIntensity: 7 },
-        llm: { provider: "openai-compatible", baseUrl: "https://example.com/v1", model: "example-model", apiKeyEnv: "BESTIE_LLM_API_KEY" },
+        llm: { provider: "openai-compatible", baseUrl: "https://example.com/v1", model: "example-model", apiKeyEnv: "OPENAI_API_KEY" },
         transcription: { provider: "openai-compatible", baseUrl: "https://audio.example.com/v1", model: "whisper-1", apiKeyEnv: "BESTIE_TRANSCRIPTION_API_KEY" },
         channels: { telegram: { enabled: true, botTokenEnv: "BESTIE_TELEGRAM_BOT_TOKEN", ownerUserId: "12345", attachments: { transcriptionPolicy: "allow" } } },
       },
       paths,
     );
-    await writeEnvFile({ BESTIE_LLM_API_KEY: "sk-test", BESTIE_TELEGRAM_BOT_TOKEN: "telegram-secret-token", BESTIE_TRANSCRIPTION_API_KEY: "transcription-secret-token" }, paths);
+    await writeEnvFile({ OPENAI_API_KEY: "sk-test", BESTIE_TELEGRAM_BOT_TOKEN: "telegram-secret-token", BESTIE_TRANSCRIPTION_API_KEY: "transcription-secret-token" }, paths);
 
     await runTelegramCommand({
       argv: ["node", "bestie", "telegram", "--once", "--transcript", ".bestie/logs/telegram-voice-smoke.jsonl"],
@@ -669,14 +669,14 @@ test("runTelegramCommand sends Telegram voice reply for voice input when configu
       {
         version: 1,
         agent: { name: "Miu", ownerName: "Boss", language: "vi", toneIntensity: 7 },
-        llm: { provider: "openai-compatible", baseUrl: "https://example.com/v1", model: "example-model", apiKeyEnv: "BESTIE_LLM_API_KEY" },
+        llm: { provider: "openai-compatible", baseUrl: "https://example.com/v1", model: "example-model", apiKeyEnv: "OPENAI_API_KEY" },
         transcription: { provider: "openai-compatible", baseUrl: "https://audio.example.com/v1", model: "whisper-1", apiKeyEnv: "BESTIE_TRANSCRIPTION_API_KEY" },
         speech: { provider: "openai-compatible", baseUrl: "http://localhost:20128/v1", model: "google-tts/vi", apiKeyEnv: "BESTIE_TTS_API_KEY" },
         channels: { telegram: { enabled: true, botTokenEnv: "BESTIE_TELEGRAM_BOT_TOKEN", ownerUserId: "12345", voiceReplyPolicy: "voice-input-only", attachments: { transcriptionPolicy: "allow" } } },
       },
       paths,
     );
-    await writeEnvFile({ BESTIE_LLM_API_KEY: "sk-test", BESTIE_TELEGRAM_BOT_TOKEN: "telegram-secret-token", BESTIE_TRANSCRIPTION_API_KEY: "transcription-secret-token", BESTIE_TTS_API_KEY: "tts-secret-token" }, paths);
+    await writeEnvFile({ OPENAI_API_KEY: "sk-test", BESTIE_TELEGRAM_BOT_TOKEN: "telegram-secret-token", BESTIE_TRANSCRIPTION_API_KEY: "transcription-secret-token", BESTIE_TTS_API_KEY: "tts-secret-token" }, paths);
 
     await runTelegramCommand({
       argv: ["node", "bestie", "telegram", "--once"],
@@ -741,13 +741,13 @@ test("runTelegramCommand wires local audio transcription for Telegram voice atta
       {
         version: 1,
         agent: { name: "Miu", ownerName: "Boss", language: "vi", toneIntensity: 7 },
-        llm: { provider: "openai-compatible", baseUrl: "https://example.com/v1", model: "example-model", apiKeyEnv: "BESTIE_LLM_API_KEY" },
+        llm: { provider: "openai-compatible", baseUrl: "https://example.com/v1", model: "example-model", apiKeyEnv: "OPENAI_API_KEY" },
         transcription: { provider: "local-whisper", command: process.execPath, args: [scriptPath, "-m", "{modelPath}", "-f", "{audioPath}"], modelPath },
         channels: { telegram: { enabled: true, botTokenEnv: "BESTIE_TELEGRAM_BOT_TOKEN", ownerUserId: "12345", attachments: { transcriptionPolicy: "allow" } } },
       },
       paths,
     );
-    await writeEnvFile({ BESTIE_LLM_API_KEY: "sk-test", BESTIE_TELEGRAM_BOT_TOKEN: "telegram-secret-token" }, paths);
+    await writeEnvFile({ OPENAI_API_KEY: "sk-test", BESTIE_TELEGRAM_BOT_TOKEN: "telegram-secret-token" }, paths);
 
     await runTelegramCommand({
       argv: ["node", "bestie", "telegram", "--once", "--transcript", ".bestie/logs/telegram-local-voice-smoke.jsonl"],

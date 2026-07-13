@@ -16,7 +16,7 @@ const validConfig = {
     provider: "openai-compatible",
     baseUrl: "https://example.com/v1",
     model: "example-model",
-    apiKeyEnv: "BESTIE_LLM_API_KEY",
+    apiKeyEnv: "OPENAI_API_KEY",
   },
 };
 
@@ -33,12 +33,12 @@ test("validateConfig accepts the Phase Now config shape", () => {
       provider: "openai-compatible",
       baseUrl: "https://example.com/v1",
       model: "example-model",
-      apiKeyEnv: "BESTIE_LLM_API_KEY",
+      apiKeyEnv: "OPENAI_API_KEY",
       timeoutMs: 90_000,
     },
   });
 
-  assert.equal(config.llm.apiKeyEnv, "BESTIE_LLM_API_KEY");
+  assert.equal(config.llm.apiKeyEnv, "OPENAI_API_KEY");
   assert.equal(config.llm.timeoutMs, 90_000);
 });
 
@@ -55,7 +55,7 @@ test("validateConfig keeps llm.timeoutMs optional for existing configs", () => {
       provider: "openai-compatible",
       baseUrl: "https://example.com/v1",
       model: "example-model",
-      apiKeyEnv: "BESTIE_LLM_API_KEY",
+      apiKeyEnv: "OPENAI_API_KEY",
     },
   });
 
@@ -412,7 +412,7 @@ test("validateConfig rejects invalid llm.timeoutMs", () => {
           provider: "openai-compatible",
           baseUrl: "https://example.com/v1",
           model: "example-model",
-          apiKeyEnv: "BESTIE_LLM_API_KEY",
+          apiKeyEnv: "OPENAI_API_KEY",
           timeoutMs: 0,
         },
       }),
@@ -605,7 +605,7 @@ test("validateConfig rejects missing required fields", () => {
         llm: {
           provider: "openai-compatible",
           baseUrl: "https://example.com/v1",
-          apiKeyEnv: "BESTIE_LLM_API_KEY",
+          apiKeyEnv: "OPENAI_API_KEY",
         },
       }),
     InvalidConfigError,

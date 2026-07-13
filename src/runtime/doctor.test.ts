@@ -49,7 +49,7 @@ test("runDoctor --fix repairs broad local file permissions without exposing secr
 
   try {
     await mkdir(paths.logsDir, { recursive: true });
-    await writeFile(paths.envPath, 'BESTIE_LLM_API_KEY="sk-test-secret"\n', { mode: 0o644 });
+    await writeFile(paths.envPath, 'OPENAI_API_KEY="sk-test-secret"\n', { mode: 0o644 });
     await writeFile(paths.appLogPath, '{"event":"test"}\n', { mode: 0o644 });
     await chmod(paths.envPath, 0o644);
     await chmod(paths.appLogPath, 0o644);
@@ -95,11 +95,11 @@ test("runDoctor --fix migrates legacy runtime directory and env names", async ()
       `${JSON.stringify({
         version: 1,
         agent: { name: "Miu", ownerName: "Sep", language: "vi", toneIntensity: 7 },
-        llm: { provider: "openai-compatible", baseUrl: "https://example.com/v1", model: "example-model", apiKeyEnv: "AI_BESTIE_LLM_API_KEY", timeoutMs: 60_000 },
+        llm: { provider: "openai-compatible", baseUrl: "https://example.com/v1", model: "example-model", apiKeyEnv: "AI_OPENAI_API_KEY", timeoutMs: 60_000 },
         channels: { telegram: { enabled: true, botTokenEnv: "AI_BESTIE_TELEGRAM_BOT_TOKEN", ownerUserId: "12345" } },
       })}\n`,
     );
-    await writeFile(resolve(legacyAppDir, ".env"), 'AI_BESTIE_LLM_API_KEY="sk-test"\nAI_BESTIE_TELEGRAM_BOT_TOKEN="telegram-token"\n', { mode: 0o600 });
+    await writeFile(resolve(legacyAppDir, ".env"), 'AI_OPENAI_API_KEY="sk-test"\nAI_BESTIE_TELEGRAM_BOT_TOKEN="telegram-token"\n', { mode: 0o600 });
     await writeFile(resolve(legacyAppDir, "system-prompt.md"), "You are Miu.\n");
 
     const report = await runDoctor(paths, { fix: true });
@@ -108,10 +108,10 @@ test("runDoctor --fix migrates legacy runtime directory and env names", async ()
     const envText = await readFile(paths.envPath, "utf8");
 
     assert.equal(migrationFix?.status, "fixed");
-    assert.match(configText, /BESTIE_LLM_API_KEY/);
+    assert.match(configText, /OPENAI_API_KEY/);
     assert.match(configText, /BESTIE_TELEGRAM_BOT_TOKEN/);
     assert.doesNotMatch(configText, /AI_BESTIE/);
-    assert.match(envText, /BESTIE_LLM_API_KEY/);
+    assert.match(envText, /OPENAI_API_KEY/);
     assert.match(envText, /BESTIE_TELEGRAM_BOT_TOKEN/);
     assert.doesNotMatch(envText, /AI_BESTIE/);
     assert.equal(report.checks.find((check) => check.name === "LLM API key")?.status, "pass");
@@ -130,11 +130,11 @@ test("runDoctor passes configured Phase Now setup", async () => {
       {
         version: 1,
         agent: { name: "Miu", ownerName: "Sep", language: "vi", toneIntensity: 7 },
-        llm: { provider: "openai-compatible", baseUrl: "https://example.com/v1", model: "example-model", apiKeyEnv: "BESTIE_LLM_API_KEY", timeoutMs: 60_000 },
+        llm: { provider: "openai-compatible", baseUrl: "https://example.com/v1", model: "example-model", apiKeyEnv: "OPENAI_API_KEY", timeoutMs: 60_000 },
       },
       paths,
     );
-    await writeEnvFile({ BESTIE_LLM_API_KEY: "sk-test" }, paths);
+    await writeEnvFile({ OPENAI_API_KEY: "sk-test" }, paths);
     await writeFile(paths.systemPromptPath, "You are Miu.\n");
 
     const report = await runDoctor(paths);
@@ -163,12 +163,12 @@ test("runDoctor warns when llm.timeoutMs is missing from older configs", async (
       {
         version: 1,
         agent: { name: "Miu", ownerName: "Sep", language: "vi", toneIntensity: 7 },
-        llm: { provider: "openai-compatible", baseUrl: "https://example.com/v1", model: "example-model", apiKeyEnv: "BESTIE_LLM_API_KEY" },
+        llm: { provider: "openai-compatible", baseUrl: "https://example.com/v1", model: "example-model", apiKeyEnv: "OPENAI_API_KEY" },
       },
       paths,
     );
 
-    await writeEnvFile({ BESTIE_LLM_API_KEY: "sk-test" }, paths);
+    await writeEnvFile({ OPENAI_API_KEY: "sk-test" }, paths);
     await writeFile(paths.systemPromptPath, "You are Miu.\n");
 
     const report = await runDoctor(paths);
@@ -191,11 +191,11 @@ test("runDoctor warns about recent provider fallback failures", async () => {
       {
         version: 1,
         agent: { name: "Miu", ownerName: "Sep", language: "vi", toneIntensity: 7 },
-        llm: { provider: "openai-compatible", baseUrl: "https://example.com/v1", model: "example-model", apiKeyEnv: "BESTIE_LLM_API_KEY", timeoutMs: 60_000 },
+        llm: { provider: "openai-compatible", baseUrl: "https://example.com/v1", model: "example-model", apiKeyEnv: "OPENAI_API_KEY", timeoutMs: 60_000 },
       },
       paths,
     );
-    await writeEnvFile({ BESTIE_LLM_API_KEY: "sk-test" }, paths);
+    await writeEnvFile({ OPENAI_API_KEY: "sk-test" }, paths);
     await writeFile(paths.systemPromptPath, "You are Miu.\n");
     await appendLog(
       {
@@ -233,11 +233,11 @@ test("runDoctor warns about unusual LLM request timeouts", async () => {
       {
         version: 1,
         agent: { name: "Miu", ownerName: "Sep", language: "vi", toneIntensity: 7 },
-        llm: { provider: "openai-compatible", baseUrl: "https://example.com/v1", model: "example-model", apiKeyEnv: "BESTIE_LLM_API_KEY", timeoutMs: 1000 },
+        llm: { provider: "openai-compatible", baseUrl: "https://example.com/v1", model: "example-model", apiKeyEnv: "OPENAI_API_KEY", timeoutMs: 1000 },
       },
       paths,
     );
-    await writeEnvFile({ BESTIE_LLM_API_KEY: "sk-test" }, paths);
+    await writeEnvFile({ OPENAI_API_KEY: "sk-test" }, paths);
     await writeFile(paths.systemPromptPath, "You are Miu.\n");
 
     const report = await runDoctor(paths);
@@ -274,11 +274,11 @@ test("runDoctor fails broad .env permissions without exposing secrets", async ()
       {
         version: 1,
         agent: { name: "Miu", ownerName: "Sep", language: "vi", toneIntensity: 7 },
-        llm: { provider: "openai-compatible", baseUrl: "https://example.com/v1", model: "example-model", apiKeyEnv: "BESTIE_LLM_API_KEY" },
+        llm: { provider: "openai-compatible", baseUrl: "https://example.com/v1", model: "example-model", apiKeyEnv: "OPENAI_API_KEY" },
       },
       paths,
     );
-    await writeEnvFile({ BESTIE_LLM_API_KEY: "sk-test-secret" }, paths);
+    await writeEnvFile({ OPENAI_API_KEY: "sk-test-secret" }, paths);
     await chmod(paths.envPath, 0o644);
     await writeFile(paths.systemPromptPath, "You are Miu.\n");
 
@@ -332,12 +332,12 @@ test("runDoctor checks Telegram token only when Telegram is enabled", async () =
       {
         version: 1,
         agent: { name: "Miu", ownerName: "Sep", language: "vi", toneIntensity: 7 },
-        llm: { provider: "openai-compatible", baseUrl: "https://example.com/v1", model: "example-model", apiKeyEnv: "BESTIE_LLM_API_KEY" },
+        llm: { provider: "openai-compatible", baseUrl: "https://example.com/v1", model: "example-model", apiKeyEnv: "OPENAI_API_KEY" },
         channels: { telegram: { enabled: true, botTokenEnv: "BESTIE_TELEGRAM_BOT_TOKEN", ownerUserId: "12345" } },
       },
       paths,
     );
-    await writeEnvFile({ BESTIE_LLM_API_KEY: "sk-test" }, paths);
+    await writeEnvFile({ OPENAI_API_KEY: "sk-test" }, paths);
     await writeFile(paths.systemPromptPath, "You are Miu.\n");
 
     const report = await runDoctor(paths);
@@ -356,7 +356,7 @@ test("runDoctor skips Telegram identity network check unless requested", async (
   let called = false;
 
   try {
-    await writeTelegramConfiguredFiles(paths, { BESTIE_LLM_API_KEY: "sk-test", BESTIE_TELEGRAM_BOT_TOKEN: "telegram-secret-token" });
+    await writeTelegramConfiguredFiles(paths, { OPENAI_API_KEY: "sk-test", BESTIE_TELEGRAM_BOT_TOKEN: "telegram-secret-token" });
 
     const report = await runDoctor(paths, {
       telegramIdentityChecker: async () => {
@@ -377,7 +377,7 @@ test("runDoctor warns when retained Telegram attachments exceed the storage thre
   const paths = await createTempPaths();
 
   try {
-    await writeTelegramConfiguredFiles(paths, { BESTIE_LLM_API_KEY: "sk-test", BESTIE_TELEGRAM_BOT_TOKEN: "telegram-secret-token" });
+    await writeTelegramConfiguredFiles(paths, { OPENAI_API_KEY: "sk-test", BESTIE_TELEGRAM_BOT_TOKEN: "telegram-secret-token" });
     await mkdir(resolve(paths.workspaceDir, "telegram/2026-07-11"), { recursive: true });
     await writeFile(resolve(paths.workspaceDir, "telegram/2026-07-11/1-2-voice-message.ogg"), new Uint8Array(2048));
 
@@ -396,7 +396,7 @@ test("runDoctor passes Telegram attachment storage when usage stays below thresh
   const paths = await createTempPaths();
 
   try {
-    await writeTelegramConfiguredFiles(paths, { BESTIE_LLM_API_KEY: "sk-test", BESTIE_TELEGRAM_BOT_TOKEN: "telegram-secret-token" });
+    await writeTelegramConfiguredFiles(paths, { OPENAI_API_KEY: "sk-test", BESTIE_TELEGRAM_BOT_TOKEN: "telegram-secret-token" });
 
     const report = await runDoctor(paths, { telegramWorkspaceWarnBytes: 1024 });
     const storageCheck = report.checks.find((check) => check.name === "Telegram attachment storage");
@@ -417,12 +417,12 @@ test("runDoctor fails when Telegram transcription is allowed without a provider"
       {
         version: 1,
         agent: { name: "Miu", ownerName: "Sep", language: "vi", toneIntensity: 7 },
-        llm: { provider: "openai-compatible", baseUrl: "https://example.com/v1", model: "example-model", apiKeyEnv: "BESTIE_LLM_API_KEY", timeoutMs: 60_000 },
+        llm: { provider: "openai-compatible", baseUrl: "https://example.com/v1", model: "example-model", apiKeyEnv: "OPENAI_API_KEY", timeoutMs: 60_000 },
         channels: { telegram: { enabled: true, botTokenEnv: "BESTIE_TELEGRAM_BOT_TOKEN", ownerUserId: "12345", attachments: { transcriptionPolicy: "allow" } } },
       },
       paths,
     );
-    await writeEnvFile({ BESTIE_LLM_API_KEY: "sk-test", BESTIE_TELEGRAM_BOT_TOKEN: "telegram-secret-token" }, paths);
+    await writeEnvFile({ OPENAI_API_KEY: "sk-test", BESTIE_TELEGRAM_BOT_TOKEN: "telegram-secret-token" }, paths);
     await writeFile(paths.systemPromptPath, "You are Miu.\n");
 
     const report = await runDoctor(paths);
@@ -444,13 +444,13 @@ test("runDoctor checks ElevenLabs transcription provider", async () => {
       {
         version: 1,
         agent: { name: "Miu", ownerName: "Sep", language: "vi", toneIntensity: 7 },
-        llm: { provider: "openai-compatible", baseUrl: "https://example.com/v1", model: "example-model", apiKeyEnv: "BESTIE_LLM_API_KEY", timeoutMs: 60_000 },
+        llm: { provider: "openai-compatible", baseUrl: "https://example.com/v1", model: "example-model", apiKeyEnv: "OPENAI_API_KEY", timeoutMs: 60_000 },
         transcription: { provider: "elevenlabs", apiKeyEnv: "ELEVENLABS_API_KEY", modelId: "scribe_v2" },
         channels: { telegram: { enabled: true, botTokenEnv: "BESTIE_TELEGRAM_BOT_TOKEN", ownerUserId: "12345", attachments: { transcriptionPolicy: "allow" } } },
       },
       paths,
     );
-    await writeEnvFile({ BESTIE_LLM_API_KEY: "sk-test", BESTIE_TELEGRAM_BOT_TOKEN: "telegram-secret-token", ELEVENLABS_API_KEY: "elevenlabs-secret-token" }, paths);
+    await writeEnvFile({ OPENAI_API_KEY: "sk-test", BESTIE_TELEGRAM_BOT_TOKEN: "telegram-secret-token", ELEVENLABS_API_KEY: "elevenlabs-secret-token" }, paths);
     await writeFile(paths.systemPromptPath, "You are Miu.\n");
 
     const report = await runDoctor(paths);
@@ -478,13 +478,13 @@ test("runDoctor checks local transcription command and warns for tiny Vietnamese
       {
         version: 1,
         agent: { name: "Miu", ownerName: "Sep", language: "vi", toneIntensity: 7 },
-        llm: { provider: "openai-compatible", baseUrl: "https://example.com/v1", model: "example-model", apiKeyEnv: "BESTIE_LLM_API_KEY", timeoutMs: 60_000 },
+        llm: { provider: "openai-compatible", baseUrl: "https://example.com/v1", model: "example-model", apiKeyEnv: "OPENAI_API_KEY", timeoutMs: 60_000 },
         transcription: { provider: "local-whisper", command: commandPath, args: ["{modelPath}", "{audioPath}", "-l", "vi"], modelPath },
         channels: { telegram: { enabled: true, botTokenEnv: "BESTIE_TELEGRAM_BOT_TOKEN", ownerUserId: "12345", attachments: { transcriptionPolicy: "allow" } } },
       },
       paths,
     );
-    await writeEnvFile({ BESTIE_LLM_API_KEY: "sk-test", BESTIE_TELEGRAM_BOT_TOKEN: "telegram-secret-token" }, paths);
+    await writeEnvFile({ OPENAI_API_KEY: "sk-test", BESTIE_TELEGRAM_BOT_TOKEN: "telegram-secret-token" }, paths);
     await writeFile(paths.systemPromptPath, "You are Miu.\n");
 
     const report = await runDoctor(paths);
@@ -509,13 +509,13 @@ test("runDoctor fails when local transcription model is missing", async () => {
       {
         version: 1,
         agent: { name: "Miu", ownerName: "Sep", language: "vi", toneIntensity: 7 },
-        llm: { provider: "openai-compatible", baseUrl: "https://example.com/v1", model: "example-model", apiKeyEnv: "BESTIE_LLM_API_KEY", timeoutMs: 60_000 },
+        llm: { provider: "openai-compatible", baseUrl: "https://example.com/v1", model: "example-model", apiKeyEnv: "OPENAI_API_KEY", timeoutMs: 60_000 },
         transcription: { provider: "local-whisper", command: commandPath, args: ["{modelPath}", "{audioPath}"], modelPath: resolve(paths.rootDir, "missing-model.bin") },
         channels: { telegram: { enabled: true, botTokenEnv: "BESTIE_TELEGRAM_BOT_TOKEN", ownerUserId: "12345", attachments: { transcriptionPolicy: "allow" } } },
       },
       paths,
     );
-    await writeEnvFile({ BESTIE_LLM_API_KEY: "sk-test", BESTIE_TELEGRAM_BOT_TOKEN: "telegram-secret-token" }, paths);
+    await writeEnvFile({ OPENAI_API_KEY: "sk-test", BESTIE_TELEGRAM_BOT_TOKEN: "telegram-secret-token" }, paths);
     await writeFile(paths.systemPromptPath, "You are Miu.\n");
 
     const report = await runDoctor(paths);
@@ -542,13 +542,13 @@ test("runDoctor checks Telegram speech reply provider and ffmpeg", async () => {
       {
         version: 1,
         agent: { name: "Miu", ownerName: "Sep", language: "vi", toneIntensity: 7 },
-        llm: { provider: "openai-compatible", baseUrl: "https://example.com/v1", model: "example-model", apiKeyEnv: "BESTIE_LLM_API_KEY", timeoutMs: 60_000 },
+        llm: { provider: "openai-compatible", baseUrl: "https://example.com/v1", model: "example-model", apiKeyEnv: "OPENAI_API_KEY", timeoutMs: 60_000 },
         speech: { provider: "openai-compatible", baseUrl: "http://localhost:20128/v1", model: "google-tts/vi", apiKeyEnv: "BESTIE_TTS_API_KEY" },
         channels: { telegram: { enabled: true, botTokenEnv: "BESTIE_TELEGRAM_BOT_TOKEN", ownerUserId: "12345", voiceReplyPolicy: "voice-input-only" } },
       },
       paths,
     );
-    await writeEnvFile({ BESTIE_LLM_API_KEY: "sk-test", BESTIE_TELEGRAM_BOT_TOKEN: "telegram-secret-token", BESTIE_TTS_API_KEY: "tts-secret-token" }, paths);
+    await writeEnvFile({ OPENAI_API_KEY: "sk-test", BESTIE_TELEGRAM_BOT_TOKEN: "telegram-secret-token", BESTIE_TTS_API_KEY: "tts-secret-token" }, paths);
     await writeFile(paths.systemPromptPath, "You are Miu.\n");
 
     const report = await runDoctor(paths);
@@ -570,12 +570,12 @@ test("runDoctor fails when Telegram voice replies are enabled without a speech p
       {
         version: 1,
         agent: { name: "Miu", ownerName: "Sep", language: "vi", toneIntensity: 7 },
-        llm: { provider: "openai-compatible", baseUrl: "https://example.com/v1", model: "example-model", apiKeyEnv: "BESTIE_LLM_API_KEY", timeoutMs: 60_000 },
+        llm: { provider: "openai-compatible", baseUrl: "https://example.com/v1", model: "example-model", apiKeyEnv: "OPENAI_API_KEY", timeoutMs: 60_000 },
         channels: { telegram: { enabled: true, botTokenEnv: "BESTIE_TELEGRAM_BOT_TOKEN", ownerUserId: "12345", voiceReplyPolicy: "voice-input-only" } },
       },
       paths,
     );
-    await writeEnvFile({ BESTIE_LLM_API_KEY: "sk-test", BESTIE_TELEGRAM_BOT_TOKEN: "telegram-secret-token" }, paths);
+    await writeEnvFile({ OPENAI_API_KEY: "sk-test", BESTIE_TELEGRAM_BOT_TOKEN: "telegram-secret-token" }, paths);
     await writeFile(paths.systemPromptPath, "You are Miu.\n");
 
     const report = await runDoctor(paths);
@@ -597,13 +597,13 @@ test("runDoctor can run an opt-in Telegram speech round trip test", async () => 
       {
         version: 1,
         agent: { name: "Miu", ownerName: "Sep", language: "vi", toneIntensity: 7 },
-        llm: { provider: "openai-compatible", baseUrl: "https://example.com/v1", model: "example-model", apiKeyEnv: "BESTIE_LLM_API_KEY", timeoutMs: 60_000 },
+        llm: { provider: "openai-compatible", baseUrl: "https://example.com/v1", model: "example-model", apiKeyEnv: "OPENAI_API_KEY", timeoutMs: 60_000 },
         speech: { provider: "openai-compatible", baseUrl: "http://localhost:20128/v1", model: "google-tts/vi", apiKeyEnv: "BESTIE_TTS_API_KEY" },
         channels: { telegram: { enabled: true, botTokenEnv: "BESTIE_TELEGRAM_BOT_TOKEN", ownerUserId: "12345", voiceReplyPolicy: "voice-input-only" } },
       },
       paths,
     );
-    await writeEnvFile({ BESTIE_LLM_API_KEY: "sk-test", BESTIE_TELEGRAM_BOT_TOKEN: "telegram-secret-token", BESTIE_TTS_API_KEY: "tts-secret-token" }, paths);
+    await writeEnvFile({ OPENAI_API_KEY: "sk-test", BESTIE_TELEGRAM_BOT_TOKEN: "telegram-secret-token", BESTIE_TTS_API_KEY: "tts-secret-token" }, paths);
     await writeFile(paths.systemPromptPath, "You are Miu.\n");
 
     const report = await runDoctor(paths, {
@@ -628,7 +628,7 @@ test("runDoctor verifies Telegram bot identity when requested", async () => {
   const paths = await createTempPaths();
 
   try {
-    await writeTelegramConfiguredFiles(paths, { BESTIE_LLM_API_KEY: "sk-test", BESTIE_TELEGRAM_BOT_TOKEN: "telegram-secret-token" });
+    await writeTelegramConfiguredFiles(paths, { OPENAI_API_KEY: "sk-test", BESTIE_TELEGRAM_BOT_TOKEN: "telegram-secret-token" });
 
     const report = await runDoctor(paths, {
       connectTelegram: true,
@@ -651,7 +651,7 @@ test("runDoctor reports Telegram bot identity failures without exposing token", 
   const paths = await createTempPaths();
 
   try {
-    await writeTelegramConfiguredFiles(paths, { BESTIE_LLM_API_KEY: "sk-test", BESTIE_TELEGRAM_BOT_TOKEN: "telegram-secret-token" });
+    await writeTelegramConfiguredFiles(paths, { OPENAI_API_KEY: "sk-test", BESTIE_TELEGRAM_BOT_TOKEN: "telegram-secret-token" });
 
     const report = await runDoctor(paths, {
       connectTelegram: true,
@@ -678,12 +678,12 @@ test("runDoctor reports MCP server config without exposing env values", async ()
       {
         version: 1,
         agent: { name: "Miu", ownerName: "Sep", language: "vi", toneIntensity: 7 },
-        llm: { provider: "openai-compatible", baseUrl: "https://example.com/v1", model: "example-model", apiKeyEnv: "BESTIE_LLM_API_KEY", timeoutMs: 60_000 },
+        llm: { provider: "openai-compatible", baseUrl: "https://example.com/v1", model: "example-model", apiKeyEnv: "OPENAI_API_KEY", timeoutMs: 60_000 },
         mcp: { servers: [{ name: "dry-run", enabled: false, command: "node", env: { SECRET_TOKEN: "mcp-secret-value" }, tools: [{ name: "read_file", category: "read" }] }] },
       },
       paths,
     );
-    await writeEnvFile({ BESTIE_LLM_API_KEY: "sk-test" }, paths);
+    await writeEnvFile({ OPENAI_API_KEY: "sk-test" }, paths);
     await writeFile(paths.systemPromptPath, "You are Miu.\n");
 
     const report = await runDoctor(paths);
@@ -707,12 +707,12 @@ test("runDoctor warns when enabled MCP servers do not classify tools", async () 
       {
         version: 1,
         agent: { name: "Miu", ownerName: "Sep", language: "vi", toneIntensity: 7 },
-        llm: { provider: "openai-compatible", baseUrl: "https://example.com/v1", model: "example-model", apiKeyEnv: "BESTIE_LLM_API_KEY", timeoutMs: 60_000 },
+        llm: { provider: "openai-compatible", baseUrl: "https://example.com/v1", model: "example-model", apiKeyEnv: "OPENAI_API_KEY", timeoutMs: 60_000 },
         mcp: { servers: [{ name: "fs", enabled: true, command: "node" }] },
       },
       paths,
     );
-    await writeEnvFile({ BESTIE_LLM_API_KEY: "sk-test" }, paths);
+    await writeEnvFile({ OPENAI_API_KEY: "sk-test" }, paths);
     await writeFile(paths.systemPromptPath, "You are Miu.\n");
 
     const report = await runDoctor(paths);
@@ -733,11 +733,11 @@ async function createConfiguredPaths(): Promise<RuntimePaths> {
     {
       version: 1,
       agent: { name: "Miu", ownerName: "Sep", language: "vi", toneIntensity: 7 },
-      llm: { provider: "openai-compatible", baseUrl: "https://example.com/v1", model: "example-model", apiKeyEnv: "BESTIE_LLM_API_KEY" },
+      llm: { provider: "openai-compatible", baseUrl: "https://example.com/v1", model: "example-model", apiKeyEnv: "OPENAI_API_KEY" },
     },
     paths,
   );
-  await writeEnvFile({ BESTIE_LLM_API_KEY: "sk-test" }, paths);
+  await writeEnvFile({ OPENAI_API_KEY: "sk-test" }, paths);
   await writeFile(paths.systemPromptPath, "You are Miu.\n");
 
   return paths;
@@ -749,7 +749,7 @@ async function writeTelegramConfiguredFiles(paths: RuntimePaths, envValues: Reco
     {
       version: 1,
       agent: { name: "Miu", ownerName: "Sep", language: "vi", toneIntensity: 7 },
-      llm: { provider: "openai-compatible", baseUrl: "https://example.com/v1", model: "example-model", apiKeyEnv: "BESTIE_LLM_API_KEY", timeoutMs: 60_000 },
+      llm: { provider: "openai-compatible", baseUrl: "https://example.com/v1", model: "example-model", apiKeyEnv: "OPENAI_API_KEY", timeoutMs: 60_000 },
       channels: { telegram: { enabled: true, botTokenEnv: "BESTIE_TELEGRAM_BOT_TOKEN", ownerUserId: "12345" } },
     },
     paths,

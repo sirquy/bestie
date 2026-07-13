@@ -12,14 +12,14 @@ import { createSpeech, sendElevenLabsSpeech, sendSpeech } from "./openai-speech.
 const config: AppConfig = {
   version: 1,
   agent: { name: "Miu", ownerName: "Sep", language: "vi", toneIntensity: 7 },
-  llm: { provider: "openai-compatible", baseUrl: "https://example.com/v1", model: "chat-model", apiKeyEnv: "BESTIE_LLM_API_KEY" },
+  llm: { provider: "openai-compatible", baseUrl: "https://example.com/v1", model: "chat-model", apiKeyEnv: "OPENAI_API_KEY" },
   speech: { provider: "openai-compatible", baseUrl: "http://localhost:20128/v1", model: "google-tts/vi", apiKeyEnv: "BESTIE_TTS_API_KEY" },
 };
 
 const elevenLabsConfig: AppConfig = {
   version: 1,
   agent: { name: "Miu", ownerName: "Sep", language: "vi", toneIntensity: 7 },
-  llm: { provider: "openai-compatible", baseUrl: "https://example.com/v1", model: "chat-model", apiKeyEnv: "BESTIE_LLM_API_KEY" },
+  llm: { provider: "openai-compatible", baseUrl: "https://example.com/v1", model: "chat-model", apiKeyEnv: "OPENAI_API_KEY" },
   speech: { provider: "elevenlabs", apiKeyEnv: "ELEVENLABS_API_KEY", voiceId: "NOpBlnGInO9m6vDvFkFC", modelId: "eleven_v3", outputFormat: "mp3_44100_128" },
 };
 

@@ -42,7 +42,7 @@ test("buildTerminalSystemPrompt lists configured read-only MCP tools", () => {
 test("runTerminalChat uses injected chat client and persists successful turns", async () => {
   const paths = await createTempPaths();
   await mkdir(paths.appDir, { recursive: true });
-  await writeFile(paths.envPath, "BESTIE_LLM_API_KEY=test-key\n", { mode: 0o600 });
+  await writeFile(paths.envPath, "OPENAI_API_KEY=test-key\n", { mode: 0o600 });
 
   const prompts: string[] = [];
   const output: string[] = [];
@@ -250,7 +250,7 @@ test("runTerminalChat shows provider diagnostics", async () => {
 test("runTerminalChat stores reasoned memory candidates when enabled", async () => {
   const paths = await createTempPaths();
   await mkdir(paths.appDir, { recursive: true });
-  await writeFile(paths.envPath, "BESTIE_LLM_API_KEY=test-key\n", { mode: 0o600 });
+  await writeFile(paths.envPath, "OPENAI_API_KEY=test-key\n", { mode: 0o600 });
 
   let calls = 0;
 
@@ -289,7 +289,7 @@ test("runTerminalChat stores reasoned memory candidates when enabled", async () 
 test("runTerminalChat includes more than the store default memory count in provider context", async () => {
   const paths = await createTempPaths();
   await mkdir(paths.appDir, { recursive: true });
-  await writeFile(paths.envPath, "BESTIE_LLM_API_KEY=test-key\n", { mode: 0o600 });
+  await writeFile(paths.envPath, "OPENAI_API_KEY=test-key\n", { mode: 0o600 });
 
   const store = await SqliteMemoryStore.open(paths);
   try {
@@ -334,7 +334,7 @@ test("runTerminalChat includes more than the store default memory count in provi
 test("runTerminalChat streams final answer chunks without printing the full answer twice", async () => {
   const paths = await createTempPaths();
   await mkdir(paths.appDir, { recursive: true });
-  await writeFile(paths.envPath, "BESTIE_LLM_API_KEY=test-key\n", { mode: 0o600 });
+  await writeFile(paths.envPath, "OPENAI_API_KEY=test-key\n", { mode: 0o600 });
 
   const lines: string[] = [];
   const chunks: string[] = [];
@@ -378,7 +378,7 @@ test("runTerminalChat streams final answer chunks without printing the full answ
 test("runTerminalChat prints final answer normally when no chunks stream", async () => {
   const paths = await createTempPaths();
   await mkdir(paths.appDir, { recursive: true });
-  await writeFile(paths.envPath, "BESTIE_LLM_API_KEY=test-key\n", { mode: 0o600 });
+  await writeFile(paths.envPath, "OPENAI_API_KEY=test-key\n", { mode: 0o600 });
 
   const lines: string[] = [];
   const chunks: string[] = [];
@@ -409,7 +409,7 @@ test("runTerminalChat prints final answer normally when no chunks stream", async
 test("runTerminalChat executes one MCP read tool request and asks LLM for final answer", async () => {
   const paths = await createTempPaths();
   await mkdir(paths.appDir, { recursive: true });
-  await writeFile(paths.envPath, "BESTIE_LLM_API_KEY=test-key\n", { mode: 0o600 });
+  await writeFile(paths.envPath, "OPENAI_API_KEY=test-key\n", { mode: 0o600 });
 
   const output: string[] = [];
   const requestMessages: unknown[] = [];
@@ -461,7 +461,7 @@ test("runTerminalChat executes one MCP read tool request and asks LLM for final 
 test("runTerminalChat can execute multiple internal tools in one turn", async () => {
   const paths = await createTempPaths();
   await mkdir(paths.appDir, { recursive: true });
-  await writeFile(paths.envPath, "BESTIE_LLM_API_KEY=test-key\n", { mode: 0o600 });
+  await writeFile(paths.envPath, "OPENAI_API_KEY=test-key\n", { mode: 0o600 });
 
   const output: string[] = [];
   const toolRequests: unknown[] = [];
@@ -506,7 +506,7 @@ test("runTerminalChat can execute multiple internal tools in one turn", async ()
 test("runTerminalChat passes terminal permission approval to tool requests", async () => {
   const paths = await createTempPaths();
   await mkdir(paths.appDir, { recursive: true });
-  await writeFile(paths.envPath, "BESTIE_LLM_API_KEY=test-key\n", { mode: 0o600 });
+  await writeFile(paths.envPath, "OPENAI_API_KEY=test-key\n", { mode: 0o600 });
 
   const prompts: string[] = [];
   const output: string[] = [];
@@ -554,7 +554,7 @@ test("runTerminalChat passes terminal permission approval to tool requests", asy
 test("runTerminalChat shows bundled read activity", async () => {
   const paths = await createTempPaths();
   await mkdir(paths.appDir, { recursive: true });
-  await writeFile(paths.envPath, "BESTIE_LLM_API_KEY=test-key\n", { mode: 0o600 });
+  await writeFile(paths.envPath, "OPENAI_API_KEY=test-key\n", { mode: 0o600 });
 
   const output: string[] = [];
   let completionCalls = 0;
@@ -588,7 +588,7 @@ test("runTerminalChat shows bundled read activity", async () => {
 test("runTerminalChat shows markdown bundle activity", async () => {
   const paths = await createTempPaths();
   await mkdir(paths.appDir, { recursive: true });
-  await writeFile(paths.envPath, "BESTIE_LLM_API_KEY=test-key\n", { mode: 0o600 });
+  await writeFile(paths.envPath, "OPENAI_API_KEY=test-key\n", { mode: 0o600 });
 
   const output: string[] = [];
   let completionCalls = 0;
@@ -622,7 +622,7 @@ test("runTerminalChat shows markdown bundle activity", async () => {
 test("runTerminalChat repairs invented shell command JSON instead of printing it", async () => {
   const paths = await createTempPaths();
   await mkdir(paths.appDir, { recursive: true });
-  await writeFile(paths.envPath, "BESTIE_LLM_API_KEY=test-key\n", { mode: 0o600 });
+  await writeFile(paths.envPath, "OPENAI_API_KEY=test-key\n", { mode: 0o600 });
 
   const output: string[] = [];
   const requestMessages: unknown[] = [];
@@ -714,7 +714,7 @@ test("runTerminalChat allows slash commands before API key loading", async () =>
 test("runTerminalChat reports provider failures without persisting failed turns", async () => {
   const paths = await createTempPaths();
   await mkdir(paths.appDir, { recursive: true });
-  await writeFile(paths.envPath, "BESTIE_LLM_API_KEY=test-key\n", { mode: 0o600 });
+  await writeFile(paths.envPath, "OPENAI_API_KEY=test-key\n", { mode: 0o600 });
 
   const output: string[] = [];
   let closed = false;
@@ -771,7 +771,7 @@ test("runTerminalChat reports provider failures without persisting failed turns"
 test("runTerminalChat logs provider fallback attempts", async () => {
   const paths = await createTempPaths();
   await mkdir(paths.appDir, { recursive: true });
-  await writeFile(paths.envPath, "BESTIE_LLM_API_KEY=test-key\n", { mode: 0o600 });
+  await writeFile(paths.envPath, "OPENAI_API_KEY=test-key\n", { mode: 0o600 });
 
   const output: string[] = [];
 
@@ -813,7 +813,7 @@ function createConfig(): AppConfig {
   return {
     version: 1,
     agent: { name: "Bea", ownerName: "Andy", language: "vi", toneIntensity: 7 },
-    llm: { provider: "openai-compatible", baseUrl: "http://127.0.0.1:9/v1", model: "test-model", apiKeyEnv: "BESTIE_LLM_API_KEY" },
+    llm: { provider: "openai-compatible", baseUrl: "http://127.0.0.1:9/v1", model: "test-model", apiKeyEnv: "OPENAI_API_KEY" },
   };
 }
 

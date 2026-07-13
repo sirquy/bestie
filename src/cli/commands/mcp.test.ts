@@ -11,7 +11,7 @@ import { runMcpCommand } from "./mcp.js";
 const config: AppConfig = {
   version: 1,
   agent: { name: "Miu", ownerName: "Boss", language: "vi", toneIntensity: 7 },
-  llm: { provider: "openai-compatible", baseUrl: "https://example.com/v1", model: "model", apiKeyEnv: "BESTIE_LLM_API_KEY" },
+  llm: { provider: "openai-compatible", baseUrl: "https://example.com/v1", model: "model", apiKeyEnv: "OPENAI_API_KEY" },
 };
 
 test("runMcpCommand lists configured MCP servers without env values", async () => {
