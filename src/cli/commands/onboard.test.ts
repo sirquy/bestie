@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { resolve } from "node:path";
 import test from "node:test";
 
 import { runOnboardCommand } from "./onboard.js";
 import type { AppConfig } from "../../runtime/config.js";
-import type { RuntimePaths } from "../../runtime/paths.js";
+import { getRuntimePaths, type RuntimePaths } from "../../runtime/paths.js";
 
 test("runOnboardCommand writes local files and skips provider test when requested", async () => {
   const paths = await createTempPaths();
@@ -20,14 +20,14 @@ test("runOnboardCommand writes local files and skips provider test when requeste
       paths,
       questioner: {
         ask: async (question) => {
-          if (question.startsWith("What should your bestie")) return "Miu";
-          if (question.startsWith("What should it call")) return "Boss";
-          if (question.startsWith("Default language code")) return "ja";
-          if (question.startsWith("Tone intensity")) return "7";
-          if (question.startsWith("Memory write policy")) return "ask";
-          if (question.startsWith("Provider label")) return "openai-compatible";
-          if (question.startsWith("OpenAI-compatible base URL")) return "http://127.0.0.1:9/v1/";
-          if (question.startsWith("Model name")) return "test-model";
+          if (question.includes("What should your bestie")) return "Miu";
+          if (question.includes("What should it call")) return "Boss";
+          if (question.includes("Default language code")) return "ja";
+          if (question.includes("Tone intensity")) return "7";
+          if (question.includes("Memory write policy")) return "ask";
+          if (question.includes("Provider label")) return "openai-compatible";
+          if (question.includes("OpenAI-compatible base URL")) return "http://127.0.0.1:9/v1/";
+          if (question.includes("Model name")) return "test-model";
           throw new Error(`Unexpected question: ${question}`);
         },
         askHidden: async () => "test-key",
@@ -48,11 +48,12 @@ test("runOnboardCommand writes local files and skips provider test when requeste
     assert.equal(closed, true);
     assert.equal(providerTestCalled, false);
     assert.equal(config.llm.baseUrl, "http://127.0.0.1:9/v1");
-    assert.equal(config.llm.timeoutMs, 60_000);
+    assert.equal(config.llm.timeoutMs, 300_000);
     assert.equal(config.agent.language, "ja");
     assert.equal(config.memory?.writePolicy, "ask");
     assert.match(envText, /BESTIE_LLM_API_KEY="test-key"/);
     assert.match(logText, /provider_test_skipped/);
+    assert.ok(output.some((line) => line.includes("Home runtime")));
     assert.ok(output.some((line) => line.includes("character and provider config")));
     assert.ok(output.every((line) => !line.includes("quick provider test")));
     assert.ok(output.some((line) => line.includes("Provider test skipped")));
@@ -93,20 +94,27 @@ test("runOnboardCommand runs provider test when not skipped", async () => {
 function createQuestioner(): { ask: (question: string) => Promise<string>; askHidden: () => Promise<string>; close: () => void } {
   return {
     ask: async (question) => {
-      if (question.startsWith("What should your bestie")) return "Miu";
-      if (question.startsWith("What should it call")) return "Boss";
-      if (question.startsWith("Default language code")) return "vi";
-      if (question.startsWith("Tone intensity")) return "7";
-      if (question.startsWith("Memory write policy")) return "ask";
-      if (question.startsWith("Provider label")) return "openai-compatible";
-      if (question.startsWith("OpenAI-compatible base URL")) return "http://127.0.0.1:9/v1/";
-      if (question.startsWith("Model name")) return "test-model";
+      if (question.includes("What should your bestie")) return "Miu";
+      if (question.includes("What should it call")) return "Boss";
+      if (question.includes("Default language code")) return "vi";
+      if (question.includes("Tone intensity")) return "7";
+      if (question.includes("Memory write policy")) return "ask";
+      if (question.includes("Provider label")) return "openai-compatible";
+      if (question.includes("OpenAI-compatible base URL")) return "http://127.0.0.1:9/v1/";
+      if (question.includes("Model name")) return "test-model";
       throw new Error(`Unexpected question: ${question}`);
     },
     askHidden: async () => "test-key",
     close: () => undefined,
   };
 }
+
+test("getRuntimePaths defaults local runtime files to the user home directory", () => {
+  const paths = getRuntimePaths();
+
+  assert.equal(paths.rootDir, homedir());
+  assert.equal(paths.appDir, resolve(homedir(), ".bestie"));
+});
 
 async function createTempPaths(): Promise<RuntimePaths> {
   const rootDir = await mkdtemp(resolve(tmpdir(), "bestie-onboard-test-"));

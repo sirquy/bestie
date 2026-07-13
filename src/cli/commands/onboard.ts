@@ -13,6 +13,12 @@ import { appendLog } from "../../runtime/logger.js";
 import { getRuntimePaths, type RuntimePaths } from "../../runtime/paths.js";
 
 const DEFAULT_API_KEY_ENV = "BESTIE_LLM_API_KEY";
+const ANSI_RESET = "\x1b[0m";
+const ANSI_BOLD = "\x1b[1m";
+const ANSI_DIM = "\x1b[2m";
+const ANSI_CYAN = "\x1b[36m";
+const ANSI_GREEN = "\x1b[32m";
+const ANSI_YELLOW = "\x1b[33m";
 
 type LanguageMode = AppConfig["agent"]["language"];
 type MemoryWritePolicy = NonNullable<AppConfig["memory"]>["writePolicy"];
@@ -55,8 +61,7 @@ export async function runOnboardCommand(optionsOrArgv: string[] | OnboardCommand
   await mkdir(paths.logsDir, { recursive: true });
   await appendLog({ event: "command_start", detail: { command: "onboard" } }, { paths });
 
-  writeLine("Bestie onboarding");
-  writeLine(shouldSkipProviderTest ? "Let's create the smallest local setup: character and provider config.\n" : "Let's create the smallest local setup: character, provider config, and a quick provider test.\n");
+  writeOnboardIntro(writeLine, paths, shouldSkipProviderTest);
 
   const questioner = options.questioner ?? (await createQuestioner());
 
@@ -75,11 +80,11 @@ export async function runOnboardCommand(optionsOrArgv: string[] | OnboardCommand
     await writeEnvFile({ [DEFAULT_API_KEY_ENV]: answers.apiKey }, paths);
     await writeCharacterFiles(character, systemPrompt, paths);
 
-    writeLine("\nSaved local Phase Now files:");
-    writeLine(`- ${paths.configPath}`);
-    writeLine(`- ${paths.envPath}`);
-    writeLine(`- ${paths.characterPath}`);
-    writeLine(`- ${paths.systemPromptPath}`);
+    writeLine(color("\nSaved local files", ANSI_GREEN));
+    writeLine(formatSavedPath("Config", paths.configPath));
+    writeLine(formatSavedPath("Secrets", paths.envPath));
+    writeLine(formatSavedPath("Character", paths.characterPath));
+    writeLine(formatSavedPath("System prompt", paths.systemPromptPath));
 
     if (shouldSkipProviderTest) {
       await appendLog({ event: "provider_test_skipped", detail: { reason: "skip_provider_test_flag" } }, { paths });
@@ -130,15 +135,15 @@ async function createQuestioner(): Promise<Questioner> {
 
 async function collectAnswers(questioner: Pick<Questioner, "ask" | "askHidden">): Promise<OnboardingAnswers> {
   const { ask, askHidden } = questioner;
-  const agentName = await askNonEmpty(ask, "What should your bestie be called? ", "Bestie");
-  const ownerName = await askNonEmpty(ask, "What should it call you? ", "boss");
+  const agentName = await askNonEmpty(ask, question(1, "Bestie name", "What should your bestie be called?"), "Bestie");
+  const ownerName = await askNonEmpty(ask, question(2, "Your name", "What should it call you?"), "boss");
   const language = await askLanguage(ask);
   const toneIntensity = await askToneIntensity(ask);
   const memoryWritePolicy = await askMemoryWritePolicy(ask);
-  const provider = await askNonEmpty(ask, "Provider label? ", "openai-compatible");
-  const baseUrl = await askNonEmpty(ask, "OpenAI-compatible base URL? ", "https://api.openai.com/v1");
-  const model = await askNonEmpty(ask, "Model name? ", "gpt-4o-mini");
-  const apiKey = await askNonEmpty(askHidden, `API key (saved as ${DEFAULT_API_KEY_ENV}, not printed later): `);
+  const provider = await askNonEmpty(ask, question(6, "Provider", "Provider label?"), "openai-compatible");
+  const baseUrl = await askNonEmpty(ask, question(7, "Base URL", "OpenAI-compatible base URL?"), "https://api.openai.com/v1");
+  const model = await askNonEmpty(ask, question(8, "Model", "Model name?"), "gpt-4o-mini");
+  const apiKey = await askNonEmpty(askHidden, question(9, "API key", `Paste your provider API key. It will be saved as ${DEFAULT_API_KEY_ENV} and hidden while typing.`));
 
   return { agentName, ownerName, language, toneIntensity, memoryWritePolicy, provider, baseUrl, model, apiKey };
 }
@@ -149,7 +154,7 @@ async function askNonEmpty(
   defaultValue?: string,
 ): Promise<string> {
   while (true) {
-    const suffix = defaultValue ? `[${defaultValue}] ` : "";
+    const suffix = defaultValue ? `${color(`[${defaultValue}]`, ANSI_DIM)} ` : "";
     const answer = (await ask(`${question}${suffix}`)).trim();
     const value = answer || defaultValue;
 
@@ -157,13 +162,13 @@ async function askNonEmpty(
       return value;
     }
 
-    console.log("Please enter a value.");
+    console.log(color("Please enter a value.", ANSI_YELLOW));
   }
 }
 
 async function askLanguage(ask: AskLine): Promise<LanguageMode> {
   while (true) {
-    const answer = (await ask("Default language code or auto? Examples: vi, en, ja, ko, fr, pt-BR, auto. [vi] ")).trim();
+    const answer = (await ask(`${question(3, "Language", "Default language code or auto? Examples: vi, en, ja, ko, fr, pt-BR, auto.")}${color("[vi]", ANSI_DIM)} `)).trim();
     const normalized = answer.toLowerCase();
 
     if (!answer || normalized === "vietnamese") {
@@ -184,20 +189,20 @@ async function askLanguage(ask: AskLine): Promise<LanguageMode> {
 
 async function askToneIntensity(ask: AskLine): Promise<number> {
   while (true) {
-    const answer = (await ask("Tone intensity from 1 to 10? [7] ")).trim();
+    const answer = (await ask(`${question(4, "Tone", "Tone intensity from 1 to 10?")}${color("[7]", ANSI_DIM)} `)).trim();
     const value = Number(answer || "7");
 
     if (Number.isInteger(value) && value >= 1 && value <= 10) {
       return value;
     }
 
-    console.log("Choose a whole number from 1 to 10.");
+    console.log(color("Choose a whole number from 1 to 10.", ANSI_YELLOW));
   }
 }
 
 async function askMemoryWritePolicy(ask: AskLine): Promise<MemoryWritePolicy> {
   while (true) {
-    const answer = (await ask("Memory write policy: ask, allow, or deny? [ask] ")).trim().toLowerCase();
+    const answer = (await ask(`${question(5, "Memory", "Memory write policy: ask, allow, or deny?")}${color("[ask]", ANSI_DIM)} `)).trim().toLowerCase();
 
     if (!answer || answer === "ask") {
       return "ask";
@@ -207,8 +212,28 @@ async function askMemoryWritePolicy(ask: AskLine): Promise<MemoryWritePolicy> {
       return answer;
     }
 
-    console.log("Choose ask, allow, or deny.");
+    console.log(color("Choose ask, allow, or deny.", ANSI_YELLOW));
   }
+}
+
+function writeOnboardIntro(writeLine: (message: string) => void, paths: RuntimePaths, shouldSkipProviderTest: boolean): void {
+  writeLine(color(`${ANSI_BOLD}Bestie onboarding${ANSI_RESET}`, ANSI_CYAN));
+  writeLine("Set up your local Bestie runtime in a few guided steps.");
+  writeLine(`${color("Home runtime", ANSI_GREEN)} ${paths.appDir}`);
+  writeLine(color("Secrets stay local in .bestie/.env and are hidden while typing.", ANSI_DIM));
+  writeLine(shouldSkipProviderTest ? "We'll create character and provider config.\n" : "We'll create character config, provider config, and run a quick provider test.\n");
+}
+
+function question(step: number, label: string, text: string): string {
+  return `${color(`[${step}/9]`, ANSI_DIM)} ${color(label, ANSI_CYAN)} ${text} `;
+}
+
+function formatSavedPath(label: string, path: string): string {
+  return `- ${color(label.padEnd(13), ANSI_CYAN)} ${path}`;
+}
+
+function color(text: string, code: string): string {
+  return `${code}${text}${ANSI_RESET}`;
 }
 
 function buildConfig(answers: OnboardingAnswers): AppConfig {

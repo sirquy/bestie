@@ -1,4 +1,5 @@
 import { resolve } from "node:path";
+import { homedir } from "node:os";
 
 export interface RuntimePaths {
   rootDir: string;
@@ -14,7 +15,7 @@ export interface RuntimePaths {
   workspaceDir: string;
 }
 
-export function getRuntimePaths(rootDir = process.cwd()): RuntimePaths {
+export function getRuntimePaths(rootDir = homedir()): RuntimePaths {
   const appDir = resolve(rootDir, ".bestie");
   const logsDir = resolve(appDir, "logs");
   const dataDir = resolve(appDir, "data");
