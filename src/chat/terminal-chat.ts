@@ -98,7 +98,7 @@ export async function runTerminalChat(options: TerminalChatOptions): Promise<voi
             chatCompletion,
             toolRunner: mcpToolRunner,
             approver,
-            streamFinalResponse: true,
+            streamFinalResponse: false,
             onToken: (token) => streamedAnswer.write(token),
             onToolActivity: (activity) => printTerminalToolActivity(options.agentName, activity, writeChatLine),
           });
@@ -150,24 +150,26 @@ export function buildTerminalSystemPrompt(systemPrompt: string, config: AppConfi
 function printChatHeader(options: TerminalChatOptions, writeLine: (message: string) => void = console.log): void {
   const agentName = options.agentName ?? options.config.agent.name;
   const ownerName = options.ownerName ?? options.config.agent.ownerName;
-  writeLine(`${color("cyan", "Bestie")} ${dim("terminal chat")}`);
-  writeLine(`${dim("Agent")} ${bold(agentName)} ${dim("| chatting with")} ${bold(ownerName)}`);
-  writeLine(`${dim("Type")} /help ${dim("for chat commands, or")} /exit ${dim("to leave.")}`);
+  writeLine(`${bold(color("magenta", "Bestie chat"))} ${dim("local terminal session")}`);
+  writeLine(`${dim("Runtime")} ${options.paths.appDir}`);
+  writeLine(`${dim("Model")} ${options.config.llm.provider}/${options.config.llm.model}`);
+  writeLine(`${badge("BOT", "cyan")} ${bold(agentName)} ${dim("with")} ${badge("YOU", "green")} ${bold(ownerName)}`);
+  writeLine(`${dim("Commands")} /help  /status  /providers  /memory  /pending  /exit`);
   writeLine(BOX_RULE);
 }
 
 export function formatPrompt(ownerName?: string): string {
   const label = ownerName ? `${ownerName}` : "you";
-  return `${color("green", label)} ${dim("->")} `;
+  return `${badge("YOU", "green")} ${label} ${dim(">")} `;
 }
 
 export function formatAssistantMessage(agentName: string | undefined, message: string): string {
   const label = agentName ?? "bestie";
-  return `${color("cyan", label)} ${dim("->")} ${message}`;
+  return `${badge("BOT", "cyan")} ${label} ${dim(">")} ${message}`;
 }
 
 export function formatErrorMessage(message: string): string {
-  return `${color("red", "error")} ${dim("->")} ${message}`;
+  return `${badge("FAIL", "red")} ${message}`;
 }
 
 function startChatIndicator(agentName: string | undefined): { clear: () => void; stop: () => void } {
@@ -180,7 +182,7 @@ function startChatIndicator(agentName: string | undefined): { clear: () => void;
   let frame = 0;
 
   const render = () => {
-    output.write(`\r${color("yellow", label)} ${dim("is thinking")}${frames[frame % frames.length]}   `);
+    output.write(`\r${badge("BOT", "yellow")} ${label} ${dim("thinking")}${frames[frame % frames.length]}   `);
     frame += 1;
   };
 
@@ -203,7 +205,7 @@ function printTerminalToolActivity(agentName: string | undefined, activity: Agen
     return;
   }
 
-  writeLine(formatAssistantMessage(agentName, `working: ${activity.toolName} ${activity.label}`));
+  writeLine(formatAssistantMessage(agentName, `${badge("TOOL", "yellow")} ${activity.toolName} ${dim(activity.label)}`));
 }
 
 function createTerminalAnswerStreamer(
@@ -241,13 +243,17 @@ function createTerminalAnswerStreamer(
   };
 }
 
-function color(name: "cyan" | "green" | "red" | "yellow", value: string): string {
+function color(name: "cyan" | "green" | "magenta" | "red" | "yellow", value: string): string {
   if (!output.isTTY || process.env.NO_COLOR) {
     return value;
   }
 
-  const codes = { cyan: 36, green: 32, red: 31, yellow: 33 };
+  const codes = { cyan: 36, green: 32, magenta: 35, red: 31, yellow: 33 };
   return `\x1b[${codes[name]}m${value}\x1b[0m`;
+}
+
+function badge(label: string, colorName: "cyan" | "green" | "red" | "yellow"): string {
+  return color(colorName, `[${label}]`);
 }
 
 function bold(value: string): string {

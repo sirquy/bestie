@@ -92,6 +92,29 @@ test("runOnboardCommand runs provider test when not skipped", async () => {
   }
 });
 
+test("runOnboardCommand highlights provider test failures", async () => {
+  const paths = await createTempPaths();
+  const output: string[] = [];
+
+  try {
+    await runOnboardCommand({
+      argv: ["node", "bestie", "onboard"],
+      paths,
+      questioner: createQuestioner(),
+      providerTest: async (_config, _apiKey, _paths, writeLine) => {
+        writeLine("FAIL Provider test failed.");
+        writeLine("     Provider returned an unusable response: 500 Internal Server Error");
+      },
+      writeLine: (message) => output.push(message),
+    });
+
+    assert.ok(output.some((line) => line.includes("FAIL") && line.includes("Provider test failed")));
+    assert.ok(output.some((line) => line.includes("500 Internal Server Error")));
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
 function createQuestioner(): { ask: (question: string) => Promise<string>; askHidden: () => Promise<string>; close: () => void } {
   return {
     ask: async (question) => {

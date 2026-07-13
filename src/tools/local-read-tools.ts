@@ -511,7 +511,11 @@ export async function readGitStatusTool(options: LocalToolOptions): Promise<Read
   }
 
   const output = await runGitReadCommand(options.paths, ["status", "--short"]);
-  return { allowed: true, reason: permission.reason, output };
+  if (!output.ok) {
+    return { allowed: false, reason: output.message, output: "" };
+  }
+
+  return { allowed: true, reason: permission.reason, output: output.output };
 }
 
 export async function readGitDiffTool(options: LocalToolOptions & { staged?: boolean; maxBytes?: number }): Promise<ReadGitDiffResult> {
@@ -532,7 +536,11 @@ export async function readGitDiffTool(options: LocalToolOptions & { staged?: boo
 
   const maxBytes = Math.min(Math.max(options.maxBytes ?? MAX_INTERNAL_GIT_DIFF_BYTES, 1), MAX_INTERNAL_GIT_DIFF_BYTES);
   const output = await runGitReadCommand(options.paths, ["--no-pager", "diff", ...(options.staged ? ["--staged"] : [])]);
-  const buffer = Buffer.from(output, "utf8");
+  if (!output.ok) {
+    return { allowed: false, reason: output.message, output: "", truncated: false };
+  }
+
+  const buffer = Buffer.from(output.output, "utf8");
   const truncated = buffer.length > maxBytes;
   return { allowed: true, reason: truncated ? `Read first ${maxBytes} bytes; diff is larger.` : permission.reason, output: buffer.subarray(0, maxBytes).toString("utf8"), truncated };
 }
@@ -555,18 +563,22 @@ export async function readGitLogTool(options: LocalToolOptions & { limit?: numbe
 
   const limit = Math.min(Math.max(options.limit ?? 10, 1), MAX_INTERNAL_GIT_LOG_COMMITS);
   const output = await runGitReadCommand(options.paths, ["--no-pager", "log", `--max-count=${limit}`, "--oneline", "--decorate"]);
-  return { allowed: true, reason: permission.reason, output };
+  if (!output.ok) {
+    return { allowed: false, reason: output.message, output: "" };
+  }
+
+  return { allowed: true, reason: permission.reason, output: output.output };
 }
 
-async function runGitReadCommand(paths: RuntimePaths, args: string[]): Promise<string> {
+async function runGitReadCommand(paths: RuntimePaths, args: string[]): Promise<{ ok: true; output: string } | { ok: false; message: string }> {
   try {
     const { stdout } = await execFileAsync("git", args, { cwd: paths.rootDir, encoding: "utf8", timeout: 10_000, maxBuffer: MAX_INTERNAL_GIT_DIFF_BYTES * 2 });
-    return stdout.trimEnd();
+    return { ok: true, output: stdout.trimEnd() };
   } catch (error) {
     if (error instanceof Error) {
-      throw new Error(`Git read command failed: ${error.message}`);
+      return { ok: false, message: `Git read command failed: ${error.message}` };
     }
-    throw error;
+    return { ok: false, message: "Git read command failed: Unknown git error." };
   }
 }
 

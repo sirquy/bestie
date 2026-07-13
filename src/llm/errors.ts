@@ -1,8 +1,13 @@
 import { UserFacingError } from "../runtime/errors.js";
 
 export class ProviderAuthError extends UserFacingError {
-  constructor() {
-    super("Provider authentication failed. Check the configured API key or provider account access.", "ProviderAuthError");
+  constructor(detail?: string) {
+    super(
+      detail
+        ? `Provider authentication failed (${detail}). Check the configured API key, provider account access, and model permissions.`
+        : "Provider authentication failed. Check the configured API key, provider account access, and model permissions.",
+      "ProviderAuthError",
+    );
   }
 }
 

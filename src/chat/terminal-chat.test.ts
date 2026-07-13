@@ -12,11 +12,11 @@ import { appendLog } from "../runtime/logger.js";
 import { buildTerminalSystemPrompt, formatAssistantMessage, formatErrorMessage, formatPrompt, runTerminalChat } from "./terminal-chat.js";
 
 test("terminal chat formatting uses readable labels without TTY color", () => {
-  assert.equal(formatPrompt("Andy"), "Andy -> ");
-  assert.equal(formatPrompt(), "you -> ");
-  assert.equal(formatAssistantMessage("Bea", "Xin chao"), "Bea -> Xin chao");
-  assert.equal(formatAssistantMessage(undefined, "Hello"), "bestie -> Hello");
-  assert.equal(formatErrorMessage("Provider unavailable."), "error -> Provider unavailable.");
+  assert.equal(formatPrompt("Andy"), "[YOU] Andy > ");
+  assert.equal(formatPrompt(), "[YOU] you > ");
+  assert.equal(formatAssistantMessage("Bea", "Xin chao"), "[BOT] Bea > Xin chao");
+  assert.equal(formatAssistantMessage(undefined, "Hello"), "[BOT] bestie > Hello");
+  assert.equal(formatErrorMessage("Provider unavailable."), "[FAIL] Provider unavailable.");
 });
 
 test("buildTerminalSystemPrompt lists configured read-only MCP tools", () => {
@@ -118,20 +118,22 @@ test("runTerminalChat uses injected chat client and persists successful turns", 
       writeLine: (message) => output.push(message),
     });
 
-    assert.deepEqual(prompts, ["Andy -> ", "Andy -> ", "Andy -> ", "Andy -> ", "Andy -> ", "Andy -> ", "Andy -> ", "Andy -> ", "Andy -> ", "Andy -> ", "Andy -> "]);
+    assert.deepEqual(prompts, ["[YOU] Andy > ", "[YOU] Andy > ", "[YOU] Andy > ", "[YOU] Andy > ", "[YOU] Andy > ", "[YOU] Andy > ", "[YOU] Andy > ", "[YOU] Andy > ", "[YOU] Andy > ", "[YOU] Andy > ", "[YOU] Andy > "]);
     assert.equal(closed, true);
     assert.deepEqual(output, [
-      "Bestie terminal chat",
-      "Agent Bea | chatting with Andy",
-      "Type /help for chat commands, or /exit to leave.",
+      "Bestie chat local terminal session",
+      `Runtime ${paths.appDir}`,
+      "Model openai-compatible/test-model",
+      "[BOT] Bea with [YOU] Andy",
+      "Commands /help  /status  /providers  /memory  /pending  /exit",
       "----------------------------",
       "Commands: /help, /status, /providers, /memory, /memory pause, /memory resume, /pending, /exit",
       "Memory paused.",
-      "Bea -> Paused reply",
-      "Bea -> Noted",
+      "[BOT] Bea > Paused reply",
+      "[BOT] Bea > Noted",
       "Memory resumed.",
-      "Bea -> Xin chao Andy",
-      "Bea -> Noted",
+      "[BOT] Bea > Xin chao Andy",
+      "[BOT] Bea > Noted",
       "No active memories.",
       "Status -> memory active; active 0; pending 0",
       "No pending memories.",
@@ -331,7 +333,7 @@ test("runTerminalChat includes more than the store default memory count in provi
   }
 });
 
-test("runTerminalChat streams final answer chunks without printing the full answer twice", async () => {
+test("runTerminalChat does not stream raw JSON answer envelopes after tool calls", async () => {
   const paths = await createTempPaths();
   await mkdir(paths.appDir, { recursive: true });
   await writeFile(paths.envPath, "OPENAI_API_KEY=test-key\n", { mode: 0o600 });
@@ -348,7 +350,7 @@ test("runTerminalChat streams final answer chunks without printing the full answ
       agentName: "Bea",
       ownerName: "Andy",
       questioner: {
-        ask: async () => (chunks.join("").includes("Bea -> streamed answer") ? "/exit" : "hello"),
+        ask: async () => (lines.includes("[BOT] Bea > streamed answer") ? "/exit" : "hello"),
         close: () => undefined,
       },
       chatCompletion: async (_config, _apiKey, options) => {
@@ -357,18 +359,17 @@ test("runTerminalChat streams final answer chunks without printing the full answ
           return '{"tool":"internal.read_file","arguments":{"path":"README.md"}}';
         }
 
-        options.onToken?.("streamed ");
-        options.onToken?.("answer");
-        return "streamed answer";
+        assert.equal(options.stream, false);
+        return '{"answer":"streamed answer"}';
       },
       mcpToolRunner: async () => ({ ok: true, status: "pass", message: "ok", result: { content: "hello" } }),
       writeLine: (message) => lines.push(message),
       writeChunk: (message) => chunks.push(message),
     });
 
-    assert.equal(chunks.join(""), "Bea -> streamed answer");
-    assert.equal(lines.filter((line) => line === "Bea -> streamed answer").length, 0);
-    assert.ok(lines.includes(""));
+    assert.deepEqual(chunks, []);
+    assert.ok(lines.includes("[BOT] Bea > streamed answer"));
+    assert.ok(lines.every((line) => !line.includes('{"answer"')));
     assert.ok(lines.includes("Bye."));
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
@@ -391,7 +392,7 @@ test("runTerminalChat prints final answer normally when no chunks stream", async
       agentName: "Bea",
       ownerName: "Andy",
       questioner: {
-        ask: async () => (lines.includes("Bea -> full answer") ? "/exit" : "hello"),
+        ask: async () => (lines.includes("[BOT] Bea > full answer") ? "/exit" : "hello"),
         close: () => undefined,
       },
       chatCompletion: async () => '{"answer":"full answer"}',
@@ -400,7 +401,7 @@ test("runTerminalChat prints final answer normally when no chunks stream", async
     });
 
     assert.deepEqual(chunks, []);
-    assert.ok(lines.includes("Bea -> full answer"));
+    assert.ok(lines.includes("[BOT] Bea > full answer"));
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
   }
@@ -426,12 +427,12 @@ test("runTerminalChat executes one MCP read tool request and asks LLM for final 
       agentName: "Bea",
       ownerName: "Andy",
       questioner: {
-        ask: async () => (output.some((line) => line === "Bea -> file says hello") ? "/exit" : "read the file"),
+        ask: async () => (output.some((line) => line === "[BOT] Bea > file says hello") ? "/exit" : "read the file"),
         close: () => undefined,
       },
       chatCompletion: async (_config, _apiKey, options) => {
         requestMessages.push(options.messages);
-        return requestMessages.length === 1 ? '{"tool":"mcp.read","server":"fs","name":"read_file","arguments":{"path":"note.txt"}}' : "file says hello";
+        return requestMessages.length === 1 ? '{"tool":"mcp.read","server":"fs","name":"read_file","arguments":{"path":"note.txt"}}' : '{"answer":"file says hello"}';
       },
       mcpToolRunner: async (options) => {
         mcpToolRequest = options.request;
@@ -445,12 +446,14 @@ test("runTerminalChat executes one MCP read tool request and asks LLM for final 
     assert.match(JSON.stringify(requestMessages[0]), /fs\/read_file/);
     assert.match(JSON.stringify(requestMessages[1]), /Tool result for fs\/read_file/);
     assert.deepEqual(output, [
-      "Bestie terminal chat",
-      "Agent Bea | chatting with Andy",
-      "Type /help for chat commands, or /exit to leave.",
+      "Bestie chat local terminal session",
+      `Runtime ${paths.appDir}`,
+      "Model openai-compatible/test-model",
+      "[BOT] Bea with [YOU] Andy",
+      "Commands /help  /status  /providers  /memory  /pending  /exit",
       "----------------------------",
-      "Bea -> working: fs/read_file fs/read_file",
-      "Bea -> file says hello",
+      "[BOT] Bea > [TOOL] fs/read_file fs/read_file",
+      "[BOT] Bea > file says hello",
       "Bye.",
     ]);
   } finally {
@@ -475,7 +478,7 @@ test("runTerminalChat can execute multiple internal tools in one turn", async ()
       agentName: "Bea",
       ownerName: "Andy",
       questioner: {
-        ask: async () => (output.some((line) => line === "Bea -> Summary ready") ? "/exit" : "summarize docs"),
+        ask: async () => (output.some((line) => line === "[BOT] Bea > Summary ready") ? "/exit" : "summarize docs"),
         close: () => undefined,
       },
       chatCompletion: async () => {
@@ -495,9 +498,9 @@ test("runTerminalChat can execute multiple internal tools in one turn", async ()
       { tool: "internal.search_files", arguments: { query: "*.md", path: "docs" } },
       { tool: "internal.read_file", arguments: { path: "docs/README.md" } },
     ]);
-    assert.ok(output.includes("Bea -> working: internal.search_files *.md in docs"));
-    assert.ok(output.includes("Bea -> working: internal.read_file docs/README.md"));
-    assert.ok(output.includes("Bea -> Summary ready"));
+    assert.ok(output.includes("[BOT] Bea > [TOOL] internal.search_files *.md in docs"));
+    assert.ok(output.includes("[BOT] Bea > [TOOL] internal.read_file docs/README.md"));
+    assert.ok(output.includes("[BOT] Bea > Summary ready"));
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
   }
@@ -523,7 +526,7 @@ test("runTerminalChat passes terminal permission approval to tool requests", asy
         ask: async (prompt) => {
           prompts.push(prompt);
           if (prompt.includes("Allow this action once")) return "yes";
-          return output.some((line) => line === "Bea -> Done") ? "/exit" : "write a file";
+          return output.some((line) => line === "[BOT] Bea > Done") ? "/exit" : "write a file";
         },
         close: () => undefined,
       },
@@ -545,7 +548,7 @@ test("runTerminalChat passes terminal permission approval to tool requests", asy
 
     assert.ok(prompts.includes("Allow this action once? Type yes to continue: "));
     assert.ok(output.includes("Permission required"));
-    assert.ok(output.includes("Bea -> Done"));
+    assert.ok(output.includes("[BOT] Bea > Done"));
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
   }
@@ -567,7 +570,7 @@ test("runTerminalChat shows bundled read activity", async () => {
       agentName: "Bea",
       ownerName: "Andy",
       questioner: {
-        ask: async () => (output.some((line) => line === "Bea -> Bundle done") ? "/exit" : "summarize docs"),
+        ask: async () => (output.some((line) => line === "[BOT] Bea > Bundle done") ? "/exit" : "summarize docs"),
         close: () => undefined,
       },
       chatCompletion: async () => {
@@ -578,8 +581,8 @@ test("runTerminalChat shows bundled read activity", async () => {
       writeLine: (message) => output.push(message),
     });
 
-    assert.ok(output.includes("Bea -> working: internal.read_many_files 2 files"));
-    assert.ok(output.includes("Bea -> Bundle done"));
+    assert.ok(output.includes("[BOT] Bea > [TOOL] internal.read_many_files 2 files"));
+    assert.ok(output.includes("[BOT] Bea > Bundle done"));
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
   }
@@ -601,7 +604,7 @@ test("runTerminalChat shows markdown bundle activity", async () => {
       agentName: "Bea",
       ownerName: "Andy",
       questioner: {
-        ask: async () => (output.some((line) => line === "Bea -> Markdown done") ? "/exit" : "summarize docs"),
+        ask: async () => (output.some((line) => line === "[BOT] Bea > Markdown done") ? "/exit" : "summarize docs"),
         close: () => undefined,
       },
       chatCompletion: async () => {
@@ -612,8 +615,8 @@ test("runTerminalChat shows markdown bundle activity", async () => {
       writeLine: (message) => output.push(message),
     });
 
-    assert.ok(output.includes("Bea -> working: internal.read_markdown_bundle ."));
-    assert.ok(output.includes("Bea -> Markdown done"));
+    assert.ok(output.includes("[BOT] Bea > [TOOL] internal.read_markdown_bundle ."));
+    assert.ok(output.includes("[BOT] Bea > Markdown done"));
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
   }
@@ -639,7 +642,7 @@ test("runTerminalChat repairs invented shell command JSON instead of printing it
       agentName: "Bea",
       ownerName: "Andy",
       questioner: {
-        ask: async () => (output.some((line) => line === "Bea -> Mình chưa chạy được shell JSON đó. Gửi bằng MCP read schema nha.") ? "/exit" : "read logs"),
+        ask: async () => (output.some((line) => line === "[BOT] Bea > Mình chưa chạy được shell JSON đó. Gửi bằng MCP read schema nha.") ? "/exit" : "read logs"),
         close: () => undefined,
       },
       chatCompletion: async (_config, _apiKey, options) => {
@@ -659,11 +662,13 @@ test("runTerminalChat repairs invented shell command JSON instead of printing it
     assert.equal(requestMessages.length, 2);
     assert.match(JSON.stringify(requestMessages[1]), /not an executable tool-loop decision/);
     assert.deepEqual(output, [
-      "Bestie terminal chat",
-      "Agent Bea | chatting with Andy",
-      "Type /help for chat commands, or /exit to leave.",
+      "Bestie chat local terminal session",
+      `Runtime ${paths.appDir}`,
+      "Model openai-compatible/test-model",
+      "[BOT] Bea with [YOU] Andy",
+      "Commands /help  /status  /providers  /memory  /pending  /exit",
       "----------------------------",
-      "Bea -> Mình chưa chạy được shell JSON đó. Gửi bằng MCP read schema nha.",
+      "[BOT] Bea > Mình chưa chạy được shell JSON đó. Gửi bằng MCP read schema nha.",
       "Bye.",
     ]);
   } finally {
@@ -699,9 +704,11 @@ test("runTerminalChat allows slash commands before API key loading", async () =>
 
     assert.equal(closed, true);
     assert.deepEqual(output, [
-      "Bestie terminal chat",
-      "Agent Bea | chatting with Andy",
-      "Type /help for chat commands, or /exit to leave.",
+      "Bestie chat local terminal session",
+      `Runtime ${paths.appDir}`,
+      "Model openai-compatible/test-model",
+      "[BOT] Bea with [YOU] Andy",
+      "Commands /help  /status  /providers  /memory  /pending  /exit",
       "----------------------------",
       "Commands: /help, /status, /providers, /memory, /memory pause, /memory resume, /pending, /exit",
       "Bye.",
@@ -728,8 +735,8 @@ test("runTerminalChat reports provider failures without persisting failed turns"
       ownerName: "Andy",
       questioner: {
         ask: async (prompt) => {
-          assert.equal(prompt, "Andy -> ");
-          return output.some((line) => line.startsWith("error ->")) ? "/exit" : "hello";
+          assert.equal(prompt, "[YOU] Andy > ");
+          return output.some((line) => line.startsWith("[FAIL]")) ? "/exit" : "hello";
         },
         close: () => {
           closed = true;
@@ -743,11 +750,13 @@ test("runTerminalChat reports provider failures without persisting failed turns"
 
     assert.equal(closed, true);
     assert.deepEqual(output, [
-      "Bestie terminal chat",
-      "Agent Bea | chatting with Andy",
-      "Type /help for chat commands, or /exit to leave.",
+      "Bestie chat local terminal session",
+      `Runtime ${paths.appDir}`,
+      "Model openai-compatible/test-model",
+      "[BOT] Bea with [YOU] Andy",
+      "Commands /help  /status  /providers  /memory  /pending  /exit",
       "----------------------------",
-      "error -> Provider unavailable.",
+      "[FAIL] Provider unavailable.",
       "Bye.",
     ]);
 
@@ -783,7 +792,7 @@ test("runTerminalChat logs provider fallback attempts", async () => {
       agentName: "Bea",
       ownerName: "Andy",
       questioner: {
-        ask: async () => (output.some((line) => line.startsWith("error ->")) ? "/exit" : "hello"),
+        ask: async () => (output.some((line) => line.startsWith("[FAIL]")) ? "/exit" : "hello"),
         close: () => undefined,
       },
       chatCompletion: async () => {

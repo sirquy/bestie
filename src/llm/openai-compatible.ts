@@ -3,11 +3,14 @@ import { setTimeout as delay } from "node:timers/promises";
 import { DEFAULT_LLM_MAX_RETRIES, DEFAULT_LLM_RETRY_DELAY_MS, DEFAULT_LLM_TIMEOUT_MS, type AppConfig } from "../runtime/config.js";
 import { loadRequiredSecret } from "../runtime/env.js";
 import type { RuntimePaths } from "../runtime/paths.js";
+import { redactSecretLikeValues } from "../runtime/secret-redaction.js";
 import { ProviderAuthError, ProviderNetworkError, ProviderRateLimitError, ProviderResponseError, ProviderTimeoutError } from "./errors.js";
 import { ProviderFallbackRecorder } from "./fallbacks.js";
 import type { ChatCompletionOptions, ChatCompletionRequestBody } from "./types.js";
 
 export type FetchLike = typeof fetch;
+
+const PROVIDER_ERROR_BODY_MAX_CHARS = 240;
 
 export interface ChatCompletionClientOptions {
   fetchImpl?: FetchLike;
@@ -110,7 +113,7 @@ async function sendChatCompletionAttempt(
   }
 
   if (response.status === 401 || response.status === 403) {
-    throw new ProviderAuthError();
+    throw new ProviderAuthError(await formatProviderHttpError(response));
   }
 
   if (response.status === 429) {
@@ -118,7 +121,7 @@ async function sendChatCompletionAttempt(
   }
 
   if (!response.ok) {
-    throw new ProviderResponseError(`${response.status} ${response.statusText}`.trim());
+    throw new ProviderResponseError(await formatProviderHttpError(response));
   }
 
   if (requestBody.stream) {
@@ -133,6 +136,27 @@ async function sendChatCompletionAttempt(
   }
 
   return content;
+}
+
+async function formatProviderHttpError(response: Response): Promise<string> {
+  const status = `${response.status} ${response.statusText}`.trim();
+  const body = await readProviderErrorBody(response);
+
+  return body ? `${status}: ${body}` : status;
+}
+
+async function readProviderErrorBody(response: Response): Promise<string | undefined> {
+  try {
+    const body = redactSecretLikeValues((await response.text()).replace(/\s+/g, " ").trim());
+
+    if (!body) {
+      return undefined;
+    }
+
+    return body.length > PROVIDER_ERROR_BODY_MAX_CHARS ? `${body.slice(0, PROVIDER_ERROR_BODY_MAX_CHARS - 3)}...` : body;
+  } catch {
+    return undefined;
+  }
 }
 
 function isRetryableProviderError(error: unknown): boolean {

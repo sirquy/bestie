@@ -20,6 +20,7 @@ const ANSI_CYAN = "\x1b[36m";
 const ANSI_GREEN = "\x1b[32m";
 const ANSI_YELLOW = "\x1b[33m";
 const ANSI_MAGENTA = "\x1b[35m";
+const ANSI_RED = "\x1b[31m";
 
 type LanguageMode = AppConfig["agent"]["language"];
 type MemoryWritePolicy = NonNullable<AppConfig["memory"]>["writePolicy"];
@@ -52,6 +53,12 @@ interface OnboardCommandOptions {
   useColor?: boolean;
 }
 
+interface ProviderTestReporter {
+  pending: (message: string) => void;
+  success: (message: string) => void;
+  failure: (message: string, detail?: string) => void;
+}
+
 interface OnboardUi {
   intro: (paths: RuntimePaths, shouldSkipProviderTest: boolean) => void;
   section: (title: string, detail?: string) => void;
@@ -68,6 +75,7 @@ interface PromptTheme {
 }
 
 let promptTheme: PromptTheme = createPromptTheme(output.isTTY);
+let providerTestReporter: ProviderTestReporter = createProviderTestReporter(console.log, output.isTTY);
 
 export async function runOnboardCommand(optionsOrArgv: string[] | OnboardCommandOptions = process.argv): Promise<void> {
   const options = Array.isArray(optionsOrArgv) ? { argv: optionsOrArgv } : optionsOrArgv;
@@ -78,6 +86,7 @@ export async function runOnboardCommand(optionsOrArgv: string[] | OnboardCommand
   const shouldSkipProviderTest = argv.includes("--skip-provider-test");
   const ui = createOnboardUi(writeLine, options.useColor ?? output.isTTY);
   promptTheme = createPromptTheme(options.useColor ?? output.isTTY);
+  providerTestReporter = createProviderTestReporter(writeLine, options.useColor ?? output.isTTY);
   await mkdir(paths.appDir, { recursive: true });
   await mkdir(paths.logsDir, { recursive: true });
   await appendLog({ event: "command_start", detail: { command: "onboard" } }, { paths });
@@ -271,6 +280,22 @@ function createOnboardUi(writeLine: (message: string) => void, useColor: boolean
   };
 }
 
+function createProviderTestReporter(writeLine: (message: string) => void, useColor: boolean): ProviderTestReporter {
+  const paint = (text: string, code: string) => useColor ? color(text, code) : text;
+  const dim = (text: string) => paint(text, ANSI_DIM);
+
+  return {
+    pending: (message) => writeLine(`${paint("TEST", ANSI_CYAN)} ${message}`),
+    success: (message) => writeLine(`${paint("OK", ANSI_GREEN)} ${message}`),
+    failure: (message, detail) => {
+      writeLine(`${paint("FAIL", ANSI_RED)} ${message}`);
+      if (detail) {
+        writeLine(`     ${dim(detail)}`);
+      }
+    },
+  };
+}
+
 function createPromptTheme(useColor: boolean): PromptTheme {
   const paint = (text: string, code: string) => useColor ? color(text, code) : text;
 
@@ -310,24 +335,25 @@ function buildConfig(answers: OnboardingAnswers): AppConfig {
 }
 
 async function runProviderTest(config: AppConfig, apiKey: string, paths: RuntimePaths, writeLine: (message: string) => void = console.log): Promise<void> {
-  writeLine("\nTesting provider with a tiny completion...");
+  const reporter = providerTestReporter ?? createProviderTestReporter(writeLine, output.isTTY);
+  reporter.pending("Testing provider with a tiny completion...");
 
   const result = await testOpenAICompatibleProvider(config, apiKey);
 
   if (result.ok) {
     await appendLog({ event: "provider_test_success", detail: { provider: config.llm.provider, model: config.llm.model } }, { paths });
-    writeLine("Provider test succeeded.");
+    reporter.success("Provider test succeeded.");
     return;
   }
 
   await appendLog({ event: "provider_test_failure", detail: { ...result } }, { paths, knownSecrets: [apiKey] });
 
   if (result.status) {
-    writeLine(`Provider test failed (${result.status} ${result.statusText ?? ""}). Check the base URL, model, API key, or account access.`);
+    reporter.failure(`Provider test failed (${result.status} ${result.statusText ?? ""}).`, "Check the base URL, model, API key, or account access.");
     return;
   }
 
-  writeLine(`Provider test failed: ${result.message ?? "Unknown provider test error."}`);
+  reporter.failure("Provider test failed.", result.message ?? "Unknown provider test error.");
 }
 
 function setTerminalEcho(enabled: boolean): void {

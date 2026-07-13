@@ -103,11 +103,17 @@ test("sendChatCompletion streams assistant text chunks", async () => {
 });
 
 test("sendChatCompletion maps auth errors", async () => {
-  const fetchImpl = async () => new Response("nope", { status: 401, statusText: "Unauthorized" });
+  const fetchImpl = async () => new Response('{"error":"invalid token sk-secret123456"}', { status: 401, statusText: "Unauthorized" });
 
   await assert.rejects(
     () => sendChatCompletion(config, "secret", { messages: [{ role: "user", content: "Hi" }] }, fetchImpl),
-    ProviderAuthError,
+    (error: unknown) => {
+      assert.ok(error instanceof ProviderAuthError);
+      assert.match(error.message, /401 Unauthorized/);
+      assert.match(error.message, /invalid token \[REDACTED\]/);
+      assert.doesNotMatch(error.message, /sk-secret123456/);
+      return true;
+    },
   );
 });
 
@@ -261,7 +267,7 @@ test("sendChatCompletionWithFallbacks reports every failed fallback attempt", as
   try {
     await mkdir(paths.appDir, { recursive: true });
     await writeFile(paths.envPath, 'OPENAI_API_KEY="primary-secret"\nFALLBACK_LLM_API_KEY="fallback-secret"\n');
-    const fetchImpl = async () => new Response("nope", { status: 502, statusText: "Bad Gateway" });
+    const fetchImpl = async () => new Response('{"error":"model is not available for this account"}', { status: 502, statusText: "Bad Gateway" });
 
     await assert.rejects(
       () =>
@@ -279,8 +285,8 @@ test("sendChatCompletionWithFallbacks reports every failed fallback attempt", as
       (error: unknown) => {
         assert.ok(error instanceof ProviderFallbackError);
         assert.deepEqual(error.attempts.map((attempt) => `${attempt.provider}/${attempt.model}`), ["openai-compatible/example-model", "openai-compatible/fallback-model"]);
-        assert.match(error.message, /example-model: Provider returned an unusable response: 502 Bad Gateway/);
-        assert.match(error.message, /fallback-model: Provider returned an unusable response: 502 Bad Gateway/);
+        assert.match(error.message, /example-model: Provider returned an unusable response: 502 Bad Gateway: \{"error":"model is not available for this account"\}/);
+        assert.match(error.message, /fallback-model: Provider returned an unusable response: 502 Bad Gateway: \{"error":"model is not available for this account"\}/);
         return true;
       },
     );
