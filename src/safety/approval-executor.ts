@@ -1,0 +1,101 @@
+import type { PendingActionApproval } from "../memory/sqlite-store.js";
+import type { SqliteMemoryStore } from "../memory/sqlite-store.js";
+import { isInternalToolName, runAgentToolRequest } from "../chat/mcp-tool-use.js";
+import type { AgentToolRequest } from "../chat/mcp-tool-use.js";
+import type { AppConfig } from "../runtime/config.js";
+import type { RuntimePaths } from "../runtime/paths.js";
+
+export type ApprovalDecision = "approve" | "deny";
+export type ApprovalExecutionStatus = "executed" | "denied" | "unsupported" | "invalid";
+
+export interface ApprovalExecutionResult {
+  status: ApprovalExecutionStatus;
+  shortText: string;
+  message: string;
+}
+
+export async function executeApprovedAction(store: SqliteMemoryStore, approval: PendingActionApproval, decision: ApprovalDecision, options?: { config?: AppConfig; paths?: RuntimePaths }): Promise<ApprovalExecutionResult> {
+  const currentApproval = store.getPendingActionApprovalById(approval.id);
+  if (!currentApproval || (decision === "approve" && currentApproval.status !== "approved") || (decision === "deny" && currentApproval.status !== "denied")) {
+    return { status: "invalid", shortText: "Approval is not executable.", message: `Approval ${approval.id} is not in an executable state.` };
+  }
+
+  if (approval.target?.startsWith("pending-memory:")) {
+    return executePendingMemoryApproval(store, approval, decision);
+  }
+
+  if (approval.payloadJson && options?.config && options.paths) {
+    return executeInternalToolApproval(store, approval, decision, { config: options.config, paths: options.paths });
+  }
+
+  return {
+    status: decision === "approve" ? "unsupported" : "denied",
+    shortText: decision === "approve" ? `Approval ${approval.status}.` : "Action denied.",
+    message:
+      decision === "approve"
+        ? `Approval ${approval.status}: ${approval.id}. This records the owner decision; execution for ${approval.action} is not implemented yet.`
+        : `Approval ${approval.status}: ${approval.id}.`,
+  };
+}
+
+async function executeInternalToolApproval(store: SqliteMemoryStore, approval: PendingActionApproval, decision: ApprovalDecision, options: { config: AppConfig; paths: RuntimePaths }): Promise<ApprovalExecutionResult> {
+  if (decision === "deny") {
+    return { status: "denied", shortText: "Action denied.", message: `Approval ${approval.status}: ${approval.id}.` };
+  }
+
+  const request = parseApprovedToolRequest(approval.payloadJson);
+  if (!request) {
+    return { status: "invalid", shortText: "Invalid approval payload.", message: `Approval ${approval.status}: ${approval.id}. Stored action payload is invalid.` };
+  }
+
+  if (!store.markActionApprovalExecuted(approval.id)) {
+    return { status: "invalid", shortText: "Approval already executed.", message: `Approval ${approval.id} was already executed or is no longer approved.` };
+  }
+
+  const toolConfig = { ...options.config, internalTools: { ...options.config.internalTools, policies: { ...(options.config.internalTools?.policies ?? {}), [request.tool]: "allow" as const } } };
+  const result = await runAgentToolRequest({ config: toolConfig, paths: options.paths, request });
+
+  return {
+    status: result.ok ? "executed" : "invalid",
+    shortText: result.ok ? "Action executed." : "Action failed.",
+    message: `Approval ${approval.status}: ${approval.id}. ${result.ok ? "Executed" : "Failed"} ${request.tool}: ${result.message}`,
+  };
+}
+
+function parseApprovedToolRequest(payloadJson: string | undefined): AgentToolRequest | undefined {
+  if (!payloadJson) return undefined;
+
+  try {
+    const parsed = JSON.parse(payloadJson) as Partial<AgentToolRequest>;
+    if (typeof parsed.tool !== "string" || parsed.tool === "mcp.read" || typeof parsed.arguments !== "object" || parsed.arguments === null) {
+      return undefined;
+    }
+    return isInternalToolName(parsed.tool) ? { tool: parsed.tool, arguments: parsed.arguments as Record<string, unknown> } : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function executePendingMemoryApproval(store: SqliteMemoryStore, approval: PendingActionApproval, decision: ApprovalDecision): ApprovalExecutionResult {
+  const pendingMemoryId = Number(approval.target?.slice("pending-memory:".length));
+
+  if (!Number.isInteger(pendingMemoryId)) {
+    return { status: "invalid", shortText: "Invalid pending memory target.", message: `Approval ${approval.status}: ${approval.id}. Invalid pending memory target.` };
+  }
+
+  if (decision === "approve") {
+    if (!store.markActionApprovalExecuted(approval.id)) {
+      return { status: "invalid", shortText: "Approval already executed.", message: `Approval ${approval.id} was already executed or is no longer approved.` };
+    }
+
+    const memory = store.approvePendingMemory(pendingMemoryId);
+    return memory
+      ? { status: "executed", shortText: "Memory saved.", message: `Memory approved and saved: ${memory.id}.` }
+      : { status: "invalid", shortText: "Pending memory not found.", message: `Approval ${approval.status}: ${approval.id}, but pending memory ${pendingMemoryId} was not found.` };
+  }
+
+  const rejected = store.rejectPendingMemory(pendingMemoryId);
+  return rejected
+    ? { status: "denied", shortText: "Memory denied.", message: `Memory request denied: ${pendingMemoryId}.` }
+    : { status: "invalid", shortText: "Pending memory not found.", message: `Approval ${approval.status}: ${approval.id}, but pending memory ${pendingMemoryId} was not found.` };
+}

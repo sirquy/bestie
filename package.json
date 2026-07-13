@@ -1,0 +1,58 @@
+{
+  "name": "bestie",
+  "version": "0.1.0",
+  "description": "Vietnamese-first bestie agent CLI.",
+  "type": "module",
+  "bin": {
+    "bestie": "dist/cli/index.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsx src/cli/index.ts",
+    "start": "node dist/cli/index.js",
+    "test": "npm run build && node --test dist/**/*.test.js",
+    "eval:character": "npm run build && node --test dist/character/prompt-generator.test.js dist/character/character-eval-cases.test.js",
+    "eval:character:cases": "npm run build && node --test dist/character/character-eval-cases.test.js",
+    "smoke": "npm run build && npm run smoke:status:run && npm run smoke:doctor:run && npm run smoke:doctor:json:run && npm run smoke:doctor:fix:run && npm run smoke:chat:run && npm run smoke:onboard:run",
+    "smoke:chat": "npm run build && npm run smoke:chat:run",
+    "smoke:chat:run": "printf '/exit\\n' | npm run start -- chat",
+    "smoke:doctor": "npm run build && npm run smoke:doctor:run",
+    "smoke:doctor:run": "npm run start -- doctor",
+    "smoke:doctor:json": "npm run build && npm run smoke:doctor:json:run",
+    "smoke:doctor:json:run": "node scripts/smoke-doctor-json.mjs",
+    "smoke:doctor:exit-code": "npm run build && node scripts/smoke-doctor-exit-code.mjs",
+    "smoke:doctor:fix": "npm run build && npm run smoke:doctor:fix:run",
+    "smoke:doctor:fix:run": "node scripts/smoke-doctor-fix.mjs",
+    "smoke:installer": "npm run build && node scripts/smoke-installer.mjs",
+    "smoke:mcp": "npm run build && npm run smoke:mcp:run",
+    "smoke:mcp:run": "node scripts/smoke-mcp.mjs",
+    "smoke:onboard": "npm run build && npm run smoke:onboard:run",
+    "smoke:onboard:run": "tmpdir=$(mktemp -d) && cd $tmpdir && printf 'Bestie\\nBoss\\nvi\\n7\\nask\\nopenai-compatible\\nhttp://127.0.0.1:9/v1\\ntest-model\\ntest-key\\n' | node $INIT_CWD/dist/cli/index.js onboard --skip-provider-test; code=$?; rm -rf $tmpdir; exit $code",
+    "smoke:status": "npm run build && npm run smoke:status:run",
+    "smoke:status:run": "npm run start -- status",
+    "smoke:telegram": "npm run build && npm run smoke:telegram:run",
+    "smoke:telegram:run": "tmpdir=$(mktemp -d) && cd $tmpdir && node $INIT_CWD/dist/cli/index.js telegram 2>&1 | grep -q 'Telegram is not enabled'; code=$?; rm -rf $tmpdir; exit $code",
+    "smoke:telegram:real": "npm run build && node scripts/smoke-telegram-real.mjs",
+    "smoke:telegram:setup": "npm run build && npm run smoke:telegram:setup:run",
+    "smoke:telegram:setup:run": "tmpdir=$(mktemp -d) && cd $tmpdir && printf 'Bestie\nBoss\nvi\n7\nask\nopenai-compatible\nhttp://127.0.0.1:9/v1\ntest-model\ntest-key\n' | node $INIT_CWD/dist/cli/index.js onboard --skip-provider-test >/dev/null && printf '12345\ntest-telegram-token\n' | node $INIT_CWD/dist/cli/index.js telegram setup >/dev/null && grep -q 'BESTIE_TELEGRAM_BOT_TOKEN' .bestie/.env && grep -q '\"ownerUserId\": \"12345\"' .bestie/config.json; code=$?; rm -rf $tmpdir; exit $code",
+    "smoke:tools": "npm run build && npm run smoke:tools:run",
+    "smoke:tools:run": "node dist/cli/index.js tools logs --lines 5 | grep -q 'action_permission_decision' && node dist/cli/index.js tools memories --limit 5 >/dev/null && node dist/cli/index.js tools git status >/dev/null"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^20.14.15",
+    "tsx": "^4.16.2",
+    "typescript": "^5.5.4"
+  },
+  "dependencies": {
+    "@elevenlabs/elevenlabs-js": "^2.57.0",
+    "@grammyjs/types": "^3.28.0",
+    "better-sqlite3": "^12.11.1",
+    "grammy": "^1.44.0",
+    "mammoth": "^1.12.0",
+    "pdf-parse": "^1.1.1"
+  }
+}

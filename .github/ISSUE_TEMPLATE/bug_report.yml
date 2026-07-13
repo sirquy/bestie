@@ -1,0 +1,71 @@
+name: Bug report
+description: Report something that is broken or behaving unexpectedly.
+title: "Bug: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug. Please do not include real API keys, Telegram tokens, private chat logs, or `.env` contents.
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What happened?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: List the smallest steps that reproduce the issue.
+      placeholder: |
+        1. Run `...`
+        2. Configure `...`
+        3. See error `...`
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Bestie version or commit
+      placeholder: v0.1.0 or commit SHA
+  - type: input
+    id: node
+    attributes:
+      label: Node.js version
+      placeholder: node -v
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - CLI
+        - Onboarding
+        - Doctor
+        - Terminal chat
+        - Telegram
+        - Memory
+        - Provider / LLM
+        - Speech / transcription
+        - MCP / tools
+        - Docs
+        - Other
+  - type: textarea
+    id: logs
+    attributes:
+      label: Redacted logs or output
+      description: Paste only redacted output. Remove secrets and private chat content.
+      render: shell

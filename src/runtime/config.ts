@@ -1,0 +1,742 @@
+import { access, readFile, writeFile } from "node:fs/promises";
+
+import { InvalidConfigError, MissingConfigError } from "./errors.js";
+import { getRuntimePaths, type RuntimePaths } from "./paths.js";
+
+export type McpToolCategory = "read" | "local_write" | "external_write" | "public_action" | "destructive" | "money" | "unknown";
+export type MemoryWritePolicy = "allow" | "ask" | "deny";
+export type InternalToolPolicy = "allow" | "ask" | "deny";
+type OpenAiCompatibleSpeechConfig = Extract<NonNullable<AppConfig["speech"]>, { provider: "openai-compatible" }>;
+
+export interface LlmFallbackConfig {
+  provider?: string;
+  baseUrl?: string;
+  model: string;
+  apiKeyEnv?: string;
+  timeoutMs?: number;
+  maxRetries?: number;
+  retryDelayMs?: number;
+}
+
+type OpenAiCompatibleTranscriptionConfig = {
+  provider: "openai-compatible";
+  baseUrl: string;
+  model: string;
+  apiKeyEnv: string;
+  timeoutMs?: number;
+};
+type ElevenLabsTranscriptionConfig = {
+  provider: "elevenlabs";
+  apiKeyEnv: string;
+  modelId?: string;
+  languageCode?: string;
+  tagAudioEvents?: boolean;
+  diarize?: boolean;
+  timeoutMs?: number;
+};
+type LocalWhisperTranscriptionConfig = {
+  provider: "local-whisper";
+  command: string;
+  args?: string[];
+  modelPath: string;
+  timeoutMs?: number;
+};
+export type TranscriptionProviderConfig = OpenAiCompatibleTranscriptionConfig | ElevenLabsTranscriptionConfig | LocalWhisperTranscriptionConfig;
+
+type OpenAiCompatibleSpeechProviderConfig = {
+  provider: "openai-compatible";
+  baseUrl: string;
+  model: string;
+  apiKeyEnv: string;
+  voice?: string;
+  responseFormat?: "mp3" | "opus" | "aac" | "flac" | "wav" | "pcm";
+  timeoutMs?: number;
+};
+type ElevenLabsSpeechProviderConfig = {
+  provider: "elevenlabs";
+  apiKeyEnv: string;
+  voiceId: string;
+  modelId?: string;
+  outputFormat?: string;
+  timeoutMs?: number;
+};
+export type SpeechProviderConfig = OpenAiCompatibleSpeechProviderConfig | ElevenLabsSpeechProviderConfig;
+
+export interface AppConfig {
+  version: 1;
+  agent: {
+    name: string;
+    ownerName: string;
+    language: string;
+    toneIntensity: number;
+  };
+  llm: {
+    provider: string;
+    baseUrl: string;
+    model: string;
+    apiKeyEnv: string;
+    timeoutMs?: number;
+    maxRetries?: number;
+    retryDelayMs?: number;
+    fallbacks?: LlmFallbackConfig[];
+  };
+  transcription?: TranscriptionProviderConfig & { fallbacks?: TranscriptionProviderConfig[] };
+  speech?: SpeechProviderConfig & { fallbacks?: SpeechProviderConfig[] };
+  channels?: {
+    telegram?: {
+      enabled: boolean;
+      botTokenEnv: string;
+      ownerUserId: string;
+      voiceReplyPolicy?: "deny" | "voice-input-only";
+      voiceReplyMaxChars?: number;
+      voiceReplyCooldownMs?: number;
+      attachments?: {
+        downloadPolicy?: "allow" | "deny";
+        maxBytes?: number;
+        previewMaxBytes?: number;
+        parseMaxBytes?: number;
+        visionPolicy?: "allow" | "deny";
+        visionMaxBytes?: number;
+        transcriptionPolicy?: "allow" | "deny";
+        transcriptionMaxBytes?: number;
+        deleteAfterProcessingKinds?: Array<"photo" | "document" | "voice" | "audio" | "video" | "sticker">;
+        allowedMimeTypes?: string[];
+      };
+    };
+  };
+  memory?: {
+    writePolicy?: MemoryWritePolicy;
+  };
+  workspace?: {
+    defaultPath?: string;
+    externalPaths?: string[];
+  };
+  mcp?: {
+    servers: Array<{
+      name: string;
+      enabled: boolean;
+      transport?: "stdio" | "http";
+      command?: string;
+      args?: string[];
+      env?: Record<string, string>;
+      url?: string;
+      headers?: Record<string, string>;
+      headersEnv?: Record<string, string>;
+      tools?: Array<{
+        name: string;
+        category: McpToolCategory;
+      }>;
+    }>;
+  };
+  internalTools?: {
+    policies?: Record<string, InternalToolPolicy>;
+    exec?: {
+      timeoutMs?: number;
+    };
+  };
+}
+
+export const DEFAULT_LLM_TIMEOUT_MS = 300_000;
+export const DEFAULT_LLM_MAX_RETRIES = 3;
+export const DEFAULT_LLM_RETRY_DELAY_MS = 500;
+export const DEFAULT_INTERNAL_EXEC_TIMEOUT_MS = 300_000;
+
+export async function configExists(paths: RuntimePaths = getRuntimePaths()): Promise<boolean> {
+  try {
+    await access(paths.configPath);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function loadConfig(paths: RuntimePaths = getRuntimePaths()): Promise<AppConfig> {
+  let rawConfig: string;
+
+  try {
+    rawConfig = await readFile(paths.configPath, "utf8");
+  } catch {
+    throw new MissingConfigError(paths.configPath);
+  }
+
+  let parsedConfig: unknown;
+  try {
+    parsedConfig = JSON.parse(rawConfig);
+  } catch {
+    throw new InvalidConfigError("config.json is not valid JSON.");
+  }
+
+  return validateConfig(parsedConfig);
+}
+
+export async function writeConfig(config: AppConfig, paths: RuntimePaths = getRuntimePaths()): Promise<void> {
+  await writeFile(paths.configPath, `${JSON.stringify(config, null, 2)}\n`, { mode: 0o600 });
+}
+
+export function validateConfig(config: unknown): AppConfig {
+  if (!isRecord(config)) {
+    throw new InvalidConfigError("expected an object.");
+  }
+
+  if (config.version !== 1) {
+    throw new InvalidConfigError("version must be 1.");
+  }
+
+  const agent = requireRecord(config.agent, "agent");
+  const llm = requireRecord(config.llm, "llm");
+  const language = requireString(agent.language, "agent.language");
+
+  const toneIntensity = requireNumber(agent.toneIntensity, "agent.toneIntensity");
+  if (!Number.isInteger(toneIntensity) || toneIntensity < 1 || toneIntensity > 10) {
+    throw new InvalidConfigError("agent.toneIntensity must be an integer from 1 to 10.");
+  }
+
+  const timeoutMs = optionalPositiveInteger(llm.timeoutMs, "llm.timeoutMs");
+  const maxRetries = optionalNonNegativeInteger(llm.maxRetries, "llm.maxRetries");
+  const retryDelayMs = optionalNonNegativeInteger(llm.retryDelayMs, "llm.retryDelayMs");
+  const channels = optionalChannels(config.channels);
+  const transcription = optionalTranscription(config.transcription);
+  const speech = optionalSpeech(config.speech);
+  const memory = optionalMemory(config.memory);
+  const workspace = optionalWorkspace(config.workspace);
+  const mcp = optionalMcp(config.mcp, config.mcpServers);
+  const internalTools = optionalInternalTools(config.internalTools);
+
+  return {
+    version: 1,
+    agent: {
+      name: requireString(agent.name, "agent.name"),
+      ownerName: requireString(agent.ownerName, "agent.ownerName"),
+      language,
+      toneIntensity,
+    },
+    llm: {
+      provider: requireString(llm.provider, "llm.provider"),
+      baseUrl: requireString(llm.baseUrl, "llm.baseUrl"),
+      model: requireString(llm.model, "llm.model"),
+      apiKeyEnv: requireString(llm.apiKeyEnv, "llm.apiKeyEnv"),
+      timeoutMs,
+      maxRetries,
+      retryDelayMs,
+      ...(llm.fallbacks === undefined ? {} : { fallbacks: optionalLlmFallbacks(llm.fallbacks) }),
+    },
+    ...(transcription === undefined ? {} : { transcription }),
+    ...(speech === undefined ? {} : { speech }),
+    ...(channels === undefined ? {} : { channels }),
+    ...(memory === undefined ? {} : { memory }),
+    ...(workspace === undefined ? {} : { workspace }),
+    ...(mcp === undefined ? {} : { mcp }),
+    ...(internalTools === undefined ? {} : { internalTools }),
+  };
+}
+
+function optionalTranscription(value: unknown): AppConfig["transcription"] | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  const transcription = parseTranscriptionProvider(value, "transcription");
+  const raw = requireRecord(value, "transcription");
+  return {
+    ...transcription,
+    ...(raw.fallbacks === undefined ? {} : { fallbacks: optionalTranscriptionFallbacks(raw.fallbacks) }),
+  } as AppConfig["transcription"];
+}
+
+function parseTranscriptionProvider(value: unknown, path: string): TranscriptionProviderConfig {
+  const transcription = requireRecord(value, path);
+  const provider = requireString(transcription.provider, `${path}.provider`);
+  if (provider !== "openai-compatible" && provider !== "elevenlabs" && provider !== "local-whisper") {
+    throw new InvalidConfigError(`${path}.provider must be openai-compatible, elevenlabs, or local-whisper.`);
+  }
+
+  if (provider === "elevenlabs") {
+    return {
+      provider,
+      apiKeyEnv: requireString(transcription.apiKeyEnv, `${path}.apiKeyEnv`),
+      ...(transcription.modelId === undefined ? {} : { modelId: requireString(transcription.modelId, `${path}.modelId`) }),
+      ...(transcription.languageCode === undefined ? {} : { languageCode: requireString(transcription.languageCode, `${path}.languageCode`) }),
+      ...(transcription.tagAudioEvents === undefined ? {} : { tagAudioEvents: requireBoolean(transcription.tagAudioEvents, `${path}.tagAudioEvents`) }),
+      ...(transcription.diarize === undefined ? {} : { diarize: requireBoolean(transcription.diarize, `${path}.diarize`) }),
+      ...(transcription.timeoutMs === undefined ? {} : { timeoutMs: optionalPositiveInteger(transcription.timeoutMs, `${path}.timeoutMs`) }),
+    };
+  }
+
+  if (provider === "local-whisper") {
+    const args = optionalStringArray(transcription.args, `${path}.args`);
+    if (args !== undefined && !args.some((arg) => arg.includes("{audioPath}"))) {
+      throw new InvalidConfigError(`${path}.args must include {audioPath}.`);
+    }
+
+    return {
+      provider,
+      command: requireString(transcription.command, `${path}.command`),
+      ...(args === undefined ? {} : { args }),
+      modelPath: requireString(transcription.modelPath, `${path}.modelPath`),
+      ...(transcription.timeoutMs === undefined ? {} : { timeoutMs: optionalPositiveInteger(transcription.timeoutMs, `${path}.timeoutMs`) }),
+    };
+  }
+
+  return {
+    provider,
+    baseUrl: requireString(transcription.baseUrl, `${path}.baseUrl`),
+    model: requireString(transcription.model, `${path}.model`),
+    apiKeyEnv: requireString(transcription.apiKeyEnv, `${path}.apiKeyEnv`),
+    ...(transcription.timeoutMs === undefined ? {} : { timeoutMs: optionalPositiveInteger(transcription.timeoutMs, `${path}.timeoutMs`) }),
+  };
+}
+
+function optionalSpeech(value: unknown): AppConfig["speech"] | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  const speech = parseSpeechProvider(value, "speech");
+  const raw = requireRecord(value, "speech");
+  return {
+    ...speech,
+    ...(raw.fallbacks === undefined ? {} : { fallbacks: optionalSpeechFallbacks(raw.fallbacks) }),
+  } as AppConfig["speech"];
+}
+
+function parseSpeechProvider(value: unknown, path: string): SpeechProviderConfig {
+  const speech = requireRecord(value, path);
+  const provider = requireString(speech.provider, `${path}.provider`);
+  if (provider !== "openai-compatible" && provider !== "elevenlabs") {
+    throw new InvalidConfigError(`${path}.provider must be openai-compatible or elevenlabs.`);
+  }
+
+  if (provider === "elevenlabs") {
+    return {
+      provider,
+      apiKeyEnv: requireString(speech.apiKeyEnv, `${path}.apiKeyEnv`),
+      voiceId: requireString(speech.voiceId, `${path}.voiceId`),
+      ...(speech.modelId === undefined ? {} : { modelId: requireString(speech.modelId, `${path}.modelId`) }),
+      ...(speech.outputFormat === undefined ? {} : { outputFormat: requireString(speech.outputFormat, `${path}.outputFormat`) }),
+      ...(speech.timeoutMs === undefined ? {} : { timeoutMs: optionalPositiveInteger(speech.timeoutMs, `${path}.timeoutMs`) }),
+    };
+  }
+
+  const responseFormat = speech.responseFormat;
+  if (responseFormat !== undefined && !["mp3", "opus", "aac", "flac", "wav", "pcm"].includes(String(responseFormat))) {
+    throw new InvalidConfigError(`${path}.responseFormat must be mp3, opus, aac, flac, wav, or pcm.`);
+  }
+
+  return {
+    provider,
+    baseUrl: requireString(speech.baseUrl, `${path}.baseUrl`),
+    model: requireString(speech.model, `${path}.model`),
+    apiKeyEnv: requireString(speech.apiKeyEnv, `${path}.apiKeyEnv`),
+    ...(speech.voice === undefined ? {} : { voice: requireString(speech.voice, `${path}.voice`) }),
+    ...(responseFormat === undefined ? {} : { responseFormat: responseFormat as OpenAiCompatibleSpeechConfig["responseFormat"] }),
+    ...(speech.timeoutMs === undefined ? {} : { timeoutMs: optionalPositiveInteger(speech.timeoutMs, `${path}.timeoutMs`) }),
+  };
+}
+
+function optionalLlmFallbacks(value: unknown): LlmFallbackConfig[] {
+  if (!Array.isArray(value)) {
+    throw new InvalidConfigError("llm.fallbacks must be an array.");
+  }
+
+  return value.map((fallback, index) => {
+    const path = `llm.fallbacks.${index}`;
+    const item = requireRecord(fallback, path);
+    return {
+      ...(item.provider === undefined ? {} : { provider: requireString(item.provider, `${path}.provider`) }),
+      ...(item.baseUrl === undefined ? {} : { baseUrl: requireString(item.baseUrl, `${path}.baseUrl`) }),
+      model: requireString(item.model, `${path}.model`),
+      ...(item.apiKeyEnv === undefined ? {} : { apiKeyEnv: requireString(item.apiKeyEnv, `${path}.apiKeyEnv`) }),
+      ...(item.timeoutMs === undefined ? {} : { timeoutMs: optionalPositiveInteger(item.timeoutMs, `${path}.timeoutMs`) }),
+      ...(item.maxRetries === undefined ? {} : { maxRetries: optionalNonNegativeInteger(item.maxRetries, `${path}.maxRetries`) }),
+      ...(item.retryDelayMs === undefined ? {} : { retryDelayMs: optionalNonNegativeInteger(item.retryDelayMs, `${path}.retryDelayMs`) }),
+    };
+  });
+}
+
+function optionalTranscriptionFallbacks(value: unknown): TranscriptionProviderConfig[] {
+  if (!Array.isArray(value)) {
+    throw new InvalidConfigError("transcription.fallbacks must be an array.");
+  }
+
+  return value.map((fallback, index) => parseTranscriptionProvider(fallback, `transcription.fallbacks.${index}`));
+}
+
+function optionalSpeechFallbacks(value: unknown): SpeechProviderConfig[] {
+  if (!Array.isArray(value)) {
+    throw new InvalidConfigError("speech.fallbacks must be an array.");
+  }
+
+  return value.map((fallback, index) => parseSpeechProvider(fallback, `speech.fallbacks.${index}`));
+}
+
+function optionalStringArray(value: unknown, path: string): string[] | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  if (!Array.isArray(value) || value.some((item) => typeof item !== "string" || item.trim().length === 0)) {
+    throw new InvalidConfigError(`${path} must be an array of non-empty strings.`);
+  }
+
+  return value;
+}
+
+function optionalWorkspace(value: unknown): AppConfig["workspace"] | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  const workspace = requireRecord(value, "workspace");
+  const defaultPath = workspace.defaultPath === undefined ? undefined : requireString(workspace.defaultPath, "workspace.defaultPath");
+  const externalPaths = workspace.externalPaths;
+
+  if (externalPaths !== undefined && (!Array.isArray(externalPaths) || externalPaths.some((path) => typeof path !== "string" || path.trim().length === 0))) {
+    throw new InvalidConfigError("workspace.externalPaths must be an array of non-empty strings.");
+  }
+
+  return {
+    ...(defaultPath === undefined ? {} : { defaultPath }),
+    ...(externalPaths === undefined ? {} : { externalPaths }),
+  };
+}
+
+function optionalInternalTools(value: unknown): AppConfig["internalTools"] | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  const internalTools = requireRecord(value, "internalTools");
+  const policies = internalTools.policies;
+  const exec = optionalInternalExec(internalTools.exec);
+
+  if (policies === undefined) {
+    return exec === undefined ? {} : { exec };
+  }
+
+  if (!isRecord(policies)) {
+    throw new InvalidConfigError("internalTools.policies must be an object.");
+  }
+
+  const validated: Record<string, InternalToolPolicy> = {};
+  for (const [toolName, policy] of Object.entries(policies)) {
+    if (policy !== "allow" && policy !== "ask" && policy !== "deny") {
+      throw new InvalidConfigError(`internalTools.policies.${toolName} must be allow, ask, or deny.`);
+    }
+    validated[toolName] = policy;
+  }
+
+  return { policies: validated, ...(exec === undefined ? {} : { exec }) };
+}
+
+function optionalInternalExec(value: unknown): NonNullable<AppConfig["internalTools"]>["exec"] | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  const exec = requireRecord(value, "internalTools.exec");
+  const timeoutMs = optionalPositiveInteger(exec.timeoutMs, "internalTools.exec.timeoutMs");
+
+  return timeoutMs === undefined ? {} : { timeoutMs };
+}
+
+function optionalMemory(value: unknown): AppConfig["memory"] | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  const memory = requireRecord(value, "memory");
+  const writePolicy = memory.writePolicy;
+
+  if (writePolicy !== undefined && writePolicy !== "allow" && writePolicy !== "ask" && writePolicy !== "deny") {
+    throw new InvalidConfigError("memory.writePolicy must be allow, ask, or deny.");
+  }
+
+  return writePolicy === undefined ? {} : { writePolicy };
+}
+
+function optionalMcp(value: unknown, legacyMcpServers: unknown): AppConfig["mcp"] | undefined {
+  if (value === undefined && legacyMcpServers === undefined) {
+    return undefined;
+  }
+
+  if (value === undefined) {
+    return { servers: mcpServersToServerList(legacyMcpServers) };
+  }
+
+  const mcp = requireRecord(value, "mcp");
+  const servers = mcp.servers;
+
+  if (!Array.isArray(servers)) {
+    throw new InvalidConfigError("mcp.servers must be an array.");
+  }
+
+  return { servers: servers.map((server, index) => validateMcpServer(server, index)) };
+}
+
+function mcpServersToServerList(value: unknown): NonNullable<AppConfig["mcp"]>["servers"] {
+  const mcpServers = requireRecord(value, "mcpServers");
+  return Object.entries(mcpServers).map(([name, server], index) => {
+    const remoteServer = requireRecord(server, `mcpServers.${name}`);
+    return validateMcpServer({ ...remoteServer, name, enabled: remoteServer.enabled ?? true, transport: remoteServer.transport ?? "http" }, index);
+  });
+}
+
+function validateMcpServer(value: unknown, index: number): NonNullable<AppConfig["mcp"]>["servers"][number] {
+  const fieldName = `mcp.servers[${index}]`;
+  const server = requireRecord(value, fieldName);
+
+  if (typeof server.enabled !== "boolean") {
+    throw new InvalidConfigError(`${fieldName}.enabled must be a boolean.`);
+  }
+
+  const args = server.args;
+  const env = server.env;
+  const transport = server.transport === undefined ? "stdio" : requireString(server.transport, `${fieldName}.transport`);
+  const headers = server.headers;
+  const headersEnv = server.headersEnv;
+  const tools = server.tools;
+
+  if (transport !== "stdio" && transport !== "http") {
+    throw new InvalidConfigError(`${fieldName}.transport must be stdio or http.`);
+  }
+
+  if (args !== undefined && (!Array.isArray(args) || args.some((arg) => typeof arg !== "string"))) {
+    throw new InvalidConfigError(`${fieldName}.args must be an array of strings.`);
+  }
+
+  if (env !== undefined && (!isRecord(env) || Object.values(env).some((envValue) => typeof envValue !== "string"))) {
+    throw new InvalidConfigError(`${fieldName}.env must be an object of string values.`);
+  }
+
+  if (headers !== undefined && (!isRecord(headers) || Object.values(headers).some((headerValue) => typeof headerValue !== "string"))) {
+    throw new InvalidConfigError(`${fieldName}.headers must be an object of string values.`);
+  }
+
+  if (headersEnv !== undefined && (!isRecord(headersEnv) || Object.values(headersEnv).some((envName) => typeof envName !== "string" || envName.trim().length === 0))) {
+    throw new InvalidConfigError(`${fieldName}.headersEnv must be an object of non-empty env var names.`);
+  }
+
+  if (transport === "stdio" && typeof server.command !== "string") {
+    throw new InvalidConfigError(`${fieldName}.command must be a non-empty string for stdio MCP servers.`);
+  }
+
+  if (transport === "http") {
+    const url = requireString(server.url, `${fieldName}.url`);
+    if (!isHttpUrl(url)) {
+      throw new InvalidConfigError(`${fieldName}.url must be an HTTP(S) URL.`);
+    }
+    for (const headerName of Object.keys((headers as Record<string, string> | undefined) ?? {})) {
+      if (isSensitiveHeaderName(headerName)) {
+        throw new InvalidConfigError(`${fieldName}.headers.${headerName} must be configured through headersEnv, not raw config.`);
+      }
+    }
+  }
+
+  if (tools !== undefined && !Array.isArray(tools)) {
+    throw new InvalidConfigError(`${fieldName}.tools must be an array.`);
+  }
+
+  return {
+    name: requireString(server.name, `${fieldName}.name`),
+    enabled: server.enabled,
+    transport,
+    ...(transport === "stdio" ? { command: requireString(server.command, `${fieldName}.command`) } : { url: requireString(server.url, `${fieldName}.url`) }),
+    ...(args === undefined ? {} : { args }),
+    ...(env === undefined ? {} : { env: env as Record<string, string> }),
+    ...(headers === undefined ? {} : { headers: headers as Record<string, string> }),
+    ...(headersEnv === undefined ? {} : { headersEnv: headersEnv as Record<string, string> }),
+    ...(tools === undefined ? {} : { tools: tools.map((tool, toolIndex) => validateMcpTool(tool, `${fieldName}.tools[${toolIndex}]`)) }),
+  };
+}
+
+function isHttpUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return url.protocol === "http:" || url.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+function isSensitiveHeaderName(value: string): boolean {
+  const normalized = value.toLowerCase();
+  return normalized === "authorization" || normalized === "cookie" || normalized.includes("api-key") || normalized.includes("token") || normalized.includes("secret");
+}
+
+function validateMcpTool(value: unknown, fieldName: string): NonNullable<NonNullable<AppConfig["mcp"]>["servers"][number]["tools"]>[number] {
+  const tool = requireRecord(value, fieldName);
+  const category = requireString(tool.category, `${fieldName}.category`);
+
+  if (!isMcpToolCategory(category)) {
+    throw new InvalidConfigError(`${fieldName}.category must be read, local_write, external_write, public_action, destructive, money, or unknown.`);
+  }
+
+  return { name: requireString(tool.name, `${fieldName}.name`), category };
+}
+
+function isMcpToolCategory(value: string): value is McpToolCategory {
+  return ["read", "local_write", "external_write", "public_action", "destructive", "money", "unknown"].includes(value);
+}
+
+function optionalChannels(value: unknown): AppConfig["channels"] | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  const channels = requireRecord(value, "channels");
+  const telegram = optionalTelegramChannel(channels.telegram);
+
+  return telegram === undefined ? {} : { telegram };
+}
+
+function optionalTelegramChannel(value: unknown): NonNullable<NonNullable<AppConfig["channels"]>["telegram"]> | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  const telegram = requireRecord(value, "channels.telegram");
+  const enabled = telegram.enabled;
+  const voiceReplyPolicy = telegram.voiceReplyPolicy;
+
+  if (typeof enabled !== "boolean") {
+    throw new InvalidConfigError("channels.telegram.enabled must be a boolean.");
+  }
+
+  if (voiceReplyPolicy !== undefined && voiceReplyPolicy !== "deny" && voiceReplyPolicy !== "voice-input-only") {
+    throw new InvalidConfigError("channels.telegram.voiceReplyPolicy must be deny or voice-input-only.");
+  }
+
+  return {
+    enabled,
+    botTokenEnv: requireString(telegram.botTokenEnv, "channels.telegram.botTokenEnv"),
+    ownerUserId: requireOptionalString(telegram.ownerUserId, "channels.telegram.ownerUserId"),
+    ...(voiceReplyPolicy === undefined ? {} : { voiceReplyPolicy }),
+    ...(telegram.voiceReplyMaxChars === undefined ? {} : { voiceReplyMaxChars: optionalPositiveInteger(telegram.voiceReplyMaxChars, "channels.telegram.voiceReplyMaxChars") }),
+    ...(telegram.voiceReplyCooldownMs === undefined ? {} : { voiceReplyCooldownMs: optionalNonNegativeInteger(telegram.voiceReplyCooldownMs, "channels.telegram.voiceReplyCooldownMs") }),
+    ...(telegram.attachments === undefined ? {} : { attachments: optionalTelegramAttachments(telegram.attachments) }),
+  };
+}
+
+function optionalTelegramAttachments(value: unknown): NonNullable<NonNullable<NonNullable<AppConfig["channels"]>["telegram"]>["attachments"]> {
+  const attachments = requireRecord(value, "channels.telegram.attachments");
+  const downloadPolicy = attachments.downloadPolicy;
+  const maxBytes = optionalPositiveInteger(attachments.maxBytes, "channels.telegram.attachments.maxBytes");
+  const previewMaxBytes = optionalPositiveInteger(attachments.previewMaxBytes, "channels.telegram.attachments.previewMaxBytes");
+  const parseMaxBytes = optionalPositiveInteger(attachments.parseMaxBytes, "channels.telegram.attachments.parseMaxBytes");
+  const visionPolicy = attachments.visionPolicy;
+  const visionMaxBytes = optionalPositiveInteger(attachments.visionMaxBytes, "channels.telegram.attachments.visionMaxBytes");
+  const transcriptionPolicy = attachments.transcriptionPolicy;
+  const transcriptionMaxBytes = optionalPositiveInteger(attachments.transcriptionMaxBytes, "channels.telegram.attachments.transcriptionMaxBytes");
+  const deleteAfterProcessingKinds = optionalTelegramAttachmentKinds(attachments.deleteAfterProcessingKinds, "channels.telegram.attachments.deleteAfterProcessingKinds");
+  const allowedMimeTypes = attachments.allowedMimeTypes;
+
+  if (downloadPolicy !== undefined && downloadPolicy !== "allow" && downloadPolicy !== "deny") {
+    throw new InvalidConfigError("channels.telegram.attachments.downloadPolicy must be allow or deny.");
+  }
+
+  if (visionPolicy !== undefined && visionPolicy !== "allow" && visionPolicy !== "deny") {
+    throw new InvalidConfigError("channels.telegram.attachments.visionPolicy must be allow or deny.");
+  }
+
+  if (transcriptionPolicy !== undefined && transcriptionPolicy !== "allow" && transcriptionPolicy !== "deny") {
+    throw new InvalidConfigError("channels.telegram.attachments.transcriptionPolicy must be allow or deny.");
+  }
+
+  if (allowedMimeTypes !== undefined && (!Array.isArray(allowedMimeTypes) || allowedMimeTypes.some((mimeType) => typeof mimeType !== "string" || mimeType.trim().length === 0))) {
+    throw new InvalidConfigError("channels.telegram.attachments.allowedMimeTypes must be an array of non-empty strings.");
+  }
+
+  return {
+    ...(downloadPolicy === undefined ? {} : { downloadPolicy }),
+    ...(maxBytes === undefined ? {} : { maxBytes }),
+    ...(previewMaxBytes === undefined ? {} : { previewMaxBytes }),
+    ...(parseMaxBytes === undefined ? {} : { parseMaxBytes }),
+    ...(visionPolicy === undefined ? {} : { visionPolicy }),
+    ...(visionMaxBytes === undefined ? {} : { visionMaxBytes }),
+    ...(transcriptionPolicy === undefined ? {} : { transcriptionPolicy }),
+    ...(transcriptionMaxBytes === undefined ? {} : { transcriptionMaxBytes }),
+    ...(deleteAfterProcessingKinds === undefined ? {} : { deleteAfterProcessingKinds }),
+    ...(allowedMimeTypes === undefined ? {} : { allowedMimeTypes }),
+  };
+}
+
+function optionalTelegramAttachmentKinds(value: unknown, fieldName: string): Array<"photo" | "document" | "voice" | "audio" | "video" | "sticker"> | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  const validKinds = ["photo", "document", "voice", "audio", "video", "sticker"];
+  if (!Array.isArray(value) || value.some((kind) => typeof kind !== "string" || !validKinds.includes(kind))) {
+    throw new InvalidConfigError(`${fieldName} must be an array of Telegram attachment kinds.`);
+  }
+
+  return value as Array<"photo" | "document" | "voice" | "audio" | "video" | "sticker">;
+}
+
+function optionalPositiveInteger(value: unknown, fieldName: string): number | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  if (typeof value !== "number" || !Number.isInteger(value) || value <= 0) {
+    throw new InvalidConfigError(`${fieldName} must be a positive integer.`);
+  }
+
+  return value;
+}
+
+function optionalNonNegativeInteger(value: unknown, fieldName: string): number | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 0) {
+    throw new InvalidConfigError(`${fieldName} must be a non-negative integer.`);
+  }
+
+  return value;
+}
+
+function requireRecord(value: unknown, fieldName: string): Record<string, unknown> {
+  if (!isRecord(value)) {
+    throw new InvalidConfigError(`${fieldName} must be an object.`);
+  }
+
+  return value;
+}
+
+function requireString(value: unknown, fieldName: string): string {
+  if (typeof value !== "string" || value.trim().length === 0) {
+    throw new InvalidConfigError(`${fieldName} must be a non-empty string.`);
+  }
+
+  return value;
+}
+
+function requireOptionalString(value: unknown, fieldName: string): string {
+  if (typeof value !== "string") {
+    throw new InvalidConfigError(`${fieldName} must be a string.`);
+  }
+
+  return value;
+}
+
+function requireBoolean(value: unknown, fieldName: string): boolean {
+  if (typeof value !== "boolean") {
+    throw new InvalidConfigError(`${fieldName} must be a boolean.`);
+  }
+
+  return value;
+}
+
+function requireNumber(value: unknown, fieldName: string): number {
+  if (typeof value !== "number") {
+    throw new InvalidConfigError(`${fieldName} must be a number.`);
+  }
+
+  return value;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}

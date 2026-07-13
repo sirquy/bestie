@@ -1,0 +1,13 @@
+name: Security report placeholder
+description: Do not file public security vulnerabilities here.
+title: "Security: use private reporting"
+labels: [security]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please do not report vulnerabilities in a public issue.
+
+        Use GitHub private vulnerability reporting if enabled for this repository, or contact the maintainers privately.
+
+        Do not include real API keys, Telegram tokens, private chat logs, local memory data, `.env` contents, or exploit details in a public issue.
