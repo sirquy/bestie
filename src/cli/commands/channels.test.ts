@@ -123,6 +123,43 @@ test("runChannelsCommand runs channel-focused doctor checks", async () => {
   }
 });
 
+test("runChannelsCommand prints channel doctor JSON", async () => {
+  const paths = await createTempPaths();
+  const lines: string[] = [];
+  const originalExitCode = process.exitCode;
+
+  try {
+    process.exitCode = undefined;
+    await mkdir(paths.appDir, { recursive: true });
+    await writeConfig(
+      {
+        version: 1,
+        agent: { name: "Miu", ownerName: "Boss", language: "vi", toneIntensity: 7 },
+        llm: { provider: "openai-compatible", baseUrl: "https://example.com/v1", model: "example-model", apiKeyEnv: "OPENAI_API_KEY" },
+        channels: {
+          telegram: { enabled: true, botTokenEnv: "BESTIE_TELEGRAM_BOT_TOKEN", ownerUserId: "12345" },
+          zalo: { enabled: true, botTokenEnv: "BESTIE_ZALO_BOT_TOKEN", ownerUserId: "" },
+        },
+      },
+      paths,
+    );
+    await writeEnvFile({ OPENAI_API_KEY: "sk-test", BESTIE_TELEGRAM_BOT_TOKEN: "telegram-token", BESTIE_ZALO_BOT_TOKEN: "zalo-token" }, paths);
+
+    await runChannelsCommand({ argv: ["node", "bestie", "channels", "doctor", "--channel", "zalo", "--json"], paths, writeLine: (message) => lines.push(message) });
+
+    const parsed = JSON.parse(lines.join("\n")) as { channels: Array<{ id: string; checks: Array<{ name: string; status: string }>; issueCount: number }>; issueCount: number };
+    assert.equal(parsed.issueCount, 1);
+    assert.deepEqual(parsed.channels.map((channel) => channel.id), ["zalo"]);
+    assert.equal(parsed.channels[0]?.issueCount, 1);
+    assert.equal(parsed.channels[0]?.checks[0]?.name, "Zalo channel");
+    assert.equal(parsed.channels[0]?.checks[0]?.status, "fail");
+    assert.equal(process.exitCode, 1);
+  } finally {
+    process.exitCode = originalExitCode;
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
 async function createTempPaths(): Promise<RuntimePaths> {
   const rootDir = await mkdtemp(resolve(tmpdir(), "bestie-channels-command-test-"));
   const appDir = resolve(rootDir, ".bestie");

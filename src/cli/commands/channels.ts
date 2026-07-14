@@ -15,6 +15,17 @@ interface ChannelsCommandOptions {
   isProcessRunning?: (pid: number) => boolean;
 }
 
+interface ChannelsDoctorChannelReport {
+  id: DaemonChannel;
+  checks: DoctorCheck[];
+  issueCount: number;
+}
+
+interface ChannelsDoctorReport {
+  channels: ChannelsDoctorChannelReport[];
+  issueCount: number;
+}
+
 const channelHandlers: Record<string, ChannelHandler> = {
   telegram: runTelegramCommand,
   zalo: runZaloCommand,
@@ -26,7 +37,7 @@ Usage:
   bestie channels <channel> [options]
   bestie channels list
   bestie channels status
-  bestie channels doctor [--channel telegram|zalo|all] [--connect]
+  bestie channels doctor [--channel telegram|zalo|all] [--connect] [--json]
 
 Channels:
   telegram  Start the local Telegram polling bot
@@ -92,8 +103,15 @@ async function runChannelsDoctor(options: Required<Pick<ChannelsCommandOptions, 
   const selectedChannels = getSelectedChannels(options.argv);
   const connect = options.argv.includes("--connect");
   const report = await runDoctor(options.paths, { connectTelegram: connect && selectedChannels.includes("telegram"), connectZalo: connect && selectedChannels.includes("zalo") });
-  const checks = report.checks.filter((check) => isChannelDoctorCheck(check, selectedChannels));
-  const issueCount = checks.filter((check) => check.status === "fail").length;
+  const channelsReport = buildChannelsDoctorReport(report, selectedChannels);
+
+  if (options.argv.includes("--json")) {
+    options.writeLine(JSON.stringify(channelsReport, null, 2));
+    setExitCodeForIssues(channelsReport.issueCount);
+    return;
+  }
+
+  const checks = channelsReport.channels.flatMap((channel) => channel.checks);
 
   options.writeLine("Bestie Channels Doctor\n");
   for (const check of checks) {
@@ -108,7 +126,19 @@ async function runChannelsDoctor(options: Required<Pick<ChannelsCommandOptions, 
     options.writeLine("No channel diagnostics matched the selected channel(s).");
   }
 
-  options.writeLine(`\nSummary: ${issueCount} ${issueCount === 1 ? "issue" : "issues"} found.`);
+  options.writeLine(`\nSummary: ${channelsReport.issueCount} ${channelsReport.issueCount === 1 ? "issue" : "issues"} found.`);
+  setExitCodeForIssues(channelsReport.issueCount);
+}
+
+function buildChannelsDoctorReport(report: DoctorReport, selectedChannels: DaemonChannel[]): ChannelsDoctorReport {
+  const channels = selectedChannels.map((channel) => {
+    const checks = report.checks.filter((check) => isChannelDoctorCheck(check, [channel]));
+    return { id: channel, checks, issueCount: checks.filter((check) => check.status === "fail").length };
+  });
+  return { channels, issueCount: channels.reduce((total, channel) => total + channel.issueCount, 0) };
+}
+
+function setExitCodeForIssues(issueCount: number): void {
   if (issueCount > 0) {
     process.exitCode = 1;
   }
@@ -121,7 +151,7 @@ function getSelectedChannels(argv: string[]): DaemonChannel[] {
   if (value === "all") return ["telegram", "zalo"];
   if (value === "telegram" || value === "zalo") return [value];
 
-  throw new Error("Usage: bestie channels doctor [--channel telegram|zalo|all] [--connect]");
+  throw new Error("Usage: bestie channels doctor [--channel telegram|zalo|all] [--connect] [--json]");
 }
 
 function isChannelDoctorCheck(check: DoctorCheck, selectedChannels: DaemonChannel[]): boolean {
