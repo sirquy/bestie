@@ -1,12 +1,10 @@
 name: Publish npm
 
 on:
-  release:
-    types: [published]
   workflow_dispatch:
     inputs:
       tag:
-        description: "Published release tag to publish"
+        description: "Existing v* tag to publish as a manual fallback"
         required: true
         type: string
 
@@ -41,6 +39,17 @@ jobs:
 
       - name: Test
         run: npm test
+
+      - name: Smoke
+        run: npm run smoke
+
+      - name: Verify tag matches package version
+        run: |
+          version="v$(node -p "require('./package.json').version")"
+          if [ "${{ inputs.tag }}" != "$version" ]; then
+            echo "Tag ${{ inputs.tag }} does not match package version $version" >&2
+            exit 1
+          fi
 
       - name: Publish with provenance
         run: npm publish --provenance --access public

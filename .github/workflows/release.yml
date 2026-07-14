@@ -13,6 +13,7 @@ on:
 
 permissions:
   contents: write
+  id-token: write
 
 jobs:
   release:
@@ -29,6 +30,7 @@ jobs:
         with:
           node-version: 20.x
           cache: npm
+          registry-url: https://registry.npmjs.org
 
       - name: Install dependencies
         run: npm ci
@@ -39,8 +41,25 @@ jobs:
       - name: Test
         run: npm test
 
+      - name: Smoke
+        run: npm run smoke
+
+      - name: Verify tag matches package version
+        run: |
+          tag="${{ inputs.tag || github.ref_name }}"
+          version="v$(node -p "require('./package.json').version")"
+          if [ "$tag" != "$version" ]; then
+            echo "Tag $tag does not match package version $version" >&2
+            exit 1
+          fi
+
       - name: Pack package
         run: npm pack --pack-destination ./release-artifacts
+
+      - name: Publish npm package
+        run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2
