@@ -17,7 +17,7 @@ import { loadConfig, type AppConfig, writeConfig } from "../../runtime/config.js
 import { loadEnvFile, writeEnvFile } from "../../runtime/env.js";
 import { UserFacingError } from "../../runtime/errors.js";
 import { getRuntimePaths, type RuntimePaths } from "../../runtime/paths.js";
-import { badge, bold, color, dim, title, withColorMode } from "../ui.js";
+import { badge, bold, color, dim, keyValue, table, title, withColorMode } from "../ui.js";
 
 const DEFAULT_TELEGRAM_TOKEN_ENV = "BESTIE_TELEGRAM_BOT_TOKEN";
 const DEFAULT_ELEVENLABS_API_KEY_ENV = "ELEVENLABS_API_KEY";
@@ -119,22 +119,22 @@ export async function runTelegramCommand(optionsOrArgv: string[] | TelegramComma
   const writeLine = options.writeLine ?? console.log;
 
   if (argv[argStart] === "voice" && argv[argStart + 1] === "setup-local") {
-    await runTelegramVoiceLocalSetup({ paths, writeLine });
+    await runTelegramVoiceLocalSetup({ paths, writeLine, useColor: options.useColor ?? output.isTTY });
     return;
   }
 
   if (argv[argStart] === "voice" && argv[argStart + 1] === "setup-elevenlabs") {
-    await runTelegramVoiceElevenLabsSetup({ paths, questioner: options.questioner, writeLine });
+    await runTelegramVoiceElevenLabsSetup({ paths, questioner: options.questioner, writeLine, useColor: options.useColor ?? output.isTTY });
     return;
   }
 
   if (argv[argStart] === "voice" && argv[argStart + 1] === "models") {
-    await runTelegramVoiceModels({ paths, writeLine });
+    await runTelegramVoiceModels({ paths, writeLine, useColor: options.useColor ?? output.isTTY });
     return;
   }
 
   if (argv[argStart] === "voice" && argv[argStart + 1] === "download-model") {
-    await runTelegramVoiceDownloadModel({ argv, modelKeyIndex: argStart + 2, paths, writeLine, fetchImpl: options.modelDownloadFetchImpl ?? fetch });
+    await runTelegramVoiceDownloadModel({ argv, modelKeyIndex: argStart + 2, paths, writeLine, useColor: options.useColor ?? output.isTTY, fetchImpl: options.modelDownloadFetchImpl ?? fetch });
     return;
   }
 
@@ -205,33 +205,37 @@ function getTelegramArgStart(argv: string[]): number {
   return argv[2] === "channels" ? 4 : 3;
 }
 
-async function runTelegramVoiceModels(options: { paths: RuntimePaths; writeLine: (message: string) => void }): Promise<void> {
+async function runTelegramVoiceModels(options: { paths: RuntimePaths; writeLine: (message: string) => void; useColor: boolean }): Promise<void> {
   const config = await loadConfig(options.paths);
   const configuredModelPath = config.transcription?.provider === "local-whisper" ? resolveMaybeRelative(options.paths.rootDir, config.transcription.modelPath) : undefined;
   const modelsDir = resolve(options.paths.rootDir, LOCAL_WHISPER_MODEL_DIR);
   const models = await listLocalWhisperModels(modelsDir);
+  const render = withColorMode(options.useColor);
 
-  options.writeLine(`Local transcription models: ${modelsDir}`);
+  options.writeLine(render(() => title("Telegram Voice Models")));
+  options.writeLine(render(() => keyValue("Models dir", modelsDir)));
   if (models.length === 0) {
-    options.writeLine("No local whisper.cpp .bin models found.");
-    options.writeLine("Expected example: .bestie/models/ggml-small.bin");
+    options.writeLine(render(() => `${badge("INFO")} No local whisper.cpp .bin models found.`));
+    options.writeLine(render(() => keyValue("Expected", ".bestie/models/ggml-small.bin")));
     return;
   }
 
-  for (const model of models) {
-    const selected = configuredModelPath === model.path ? "*" : " ";
-    const quality = describeLocalWhisperModel(model.name, config.agent.language);
-    options.writeLine(`${selected} ${model.name} ${formatBytes(model.bytes)} - ${quality}`);
+  options.writeLine("");
+  for (const line of render(() => table(
+    ["Use", "Model", "Size", "Quality"],
+    models.map((model) => [configuredModelPath === model.path ? "*" : "", model.name, formatBytes(model.bytes), describeLocalWhisperModel(model.name, config.agent.language)]),
+  ))) {
+    options.writeLine(line);
   }
 
   if (configuredModelPath) {
-    options.writeLine(`Configured model: ${configuredModelPath}`);
+    options.writeLine(render(() => keyValue("Configured", configuredModelPath)));
   } else {
-    options.writeLine("Configured model: none; transcription.provider is not local-whisper.");
+    options.writeLine(render(() => keyValue("Configured", "none; transcription.provider is not local-whisper.")));
   }
 }
 
-async function runTelegramVoiceDownloadModel(options: { argv: string[]; modelKeyIndex: number; paths: RuntimePaths; writeLine: (message: string) => void; fetchImpl: typeof fetch }): Promise<void> {
+async function runTelegramVoiceDownloadModel(options: { argv: string[]; modelKeyIndex: number; paths: RuntimePaths; writeLine: (message: string) => void; useColor: boolean; fetchImpl: typeof fetch }): Promise<void> {
   const modelKey = options.argv[options.modelKeyIndex]?.trim();
   if (!modelKey || modelKey.startsWith("--")) {
     throw new UserFacingError(`Usage: bestie channels telegram voice download-model <${Object.keys(WHISPER_MODEL_CATALOG).join("|")}> [--confirm] [--use] [--force]`, "TelegramVoiceDownloadModelUsageError");
@@ -248,18 +252,20 @@ async function runTelegramVoiceDownloadModel(options: { argv: string[]; modelKey
   const modelPath = resolve(options.paths.rootDir, LOCAL_WHISPER_MODEL_DIR, model.fileName);
   const modelConfigPath = `${LOCAL_WHISPER_MODEL_DIR}/${model.fileName}`;
   const existingBytes = await getFileSize(modelPath);
+  const render = withColorMode(options.useColor);
 
-  options.writeLine(`Local voice model: ${modelKey}`);
-  options.writeLine(`- File: ${modelConfigPath}`);
-  options.writeLine(`- Estimated size: ${formatBytes(model.estimatedBytes)}`);
-  options.writeLine(`- Quality: ${model.hint}`);
-  options.writeLine(`- Source: ${model.url}`);
+  options.writeLine(render(() => title("Telegram Voice Model")));
+  options.writeLine(render(() => keyValue("Model", modelKey)));
+  options.writeLine(render(() => keyValue("File", modelConfigPath)));
+  options.writeLine(render(() => keyValue("Est. size", formatBytes(model.estimatedBytes))));
+  options.writeLine(render(() => keyValue("Quality", model.hint)));
+  options.writeLine(render(() => keyValue("Source", model.url)));
 
   if (!confirm) {
     if (existingBytes !== undefined) {
-      options.writeLine(`Existing file: ${formatBytes(existingBytes)}; add --force with --confirm to overwrite.`);
+      options.writeLine(render(() => `${badge("WARN", "yellow")} Existing file: ${formatBytes(existingBytes)}; add --force with --confirm to overwrite.`));
     }
-    options.writeLine("Dry run only. Add --confirm to download, and optionally --use to update .bestie/config.json.");
+    options.writeLine(render(() => `${badge("INFO")} Dry run only. Add --confirm to download, and optionally --use to update .bestie/config.json.`));
     return;
   }
 
@@ -290,13 +296,13 @@ async function runTelegramVoiceDownloadModel(options: { argv: string[]; modelKey
   }
 
   await rename(tempPath, modelPath);
-  options.writeLine(`Downloaded: ${modelConfigPath} (${formatBytes(downloadedBytes)})`);
+  options.writeLine(render(() => `${badge("DONE", "green")} Downloaded: ${modelConfigPath} (${formatBytes(downloadedBytes)})`));
 
   if (useAfterDownload) {
     const config = await loadConfig(options.paths);
     await writeConfig(enableTelegramVoiceLocalConfig(config, modelConfigPath), options.paths);
-    options.writeLine(`Configured local transcription model: ${modelConfigPath}`);
-    options.writeLine(`Configured transcription language: ${getLocalWhisperLanguage(config.agent.language)}`);
+    options.writeLine(render(() => keyValue("Configured", modelConfigPath)));
+    options.writeLine(render(() => keyValue("Language", getLocalWhisperLanguage(config.agent.language))));
   }
 }
 
@@ -339,7 +345,7 @@ function describeLocalWhisperModel(name: string, language: AppConfig["agent"]["l
   return "unknown model size";
 }
 
-async function runTelegramVoiceLocalSetup(options: { paths: RuntimePaths; writeLine: (message: string) => void }): Promise<void> {
+async function runTelegramVoiceLocalSetup(options: { paths: RuntimePaths; writeLine: (message: string) => void; useColor: boolean }): Promise<void> {
   const whisperCommandPath = resolve(options.paths.rootDir, LOCAL_WHISPER_COMMAND_PATH);
   const modelPath = resolve(options.paths.rootDir, LOCAL_WHISPER_MODEL_PATH);
   const wrapperPath = resolve(options.paths.rootDir, LOCAL_VOICE_WRAPPER_PATH);
@@ -356,18 +362,21 @@ async function runTelegramVoiceLocalSetup(options: { paths: RuntimePaths; writeL
   await chmod(wrapperPath, 0o755);
   await writeConfig(enableTelegramVoiceLocalConfig(config), options.paths);
   const transcriptionLanguage = getLocalWhisperLanguage(config.agent.language);
+  const render = withColorMode(options.useColor);
 
-  options.writeLine("Telegram local voice setup saved.");
-  options.writeLine(`- Wrapper: ${LOCAL_VOICE_WRAPPER_PATH}`);
-  options.writeLine(`- Whisper binary: ${LOCAL_WHISPER_COMMAND_PATH}`);
-  options.writeLine(`- Model: ${LOCAL_WHISPER_MODEL_PATH}`);
-  options.writeLine(`- Language: ${transcriptionLanguage}`);
-  options.writeLine("- Retention: voice/audio files are deleted after processing.");
-  options.writeLine("Next: run `bestie doctor`, then send a short Telegram voice message.");
+  options.writeLine(render(() => title("Telegram Local Voice")));
+  options.writeLine(render(() => `${badge("DONE", "green")} Telegram local voice setup saved.`));
+  options.writeLine(render(() => keyValue("Wrapper", LOCAL_VOICE_WRAPPER_PATH)));
+  options.writeLine(render(() => keyValue("Whisper", LOCAL_WHISPER_COMMAND_PATH)));
+  options.writeLine(render(() => keyValue("Model", LOCAL_WHISPER_MODEL_PATH)));
+  options.writeLine(render(() => keyValue("Language", transcriptionLanguage)));
+  options.writeLine(render(() => keyValue("Retention", "voice/audio files are deleted after processing.")));
+  options.writeLine(render(() => `${badge("NEXT")} run \`bestie doctor\`, then send a short Telegram voice message.`));
 }
 
-async function runTelegramVoiceElevenLabsSetup(options: { paths: RuntimePaths; questioner?: TelegramQuestioner; writeLine: (message: string) => void }): Promise<void> {
+async function runTelegramVoiceElevenLabsSetup(options: { paths: RuntimePaths; questioner?: TelegramQuestioner; writeLine: (message: string) => void; useColor: boolean }): Promise<void> {
   const questioner = options.questioner ?? createQuestioner();
+  const render = withColorMode(options.useColor);
 
   try {
     const config = await loadConfig(options.paths);
@@ -393,15 +402,16 @@ async function runTelegramVoiceElevenLabsSetup(options: { paths: RuntimePaths; q
     );
     await writeEnvFile({ ...(await loadEnvFile(options.paths)), [DEFAULT_ELEVENLABS_API_KEY_ENV]: apiKey.trim() }, options.paths);
 
-    options.writeLine("Telegram ElevenLabs voice reply setup saved.");
-    options.writeLine(`- Provider: elevenlabs`);
-    options.writeLine(`- API key env: ${DEFAULT_ELEVENLABS_API_KEY_ENV} in ${options.paths.envPath}`);
-    options.writeLine(`- Voice id: ${voiceId}`);
-    options.writeLine(`- TTS model: ${modelId}`);
-    options.writeLine(`- STT model: ${transcriptionModelId}`);
-    options.writeLine(`- Language source: agent.language (${config.agent.language})`);
-    options.writeLine(`- Output format: ${outputFormat}`);
-    options.writeLine("Next: run `bestie doctor --telegram-speech-test`, then send a short Telegram voice message.");
+    options.writeLine(render(() => title("Telegram ElevenLabs Voice")));
+    options.writeLine(render(() => `${badge("DONE", "green")} Telegram ElevenLabs voice reply setup saved.`));
+    options.writeLine(render(() => keyValue("Provider", "elevenlabs")));
+    options.writeLine(render(() => keyValue("API key env", `${DEFAULT_ELEVENLABS_API_KEY_ENV} in ${options.paths.envPath}`)));
+    options.writeLine(render(() => keyValue("Voice id", voiceId)));
+    options.writeLine(render(() => keyValue("TTS model", modelId)));
+    options.writeLine(render(() => keyValue("STT model", transcriptionModelId)));
+    options.writeLine(render(() => keyValue("Language", `agent.language (${config.agent.language})`)));
+    options.writeLine(render(() => keyValue("Output", outputFormat)));
+    options.writeLine(render(() => `${badge("NEXT")} run \`bestie doctor --telegram-speech-test\`, then send a short Telegram voice message.`));
   } finally {
     questioner.close();
   }

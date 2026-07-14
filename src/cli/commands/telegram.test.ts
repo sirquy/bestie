@@ -91,7 +91,7 @@ test("runTelegramCommand voice setup-local writes wrapper and local transcriptio
       paths,
     );
 
-    await runTelegramCommand({ argv: ["node", "bestie", "channels", "telegram", "voice", "setup-local"], paths, writeLine: (message) => output.push(message) });
+    await runTelegramCommand({ argv: ["node", "bestie", "channels", "telegram", "voice", "setup-local"], paths, writeLine: (message) => output.push(message), useColor: false });
 
     const config = JSON.parse(await readFile(paths.configPath, "utf8")) as {
       transcription?: { provider: string; command: string; args: string[]; modelPath: string; timeoutMs: number };
@@ -112,8 +112,10 @@ test("runTelegramCommand voice setup-local writes wrapper and local transcriptio
     assert.equal(config.channels?.telegram?.attachments?.transcriptionPolicy, "allow");
     assert.deepEqual(config.channels?.telegram?.attachments?.deleteAfterProcessingKinds, ["voice", "audio"]);
     assert.deepEqual(config.channels?.telegram?.attachments?.allowedMimeTypes, ["text/*", "audio/*"]);
+    assert.ok(output.some((line) => line.includes("Telegram Local Voice")));
     assert.ok(output.some((line) => line.includes("Telegram local voice setup saved")));
-    assert.ok(output.some((line) => line.includes("- Language: vi")));
+    assert.ok(output.some((line) => line.includes("Language") && line.includes("vi")));
+    assert.ok(output.every((line) => !/\x1b\[[0-9;]*m/.test(line)));
   } finally {
     process.env.PATH = oldPath;
     await rm(paths.rootDir, { recursive: true, force: true });
@@ -183,6 +185,7 @@ test("runTelegramCommand voice setup-elevenlabs writes speech config and API key
         },
       },
       writeLine: (message) => output.push(message),
+      useColor: false,
     });
 
     const config = JSON.parse(await readFile(paths.configPath, "utf8")) as {
@@ -217,8 +220,10 @@ test("runTelegramCommand voice setup-elevenlabs writes speech config and API key
     assert.deepEqual(config.channels?.telegram?.attachments?.allowedMimeTypes, ["audio/*"]);
     assert.match(envText, /OPENAI_API_KEY="sk-test"/);
     assert.match(envText, /ELEVENLABS_API_KEY="elevenlabs-secret-token"/);
+    assert.ok(output.some((line) => line.includes("Telegram ElevenLabs Voice")));
     assert.ok(output.some((line) => line.includes("Telegram ElevenLabs voice reply setup saved")));
     assert.ok(output.every((line) => !line.includes("elevenlabs-secret-token")));
+    assert.ok(output.every((line) => !/\x1b\[[0-9;]*m/.test(line)));
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
   }
@@ -309,12 +314,14 @@ test("runTelegramCommand voice models lists local models and marks configured mo
       paths,
     );
 
-    await runTelegramCommand({ argv: ["node", "bestie", "channels", "telegram", "voice", "models"], paths, writeLine: (message) => output.push(message) });
+    await runTelegramCommand({ argv: ["node", "bestie", "channels", "telegram", "voice", "models"], paths, writeLine: (message) => output.push(message), useColor: false });
 
     const text = output.join("\n");
-    assert.match(text, /\* ggml-small\.bin 2\.0 KiB - recommended baseline for Vietnamese/);
-    assert.match(text, /ggml-tiny\.bin 1\.0 KiB - fast, low quality for Vietnamese/);
-    assert.match(text, /Configured model:/);
+    assert.match(text, /Telegram Voice Models/);
+    assert.match(text, /\*\s+ggml-small\.bin\s+2\.0 KiB\s+recommended baseline for Vietnamese/);
+    assert.match(text, /ggml-tiny\.bin\s+1\.0 KiB\s+fast, low quality for Vietnamese/);
+    assert.match(text, /Configured/);
+    assert.ok(output.every((line) => !/\x1b\[[0-9;]*m/.test(line)));
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
   }
@@ -367,10 +374,13 @@ test("runTelegramCommand voice download-model previews without downloading by de
         return new Response("model bytes");
       },
       writeLine: (message) => output.push(message),
+      useColor: false,
     });
 
     assert.equal(fetchCalled, false);
+    assert.match(output.join("\n"), /Telegram Voice Model/);
     assert.match(output.join("\n"), /Dry run only/);
+    assert.ok(output.every((line) => !/\x1b\[[0-9;]*m/.test(line)));
     await assert.rejects(() => access(resolve(paths.rootDir, ".bestie/models/ggml-small.bin")), /ENOENT/);
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
