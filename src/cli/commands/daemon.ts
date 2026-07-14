@@ -8,9 +8,9 @@ import { getRuntimePaths, type RuntimePaths } from "../../runtime/paths.js";
 
 const DAEMON_STOP_TIMEOUT_MS = 30_000;
 const DAEMON_STOP_POLL_INTERVAL_MS = 1000;
-const DAEMON_CHANNELS = ["telegram", "zalo"] as const;
+export const DAEMON_CHANNELS = ["telegram", "zalo"] as const;
 
-type DaemonChannel = (typeof DAEMON_CHANNELS)[number];
+export type DaemonChannel = (typeof DAEMON_CHANNELS)[number];
 type DaemonChannelSelection = DaemonChannel | "all";
 
 interface DaemonCommandOptions {
@@ -32,6 +32,13 @@ interface DaemonState {
   args: string[];
   startedAt: string;
   logPath: string;
+}
+
+export interface DaemonChannelStatus {
+  channel: DaemonChannel;
+  state: "running" | "stale" | "stopped";
+  pid?: number;
+  logPath?: string;
 }
 
 export async function runDaemonCommand(optionsOrArgv: string[] | DaemonCommandOptions = process.argv): Promise<void> {
@@ -151,15 +158,23 @@ async function restartDaemon(options: Required<Pick<DaemonCommandOptions, "paths
 }
 
 async function showDaemonStatus(options: Required<Pick<DaemonCommandOptions, "paths" | "writeLine">> & DaemonCommandOptions, channel: DaemonChannel): Promise<void> {
-  const state = await readDaemonState(options.paths, channel);
-  if (!state) {
+  const status = await getDaemonChannelStatus(options.paths, channel, options.isProcessRunning ?? defaultIsProcessRunning);
+  if (status.state === "stopped") {
     options.writeLine(`${formatDaemonChannel(channel)} daemon is stopped.`);
     return;
   }
 
-  const isRunning = options.isProcessRunning ?? defaultIsProcessRunning;
-  options.writeLine(isRunning(state.pid) ? `${formatDaemonChannel(channel)} daemon is running with pid ${state.pid}.` : `${formatDaemonChannel(channel)} daemon pid ${state.pid} is stale.`);
-  options.writeLine(`Logs: ${state.logPath}`);
+  options.writeLine(status.state === "running" ? `${formatDaemonChannel(channel)} daemon is running with pid ${status.pid}.` : `${formatDaemonChannel(channel)} daemon pid ${status.pid} is stale.`);
+  options.writeLine(`Logs: ${status.logPath}`);
+}
+
+export async function getDaemonChannelStatus(paths: RuntimePaths, channel: DaemonChannel, isProcessRunning: (pid: number) => boolean = defaultIsProcessRunning): Promise<DaemonChannelStatus> {
+  const state = await readDaemonState(paths, channel);
+  if (!state) {
+    return { channel, state: "stopped" };
+  }
+
+  return { channel, state: isProcessRunning(state.pid) ? "running" : "stale", pid: state.pid, logPath: state.logPath };
 }
 
 async function readDaemonState(paths: RuntimePaths, channel: DaemonChannel): Promise<DaemonState | undefined> {

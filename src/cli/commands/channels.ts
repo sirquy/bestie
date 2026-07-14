@@ -1,7 +1,19 @@
+import { CHANNELS, type ChannelDescriptor } from "../../channels/registry.js";
+import { loadConfig, type AppConfig } from "../../runtime/config.js";
+import { runDoctor, type DoctorCheck, type DoctorReport } from "../../runtime/doctor.js";
+import { getRuntimePaths, type RuntimePaths } from "../../runtime/paths.js";
+import { getDaemonChannelStatus, type DaemonChannel } from "./daemon.js";
 import { runTelegramCommand } from "./telegram.js";
 import { runZaloCommand } from "./zalo.js";
 
 type ChannelHandler = (argv?: string[]) => Promise<void> | void;
+
+interface ChannelsCommandOptions {
+  argv?: string[];
+  paths?: RuntimePaths;
+  writeLine?: (message: string) => void;
+  isProcessRunning?: (pid: number) => boolean;
+}
 
 const channelHandlers: Record<string, ChannelHandler> = {
   telegram: runTelegramCommand,
@@ -12,10 +24,18 @@ const helpText = `Bestie channels
 
 Usage:
   bestie channels <channel> [options]
+  bestie channels list
+  bestie channels status
+  bestie channels doctor [--channel telegram|zalo|all] [--connect]
 
 Channels:
   telegram  Start the local Telegram polling bot
   zalo      Start the local Zalo polling bot
+
+Channel commands:
+  list      Show configured channels and daemon state
+  status    Alias for list
+  doctor    Run channel-focused diagnostics
 
 Telegram options:
   setup   Configure Telegram owner id and local bot token
@@ -33,11 +53,25 @@ Zalo options:
   --capture-shape  Include redacted getUpdates result structure in the transcript
 `;
 
-export async function runChannelsCommand(argv: string[] = process.argv): Promise<void> {
+export async function runChannelsCommand(optionsOrArgv: string[] | ChannelsCommandOptions = process.argv): Promise<void> {
+  const options = Array.isArray(optionsOrArgv) ? { argv: optionsOrArgv } : optionsOrArgv;
+  const argv = options.argv ?? process.argv;
+  const paths = options.paths ?? getRuntimePaths();
+  const writeLine = options.writeLine ?? console.log;
   const channelName = argv[3];
 
   if (!channelName || channelName === "--help" || channelName === "-h") {
-    console.log(helpText);
+    writeLine(helpText);
+    return;
+  }
+
+  if (channelName === "list" || channelName === "status") {
+    await showChannelsStatus({ paths, writeLine, isProcessRunning: options.isProcessRunning });
+    return;
+  }
+
+  if (channelName === "doctor") {
+    await runChannelsDoctor({ argv, paths, writeLine });
     return;
   }
 
@@ -52,4 +86,71 @@ export async function runChannelsCommand(argv: string[] = process.argv): Promise
   }
 
   await handler(argv);
+}
+
+async function runChannelsDoctor(options: Required<Pick<ChannelsCommandOptions, "argv" | "paths" | "writeLine">>): Promise<void> {
+  const selectedChannels = getSelectedChannels(options.argv);
+  const connect = options.argv.includes("--connect");
+  const report = await runDoctor(options.paths, { connectTelegram: connect && selectedChannels.includes("telegram"), connectZalo: connect && selectedChannels.includes("zalo") });
+  const checks = report.checks.filter((check) => isChannelDoctorCheck(check, selectedChannels));
+  const issueCount = checks.filter((check) => check.status === "fail").length;
+
+  options.writeLine("Bestie Channels Doctor\n");
+  for (const check of checks) {
+    const marker = check.status === "pass" ? "OK" : check.status === "warn" ? "WARN" : "FAIL";
+    options.writeLine(`${marker} ${check.name}: ${check.message}`);
+    if (check.fix) {
+      options.writeLine(`  Fix: ${check.fix}`);
+    }
+  }
+
+  if (checks.length === 0) {
+    options.writeLine("No channel diagnostics matched the selected channel(s).");
+  }
+
+  options.writeLine(`\nSummary: ${issueCount} ${issueCount === 1 ? "issue" : "issues"} found.`);
+  if (issueCount > 0) {
+    process.exitCode = 1;
+  }
+}
+
+function getSelectedChannels(argv: string[]): DaemonChannel[] {
+  const channelIndex = argv.indexOf("--channel");
+  const value = channelIndex === -1 ? "all" : argv[channelIndex + 1];
+
+  if (value === "all") return ["telegram", "zalo"];
+  if (value === "telegram" || value === "zalo") return [value];
+
+  throw new Error("Usage: bestie channels doctor [--channel telegram|zalo|all] [--connect]");
+}
+
+function isChannelDoctorCheck(check: DoctorCheck, selectedChannels: DaemonChannel[]): boolean {
+  const name = check.name.toLowerCase();
+  const message = check.message.toLowerCase();
+  return selectedChannels.some((channel) => name.includes(channel) || message.includes(channel));
+}
+
+async function showChannelsStatus(options: Required<Pick<ChannelsCommandOptions, "paths" | "writeLine">> & Pick<ChannelsCommandOptions, "isProcessRunning">): Promise<void> {
+  const config = await loadConfig(options.paths);
+  options.writeLine("Channel   Enabled  Owner  Token env                  Daemon");
+  options.writeLine("--------  -------  -----  -------------------------  ----------------");
+
+  for (const channel of CHANNELS) {
+    const channelConfig = getChannelConfig(config, channel);
+    const daemon = await getDaemonChannelStatus(options.paths, channel.id as DaemonChannel, options.isProcessRunning);
+    options.writeLine(formatChannelStatusRow(channel, channelConfig, daemon));
+  }
+}
+
+function getChannelConfig(config: AppConfig, channel: ChannelDescriptor): { enabled?: boolean; ownerUserId?: string; botTokenEnv?: string } | undefined {
+  return config.channels?.[channel.configKey as keyof NonNullable<AppConfig["channels"]>];
+}
+
+function formatChannelStatusRow(channel: ChannelDescriptor, channelConfig: ReturnType<typeof getChannelConfig>, daemon: Awaited<ReturnType<typeof getDaemonChannelStatus>>): string {
+  const enabled = channelConfig?.enabled ? "yes" : "no";
+  const owner = channelConfig?.ownerUserId?.trim() ? "set" : "missing";
+  const tokenEnv = channelConfig?.botTokenEnv ?? "missing";
+  const daemonText = daemon.state === "running" ? `running:${daemon.pid}` : daemon.state === "stale" ? `stale:${daemon.pid}` : "stopped";
+
+  return [channel.displayName.padEnd(8), enabled.padEnd(7), owner.padEnd(5), tokenEnv.padEnd(25), daemonText].join("  ");
 }

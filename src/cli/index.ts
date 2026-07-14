@@ -22,6 +22,7 @@ const commandHandlers: Record<string, CommandHandler> = {
   doctor: runDoctorCommand,
   memory: runMemoryCommand,
   mcp: runMcpCommand,
+  channel: runChannelsCommand,
   channels: runChannelsCommand,
   tools: runToolsCommand,
 };
