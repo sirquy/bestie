@@ -47,7 +47,7 @@ If the target directory already exists, the installer should:
 
 - refuse to overwrite unknown directories
 - detect an existing Bestie checkout by package name and CLI entrypoint
-- preserve `.bestie/`, `.env`, config, character, memory database, logs, and transcripts
+- preserve `~/.bestie/`, `.env`, config, character, memory database, logs, skills, daemon state, and transcripts
 - explain how to update manually if automatic update is not safe
 
 ## Safety And Privacy
@@ -84,7 +84,7 @@ npm run smoke:doctor
 npm run smoke
 ```
 
-The installer smoke must verify a fresh temporary install, onboarding handoff, reinstall preservation of `.bestie/`, and refusal to overwrite an unknown existing directory.
+The installer smoke must verify a fresh temporary install, onboarding handoff, reinstall preservation of `~/.bestie/`, and refusal to overwrite an unknown existing directory.
 
 Installer acceptance once `install.sh` exists:
 

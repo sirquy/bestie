@@ -1,6 +1,6 @@
 # Architecture
 
-This document describes the current long-term architecture and the local-development runtime that now exists. Phase Now terminal chat/onboarding is complete; the codebase is in late Phase Next hardening with Telegram, local SQLite memory, Doctor, permission-gated read tools, and classified read-only MCP calls implemented for local development.
+This document describes the current long-term architecture and the local-development runtime that now exists. Phase Now terminal chat/onboarding is complete; the codebase is in local MVP hardening with Telegram, Zalo, daemon management, local SQLite memory, Doctor, permission-gated tools, installed skills, npm update checks, and classified read-only MCP calls implemented for local development.
 
 ## Overview
 
@@ -32,12 +32,15 @@ Owns user-facing commands:
 - `logs`
 - `doctor`
 - `memory`
-- `telegram`
+- `channels telegram|zalo`
+- `daemon`
 - `tools`
 - `mcp`
-- future install/update/backup commands
+- `skills`
+- `update`
+- future backup/restore commands
 
-Current local development includes `onboard`, `chat`, `status`, `logs`, `doctor`, `memory`, `telegram`, `tools`, and `mcp` commands. Installer/update/backup remain later milestones.
+Current local development includes `onboard`, `chat`, `status`, `logs`, `doctor`, `memory`, `channels`, `daemon`, `skills`, `tools`, `mcp`, and `update` commands. Backup/restore remain later milestones.
 
 CLI should call runtime services, not duplicate business logic.
 
@@ -61,6 +64,7 @@ Loads:
 - `system-prompt.md`
 - style examples
 - safety boundaries
+- installed skill instructions from `~/.bestie/skills/<skill-name>/SKILL.md`
 
 Character config should be data-driven so onboarding and UI can edit it.
 
@@ -91,9 +95,11 @@ Later:
 
 ### Channel Adapters
 
-First real channel:
+Current real channels:
 
 - Telegram long polling with owner allowlist, slash commands, typing, edited tool-progress messages, transcript smoke, shared attachment pipeline, and shared runtime behavior
+- Zalo polling with owner allowlist, text replies, memory approval prompts, and friendly tool progress labels
+- daemon start/stop/restart/status for `telegram`, `zalo`, or `all`
 
 Later:
 
@@ -148,29 +154,19 @@ Broader MCP, plugins, and multi-agent features must wait until Doctor, logging, 
 
 ## Data Paths
 
-Use the repo-local `.bestie/` paths from `docs/NOW_BUILD_SPEC.md` during Phase Now unless the ticket explicitly moves the product to installed user-level paths.
-
-Recommended install path:
+Default local runtime path:
 
 ```text
 ~/.bestie/
 ```
 
-Recommended config path:
+The current code resolves runtime paths through `getRuntimePaths(rootDir = homedir())`, so normal installed usage stores config, secrets, logs, memory, skills, daemon state, and workspace data under `~/.bestie/`.
+
+Future XDG-style paths remain a possible packaging target, not the current implementation:
 
 ```text
 ~/.config/bestie/
-```
-
-Recommended data path:
-
-```text
 ~/.local/share/bestie/
-```
-
-Recommended logs path:
-
-```text
 ~/.local/state/bestie/logs/
 ```
 

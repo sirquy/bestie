@@ -1,36 +1,42 @@
 # Config Spec
 
-This file describes the broader installed-product config target. Phase Now may use repo-local `.bestie/` paths from `docs/NOW_BUILD_SPEC.md` while the CLI, onboarding, and file layout are still being proven.
+This file describes the current local runtime config plus a few future packaging targets. The shipped CLI currently uses `~/.bestie/` by default through `getRuntimePaths(rootDir = homedir())`.
 
 ## Paths
 
 Config:
 
 ```text
-~/.config/bestie/config.json
+~/.bestie/config.json
 ```
 
 Secrets:
 
 ```text
-~/.config/bestie/.env
+~/.bestie/.env
 ```
 
 Data:
 
 ```text
-~/.local/share/bestie/
+~/.bestie/data/
 ```
 
 Logs:
 
 ```text
-~/.local/state/bestie/logs/
+~/.bestie/logs/
+```
+
+Installed skills:
+
+```text
+~/.bestie/skills/<skill-name>/SKILL.md
 ```
 
 ## config.json
 
-Phase Now config started with non-secret `agent` and `llm` fields. The current local build also supports optional `memory.writePolicy`, `internalTools.policies`, plus later-stage `channels` and `mcp` fields as features are enabled.
+Phase Now config started with non-secret `agent` and `llm` fields. The current local build also supports optional `transcription`, `speech`, `memory.writePolicy`, `workspace`, `internalTools`, `channels`, and `mcp` fields as features are enabled.
 
 ```json
 {
@@ -61,12 +67,12 @@ Phase Now config started with non-secret `agent` and `llm` fields. The current l
   "memory": {
     "provider": "sqlite",
     "writePolicy": "ask",
-    "sqlitePath": "~/.local/share/bestie/memory.sqlite",
+    "sqlitePath": "~/.bestie/data/memory.sqlite",
     "zepEnabled": false,
     "zepApiKeyEnv": "ZEP_API_KEY"
   },
   "workspace": {
-    "defaultPath": ".bestie/workspace",
+    "defaultPath": "~/.bestie/workspace",
     "externalPaths": []
   },
   "internalTools": {
@@ -99,6 +105,12 @@ Phase Now config started with non-secret `agent` and `llm` fields. The current l
         "deleteAfterProcessingKinds": [],
         "allowedMimeTypes": ["text/*", "application/json"]
       }
+    },
+    "zalo": {
+      "enabled": false,
+      "botTokenEnv": "BESTIE_ZALO_BOT_TOKEN",
+      "ownerUserId": "",
+      "pollingTimeoutSeconds": 25
     }
   },
   "mcp": {
@@ -152,7 +164,7 @@ Telegram attachments are kept by default. Set `channels.telegram.attachments.del
     "provider": "local-whisper",
     "command": "whisper-cli",
     "args": ["-m", "{modelPath}", "-f", "{audioPath}", "-nt"],
-    "modelPath": ".bestie/models/ggml-small.bin",
+    "modelPath": "~/.bestie/models/ggml-small.bin",
     "timeoutMs": 120000
   }
 }
@@ -198,12 +210,13 @@ For compatibility with common MCP config snippets, a top-level `mcpServers` obje
 
 ## .env
 
-Phase Now should write only the LLM API key unless the user is explicitly configuring a later feature. The Zep and Telegram entries below are future placeholders, not required setup.
+Onboarding writes the LLM API key. Channel, speech, transcription, and MCP secrets are added only when those features are configured.
 
 ```bash
 OPENAI_API_KEY=
-ZEP_API_KEY=
 BESTIE_TELEGRAM_BOT_TOKEN=
+BESTIE_ZALO_BOT_TOKEN=
+ELEVENLABS_API_KEY=
 COMPOSIO_CONSUMER_API_KEY=
 ```
 
@@ -211,7 +224,7 @@ Secrets must not be printed after entry and must be redacted from logs.
 
 `memory.writePolicy` controls model-requested memory writes through `internal.remember_memory`: `allow` stores non-secret allowed memories, `ask` queues them as pending approval and asks the owner to approve or deny in supported channels, and `deny` rejects writes. Onboarding writes this field and defaults it to `ask`; older configs that omit it still behave as `ask` at runtime.
 
-`workspace.defaultPath` controls where relative write/edit/exec paths land. It defaults to `.bestie/workspace` so ad hoc agent-created files do not pollute the project root. Generic `list_files` and `search_files` requests for `.` also inspect this workspace by default. Explicit project paths such as `src`, `docs`, `README.md`, or the absolute project root still inspect the repository so the agent can review code when asked. `workspace.externalPaths` is an explicit allowlist for absolute paths outside the project root and agent workspace; without it, internal file tools reject external paths.
+`workspace.defaultPath` controls where relative write/edit/exec paths land. It defaults to `~/.bestie/workspace` so ad hoc agent-created files do not pollute the project root. Generic `list_files` and `search_files` requests for `.` also inspect this workspace by default. Explicit project paths such as `src`, `docs`, `README.md`, or the absolute project root still inspect the repository so the agent can review code when asked. `workspace.externalPaths` is an explicit allowlist for absolute paths outside the project root and agent workspace; without it, internal file tools reject external paths. Git read tools also accept explicit `path` or `repoPath` values when they resolve through this workspace allowlist.
 
 `internalTools.policies` controls individual built-in tools with `allow`, `ask`, or `deny`. Local read tools default to `allow`; web reads, writes, patches, and exec tools default to `ask`. Supported policy keys include `internal.read_url`, `internal.write_file`, `internal.edit_file`, `internal.apply_patch`, `internal.exec`, and `internal.list_processes`. `internalTools.exec.timeoutMs` controls the default timeout for `internal.exec` when the model does not pass a per-call timeout; per-call timeouts still override it, and runtime clamps exec timeouts to a bounded maximum. `internal.read_url` is limited to HTTP(S) pages with bounded timeout and content size so the agent can inspect setup links, such as MCP docs, before proposing config edits. The write/edit tools resolve relative paths in the agent workspace and can access configured external paths; patch tools apply git-compatible diffs from the project root; exec runs without a shell, from the agent workspace by default, with bounded timeout and output. File tools ignore `.git`, `node_modules`, `dist`, and `coverage`.
 
@@ -240,4 +253,4 @@ Secrets must not be printed after entry and must be redacted from logs.
 
 Every config must include `version`. Migrations should backup before changing user files.
 
-Repo-local development now uses `.bestie/`. Doctor keeps a narrow compatibility migration for older `.ai-bestie/` local state: `bestie doctor --fix` copies `.ai-bestie/` to `.bestie/` only when `.bestie/` is absent, then rewrites legacy `AI_BESTIE_*` env names to `BESTIE_*` in copied config and env files.
+The shipped local runtime now uses `~/.bestie/`. Doctor keeps a narrow compatibility migration for older `.ai-bestie/` local state: `bestie doctor --fix` copies `.ai-bestie/` to `.bestie/` only when `.bestie/` is absent, then rewrites legacy `AI_BESTIE_*` env names to `BESTIE_*` in copied config and env files.

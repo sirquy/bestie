@@ -16,18 +16,19 @@ Status: completed for local development.
 - choose the next scoped milestone before expanding beyond the local MVP foundation
 - fuller onboarding polish only when it improves first-run completion
 - Doctor/local diagnostics polish only when it protects install or real use
-- Telegram reliability fixes discovered by daily local use
+- Telegram/Zalo reliability fixes discovered by daily local use
+- skills and update-command polish when it improves owner workflows
 
-Status: local MVP foundation complete. Terminal chat, onboarding, local SQLite memory, Doctor, Telegram local polling with capped retry backoff, permission-gated read tools, classified read-only MCP calls, Telegram real-bot smoke, and one-command installer smoke exist for local development.
+Status: local MVP foundation complete. Terminal chat, onboarding, local SQLite memory, Doctor, Telegram/Zalo local polling, all-channel daemon management, permission-gated local tools, classified read-only MCP calls, installed skills, npm update checks, Telegram real-bot smoke, and one-command installer smoke exist for local development.
 
 ## Later
 
 - fuller onboarding
 - optional Zep memory
-- backup/update/migration
+- backup/restore/migration
 - local web console
 - Doctor UI
-- broader tools after permissions have been exercised in terminal and Telegram
+- broader tools after permissions have been exercised in terminal, Telegram, and Zalo
 
 ## Future
 
@@ -40,7 +41,7 @@ Status: local MVP foundation complete. Terminal chat, onboarding, local SQLite m
 
 ## Hard Rules
 
-- Phase Now excludes Telegram, memory, Zep, MCP/ACP, plugins, installer, UI, avatar, voice, hosted/SaaS, analytics, and telemetry unless explicitly requested.
+- The original Phase Now excluded Telegram, memory, Zep, MCP/ACP, plugins, installer, UI, avatar, voice, hosted/SaaS, analytics, and telemetry. The current local MVP has since implemented Telegram, Zalo, local memory, Doctor, permission-gated tools, read-only MCP foundations, installer, skills, and update checks.
 - Zep after SQLite
 - MCP/ACP after Doctor + permissions
 - UI after CLI basics

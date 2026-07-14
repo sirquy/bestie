@@ -7,6 +7,7 @@ bestie doctor
 bestie doctor --json
 bestie doctor --fix
 bestie doctor --telegram-connect
+bestie doctor --zalo-connect
 bestie doctor --telegram-speech-test
 ```
 
@@ -14,15 +15,15 @@ bestie doctor --telegram-speech-test
 
 Doctor diagnoses install, config, provider, memory, channel, service, and character problems. It explains issues in beginner-friendly language and repairs safe issues when asked.
 
-Current status: implemented and hardened for local development. Doctor has human and JSON output, a reusable report contract, safe local `--fix`, opt-in Telegram identity checks, redacted output guards, smoke coverage, and failure exit codes.
+Current status: implemented and hardened for local development. Doctor has human and JSON output, a reusable report contract, safe local `--fix`, opt-in Telegram and Zalo identity checks, redacted output guards, smoke coverage, and failure exit codes.
 
 ## MVP Checks
 
-Doctor is the first Next milestone after terminal chat/onboarding exists. The current implementation checks local Phase Now setup, repo-local SQLite memory database, Telegram config when enabled, and MCP config presence without external network messages.
+The current implementation checks local setup under `~/.bestie`, SQLite memory, Telegram/Zalo config when enabled, speech/transcription readiness, retained Telegram attachment storage, recent fallback health, and MCP config presence without external network messages by default.
 
 - Node version
 - project files present
-- runtime paths stay inside repo-local `.bestie/`
+- runtime paths stay inside the local `~/.bestie/` runtime
 - config exists and parses
 - `.env` exists and is not group/world readable
 - LLM API key present without printing secret values
@@ -38,6 +39,7 @@ Doctor is the first Next milestone after terminal chat/onboarding exists. The cu
 - Telegram transcription readiness when transcription is enabled: provider exists, local command is executable, local model is readable, ffmpeg is available for wrapper-based Ogg/Opus conversion, and tiny local models warn for Vietnamese/mixed language configs
 - Telegram speech reply readiness when voice replies are enabled: ElevenLabs or OpenAI-compatible speech provider secret exists, ffmpeg is available for Telegram Ogg/Opus voice-note conversion, and `--telegram-speech-test` can opt into local synthesis/conversion without sending Telegram messages
 - Telegram bot identity via `getMe` only when `--telegram-connect` is explicitly passed; default Doctor avoids external network calls
+- Zalo token presence when Zalo is enabled, and Zalo bot identity only when `--zalo-connect` is explicitly passed
 - MCP server config summary without printing env values; disabled servers and enabled servers missing tool classifications warn, connection tests are future work
 
 ## Output Format
@@ -96,7 +98,7 @@ User-facing surfaces expose this information conservatively:
 - run migrations
 - repair permissions inside user-owned directories
 
-Current MVP `--fix` is intentionally local-only and only creates `.bestie/`, `.bestie/logs/`, `.bestie/data/`, initializes or migrates the local SQLite memory database, and restricts existing `.env` and app log files to owner read/write.
+Current MVP `--fix` is intentionally local-only and only creates `~/.bestie/`, `~/.bestie/logs/`, `~/.bestie/data/`, initializes or migrates the local SQLite memory database, and restricts existing `.env` and app log files to owner read/write on POSIX platforms. On Windows, Doctor reports ACL-based guidance and skips POSIX chmod checks/fixes.
 
 After the product rename to `bestie`, `--fix` also handles one safe legacy migration: if repo-local `.ai-bestie/` exists and `.bestie/` does not, Doctor copies the legacy runtime directory to `.bestie/` and rewrites legacy env/config names from `AI_BESTIE_*` to `BESTIE_*`. If `.bestie/` already exists, Doctor leaves `.ai-bestie/` untouched and reports a warning so the owner can archive or remove it manually.
 
@@ -117,11 +119,11 @@ After the product rename to `bestie`, `--fix` also handles one safe legacy migra
 ## Future Checks
 
 - Zep connection
-- Telegram bot identity by default; `--telegram-connect` covers the opt-in MVP check
+- Telegram/Zalo bot identity by default; `--telegram-connect` and `--zalo-connect` cover opt-in checks today
 - systemd user service
 - MCP server reachability
 - plugin health
-- update/migration health
+- deeper update/migration health
 
 ## Smoke Coverage
 

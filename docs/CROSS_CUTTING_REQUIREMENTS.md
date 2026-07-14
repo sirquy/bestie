@@ -140,7 +140,7 @@ Never collect chat content, memories, or API keys.
 1. Security/secrets
 2. Privacy/memory control
 3. Observability/debugging
-4. Update/backup/migration
+4. Update/backup/migration. Npm update checks and `bestie update` are implemented locally; backup/restore/migration remain future hardening.
 5. Plugin system
 6. Persona templates
 7. Analytics

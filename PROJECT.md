@@ -2149,7 +2149,7 @@ Recommended priority:
 1. Security and secrets
 2. Privacy and memory control
 3. Observability/debugging
-4. Update/backup/migration
+4. Update/backup/migration. Npm update checks and `bestie update` are implemented locally; backup/restore/migration remain future hardening.
 5. Plugin system
 6. Persona templates
 7. Analytics
@@ -2223,7 +2223,7 @@ Focus:
 - one-command installer
 - fuller onboarding
 - Zep optional memory
-- update/backup
+- update checks shipped locally; backup/restore/migration remain later hardening
 - local web UI
 
 Goal:

@@ -1,6 +1,6 @@
 # Bestie
 
-Bestie is a self-hosted AI companion CLI with a configurable character, local-first memory, provider diagnostics, Telegram support, and a safety-first permission model.
+Bestie is a self-hosted AI companion CLI with a configurable character, local-first memory, provider diagnostics, Telegram/Zalo channels, installed skills, update checks, and a safety-first permission model.
 
 The project is early and intentionally practical: it focuses on a small local runtime that developers can inspect, modify, and run themselves.
 
@@ -25,9 +25,12 @@ Bestie is under active development. The local CLI foundation includes:
 - OpenAI-compatible chat provider calls
 - Doctor diagnostics
 - Local SQLite memory foundation
-- Telegram local polling
-- Permission-gated local read tools
-- Basic MCP read-tool support
+- Telegram and Zalo local polling
+- Channel daemon management, including `--channel all`
+- Permission-gated local read/write/action tools
+- Basic classified MCP read-tool support
+- Installed skills loaded from `~/.bestie/skills/<skill-name>/SKILL.md`
+- `bestie update` and throttled update notices for new npm versions
 - Character regression evals
 
 Some roadmap items are intentionally not ready yet: hosted mode, broad external actions, plugin marketplace, production UI, avatar/body layer, and unrestricted tool execution.
@@ -58,15 +61,36 @@ bestie doctor
 bestie chat
 ```
 
+For npm install:
+
+```bash
+npm install -g bestie-agent
+bestie onboard
+bestie doctor
+bestie chat
+```
+
+Useful runtime commands:
+
+```bash
+bestie channels telegram
+bestie channels zalo
+bestie daemon restart --channel all
+bestie skills
+bestie update
+bestie update --apply
+```
+
 ## Configuration
 
-Bestie keeps local runtime files under `.bestie/`. Secrets belong in `.bestie/.env`; config files store environment variable names, not secret values.
+Bestie keeps local runtime files under `~/.bestie/` by default. Secrets belong in `~/.bestie/.env`; config files store environment variable names, not secret values.
 
-Example `.bestie/.env`:
+Example `~/.bestie/.env`:
 
 ```bash
 OPENAI_API_KEY=your-provider-key
 BESTIE_TELEGRAM_BOT_TOKEN=your-telegram-token
+BESTIE_ZALO_BOT_TOKEN=your-zalo-token
 ```
 
 Example provider config:

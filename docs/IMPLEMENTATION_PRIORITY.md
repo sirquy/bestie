@@ -26,23 +26,27 @@ Goal: prove the character feels alive.
 
 ## Next
 
-Status: completed for local development. Local SQLite memory, basic memory policy, status, Doctor MVP, Telegram MVP, permission-gated local read tools, classified read-only MCP calls, and opt-in Telegram real-bot smoke are implemented and validated for local development.
+Status: completed for local development. Local SQLite memory, basic memory policy, status, Doctor MVP, Telegram/Zalo channel runtimes, channel daemon management, permission-gated local tools, classified read-only MCP calls, installed skills, npm update checks, and opt-in Telegram real-bot smoke are implemented and validated for local development.
 
 Build:
 
 - Telegram channel (`docs/TELEGRAM_MVP_SPEC.md`)
+- Zalo channel runtime
+- channel daemon management for `telegram`, `zalo`, or `all`
 - local SQLite memory
 - basic memory policy
 - status command
 - MVP Doctor checks and safe local fixes
 - first permission layer and read-only local tool foundation
 - classified read-only MCP calls for trusted local workflows
+- installed skills from `~/.bestie/skills`
+- `bestie update` for npm version checks and updates
 
 Maintenance guardrails:
 
 - keep Doctor useful for local config, secrets, logs, SQLite, and Telegram
 - rerun Telegram real-bot smoke after risky channel/tool changes
-- avoid broadening into installer, Zep, UI, public tools, or multi-agent work without a scoped milestone decision
+- avoid broadening into Zep, UI, public tools, hosted mode, or multi-agent work without a scoped milestone decision
 
 Goal: make it usable in a real chat channel.
 
@@ -53,7 +57,7 @@ Build:
 - one-command installer (completed for local development)
 - fuller onboarding
 - optional Zep memory
-- update/backup
+- backup/restore/migration
 - local web UI
 - broader tool surfaces after permission defaults have real-channel mileage
 
