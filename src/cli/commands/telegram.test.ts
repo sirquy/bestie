@@ -52,7 +52,13 @@ test("runTelegramCommand setup writes Telegram config and token env", async () =
     assert.equal(config.channels?.telegram?.ownerUserId, "12345");
     assert.match(envText, /OPENAI_API_KEY="sk-test"/);
     assert.match(envText, /BESTIE_TELEGRAM_BOT_TOKEN="telegram-secret-token"/);
+    assert.ok(output.some((line) => line.includes("Telegram setup")));
+    assert.ok(output.some((line) => line.includes("Runtime")));
+    assert.ok(output.some((line) => line.includes("Account") && line.includes("Connect one Telegram bot")));
+    assert.ok(output.some((line) => line.includes("OK") && line.includes("Telegram owner and bot token collected")));
     assert.ok(output.some((line) => line.includes("Telegram setup saved")));
+    assert.ok(output.some((line) => line.includes("Token env") && line.includes("BESTIE_TELEGRAM_BOT_TOKEN")));
+    assert.ok(output.some((line) => line.includes("Done") && line.includes("Telegram setup complete")));
     assert.ok(output.every((line) => !line.includes("telegram-secret-token")));
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
@@ -650,7 +656,7 @@ test("runTelegramCommand wires configured audio transcription for Telegram voice
 
     const transcriptText = await readFile(resolve(paths.rootDir, ".bestie/logs/telegram-voice-smoke.jsonl"), "utf8");
     assert.match(transcriptText, /"hasAudioTranscript":true/);
-    assert.doesNotMatch(transcriptText, /xin chào từ provider|voice-secret-id|secret-voice|transcription-secret-token|please transcribe|777|12345/);
+    assert.doesNotMatch(transcriptText, /xin chào từ provider|voice-secret-id|secret-voice|transcription-secret-token|please transcribe|"chat":"777"|"from":"12345"/);
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
   }

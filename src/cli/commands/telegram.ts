@@ -28,6 +28,13 @@ const LOCAL_VOICE_WRAPPER_PATH = ".bestie/tools/local-whisper-transcribe.sh";
 const LOCAL_WHISPER_COMMAND_PATH = ".bestie/tools/whisper-bin/whisper-cli";
 const LOCAL_WHISPER_MODEL_PATH = ".bestie/models/ggml-small.bin";
 const LOCAL_WHISPER_MODEL_DIR = ".bestie/models";
+const ANSI_RESET = "\x1b[0m";
+const ANSI_BOLD = "\x1b[1m";
+const ANSI_DIM = "\x1b[2m";
+const ANSI_CYAN = "\x1b[36m";
+const ANSI_GREEN = "\x1b[32m";
+const ANSI_YELLOW = "\x1b[33m";
+const ANSI_MAGENTA = "\x1b[35m";
 const WHISPER_MODEL_CATALOG: Record<string, { fileName: string; url: string; estimatedBytes: number; hint: string }> = {
   tiny: {
     fileName: "ggml-tiny.bin",
@@ -98,6 +105,16 @@ interface TelegramCommandOptions {
   speechVoiceConverter?: TelegramSpeechVoiceConverter;
   modelDownloadFetchImpl?: typeof fetch;
   writeLine?: (message: string) => void;
+  useColor?: boolean;
+}
+
+interface TelegramSetupUi {
+  intro: (paths: RuntimePaths) => void;
+  section: (title: string, detail?: string) => void;
+  success: (message: string) => void;
+  info: (message: string) => void;
+  savedPath: (label: string, path: string) => void;
+  final: () => void;
 }
 
 export async function runTelegramCommand(optionsOrArgv: string[] | TelegramCommandOptions = process.argv): Promise<void> {
@@ -127,7 +144,7 @@ export async function runTelegramCommand(optionsOrArgv: string[] | TelegramComma
   }
 
   if (argv.includes("setup")) {
-    await runTelegramSetup({ paths, questioner: options.questioner, writeLine });
+    await runTelegramSetup({ paths, questioner: options.questioner, writeLine, useColor: options.useColor ?? output.isTTY });
     return;
   }
 
@@ -413,13 +430,17 @@ function createTelegramSpeechSynthesizer(config: AppConfig, paths: RuntimePaths,
   return async (text) => createSpeech(config, { text }, { paths, fetchImpl });
 }
 
-async function runTelegramSetup(options: { paths: RuntimePaths; questioner?: TelegramQuestioner; writeLine: (message: string) => void }): Promise<void> {
+async function runTelegramSetup(options: { paths: RuntimePaths; questioner?: TelegramQuestioner; writeLine: (message: string) => void; useColor?: boolean }): Promise<void> {
   const questioner = options.questioner ?? createQuestioner();
+  const ui = createTelegramSetupUi(options.writeLine, options.useColor ?? output.isTTY);
 
   try {
+    ui.intro(options.paths);
+
+    ui.section("Account", "Connect one Telegram bot to this local runtime.");
     const config = await loadConfig(options.paths);
-    const ownerUserId = (await questioner.ask("Telegram owner user id: ")).trim();
-    const token = await questioner.askHidden("Telegram bot token: ");
+    const ownerUserId = (await questioner.ask("[1/2] Owner user id Telegram numeric user id allowed to chat with Bestie: ")).trim();
+    const token = await questioner.askHidden("[2/2] Bot token Paste the Telegram bot token. It is hidden while typing: ");
 
     if (!ownerUserId) {
       throw new UserFacingError("Telegram owner user id is required.", "TelegramMissingOwnerError");
@@ -429,17 +450,50 @@ async function runTelegramSetup(options: { paths: RuntimePaths; questioner?: Tel
       throw new UserFacingError("Telegram bot token is required.", "TelegramMissingTokenError");
     }
 
+    ui.success("Telegram owner and bot token collected.");
+
+    ui.section("Save", "Updating local config and secret env file.");
     await mkdir(options.paths.appDir, { recursive: true });
     await writeConfig(enableTelegramConfig(config, ownerUserId), options.paths);
     await writeEnvFile({ ...(await loadEnvFile(options.paths)), [DEFAULT_TELEGRAM_TOKEN_ENV]: token.trim() }, options.paths);
 
-    options.writeLine("Telegram setup saved.");
-    options.writeLine(`- Config: ${options.paths.configPath}`);
-    options.writeLine(`- Token env: ${DEFAULT_TELEGRAM_TOKEN_ENV} in ${options.paths.envPath}`);
-    options.writeLine("Next: run `bestie doctor`, then `bestie telegram --once`.");
+    ui.success("Telegram setup saved.");
+    ui.section("Files", "Secrets stay local and are not printed.");
+    ui.savedPath("Config", options.paths.configPath);
+    ui.savedPath("Token env", `${DEFAULT_TELEGRAM_TOKEN_ENV} in ${options.paths.envPath}`);
+    ui.info("Telegram is enabled for the configured owner user id only.");
+    ui.final();
   } finally {
     questioner.close();
   }
+}
+
+function createTelegramSetupUi(writeLine: (message: string) => void, useColor: boolean): TelegramSetupUi {
+  const paint = (text: string, code: string) => useColor ? `${code}${text}${ANSI_RESET}` : text;
+  const dim = (text: string) => paint(text, ANSI_DIM);
+  const accent = (text: string) => paint(text, ANSI_CYAN);
+  const ok = (text: string) => paint(text, ANSI_GREEN);
+  const title = (text: string) => useColor ? `${ANSI_BOLD}${ANSI_MAGENTA}${text}${ANSI_RESET}` : text;
+
+  return {
+    intro: (paths) => {
+      writeLine(title("Telegram setup"));
+      writeLine(dim("Connect a Telegram bot to your local Bestie runtime."));
+      writeLine(`${accent("Runtime")} ${paths.appDir}`);
+      writeLine(`${accent("Privacy")} Bot tokens stay local in .bestie/.env and are hidden while typing.`);
+      writeLine(`${dim("Plan")} Account -> Save -> Files\n`);
+    },
+    section: (sectionTitle, detail) => {
+      writeLine(`${accent("\n>")} ${paint(sectionTitle, ANSI_BOLD)}${detail ? ` ${dim(detail)}` : ""}`);
+    },
+    success: (message) => writeLine(`${ok("OK")} ${message}`),
+    info: (message) => writeLine(`${paint("INFO", ANSI_YELLOW)} ${message}`),
+    savedPath: (label, path) => writeLine(`  ${accent(label.padEnd(10))} ${path}`),
+    final: () => {
+      writeLine(`${ok("\nDone")} Telegram setup complete.`);
+      writeLine(`${dim("Next")} Run \`bestie doctor\`, then \`bestie telegram --once\`.`);
+    },
+  };
 }
 
 function getTranscriptPath(argv: string[], paths: RuntimePaths): string | undefined {
