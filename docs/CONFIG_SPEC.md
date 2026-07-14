@@ -222,6 +222,8 @@ COMPOSIO_CONSUMER_API_KEY=
 
 Secrets must not be printed after entry and must be redacted from logs.
 
+Set `BESTIE_NO_BANNER=1` to suppress the decorative CLI banner for human-facing commands in scripts. Set `BESTIE_BANNER=static` to disable the interactive animation while keeping the static banner. Machine-readable JSON outputs such as `bestie doctor --json` suppress the banner automatically.
+
 `memory.writePolicy` controls model-requested memory writes through `internal.remember_memory`: `allow` stores non-secret allowed memories, `ask` queues them as pending approval and asks the owner to approve or deny in supported channels, and `deny` rejects writes. Onboarding writes this field and defaults it to `ask`; older configs that omit it still behave as `ask` at runtime.
 
 `workspace.defaultPath` controls where relative write/edit/exec paths land. It defaults to `~/.bestie/workspace` so ad hoc agent-created files do not pollute the project root. Generic `list_files` and `search_files` requests for `.` also inspect this workspace by default. Explicit project paths such as `src`, `docs`, `README.md`, or the absolute project root still inspect the repository so the agent can review code when asked. `workspace.externalPaths` is an explicit allowlist for absolute paths outside the project root and agent workspace; without it, internal file tools reject external paths. Git read tools also accept explicit `path` or `repoPath` values when they resolve through this workspace allowlist.

@@ -15,6 +15,15 @@ import { runUpdateCommand } from "./commands/update.js";
 
 type CommandHandler = (argv?: string[]) => Promise<void> | void;
 
+const bannerText = String.raw`
+ ____            _   _            _                    _   
+| __ )  ___  ___| |_(_) ___      / \   __ _  ___ _ __ | |_ 
+|  _ \ / _ \/ __| __| |/ _ \    / _ \ / _' |/ _ \ '_ \| __|
+| |_) |  __/\__ \ |_| |  __/   / ___ \ (_| |  __/ | | | |_ 
+|____/ \___||___/\__|_|\___|  /_/   \_\__, |\___|_| |_|\__|
+                                      |___/                 
+`;
+
 const commandHandlers: Record<string, CommandHandler> = {
   onboard: runOnboardCommand,
   chat: runChatCommand,
@@ -31,7 +40,7 @@ const commandHandlers: Record<string, CommandHandler> = {
   update: runUpdateCommand,
 };
 
-const helpText = `Bestie
+const helpText = `
 
 Usage:
   bestie <command>
@@ -97,6 +106,7 @@ async function main(argv: string[]): Promise<void> {
   const command = argv[2];
 
   if (!command || command === "--help" || command === "-h") {
+    await showBanner(argv);
     console.log(helpText);
     return;
   }
@@ -104,6 +114,7 @@ async function main(argv: string[]): Promise<void> {
   const handler = commandHandlers[command];
 
   if (!handler) {
+    await showBanner(argv);
     if (command === "telegram" || command === "zalo") {
       console.error(`Channel commands now live under \`bestie channels ${command}\`.`);
       console.error(`Run \`bestie channels ${command} --help\` to see available options.`);
@@ -117,7 +128,69 @@ async function main(argv: string[]): Promise<void> {
     return;
   }
 
+  await showBanner(argv);
   await handler(argv);
+}
+
+async function showBanner(argv: string[]): Promise<void> {
+  if (shouldSuppressBanner(argv)) {
+    return;
+  }
+
+  if (!shouldAnimateBanner()) {
+    console.log(bannerText);
+    return;
+  }
+
+  await animateBanner(bannerText);
+}
+
+function shouldAnimateBanner(): boolean {
+  if (process.env.BESTIE_BANNER === "static") {
+    return false;
+  }
+  if (process.env.BESTIE_BANNER === "animate") {
+    return true;
+  }
+
+  return Boolean(process.stdout.isTTY);
+}
+
+async function animateBanner(text: string): Promise<void> {
+  const frames = [".", "o", "O", "@"];
+  const lines = text.trimEnd().split("\n");
+
+  for (let frame = 0; frame < frames.length; frame += 1) {
+    const glyph = frames[frame] ?? "@";
+    const rendered = lines.map((line) => line.replace(/[^\s]/g, glyph)).join("\n");
+    process.stdout.write(`${rendered}\n`);
+    await sleep(28);
+    process.stdout.write(`\x1b[${lines.length}A\x1b[J`);
+  }
+
+  console.log(bannerText);
+}
+
+function sleep(milliseconds: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
+function shouldSuppressBanner(argv: string[]): boolean {
+  const command = argv[2];
+  if (process.env.BESTIE_NO_BANNER === "1") {
+    return true;
+  }
+  if (command === "doctor" && argv.includes("--json")) {
+    return true;
+  }
+  if (command === "channels" && argv[3] === "doctor" && argv.includes("--json")) {
+    return true;
+  }
+  if (command === "mcp" && argv[3] === "call" && argv.includes("--json")) {
+    return true;
+  }
+
+  return false;
 }
 
 main(process.argv).catch((error: unknown) => {
