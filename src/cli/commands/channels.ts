@@ -5,7 +5,7 @@ import { getRuntimePaths, type RuntimePaths } from "../../runtime/paths.js";
 import { getDaemonChannelStatus, type DaemonChannel } from "./daemon.js";
 import { runTelegramCommand } from "./telegram.js";
 import { runZaloCommand } from "./zalo.js";
-import { badge, keyValue, rule, statusBadge, title } from "../ui.js";
+import { badge, keyValue, rule, statusBadge, table, title } from "../ui.js";
 
 type ChannelHandler = (argv?: string[]) => Promise<void> | void;
 
@@ -166,11 +166,16 @@ async function showChannelsStatus(options: Required<Pick<ChannelsCommandOptions,
   const config = await loadConfig(options.paths);
   options.writeLine(title("Bestie Channels"));
   options.writeLine(rule());
+  const rows: string[][] = [];
 
   for (const channel of CHANNELS) {
     const channelConfig = getChannelConfig(config, channel);
     const daemon = await getDaemonChannelStatus(options.paths, channel.id as DaemonChannel, options.isProcessRunning);
-    options.writeLine(formatChannelStatusRow(channel, channelConfig, daemon));
+    rows.push(formatChannelStatusRow(channel, channelConfig, daemon));
+  }
+
+  for (const line of table(["Channel", "Enabled", "Owner", "Token env", "Daemon"], rows)) {
+    options.writeLine(line);
   }
 }
 
@@ -178,11 +183,11 @@ function getChannelConfig(config: AppConfig, channel: ChannelDescriptor): { enab
   return config.channels?.[channel.configKey as keyof NonNullable<AppConfig["channels"]>];
 }
 
-function formatChannelStatusRow(channel: ChannelDescriptor, channelConfig: ReturnType<typeof getChannelConfig>, daemon: Awaited<ReturnType<typeof getDaemonChannelStatus>>): string {
+function formatChannelStatusRow(channel: ChannelDescriptor, channelConfig: ReturnType<typeof getChannelConfig>, daemon: Awaited<ReturnType<typeof getDaemonChannelStatus>>): string[] {
   const enabled = channelConfig?.enabled ? badge("ON", "green") : badge("OFF", "gray");
   const owner = channelConfig?.ownerUserId?.trim() ? badge("OWNER", "green") : badge("OWNER?", "yellow");
   const tokenEnv = channelConfig?.botTokenEnv ?? "missing";
   const daemonText = daemon.state === "running" ? `${badge("RUN", "green")} pid ${daemon.pid}` : daemon.state === "stale" ? `${badge("STALE", "yellow")} pid ${daemon.pid}` : badge("STOP", "gray");
 
-  return `${channel.displayName.padEnd(8)} ${enabled} ${owner} ${tokenEnv.padEnd(25)} ${daemonText}`;
+  return [channel.displayName, enabled, owner, tokenEnv, daemonText];
 }

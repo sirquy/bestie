@@ -189,6 +189,9 @@ function shouldSuppressBanner(argv: string[]): boolean {
   if (command === "mcp" && argv[3] === "call" && argv.includes("--json")) {
     return true;
   }
+  if (command === "memory" && argv[3] === "export") {
+    return true;
+  }
 
   return false;
 }

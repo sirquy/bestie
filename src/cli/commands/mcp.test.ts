@@ -24,7 +24,8 @@ test("runMcpCommand lists configured MCP servers without env values", async () =
 
     await runMcpCommand({ argv: ["node", "bestie", "mcp", "list"], paths, writeLine: (line) => lines.push(line) });
 
-    assert.deepEqual(lines, ["fs: enabled stdio -> node server.js env: SECRET_TOKEN"]);
+    assert.match(lines.join("\n"), /MCP Servers/);
+    assert.match(lines.join("\n"), /fs\s+\[ENABLED\]\s+stdio\s+node server\.js\s+SECRET_TOKEN/);
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
   }
@@ -40,7 +41,8 @@ test("runMcpCommand lists remote MCP servers with header env keys", async () => 
 
     await runMcpCommand({ argv: ["node", "bestie", "mcp", "list"], paths, writeLine: (line) => lines.push(line) });
 
-    assert.deepEqual(lines, ["composio: enabled http -> https://connect.composio.dev/mcp env: COMPOSIO_CONSUMER_API_KEY"]);
+    assert.match(lines.join("\n"), /MCP Servers/);
+    assert.match(lines.join("\n"), /composio\s+\[ENABLED\]\s+http\s+https:\/\/connect\.composio\.dev\/mcp\s+COMPOSIO_CONSUMER_API_KEY/);
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
   }
@@ -56,7 +58,7 @@ test("runMcpCommand shows one configured MCP server without env values", async (
 
     await runMcpCommand({ argv: ["node", "bestie", "mcp", "show", "fs"], paths, writeLine: (line) => lines.push(line) });
 
-    assert.deepEqual(lines, ["Name: fs", "Status: enabled", "Transport: stdio", "Command: node", "Args: server.js", "Env keys: SECRET_TOKEN", "Tools: read_file(read)"]);
+    assert.deepEqual(lines, ["MCP Server: fs", "----------------------------------------------------------------", "Status         [ENABLED]", "Transport      stdio", "Command        node", "Args           server.js", "Env keys       SECRET_TOKEN", "Tools          read_file(read)"]);
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
   }
@@ -72,7 +74,7 @@ test("runMcpCommand shows one remote MCP server without secret values", async ()
 
     await runMcpCommand({ argv: ["node", "bestie", "mcp", "show", "composio"], paths, writeLine: (line) => lines.push(line) });
 
-    assert.deepEqual(lines, ["Name: composio", "Status: enabled", "Transport: http", "URL: https://connect.composio.dev/mcp", "Header env keys: COMPOSIO_CONSUMER_API_KEY", "Env keys: none", "Tools: none"]);
+    assert.deepEqual(lines, ["MCP Server: composio", "----------------------------------------------------------------", "Status         [ENABLED]", "Transport      http", "URL            https://connect.composio.dev/mcp", "Header env     COMPOSIO_CONSUMER_API_KEY", "Env keys       none", "Tools          none"]);
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
   }
@@ -88,7 +90,7 @@ test("runMcpCommand shows no classified tools when none are configured", async (
 
     await runMcpCommand({ argv: ["node", "bestie", "mcp", "show", "fs"], paths, writeLine: (line) => lines.push(line) });
 
-    assert.equal(lines.at(-1), "Tools: none");
+    assert.equal(lines.at(-1), "Tools          none");
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
   }
@@ -104,7 +106,7 @@ test("runMcpCommand tests one configured MCP server without starting it", async 
 
     await runMcpCommand({ argv: ["node", "bestie", "mcp", "test", "fs"], paths, writeLine: (line) => lines.push(line) });
 
-    assert.deepEqual(lines, ["WARN: MCP server fs is configured but disabled."]);
+    assert.deepEqual(lines, ["[WARN] MCP server fs is configured but disabled."]);
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
   }
@@ -130,7 +132,7 @@ test("runMcpCommand can run an explicit MCP connection check", async () => {
     });
 
     assert.deepEqual(testedServers, ["fs"]);
-    assert.deepEqual(lines, ["PASS: MCP server fs responded to initialize."]);
+    assert.deepEqual(lines, ["[PASS] MCP server fs responded to initialize."]);
     assert.doesNotMatch(JSON.stringify(lines), /hidden/);
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
@@ -152,7 +154,7 @@ test("runMcpCommand can list MCP tool metadata with an explicit connection", asy
       writeLine: (line) => lines.push(line),
     });
 
-    assert.deepEqual(lines, ["PASS: MCP server fs returned 1 tool(s).", "- read_file: Read a local file"]);
+    assert.deepEqual(lines, ["[PASS] MCP server fs returned 1 tool(s).", "- read_file: Read a local file"]);
     assert.doesNotMatch(JSON.stringify(lines), /hidden/);
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
@@ -179,7 +181,7 @@ test("runMcpCommand passes .env values to remote MCP tool discovery", async () =
       writeLine: (line) => lines.push(line),
     });
 
-    assert.deepEqual(lines, ["PASS: MCP server composio returned 0 tool(s)."]);
+    assert.deepEqual(lines, ["[PASS] MCP server composio returned 0 tool(s)."]);
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
   }
@@ -195,7 +197,7 @@ test("runMcpCommand requires --connect for MCP tool metadata", async () => {
 
     await runMcpCommand({ argv: ["node", "bestie", "mcp", "tools", "fs"], paths, writeLine: (line) => lines.push(line) });
 
-    assert.deepEqual(lines, ["WARN: MCP tool discovery requires --connect and will only list metadata."]);
+    assert.deepEqual(lines, ["[WARN] MCP tool discovery requires --connect and will only list metadata."]);
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
   }
@@ -383,7 +385,7 @@ test("runMcpCommand classifies an MCP tool in config without starting the server
     await runMcpCommand({ argv: ["node", "bestie", "mcp", "classify", "fs", "read_file", "--category", "read"], paths, writeLine: (line) => lines.push(line) });
 
     const updated = JSON.parse(await readFile(paths.configPath, "utf8")) as AppConfig;
-    assert.deepEqual(lines, ["PASS: MCP tool fs/read_file classified as read."]);
+    assert.deepEqual(lines, ["[CLASSIFIED] MCP tool fs/read_file classified as read."]);
     assert.deepEqual(updated.mcp?.servers[0].tools, [{ name: "read_file", category: "read" }]);
     assert.equal(updated.mcp?.servers[0].env?.SECRET_TOKEN, "hidden");
   } finally {
@@ -433,7 +435,7 @@ test("runMcpCommand reports no configured servers", async () => {
 
     await runMcpCommand({ argv: ["node", "bestie", "mcp", "list"], paths, writeLine: (line) => lines.push(line) });
 
-    assert.deepEqual(lines, ["No MCP servers configured."]);
+    assert.deepEqual(lines, ["[INFO] No MCP servers configured."]);
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
   }

@@ -6,6 +6,7 @@ import { UserFacingError } from "../../runtime/errors.js";
 import { getRuntimePaths, type RuntimePaths } from "../../runtime/paths.js";
 import { reviewActionPermission, type PermissionApprover, type PermissionPolicy } from "../../safety/permission-policy.js";
 import { createCliPermissionApprover } from "../permission-approver.js";
+import { badge, keyValue, rule, statusBadge, table, title } from "../ui.js";
 
 interface McpCommandOptions {
   argv?: string[];
@@ -44,31 +45,32 @@ export async function runMcpCommand(optionsOrArgv: string[] | McpCommandOptions 
       throw new UserFacingError(`MCP server not found: ${name}`, "McpServerNotFoundError");
     }
 
-    writeLine(`Name: ${server.name}`);
-    writeLine(`Status: ${server.enabled ? "enabled" : "disabled"}`);
-    writeLine(`Transport: ${server.transport}`);
+    writeLine(title(`MCP Server: ${server.name}`));
+    writeLine(rule());
+    writeLine(keyValue("Status", server.enabled ? badge("ENABLED", "green") : badge("DISABLED", "gray")));
+    writeLine(keyValue("Transport", server.transport));
     if (server.transport === "http") {
-      writeLine(`URL: ${server.url}`);
-      writeLine(`Header env keys: ${Object.values(server.headersEnv).length === 0 ? "none" : Object.values(server.headersEnv).join(",")}`);
+      writeLine(keyValue("URL", server.url ?? "missing"));
+      writeLine(keyValue("Header env", Object.values(server.headersEnv).length === 0 ? "none" : Object.values(server.headersEnv).join(",")));
     } else {
-      writeLine(`Command: ${server.command}`);
-      writeLine(`Args: ${server.args.length === 0 ? "none" : server.args.join(" ")}`);
+      writeLine(keyValue("Command", server.command ?? "missing"));
+      writeLine(keyValue("Args", server.args.length === 0 ? "none" : server.args.join(" ")));
     }
-    writeLine(`Env keys: ${server.envKeys.length === 0 ? "none" : server.envKeys.join(",")}`);
-    writeLine(`Tools: ${server.tools.length === 0 ? "none" : server.tools.map((tool) => `${tool.name}(${tool.category})`).join(",")}`);
+    writeLine(keyValue("Env keys", server.envKeys.length === 0 ? "none" : server.envKeys.join(",")));
+    writeLine(keyValue("Tools", server.tools.length === 0 ? "none" : server.tools.map((tool) => `${tool.name}(${tool.category})`).join(",")));
     return;
   }
 
   if (subcommand === "test") {
     const name = requireServerName(argv);
     const check = argv.includes("--connect") ? await testConfiguredMcpServerConnection(config, name, paths, options.testConnection ?? testMcpServerConnection) : testMcpServerConfig(config, name);
-    writeLine(`${check.status.toUpperCase()}: ${check.message}`);
+    writeLine(`${statusBadge(check.status)} ${check.message}`);
     return;
   }
 
   if (subcommand === "tools") {
     const result = await listConfiguredMcpServerTools(config, requireServerName(argv), paths, options.listTools ?? listMcpServerTools, argv.includes("--connect"));
-    writeLine(`${result.status.toUpperCase()}: ${result.message}`);
+    writeLine(`${statusBadge(result.status)} ${result.message}`);
     for (const tool of result.tools) {
       writeLine(`- ${tool.name}${tool.description ? `: ${tool.description}` : ""}`);
     }
@@ -91,21 +93,29 @@ export async function runMcpCommand(optionsOrArgv: string[] | McpCommandOptions 
   if (subcommand === "classify") {
     const result = classifyMcpTool(config, argv);
     await writeConfig(result.config, paths);
-    writeLine(`PASS: MCP tool ${result.serverName}/${result.toolName} classified as ${result.category}.`);
+    writeLine(`${badge("CLASSIFIED", "green")} MCP tool ${result.serverName}/${result.toolName} classified as ${result.category}.`);
     return;
   }
 
   const servers = listMcpServers(config);
 
   if (servers.length === 0) {
-    writeLine("No MCP servers configured.");
+    writeLine(`${badge("INFO", "blue")} No MCP servers configured.`);
     return;
   }
 
+  const rows: string[][] = [];
+
   for (const server of servers) {
-    const target = server.transport === "http" ? server.url : `${server.command}${server.args.length === 0 ? "" : ` ${server.args.join(" ")}`}`;
+    const target = server.transport === "http" ? server.url ?? "missing" : `${server.command ?? "missing"}${server.args.length === 0 ? "" : ` ${server.args.join(" ")}`}`;
     const secretKeys = [...server.envKeys, ...Object.values(server.headersEnv).sort()];
-    writeLine(`${server.name}: ${server.enabled ? "enabled" : "disabled"} ${server.transport} -> ${target} env: ${secretKeys.length === 0 ? "none" : secretKeys.join(",")}`);
+    rows.push([server.name, server.enabled ? badge("ENABLED", "green") : badge("DISABLED", "gray"), server.transport, target, secretKeys.length === 0 ? "none" : secretKeys.join(",")]);
+  }
+
+  writeLine(title("MCP Servers"));
+  writeLine(rule());
+  for (const line of table(["Name", "Status", "Transport", "Target", "Env keys"], rows)) {
+    writeLine(line);
   }
 }
 

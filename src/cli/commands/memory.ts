@@ -1,5 +1,6 @@
 import { evaluateMemoryCandidate, type MemoryType } from "../../memory/policy.js";
 import { SqliteMemoryStore, type PendingMemory, type StoredMemory, type StoredMessageRole } from "../../memory/sqlite-store.js";
+import { badge, dim, rule, title } from "../ui.js";
 
 const allowedTypes = new Set<MemoryType>([
   "preference",
@@ -115,7 +116,7 @@ async function showMemoryStatus(): Promise<void> {
 
   try {
     const state = store.getMemoryState();
-    console.log(`Memory: ${state.paused ? "paused" : "active"}`);
+    console.log(`${state.paused ? badge("PAUSED", "yellow") : badge("ACTIVE", "green")} Memory is ${state.paused ? "paused" : "active"}.`);
   } finally {
     store.close();
   }
@@ -126,7 +127,7 @@ async function setMemoryPaused(paused: boolean): Promise<void> {
 
   try {
     const state = store.setMemoryPaused(paused);
-    console.log(`Memory: ${state.paused ? "paused" : "active"}`);
+    console.log(`${state.paused ? badge("PAUSED", "yellow") : badge("ACTIVE", "green")} Memory is ${state.paused ? "paused" : "active"}.`);
   } finally {
     store.close();
   }
@@ -139,11 +140,12 @@ async function listMemories(): Promise<void> {
     const memories = store.listActiveMemories();
 
     if (memories.length === 0) {
-      console.log("No active memories yet.");
+      console.log(`${badge("INFO", "blue")} No active memories yet.`);
       return;
     }
 
-    console.log(`Active memories (${memories.length}):`);
+    console.log(title(`Active Memories (${memories.length})`));
+    console.log(rule());
     for (const memory of memories) {
       console.log(formatActiveMemoryLine(memory));
     }
@@ -167,11 +169,12 @@ async function searchMemories(argv: string[]): Promise<void> {
     const memories = store.searchMemories(query);
 
     if (memories.length === 0) {
-      console.log("No matching active memories.");
+      console.log(`${badge("INFO", "blue")} No matching active memories.`);
       return;
     }
 
-    console.log(`Matching active memories (${memories.length}):`);
+    console.log(title(`Matching Active Memories (${memories.length})`));
+    console.log(rule());
     for (const memory of memories) {
       console.log(formatActiveMemoryLine(memory));
     }
@@ -195,7 +198,7 @@ async function addMemory(argv: string[]): Promise<void> {
 
   try {
     if (stateStore.getMemoryState().paused) {
-      console.log("Memory is paused. Run `bestie memory resume` before adding memories.");
+      console.log(`${badge("PAUSED", "yellow")} Memory is paused. Run \`bestie memory resume\` before adding memories.`);
       return;
     }
   } finally {
@@ -207,7 +210,7 @@ async function addMemory(argv: string[]): Promise<void> {
 
     try {
       const pending = store.addPendingMemory({ type, content, reason: policy.reason, source: "manual-command" });
-      console.log(`Memory pending approval: ${pending.id}`);
+      console.log(`${badge("PENDING", "yellow")} Memory pending approval: ${pending.id}`);
       console.log(policy.reason);
       console.log(`Next: bestie memory pending inspect ${pending.id}`);
       console.log(`Then: bestie memory approve ${pending.id} or bestie memory reject ${pending.id}`);
@@ -218,13 +221,13 @@ async function addMemory(argv: string[]): Promise<void> {
   }
 
   if (policy.decision !== "store") {
-    console.log(`Memory not stored: ${policy.reason}`);
+    console.log(`${badge("SKIP", "yellow")} Memory not stored: ${policy.reason}`);
     console.log(`Decision: ${policy.decision}`);
     return;
   }
 
   if (policy.sensitivity === "secret") {
-    console.log(`Memory not stored: ${policy.reason}`);
+    console.log(`${badge("SKIP", "yellow")} Memory not stored: ${policy.reason}`);
     console.log("Decision: never");
     return;
   }
@@ -240,7 +243,7 @@ async function addMemory(argv: string[]): Promise<void> {
       explicitConsent: true,
       policyReason: policy.reason,
     });
-    console.log(`Memory stored: ${memory.id}`);
+    console.log(`${badge("STORED", "green")} Memory stored: ${memory.id}`);
   } finally {
     store.close();
   }
@@ -281,21 +284,21 @@ async function editMemory(argv: string[]): Promise<void> {
 
   try {
     if (store.getMemoryState().paused) {
-      console.log("Memory is paused. Run `bestie memory resume` before editing memories.");
+      console.log(`${badge("PAUSED", "yellow")} Memory is paused. Run \`bestie memory resume\` before editing memories.`);
       return;
     }
 
     const current = store.getActiveMemory(id);
 
     if (!current) {
-      console.log(`No active memory found for id ${id}.`);
+      console.log(`${badge("INFO", "blue")} No active memory found for id ${id}.`);
       return;
     }
 
     const policy = evaluateMemoryCandidate({ type: current.type as MemoryType, content, explicitConsent: current.sensitivity === "sensitive" });
 
     if (policy.decision !== "store" || policy.sensitivity === "secret") {
-      console.log(`Memory not updated: ${policy.reason}`);
+      console.log(`${badge("SKIP", "yellow")} Memory not updated: ${policy.reason}`);
       console.log(`Decision: ${policy.decision === "store" ? "never" : policy.decision}`);
       return;
     }
@@ -303,11 +306,11 @@ async function editMemory(argv: string[]): Promise<void> {
     const updated = store.updateMemoryContent(id, content);
 
     if (!updated) {
-      console.log(`No active memory found for id ${id}.`);
+      console.log(`${badge("INFO", "blue")} No active memory found for id ${id}.`);
       return;
     }
 
-    console.log(`Memory updated: ${updated.id}`);
+    console.log(`${badge("UPDATED", "green")} Memory updated: ${updated.id}`);
   } finally {
     store.close();
   }
@@ -326,11 +329,11 @@ async function forgetMemory(argv: string[]): Promise<void> {
     const forgotten = store.forgetMemory(id);
 
     if (!forgotten) {
-      console.log(`No active memory found for id ${id}.`);
+      console.log(`${badge("INFO", "blue")} No active memory found for id ${id}.`);
       return;
     }
 
-    console.log(`Memory forgotten: ${id}`);
+    console.log(`${badge("FORGOT", "green")} Memory forgotten: ${id}`);
   } finally {
     store.close();
   }
@@ -347,7 +350,7 @@ async function clearMemoryData(argv: string[]): Promise<void> {
 
   try {
     store.clearAllData();
-    console.log("Memory data cleared.");
+    console.log(`${badge("CLEARED", "green")} Memory data cleared.`);
   } finally {
     store.close();
   }
@@ -396,12 +399,14 @@ async function listRecentMessages(argv: string[] = process.argv): Promise<void> 
     const messages = isSearch ? store.searchMessages(query, limit, role) : store.listRecentMessages(limit, role);
 
     if (messages.length === 0) {
-      console.log(isSearch ? "No matching persisted messages." : "No persisted messages yet.");
+      console.log(`${badge("INFO", "blue")} ${isSearch ? "No matching persisted messages." : "No persisted messages yet."}`);
       return;
     }
 
+    console.log(title(isSearch ? `Matching Messages (${messages.length})` : `Recent Messages (${messages.length})`));
+    console.log(rule());
     for (const message of messages) {
-      console.log(`${message.id}. [${message.channel ?? "unknown"}/${message.role}] ${message.content}`);
+      console.log(`${badge(message.role.toUpperCase(), message.role === "assistant" ? "magenta" : message.role === "user" ? "green" : "cyan")} #${message.id} ${dim(message.channel ?? "unknown")} ${message.content}`);
     }
   } finally {
     store.close();
@@ -421,15 +426,16 @@ async function listPendingMemories(argv: string[] = process.argv): Promise<void>
     const memories = store.listPendingMemories(limit);
 
     if (memories.length === 0) {
-      console.log("No pending memories.");
+      console.log(`${badge("INFO", "blue")} No pending memories.`);
       return;
     }
 
-    console.log(`Pending memories (${memories.length}):`);
+    console.log(title(`Pending Memories (${memories.length})`));
+    console.log(rule());
     for (const memory of memories) {
       console.log(formatPendingMemoryBlock(memory));
     }
-    console.log("Approve with `bestie memory approve <id>` or reject with `bestie memory reject <id>`. Inspect details with `bestie memory pending inspect <id>`.");
+    console.log(`${badge("NEXT", "cyan")} Approve with \`bestie memory approve <id>\` or reject with \`bestie memory reject <id>\`. Inspect details with \`bestie memory pending inspect <id>\`.`);
   } finally {
     store.close();
   }
@@ -455,15 +461,16 @@ async function searchPendingMemories(argv: string[]): Promise<void> {
     const memories = store.searchPendingMemories(query, limit);
 
     if (memories.length === 0) {
-      console.log("No matching pending memories.");
+      console.log(`${badge("INFO", "blue")} No matching pending memories.`);
       return;
     }
 
-    console.log(`Matching pending memories (${memories.length}):`);
+    console.log(title(`Matching Pending Memories (${memories.length})`));
+    console.log(rule());
     for (const memory of memories) {
       console.log(formatPendingMemoryBlock(memory));
     }
-    console.log("Approve with `bestie memory approve <id>` or reject with `bestie memory reject <id>`. Inspect details with `bestie memory pending inspect <id>`.");
+    console.log(`${badge("NEXT", "cyan")} Approve with \`bestie memory approve <id>\` or reject with \`bestie memory reject <id>\`. Inspect details with \`bestie memory pending inspect <id>\`.`);
   } finally {
     store.close();
   }
@@ -503,18 +510,18 @@ async function approvePendingMemory(argv: string[]): Promise<void> {
 
   try {
     if (store.getMemoryState().paused) {
-      console.log("Memory is paused. Run `bestie memory resume` before approving pending memories.");
+      console.log(`${badge("PAUSED", "yellow")} Memory is paused. Run \`bestie memory resume\` before approving pending memories.`);
       return;
     }
 
     const memory = store.approvePendingMemory(id);
 
     if (!memory) {
-      console.log(`No pending memory found for id ${id}.`);
+      console.log(`${badge("INFO", "blue")} No pending memory found for id ${id}.`);
       return;
     }
 
-    console.log(`Pending memory approved: ${id} -> memory ${memory.id}`);
+    console.log(`${badge("APPROVED", "green")} Pending memory approved: ${id} -> memory ${memory.id}`);
     console.log(formatActiveMemoryLine(memory));
   } finally {
     store.close();
@@ -532,7 +539,7 @@ async function rejectAllPendingMemories(argv: string[]): Promise<void> {
 
   try {
     const rejectedCount = store.rejectAllPendingMemories();
-    console.log(`Pending memories rejected: ${rejectedCount}`);
+    console.log(`${badge("REJECTED", "green")} Pending memories rejected: ${rejectedCount}`);
   } finally {
     store.close();
   }
@@ -551,22 +558,22 @@ async function rejectPendingMemory(argv: string[]): Promise<void> {
     const rejected = store.rejectPendingMemory(id);
 
     if (!rejected) {
-      console.log(`No pending memory found for id ${id}.`);
+      console.log(`${badge("INFO", "blue")} No pending memory found for id ${id}.`);
       return;
     }
 
-    console.log(`Pending memory rejected: ${id}`);
+    console.log(`${badge("REJECTED", "green")} Pending memory rejected: ${id}`);
   } finally {
     store.close();
   }
 }
 
 function formatActiveMemoryLine(memory: StoredMemory): string {
-  return `${memory.id}. [${memory.type}; ${memory.sensitivity}; importance ${memory.importance}; updated ${memory.updatedAt}] ${memory.content}`;
+  return `${badge(memory.type.toUpperCase(), "cyan")} #${memory.id} importance ${memory.importance} ${dim(`${memory.sensitivity}; updated ${memory.updatedAt}`)} ${memory.content}`;
 }
 
 function formatPendingMemoryBlock(memory: PendingMemory): string {
-  const lines = [`${memory.id}. [${memory.type}; created ${memory.createdAt}] ${memory.content}`];
+  const lines = [`${badge(memory.type.toUpperCase(), "yellow")} #${memory.id} ${dim(`created ${memory.createdAt}`)} ${memory.content}`];
 
   if (memory.reason) {
     lines.push(`   Reason: ${memory.reason}`);

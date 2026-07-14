@@ -48,6 +48,13 @@ export function rule(width = 64): string {
   return dim("-".repeat(width));
 }
 
+export function table(headers: string[], rows: string[][]): string[] {
+  const widths = headers.map((header, index) => Math.max(visibleLength(header), ...rows.map((row) => visibleLength(row[index] ?? ""))));
+  const formatRow = (row: string[]) => row.map((cell, index) => padVisible(cell, widths[index] ?? 0)).join("  ").trimEnd();
+
+  return [formatRow(headers), formatRow(widths.map((width) => "-".repeat(width))), ...rows.map(formatRow)];
+}
+
 export function statusBadge(status: "pass" | "warn" | "fail" | "info"): string {
   if (status === "pass") return badge("PASS", "green");
   if (status === "warn") return badge("WARN", "yellow");
@@ -83,4 +90,12 @@ export function startSpinner(message: string): Spinner {
       }
     },
   };
+}
+
+function padVisible(value: string, width: number): string {
+  return value + " ".repeat(Math.max(0, width - visibleLength(value)));
+}
+
+function visibleLength(value: string): number {
+  return value.replace(/\x1b\[[0-9;]*m/g, "").length;
 }
