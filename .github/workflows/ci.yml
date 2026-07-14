@@ -34,3 +34,6 @@ jobs:
 
       - name: Test
         run: npm test
+
+      - name: Channel doctor JSON smoke
+        run: npm run smoke:channels:doctor:json

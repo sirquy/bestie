@@ -22,6 +22,7 @@ try {
 
   const result = spawnSync(process.execPath, [cliPath, "doctor", "--fix", "--json"], {
     cwd: rootDir,
+    env: { ...process.env, HOME: rootDir },
     encoding: "utf8",
   });
 
