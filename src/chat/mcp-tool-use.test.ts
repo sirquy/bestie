@@ -272,6 +272,27 @@ test("runAgentToolRequest runs internal git_status without MCP config", async ()
   }
 });
 
+test("runAgentToolRequest runs git_status for an allowed external repo path", async () => {
+  const paths = await createTempPaths();
+  const externalRepo = await mkdtemp(resolve(tmpdir(), "bestie-external-git-"));
+
+  try {
+    await runGit(externalRepo, ["init"]);
+    await import("node:fs/promises").then((fs) => fs.writeFile(resolve(externalRepo, "dog.txt"), "woof\n"));
+    const result = await runAgentToolRequest({
+      config: { ...createConfig(), workspace: { externalPaths: [externalRepo] }, mcp: undefined },
+      paths,
+      request: { tool: "internal.git_status", arguments: { path: externalRepo } },
+    });
+
+    assert.equal(result.ok, true);
+    assert.match(JSON.stringify(result.result), /dog\.txt/);
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+    await rm(externalRepo, { recursive: true, force: true });
+  }
+});
+
 test("runAgentToolRequest lists configured MCP servers and configured tools", async () => {
   const paths = await createTempPaths();
   const config = createConfig({ tools: [{ name: "read_file", category: "read" }] });
@@ -920,7 +941,7 @@ test("completeWithAgentTools can use current repo git status when runtime root i
 
   try {
     const answer = await completeWithAgentTools({
-      config: { ...createConfig(), workspace: { defaultPath: paths.rootDir } },
+      config: createConfig(),
       paths,
       apiKey: "test-key",
       messages: [{ role: "user", content: "review repo" }],

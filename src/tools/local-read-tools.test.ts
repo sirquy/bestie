@@ -479,6 +479,24 @@ test("git read tools inspect status diff and log through the permission gate", a
   }
 });
 
+test("git read tools inspect allowed external repository paths", async () => {
+  const paths = await createTempPaths();
+  const externalRepo = await mkdtemp(resolve(tmpdir(), "bestie-external-git-"));
+
+  try {
+    await runGit(externalRepo, ["init"]);
+    await writeFile(resolve(externalRepo, "dog.txt"), "woof\n");
+
+    const status = await readGitStatusTool({ config: createConfig({ externalPaths: [externalRepo] }), paths, path: externalRepo });
+
+    assert.equal(status.allowed, true);
+    assert.match(status.output, /dog\.txt/);
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+    await rm(externalRepo, { recursive: true, force: true });
+  }
+});
+
 test("git read tools return denied result when trusted reads are disabled", async () => {
   const paths = await createTempPaths();
 

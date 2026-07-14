@@ -89,6 +89,11 @@ export interface ReadGitDiffResult extends ReadGitStatusResult {
 
 export interface ReadGitLogResult extends ReadGitStatusResult {}
 
+export interface GitReadOptions {
+  path?: string;
+  repoPath?: string;
+}
+
 const MAX_INTERNAL_READ_FILE_BYTES = 64 * 1024;
 const MAX_INTERNAL_READ_MANY_FILE_BYTES = 24 * 1024;
 const MAX_INTERNAL_READ_MANY_TOTAL_BYTES = 160 * 1024;
@@ -494,12 +499,12 @@ export async function readMarkdownBundleTool(options: LocalToolOptions & { path?
   };
 }
 
-export async function readGitStatusTool(options: LocalToolOptions): Promise<ReadGitStatusResult> {
+export async function readGitStatusTool(options: LocalToolOptions & GitReadOptions): Promise<ReadGitStatusResult> {
   const permission = await reviewActionPermission(
     {
       category: "read",
       action: "read_git_status",
-      target: "local git status",
+      target: options.repoPath ?? options.path ?? "local git status",
       reason: "Inspect local repository status requested by the agent.",
       trusted: true,
     },
@@ -518,12 +523,12 @@ export async function readGitStatusTool(options: LocalToolOptions): Promise<Read
   return { allowed: true, reason: permission.reason, output: output.output };
 }
 
-export async function readGitDiffTool(options: LocalToolOptions & { staged?: boolean; maxBytes?: number }): Promise<ReadGitDiffResult> {
+export async function readGitDiffTool(options: LocalToolOptions & GitReadOptions & { staged?: boolean; maxBytes?: number }): Promise<ReadGitDiffResult> {
   const permission = await reviewActionPermission(
     {
       category: "read",
       action: "read_git_diff",
-      target: options.staged ? "staged git diff" : "local git diff",
+      target: options.repoPath ?? options.path ?? (options.staged ? "staged git diff" : "local git diff"),
       reason: "Inspect local repository diff requested by the agent.",
       trusted: true,
     },
@@ -545,12 +550,12 @@ export async function readGitDiffTool(options: LocalToolOptions & { staged?: boo
   return { allowed: true, reason: truncated ? `Read first ${maxBytes} bytes; diff is larger.` : permission.reason, output: buffer.subarray(0, maxBytes).toString("utf8"), truncated };
 }
 
-export async function readGitLogTool(options: LocalToolOptions & { limit?: number }): Promise<ReadGitLogResult> {
+export async function readGitLogTool(options: LocalToolOptions & GitReadOptions & { limit?: number }): Promise<ReadGitLogResult> {
   const permission = await reviewActionPermission(
     {
       category: "read",
       action: "read_git_log",
-      target: "local git log",
+      target: options.repoPath ?? options.path ?? "local git log",
       reason: "Inspect local repository commit history requested by the agent.",
       trusted: true,
     },
@@ -709,6 +714,15 @@ function resolveReadableProjectPath(options: LocalToolOptions, inputPath: string
 }
 
 async function resolveGitReadDirectory(options: LocalToolOptions): Promise<string> {
+  const requestedPath = "repoPath" in options && typeof options.repoPath === "string"
+    ? options.repoPath
+    : "path" in options && typeof options.path === "string"
+      ? options.path
+      : undefined;
+  if (requestedPath?.trim()) {
+    return resolveWorkspacePath({ config: options.config, paths: options.paths, inputPath: requestedPath, defaultBase: "root", access: "read" });
+  }
+
   const explicitWorkspace = process.env.BESTIE_WORKSPACE_DIR ?? options.config?.workspace?.defaultPath;
   if (explicitWorkspace?.trim()) {
     return isAbsolute(explicitWorkspace) ? resolve(explicitWorkspace) : resolve(options.paths.rootDir, explicitWorkspace);
