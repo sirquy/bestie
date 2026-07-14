@@ -17,9 +17,9 @@ test("runSkillsCommand lists installed skills", async () => {
 
     await runSkillsCommand({ argv: ["node", "bestie", "skills"], paths, writeLine: (line) => lines.push(line) });
 
-    assert.equal(lines[0], "Installed skills");
-    assert.match(lines[1] ?? "", /weather/);
-    assert.match(lines[1] ?? "", /SKILL\.md/);
+    assert.equal(lines[0], "Installed Skills");
+    assert.match(lines.join("\n"), /\[SKILL\] weather/);
+    assert.match(lines.join("\n"), /SKILL\.md/);
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
   }

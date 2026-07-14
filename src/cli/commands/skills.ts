@@ -1,5 +1,6 @@
 import { loadInstalledSkills } from "../../skills/loader.js";
 import { getRuntimePaths, type RuntimePaths } from "../../runtime/paths.js";
+import { badge, dim, rule, title } from "../ui.js";
 
 export interface SkillsCommandOptions {
   argv?: string[];
@@ -27,13 +28,14 @@ export async function runSkillsCommand(options: SkillsCommandOptions | string[] 
 
   const skills = await loadInstalledSkills(paths);
   if (skills.length === 0) {
-    writeLine(`No installed skills found in ${paths.appDir}/skills.`);
+    writeLine(`${badge("INFO", "blue")} No installed skills found in ${paths.appDir}/skills.`);
     return;
   }
 
-  writeLine("Installed skills");
+  writeLine(title("Installed Skills"));
+  writeLine(rule());
   for (const skill of skills) {
-    writeLine(`- ${skill.name} (${skill.path})`);
+    writeLine(`${badge("SKILL", "cyan")} ${skill.name} ${dim(skill.path)}`);
   }
 }
 

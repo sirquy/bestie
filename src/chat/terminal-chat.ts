@@ -12,6 +12,7 @@ import { sendChatCompletionWithFallbacks } from "../llm/openai-compatible.js";
 import { fallbackLogDetail, formatProviderFallbackDiagnostics, formatProviderFallbackHealth } from "../llm/fallbacks.js";
 import { loadRequiredSecret } from "../runtime/env.js";
 import type { ChatCompletionOptions, ChatMessage } from "../llm/types.js";
+import { badge, bold, color, dim, rule } from "../cli/ui.js";
 import { MEMORY_CONTEXT_ITEM_LIMIT, appendConversationTurn, buildChatMessages } from "./message-builder.js";
 import { buildMcpToolSystemPrompt, completeWithAgentTools, runAgentToolRequest, type AgentToolActivity, type RunAgentToolRequestOptions } from "./mcp-tool-use.js";
 
@@ -155,7 +156,7 @@ function printChatHeader(options: TerminalChatOptions, writeLine: (message: stri
   writeLine(`${dim("Model")} ${options.config.llm.provider}/${options.config.llm.model}`);
   writeLine(`${badge("BOT", "cyan")} ${bold(agentName)} ${dim("with")} ${badge("YOU", "green")} ${bold(ownerName)}`);
   writeLine(`${dim("Commands")} /help  /status  /providers  /memory  /pending  /exit`);
-  writeLine(BOX_RULE);
+  writeLine(rule(28));
 }
 
 export function formatPrompt(ownerName?: string): string {
@@ -242,29 +243,6 @@ function createTerminalAnswerStreamer(
     },
   };
 }
-
-function color(name: "cyan" | "green" | "magenta" | "red" | "yellow", value: string): string {
-  if (!output.isTTY || process.env.NO_COLOR) {
-    return value;
-  }
-
-  const codes = { cyan: 36, green: 32, magenta: 35, red: 31, yellow: 33 };
-  return `\x1b[${codes[name]}m${value}\x1b[0m`;
-}
-
-function badge(label: string, colorName: "cyan" | "green" | "red" | "yellow"): string {
-  return color(colorName, `[${label}]`);
-}
-
-function bold(value: string): string {
-  return !output.isTTY || process.env.NO_COLOR ? value : `\x1b[1m${value}\x1b[0m`;
-}
-
-function dim(value: string): string {
-  return !output.isTTY || process.env.NO_COLOR ? value : `\x1b[2m${value}\x1b[0m`;
-}
-
-const BOX_RULE = output.isTTY && !process.env.NO_COLOR ? "\x1b[2m----------------------------\x1b[0m" : "----------------------------";
 
 async function handleSlashCommand(userInput: string, paths: RuntimePaths, writeLine: (message: string) => void): Promise<boolean> {
   if (!userInput.startsWith("/")) {

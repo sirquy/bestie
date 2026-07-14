@@ -81,9 +81,9 @@ test("runChannelsCommand lists channel config and daemon state", async () => {
 
     await runChannelsCommand({ argv: ["node", "bestie", "channels", "list"], paths, writeLine: (message) => lines.push(message), isProcessRunning: (pid) => pid === 4242 });
 
-    assert.match(lines.join("\n"), /Channel\s+Enabled\s+Owner\s+Token env\s+Daemon/);
-    assert.match(lines.join("\n"), /Telegram\s+yes\s+set\s+BESTIE_TELEGRAM_BOT_TOKEN\s+running:4242/);
-    assert.match(lines.join("\n"), /Zalo\s+no\s+missing\s+BESTIE_ZALO_BOT_TOKEN\s+stale:4343/);
+    assert.match(lines.join("\n"), /Bestie Channels/);
+    assert.match(lines.join("\n"), /Telegram\s+\[ON\]\s+\[OWNER\]\s+BESTIE_TELEGRAM_BOT_TOKEN\s+\[RUN\] pid 4242/);
+    assert.match(lines.join("\n"), /Zalo\s+\[OFF\]\s+\[OWNER\?\]\s+BESTIE_ZALO_BOT_TOKEN\s+\[STALE\] pid 4343/);
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
   }
@@ -114,7 +114,7 @@ test("runChannelsCommand runs channel-focused doctor checks", async () => {
     await runChannelsCommand({ argv: ["node", "bestie", "channels", "doctor", "--channel", "zalo"], paths, writeLine: (message) => lines.push(message) });
 
     assert.match(lines.join("\n"), /Bestie Channels Doctor/);
-    assert.match(lines.join("\n"), /FAIL Zalo channel:/);
+    assert.match(lines.join("\n"), /\[FAIL\] Zalo channel:/);
     assert.doesNotMatch(lines.join("\n"), /Telegram config/);
     assert.equal(process.exitCode, 1);
   } finally {

@@ -5,6 +5,7 @@ import { getRuntimePaths, type RuntimePaths } from "../../runtime/paths.js";
 import { getDaemonChannelStatus, type DaemonChannel } from "./daemon.js";
 import { runTelegramCommand } from "./telegram.js";
 import { runZaloCommand } from "./zalo.js";
+import { badge, keyValue, rule, statusBadge, title } from "../ui.js";
 
 type ChannelHandler = (argv?: string[]) => Promise<void> | void;
 
@@ -113,10 +114,10 @@ async function runChannelsDoctor(options: Required<Pick<ChannelsCommandOptions, 
 
   const checks = channelsReport.channels.flatMap((channel) => channel.checks);
 
-  options.writeLine("Bestie Channels Doctor\n");
+  options.writeLine(title("Bestie Channels Doctor"));
+  options.writeLine(rule());
   for (const check of checks) {
-    const marker = check.status === "pass" ? "OK" : check.status === "warn" ? "WARN" : "FAIL";
-    options.writeLine(`${marker} ${check.name}: ${check.message}`);
+    options.writeLine(`${statusBadge(check.status)} ${check.name}: ${check.message}`);
     if (check.fix) {
       options.writeLine(`  Fix: ${check.fix}`);
     }
@@ -126,7 +127,8 @@ async function runChannelsDoctor(options: Required<Pick<ChannelsCommandOptions, 
     options.writeLine("No channel diagnostics matched the selected channel(s).");
   }
 
-  options.writeLine(`\nSummary: ${channelsReport.issueCount} ${channelsReport.issueCount === 1 ? "issue" : "issues"} found.`);
+  options.writeLine("");
+  options.writeLine(keyValue("Summary", `${channelsReport.issueCount} ${channelsReport.issueCount === 1 ? "issue" : "issues"} found`));
   setExitCodeForIssues(channelsReport.issueCount);
 }
 
@@ -162,8 +164,8 @@ function isChannelDoctorCheck(check: DoctorCheck, selectedChannels: DaemonChanne
 
 async function showChannelsStatus(options: Required<Pick<ChannelsCommandOptions, "paths" | "writeLine">> & Pick<ChannelsCommandOptions, "isProcessRunning">): Promise<void> {
   const config = await loadConfig(options.paths);
-  options.writeLine("Channel   Enabled  Owner  Token env                  Daemon");
-  options.writeLine("--------  -------  -----  -------------------------  ----------------");
+  options.writeLine(title("Bestie Channels"));
+  options.writeLine(rule());
 
   for (const channel of CHANNELS) {
     const channelConfig = getChannelConfig(config, channel);
@@ -177,10 +179,10 @@ function getChannelConfig(config: AppConfig, channel: ChannelDescriptor): { enab
 }
 
 function formatChannelStatusRow(channel: ChannelDescriptor, channelConfig: ReturnType<typeof getChannelConfig>, daemon: Awaited<ReturnType<typeof getDaemonChannelStatus>>): string {
-  const enabled = channelConfig?.enabled ? "yes" : "no";
-  const owner = channelConfig?.ownerUserId?.trim() ? "set" : "missing";
+  const enabled = channelConfig?.enabled ? badge("ON", "green") : badge("OFF", "gray");
+  const owner = channelConfig?.ownerUserId?.trim() ? badge("OWNER", "green") : badge("OWNER?", "yellow");
   const tokenEnv = channelConfig?.botTokenEnv ?? "missing";
-  const daemonText = daemon.state === "running" ? `running:${daemon.pid}` : daemon.state === "stale" ? `stale:${daemon.pid}` : "stopped";
+  const daemonText = daemon.state === "running" ? `${badge("RUN", "green")} pid ${daemon.pid}` : daemon.state === "stale" ? `${badge("STALE", "yellow")} pid ${daemon.pid}` : badge("STOP", "gray");
 
-  return [channel.displayName.padEnd(8), enabled.padEnd(7), owner.padEnd(5), tokenEnv.padEnd(25), daemonText].join("  ");
+  return `${channel.displayName.padEnd(8)} ${enabled} ${owner} ${tokenEnv.padEnd(25)} ${daemonText}`;
 }

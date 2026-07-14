@@ -2,6 +2,7 @@ import { listActiveMemoriesTool, readGitDiffTool, readGitLogTool, readGitStatusT
 import { cleanupTelegramAttachments, parseCleanupAttachmentKinds, parseDurationMs, type CleanupAttachmentKind } from "../../tools/attachment-cleanup.js";
 import { getRuntimePaths, type RuntimePaths } from "../../runtime/paths.js";
 import { UserFacingError } from "../../runtime/errors.js";
+import { badge, dim } from "../ui.js";
 
 interface ToolsCommandOptions {
   argv?: string[];
@@ -34,12 +35,12 @@ export async function runToolsCommand(optionsOrArgv: string[] | ToolsCommandOpti
     }
 
     if (result.memories.length === 0) {
-      writeLine("No active memories found.");
+      writeLine(`${badge("INFO", "blue")} No active memories found.`);
       return;
     }
 
     for (const memory of result.memories) {
-      writeLine(`${memory.id}. [${memory.type}/${memory.sensitivity}/importance ${memory.importance}] ${memory.content}`);
+      writeLine(`${badge(memory.type.toUpperCase(), "cyan")} #${memory.id} importance ${memory.importance} ${dim(memory.sensitivity)} ${memory.content}`);
     }
 
     return;
@@ -88,14 +89,14 @@ async function runAttachmentToolsCommand(options: { argv: string[]; paths: Runti
   const confirm = options.argv.includes("--confirm");
   const result = await cleanupTelegramAttachments({ paths: options.paths, olderThanMs, kinds, confirm });
 
-  options.writeLine(`${result.dryRun ? "Would delete" : "Deleted"} ${result.dryRun ? result.matchedFiles : result.deletedFiles} Telegram attachment file(s), ${formatBytes(result.dryRun ? result.bytesMatched : result.bytesDeleted)}.`);
-  options.writeLine(`Scanned ${result.scannedFiles} file(s) under ${result.root}.`);
+  options.writeLine(`${result.dryRun ? badge("DRY", "yellow") : badge("DONE", "green")} ${result.dryRun ? "Would delete" : "Deleted"} ${result.dryRun ? result.matchedFiles : result.deletedFiles} Telegram attachment file(s), ${formatBytes(result.dryRun ? result.bytesMatched : result.bytesDeleted)}.`);
+  options.writeLine(`${badge("SCAN", "blue")} Scanned ${result.scannedFiles} file(s) under ${result.root}.`);
   if (result.dryRun && result.matchedFiles > 0) {
-    options.writeLine("Dry run only. Re-run with --confirm to delete.");
+    options.writeLine(`${badge("INFO", "blue")} Dry run only. Re-run with --confirm to delete.`);
   }
 
   for (const file of result.files.slice(0, 20)) {
-    options.writeLine(`${file.deleted ? "deleted" : "match"} ${file.kind} ${formatBytes(file.bytes)} ${file.path}`);
+    options.writeLine(`${file.deleted ? badge("DEL", "red") : badge("MATCH", "yellow")} ${file.kind} ${formatBytes(file.bytes)} ${file.path}`);
   }
   if (result.files.length > 20) {
     options.writeLine(`...and ${result.files.length - 20} more file(s).`);

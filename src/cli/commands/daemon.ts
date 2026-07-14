@@ -6,6 +6,7 @@ import { resolve } from "node:path";
 import { UserFacingError } from "../../runtime/errors.js";
 import { getRuntimePaths, type RuntimePaths } from "../../runtime/paths.js";
 import { maybePrintUpdateNotice } from "../update-notice.js";
+import { badge } from "../ui.js";
 
 const DAEMON_STOP_TIMEOUT_MS = 30_000;
 const DAEMON_STOP_POLL_INTERVAL_MS = 1000;
@@ -97,7 +98,7 @@ async function startDaemon(options: Required<Pick<DaemonCommandOptions, "paths" 
   const state = await readDaemonState(options.paths, channel);
   const isRunning = options.isProcessRunning ?? defaultIsProcessRunning;
   if (state && isRunning(state.pid)) {
-    options.writeLine(`${formatDaemonChannel(channel)} daemon already running with pid ${state.pid}.`);
+    options.writeLine(`${badge("RUN", "green")} ${formatDaemonChannel(channel)} daemon already running with pid ${state.pid}.`);
     return;
   }
   if (state) {
@@ -128,14 +129,14 @@ async function startDaemon(options: Required<Pick<DaemonCommandOptions, "paths" 
 
   child.unref();
   await writeDaemonState(options.paths, channel, { channel, pid: child.pid, command, args, startedAt: new Date().toISOString(), logPath });
-  options.writeLine(`${formatDaemonChannel(channel)} daemon started with pid ${child.pid}.`);
+  options.writeLine(`${badge("RUN", "green")} ${formatDaemonChannel(channel)} daemon started with pid ${child.pid}.`);
   options.writeLine(`Logs: ${logPath}`);
 }
 
 async function stopDaemon(options: Required<Pick<DaemonCommandOptions, "paths" | "writeLine">> & DaemonCommandOptions, channel: DaemonChannel): Promise<void> {
   const state = await readDaemonState(options.paths, channel);
   if (!state) {
-    options.writeLine(`${formatDaemonChannel(channel)} daemon is not running.`);
+    options.writeLine(`${badge("STOP", "gray")} ${formatDaemonChannel(channel)} daemon is not running.`);
     return;
   }
 
@@ -146,7 +147,7 @@ async function stopDaemon(options: Required<Pick<DaemonCommandOptions, "paths" |
       const commandLine = getProcessCommandLine(state.pid);
       if (!commandLine || !isRecordedDaemonProcess(state, commandLine)) {
         await removeDaemonState(options.paths, channel);
-        options.writeLine(`${formatDaemonChannel(channel)} daemon state was stale; pid ${state.pid} belongs to a different process.`);
+        options.writeLine(`${badge("STALE", "yellow")} ${formatDaemonChannel(channel)} daemon state was stale; pid ${state.pid} belongs to a different process.`);
         return;
       }
     }
@@ -162,7 +163,7 @@ async function stopDaemon(options: Required<Pick<DaemonCommandOptions, "paths" |
   }
 
   await removeDaemonState(options.paths, channel);
-  options.writeLine(`${formatDaemonChannel(channel)} daemon stopped: ${state.pid}.`);
+  options.writeLine(`${badge("STOP", "gray")} ${formatDaemonChannel(channel)} daemon stopped: ${state.pid}.`);
 }
 
 async function restartDaemon(options: Required<Pick<DaemonCommandOptions, "paths" | "writeLine">> & DaemonCommandOptions, channel: DaemonChannel): Promise<void> {
@@ -173,11 +174,11 @@ async function restartDaemon(options: Required<Pick<DaemonCommandOptions, "paths
 async function showDaemonStatus(options: Required<Pick<DaemonCommandOptions, "paths" | "writeLine">> & DaemonCommandOptions, channel: DaemonChannel): Promise<void> {
   const status = await getDaemonChannelStatus(options.paths, channel, options.isProcessRunning ?? defaultIsProcessRunning);
   if (status.state === "stopped") {
-    options.writeLine(`${formatDaemonChannel(channel)} daemon is stopped.`);
+    options.writeLine(`${badge("STOP", "gray")} ${formatDaemonChannel(channel)} daemon is stopped.`);
     return;
   }
 
-  options.writeLine(status.state === "running" ? `${formatDaemonChannel(channel)} daemon is running with pid ${status.pid}.` : `${formatDaemonChannel(channel)} daemon pid ${status.pid} is stale.`);
+  options.writeLine(status.state === "running" ? `${badge("RUN", "green")} ${formatDaemonChannel(channel)} daemon is running with pid ${status.pid}.` : `${badge("STALE", "yellow")} ${formatDaemonChannel(channel)} daemon pid ${status.pid} is stale.`);
   options.writeLine(`Logs: ${status.logPath}`);
 }
 
