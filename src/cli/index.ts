@@ -102,7 +102,7 @@ Update options:
   --apply  Run npm install -g bestie-agent@latest after a newer version is found
 `;
 
-async function main(argv: string[]): Promise<void> {
+export async function main(argv: string[]): Promise<void> {
   const command = argv[2];
 
   if (!command || command === "--help" || command === "-h") {
@@ -196,8 +196,14 @@ function shouldSuppressBanner(argv: string[]): boolean {
   return false;
 }
 
-main(process.argv).catch((error: unknown) => {
-  const message = error instanceof Error ? error.message : "Unexpected CLI error.";
-  console.error(message);
-  process.exitCode = 1;
-});
+if (isCliEntrypoint()) {
+  main(process.argv).catch((error: unknown) => {
+    const message = error instanceof Error ? error.message : "Unexpected CLI error.";
+    console.error(message);
+    process.exitCode = 1;
+  });
+}
+
+function isCliEntrypoint(): boolean {
+  return process.argv[1] ? import.meta.url === new URL(process.argv[1], "file:").href : false;
+}

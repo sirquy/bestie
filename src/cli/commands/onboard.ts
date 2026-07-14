@@ -11,16 +11,9 @@ import { DEFAULT_LLM_MAX_RETRIES, DEFAULT_LLM_RETRY_DELAY_MS, DEFAULT_LLM_TIMEOU
 import { writeEnvFile } from "../../runtime/env.js";
 import { appendLog } from "../../runtime/logger.js";
 import { getRuntimePaths, type RuntimePaths } from "../../runtime/paths.js";
+import { badge, bold, color, dim, title } from "../ui.js";
 
 const DEFAULT_API_KEY_ENV = "OPENAI_API_KEY";
-const ANSI_RESET = "\x1b[0m";
-const ANSI_BOLD = "\x1b[1m";
-const ANSI_DIM = "\x1b[2m";
-const ANSI_CYAN = "\x1b[36m";
-const ANSI_GREEN = "\x1b[32m";
-const ANSI_YELLOW = "\x1b[33m";
-const ANSI_MAGENTA = "\x1b[35m";
-const ANSI_RED = "\x1b[31m";
 
 type LanguageMode = AppConfig["agent"]["language"];
 type MemoryWritePolicy = NonNullable<AppConfig["memory"]>["writePolicy"];
@@ -253,61 +246,72 @@ async function askMemoryWritePolicy(ask: AskLine): Promise<MemoryWritePolicy> {
 }
 
 function createOnboardUi(writeLine: (message: string) => void, useColor: boolean): OnboardUi {
-  const paint = (text: string, code: string) => useColor ? color(text, code) : text;
-  const dim = (text: string) => paint(text, ANSI_DIM);
-  const accent = (text: string) => paint(text, ANSI_CYAN);
-  const ok = (text: string) => paint(text, ANSI_GREEN);
-  const title = (text: string) => useColor ? `${ANSI_BOLD}${ANSI_MAGENTA}${text}${ANSI_RESET}` : text;
+  const render = withColorMode(useColor);
 
   return {
     intro: (paths, shouldSkipProviderTest) => {
-      writeLine(title("Bestie onboarding"));
-      writeLine(dim("A local-first setup wizard for your companion runtime."));
-      writeLine(`${accent("Runtime")} ${paths.appDir}`);
-      writeLine(`${accent("Privacy")} Secrets stay local in .bestie/.env and are hidden while typing.`);
-      writeLine(shouldSkipProviderTest ? `${dim("Plan")} Profile -> Generate -> Files\n` : `${dim("Plan")} Profile -> Generate -> Files -> Provider test\n`);
+      writeLine(render(() => title("Bestie Onboarding")));
+      writeLine(render(() => dim("A local-first setup wizard for your companion runtime.")));
+      writeLine(`${render(() => color("cyan", "Runtime"))} ${paths.appDir}`);
+      writeLine(`${render(() => color("cyan", "Privacy"))} Secrets stay local in .bestie/.env and are hidden while typing.`);
+      writeLine(render(() => shouldSkipProviderTest ? `${dim("Plan")} Profile -> Generate -> Files\n` : `${dim("Plan")} Profile -> Generate -> Files -> Provider test\n`));
     },
     section: (sectionTitle, detail) => {
-      writeLine(`${accent("\n>")} ${paint(sectionTitle, ANSI_BOLD)}${detail ? ` ${dim(detail)}` : ""}`);
+      writeLine(render(() => `${color("cyan", "\n>")} ${bold(sectionTitle)}${detail ? ` ${dim(detail)}` : ""}`));
     },
-    success: (message) => writeLine(`${ok("OK")} ${message}`),
-    info: (message) => writeLine(`${paint("INFO", ANSI_YELLOW)} ${message}`),
-    savedPath: (label, path) => writeLine(`  ${accent(label.padEnd(13))} ${path}`),
+    success: (message) => writeLine(`${render(() => badge("OK", "green"))} ${message}`),
+    info: (message) => writeLine(`${render(() => badge("INFO", "yellow"))} ${message}`),
+    savedPath: (label, path) => writeLine(`  ${render(() => color("cyan", label.padEnd(13)))} ${path}`),
     final: () => {
-      writeLine(`${ok("\nDone")} Onboarding complete.`);
-      writeLine(`${dim("Next")} Run \`bestie status\` or \`bestie chat\` to start chatting.`);
+      writeLine(`${render(() => badge("DONE", "green"))} Onboarding complete.`);
+      writeLine(`${render(() => dim("Next"))} Run \`bestie status\` or \`bestie chat\` to start chatting.`);
     },
   };
 }
 
 function createProviderTestReporter(writeLine: (message: string) => void, useColor: boolean): ProviderTestReporter {
-  const paint = (text: string, code: string) => useColor ? color(text, code) : text;
-  const dim = (text: string) => paint(text, ANSI_DIM);
+  const render = withColorMode(useColor);
 
   return {
-    pending: (message) => writeLine(`${paint("TEST", ANSI_CYAN)} ${message}`),
-    success: (message) => writeLine(`${paint("OK", ANSI_GREEN)} ${message}`),
+    pending: (message) => writeLine(`${render(() => badge("TEST", "cyan"))} ${message}`),
+    success: (message) => writeLine(`${render(() => badge("OK", "green"))} ${message}`),
     failure: (message, detail) => {
-      writeLine(`${paint("FAIL", ANSI_RED)} ${message}`);
+      writeLine(`${render(() => badge("FAIL", "red"))} ${message}`);
       if (detail) {
-        writeLine(`     ${dim(detail)}`);
+        writeLine(`     ${render(() => dim(detail))}`);
       }
     },
   };
 }
 
 function createPromptTheme(useColor: boolean): PromptTheme {
-  const paint = (text: string, code: string) => useColor ? color(text, code) : text;
+  const render = withColorMode(useColor);
 
   return {
-    step: (step, label, text) => `${paint(`[${step}/9]`, ANSI_DIM)} ${paint(label, ANSI_CYAN)} ${text} `,
-    defaultValue: (value) => paint(`[${value}]`, ANSI_DIM),
-    warning: (message) => paint(message, ANSI_YELLOW),
+    step: (step, label, text) => render(() => `${dim(`[${step}/9]`)} ${color("cyan", label)} ${text} `),
+    defaultValue: (value) => render(() => dim(`[${value}]`)),
+    warning: (message) => render(() => color("yellow", message)),
   };
 }
 
-function color(text: string, code: string): string {
-  return `${code}${text}${ANSI_RESET}`;
+function withColorMode(useColor: boolean): <T>(render: () => T) => T {
+  return (render) => {
+    if (useColor) {
+      return render();
+    }
+
+    const previousNoColor = process.env.NO_COLOR;
+    process.env.NO_COLOR = "1";
+    try {
+      return render();
+    } finally {
+      if (previousNoColor === undefined) {
+        delete process.env.NO_COLOR;
+      } else {
+        process.env.NO_COLOR = previousNoColor;
+      }
+    }
+  };
 }
 
 function buildConfig(answers: OnboardingAnswers): AppConfig {

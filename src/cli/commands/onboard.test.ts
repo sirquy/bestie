@@ -86,7 +86,7 @@ test("runOnboardCommand runs provider test when not skipped", async () => {
     assert.equal(providerTestApiKey, "test-key");
     assert.ok(output.some((line) => line.includes("Provider test")));
     assert.ok(output.some((line) => line.includes("mocked provider unavailable")));
-    assert.ok(output.some((line) => line.includes("Done") && line.includes("Onboarding complete")));
+    assert.ok(output.some((line) => line.includes("DONE") && line.includes("Onboarding complete")));
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
   }
