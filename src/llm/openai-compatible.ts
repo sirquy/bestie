@@ -2,6 +2,7 @@ import { setTimeout as delay } from "node:timers/promises";
 
 import { DEFAULT_LLM_MAX_RETRIES, DEFAULT_LLM_RETRY_DELAY_MS, DEFAULT_LLM_TIMEOUT_MS, type AppConfig } from "../runtime/config.js";
 import { loadRequiredSecret } from "../runtime/env.js";
+import { appendLog } from "../runtime/logger.js";
 import type { RuntimePaths } from "../runtime/paths.js";
 import { redactSecretLikeValues } from "../runtime/secret-redaction.js";
 import { ProviderAuthError, ProviderNetworkError, ProviderRateLimitError, ProviderResponseError, ProviderTimeoutError } from "./errors.js";
@@ -35,7 +36,7 @@ export async function sendChatCompletionWithFallbacks(
   for (const candidate of buildLlmFallbackCandidates(config)) {
     try {
       const apiKey = await loadRequiredSecret(candidate.llm.apiKeyEnv, clientOptions.paths);
-      return await sendChatCompletion(candidate, apiKey, options, clientOptions.fetchImpl ?? fetch, clientOptions.timeoutMs ?? candidate.llm.timeoutMs);
+      return await sendChatCompletion(candidate, apiKey, options, clientOptions.fetchImpl ?? fetch, clientOptions.timeoutMs ?? candidate.llm.timeoutMs, { paths: clientOptions.paths, knownSecrets: [apiKey] });
     } catch (error) {
       fallbackRecorder.record({ provider: candidate.llm.provider, model: candidate.llm.model }, error);
       if (!isFallbackEligibleProviderError(error)) {
@@ -53,6 +54,7 @@ export async function sendChatCompletion(
   options: ChatCompletionOptions,
   fetchImpl: FetchLike = fetch,
   timeoutMs = config.llm.timeoutMs ?? DEFAULT_LLM_TIMEOUT_MS,
+  retryLogOptions: { paths?: RuntimePaths; knownSecrets?: string[] } = {},
 ): Promise<string> {
   const requestBody = buildChatCompletionRequestBody(config, options);
   const maxRetries = config.llm.maxRetries ?? DEFAULT_LLM_MAX_RETRIES;
@@ -68,11 +70,38 @@ export async function sendChatCompletion(
       }
 
       attempt += 1;
+      await logProviderRetry(config, error, { attempt, maxRetries, retryDelayMs, paths: retryLogOptions.paths, knownSecrets: retryLogOptions.knownSecrets ?? [apiKey] });
       if (retryDelayMs > 0) {
         await delay(retryDelayMs);
       }
     }
   }
+}
+
+async function logProviderRetry(
+  config: AppConfig,
+  error: unknown,
+  options: { attempt: number; maxRetries: number; retryDelayMs: number; paths?: RuntimePaths; knownSecrets: string[] },
+): Promise<void> {
+  if (!options.paths) {
+    return;
+  }
+
+  await appendLog(
+    {
+      event: "llm_provider_retry",
+      detail: {
+        provider: config.llm.provider,
+        model: config.llm.model,
+        attempt: options.attempt,
+        maxRetries: options.maxRetries,
+        retryDelayMs: options.retryDelayMs,
+        status: error instanceof ProviderResponseError ? error.status : undefined,
+        message: error instanceof Error ? error.message : "Unknown provider error.",
+      },
+    },
+    { paths: options.paths, knownSecrets: options.knownSecrets },
+  );
 }
 
 async function sendChatCompletionAttempt(
@@ -121,7 +150,7 @@ async function sendChatCompletionAttempt(
   }
 
   if (!response.ok) {
-    throw new ProviderResponseError(await formatProviderHttpError(response));
+    throw new ProviderResponseError(await formatProviderHttpError(response), response.status);
   }
 
   if (requestBody.stream) {
@@ -160,7 +189,9 @@ async function readProviderErrorBody(response: Response): Promise<string | undef
 }
 
 function isRetryableProviderError(error: unknown): boolean {
-  return error instanceof ProviderNetworkError || error instanceof ProviderRateLimitError;
+  return error instanceof ProviderNetworkError
+    || error instanceof ProviderRateLimitError
+    || (error instanceof ProviderResponseError && error.status !== undefined && error.status >= 500);
 }
 
 function isFallbackEligibleProviderError(error: unknown): boolean {

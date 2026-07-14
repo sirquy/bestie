@@ -12,7 +12,7 @@ import { writeConfig } from "../runtime/config.js";
 import { writeEnvFile } from "../runtime/env.js";
 import { appendLog } from "../runtime/logger.js";
 import type { RuntimePaths } from "../runtime/paths.js";
-import { ProviderFallbackError, ProviderTimeoutError } from "../llm/errors.js";
+import { ProviderFallbackError, ProviderResponseError, ProviderTimeoutError } from "../llm/errors.js";
 import { SqliteMemoryStore } from "../memory/sqlite-store.js";
 import { runAgentToolRequest } from "../chat/mcp-tool-use.js";
 import type { ChannelTranscript } from "./attachments.js";
@@ -1855,6 +1855,29 @@ test("handleTelegramUpdate summarizes unexpected runtime errors without leaking 
     assert.match(logText, /telegram_chat_failure/);
     assert.match(logText, /ENOENT/);
     assert.match(logText, /src\/runtime\/runtime\.ts/);
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("handleTelegramUpdate replies with sanitized provider error details", async () => {
+  const paths = await createTempPaths();
+  const sentMessages: Array<{ chatId: number; text: string }> = [];
+
+  try {
+    await writeRuntimeFiles(paths);
+    const result = await handleTelegramUpdate(createTextUpdate("hello", 12345), {
+      config,
+      paths,
+      client: createRecordingClient(sentMessages),
+      chatCompletion: async () => {
+        throw new ProviderResponseError('500 Internal Server Error: {"error":{"message":"Upstream provider request failed"}}', 500);
+      },
+    });
+
+    assert.equal(result, "replied");
+    assert.match(sentMessages.at(-1)?.text ?? "", /could not get a provider response/);
+    assert.match(sentMessages.at(-1)?.text ?? "", /Upstream provider request failed/);
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
   }

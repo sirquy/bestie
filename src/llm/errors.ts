@@ -33,7 +33,7 @@ export class ProviderTimeoutError extends UserFacingError {
 }
 
 export class ProviderResponseError extends UserFacingError {
-  constructor(message: string) {
+  constructor(message: string, readonly status?: number) {
     super(`Provider returned an unusable response: ${message}`, "ProviderResponseError");
   }
 }

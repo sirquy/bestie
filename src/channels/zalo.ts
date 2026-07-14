@@ -2,7 +2,7 @@ import { loadSystemPrompt } from "../character/prompt-loader.js";
 import { MEMORY_CONTEXT_ITEM_LIMIT, buildChatMessages } from "../chat/message-builder.js";
 import { buildMcpToolSystemPrompt, completeWithAgentTools, runAgentToolRequest, type AgentToolActivity } from "../chat/mcp-tool-use.js";
 import { fallbackLogDetail, formatProviderFallbackDiagnostics, formatProviderFallbackHealth } from "../llm/fallbacks.js";
-import { ProviderFallbackError, ProviderTimeoutError } from "../llm/errors.js";
+import { ProviderAuthError, ProviderFallbackError, ProviderNetworkError, ProviderRateLimitError, ProviderResponseError, ProviderTimeoutError } from "../llm/errors.js";
 import { sendChatCompletionWithFallbacks } from "../llm/openai-compatible.js";
 import type { ChatCompletionOptions, ChatMessage } from "../llm/types.js";
 import { runMemoryReasoningPass } from "../memory/reasoning.js";
@@ -479,7 +479,25 @@ function zaloChatFailureMessage(config: AppConfig, error: unknown): string {
   if (error instanceof ProviderTimeoutError || (error instanceof ProviderFallbackError && error.finalError instanceof ProviderTimeoutError)) {
     return `${config.agent.name} timed out while handling this Zalo message. Try again, ask a narrower question, or raise llm.timeoutMs in .bestie/config.json.`;
   }
+
+  const providerError = formatProviderChatFailure(error);
+  if (providerError) {
+    return `${config.agent.name} could not get a provider response for this Zalo message: ${providerError}`;
+  }
+
   return `${config.agent.name} hit an error while handling this Zalo message. Try again or ask a narrower question.`;
+}
+
+function formatProviderChatFailure(error: unknown): string | undefined {
+  if (error instanceof ProviderFallbackError) {
+    return error.message;
+  }
+
+  if (error instanceof ProviderAuthError || error instanceof ProviderNetworkError || error instanceof ProviderRateLimitError || error instanceof ProviderResponseError) {
+    return error.message;
+  }
+
+  return undefined;
 }
 
 function splitZaloMessage(text: string): string[] {

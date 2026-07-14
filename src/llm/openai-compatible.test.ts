@@ -5,7 +5,7 @@ import type { AppConfig } from "../runtime/config.js";
 import { ProviderAuthError, ProviderFallbackError, ProviderNetworkError, ProviderRateLimitError, ProviderResponseError, ProviderTimeoutError } from "./errors.js";
 import { buildChatCompletionRequestBody, sendChatCompletion, sendChatCompletionWithFallbacks } from "./openai-compatible.js";
 import type { RuntimePaths } from "../runtime/paths.js";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 
@@ -179,6 +179,75 @@ test("sendChatCompletion retries rate limits within configured limit", async () 
   assert.equal(calls, 2);
 });
 
+test("sendChatCompletion retries transient provider 5xx responses", async () => {
+  let calls = 0;
+  const fetchImpl = async () => {
+    calls += 1;
+    return calls === 1
+      ? new Response('{"error":"upstream failed"}', { status: 500, statusText: "Internal Server Error" })
+      : new Response(JSON.stringify({ choices: [{ message: { content: "Recovered" } }] }), { status: 200 });
+  };
+
+  const content = await sendChatCompletion(
+    { ...config, llm: { ...config.llm, maxRetries: 1, retryDelayMs: 0 } },
+    "secret",
+    { messages: [{ role: "user", content: "Hi" }] },
+    fetchImpl,
+  );
+
+  assert.equal(content, "Recovered");
+  assert.equal(calls, 2);
+});
+
+test("sendChatCompletion logs retryable provider failures when runtime paths are provided", async () => {
+  const paths = await createTempPaths();
+  let calls = 0;
+
+  try {
+    const fetchImpl = async () => {
+      calls += 1;
+      return calls === 1
+        ? new Response('{"error":"upstream failed with sk-secret123"}', { status: 500, statusText: "Internal Server Error" })
+        : new Response(JSON.stringify({ choices: [{ message: { content: "Recovered" } }] }), { status: 200 });
+    };
+
+    await sendChatCompletion(
+      { ...config, llm: { ...config.llm, maxRetries: 1, retryDelayMs: 0 } },
+      "sk-secret123",
+      { messages: [{ role: "user", content: "Hi" }] },
+      fetchImpl,
+      undefined,
+      { paths, knownSecrets: ["sk-secret123"] },
+    );
+
+    const logText = await readFile(paths.appLogPath, "utf8");
+    assert.match(logText, /"event":"llm_provider_retry"/);
+    assert.match(logText, /"provider":"openai-compatible"/);
+    assert.match(logText, /"model":"example-model"/);
+    assert.match(logText, /"attempt":1/);
+    assert.match(logText, /"maxRetries":1/);
+    assert.match(logText, /"status":500/);
+    assert.doesNotMatch(logText, /sk-secret123/);
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("sendChatCompletion does not retry non-transient provider 4xx responses", async () => {
+  let calls = 0;
+  const fetchImpl = async () => {
+    calls += 1;
+    return new Response("bad request", { status: 400, statusText: "Bad Request" });
+  };
+
+  await assert.rejects(
+    () => sendChatCompletion({ ...config, llm: { ...config.llm, maxRetries: 3, retryDelayMs: 0 } }, "secret", { messages: [{ role: "user", content: "Hi" }] }, fetchImpl),
+    ProviderResponseError,
+  );
+
+  assert.equal(calls, 1);
+});
+
 test("sendChatCompletion aborts slow provider requests", async () => {
   const fetchImpl = async (_url: string | URL | Request, init?: RequestInit) =>
     new Promise<Response>((_resolve, reject) => {
@@ -234,7 +303,7 @@ test("sendChatCompletionWithFallbacks tries configured fallback model and provid
       const body = JSON.parse(String(init?.body)) as { model: string };
       const headers = new Headers(init?.headers);
       calls.push({ url: String(url), model: body.model, auth: headers.get("authorization") });
-      return calls.length === 1
+      return calls.length <= 2
         ? new Response("bad gateway", { status: 502, statusText: "Bad Gateway" })
         : new Response(JSON.stringify({ choices: [{ message: { content: "Fallback reply" } }] }), { status: 200 });
     };
@@ -244,6 +313,8 @@ test("sendChatCompletionWithFallbacks tries configured fallback model and provid
         ...config,
         llm: {
           ...config.llm,
+          maxRetries: 1,
+          retryDelayMs: 0,
           fallbacks: [{ provider: "openai-compatible", baseUrl: "https://fallback.example.com/v1", model: "fallback-model", apiKeyEnv: "FALLBACK_LLM_API_KEY" }],
         },
       },
@@ -253,6 +324,7 @@ test("sendChatCompletionWithFallbacks tries configured fallback model and provid
 
     assert.equal(content, "Fallback reply");
     assert.deepEqual(calls, [
+      { url: "https://example.com/v1/chat/completions", model: "example-model", auth: "Bearer primary-secret" },
       { url: "https://example.com/v1/chat/completions", model: "example-model", auth: "Bearer primary-secret" },
       { url: "https://fallback.example.com/v1/chat/completions", model: "fallback-model", auth: "Bearer fallback-secret" },
     ]);

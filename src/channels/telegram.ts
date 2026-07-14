@@ -29,7 +29,7 @@ import { validateDoctorReportContract } from "../runtime/doctor-report-contract.
 import { executeApprovedAction } from "../safety/approval-executor.js";
 import type { ActionPermissionRequest, ActionPermissionResult, PermissionApprover, PermissionPolicy } from "../safety/permission-policy.js";
 import { buildChannelAttachmentPreview, type AttachmentContentParser } from "./attachment-preview.js";
-import { ProviderFallbackError, ProviderTimeoutError } from "../llm/errors.js";
+import { ProviderAuthError, ProviderFallbackError, ProviderNetworkError, ProviderRateLimitError, ProviderResponseError, ProviderTimeoutError } from "../llm/errors.js";
 import type { ChannelIncomingMessage, ChannelOutboundAdapter, ChannelRuntimeAdapter } from "./adapter.js";
 import { createChannelActivityController } from "./activity.js";
 import { buildChannelAttachmentPrompt } from "./attachment-prompt.js";
@@ -592,7 +592,24 @@ function telegramChatFailureMessage(config: AppConfig, error: unknown): string {
     return `${config.agent.name} timed out while handling this message. The task may be too heavy for the current provider timeout; try again, ask a narrower question, or raise llm.timeoutMs in .bestie/config.json.`;
   }
 
+  const providerError = formatProviderChatFailure(error);
+  if (providerError) {
+    return `${config.agent.name} could not get a provider response: ${providerError}`;
+  }
+
   return `${config.agent.name} hit an error while handling this message. Try again or ask a narrower question.`;
+}
+
+function formatProviderChatFailure(error: unknown): string | undefined {
+  if (error instanceof ProviderFallbackError) {
+    return error.message;
+  }
+
+  if (error instanceof ProviderAuthError || error instanceof ProviderNetworkError || error instanceof ProviderRateLimitError || error instanceof ProviderResponseError) {
+    return error.message;
+  }
+
+  return undefined;
 }
 
 async function runTelegramMemoryReasoningPass(options: Parameters<typeof runMemoryReasoningPass>[0]): Promise<MemoryReasoningResult> {

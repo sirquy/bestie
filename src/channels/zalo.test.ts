@@ -1,7 +1,13 @@
 import assert from "node:assert/strict";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { resolve } from "node:path";
 import test from "node:test";
 
+import { ProviderResponseError } from "../llm/errors.js";
 import type { AppConfig } from "../runtime/config.js";
+import { writeEnvFile } from "../runtime/env.js";
+import type { RuntimePaths } from "../runtime/paths.js";
 import { ZaloHttpClient, createZaloOutboundAdapter, handleZaloUpdate, mapZaloIncomingMessage, type ZaloClient } from "./zalo.js";
 
 const config: AppConfig = {
@@ -128,6 +134,32 @@ test("handleZaloUpdate replies to owner help command", async () => {
   assert.match(sent[0]?.text ?? "", /\/memory pending/);
 });
 
+test("handleZaloUpdate replies with sanitized provider error details", async () => {
+  const paths = await createTempPaths();
+  const sent: Array<{ chatId: string; text: string }> = [];
+
+  try {
+    await writeRuntimeFiles(paths);
+    const result = await handleZaloUpdate(
+      { update_id: 1, message: { from: { id: "owner-1" }, chat: { id: "chat-1" }, text: "hello" } },
+      {
+        config,
+        paths,
+        client: createRecordingClient(sent),
+        chatCompletion: async () => {
+          throw new ProviderResponseError('500 Internal Server Error: {"error":{"message":"Upstream provider request failed"}}', 500);
+        },
+      },
+    );
+
+    assert.equal(result, "replied");
+    assert.match(sent.at(-1)?.text ?? "", /could not get a provider response/);
+    assert.match(sent.at(-1)?.text ?? "", /Upstream provider request failed/);
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
 function createRecordingClient(sent: Array<{ chatId: string; text: string }>): ZaloClient {
   return {
     getUpdates: async () => [],
@@ -156,4 +188,32 @@ function fakePaths() {
     memoryDbPath: "/tmp/bestie-zalo-test/.bestie/data/memory.sqlite",
     workspaceDir: "/tmp/bestie-zalo-test/.bestie/workspace",
   };
+}
+
+async function createTempPaths(): Promise<RuntimePaths> {
+  const rootDir = await mkdtemp(resolve(tmpdir(), "bestie-zalo-test-"));
+  const appDir = resolve(rootDir, ".bestie");
+  const logsDir = resolve(appDir, "logs");
+  const dataDir = resolve(appDir, "data");
+
+  return {
+    rootDir,
+    appDir,
+    configPath: resolve(appDir, "config.json"),
+    envPath: resolve(appDir, ".env"),
+    characterPath: resolve(appDir, "character.json"),
+    systemPromptPath: resolve(appDir, "system-prompt.md"),
+    logsDir,
+    appLogPath: resolve(logsDir, "app.log"),
+    dataDir,
+    memoryDbPath: resolve(dataDir, "memory.sqlite"),
+    workspaceDir: resolve(appDir, "workspace"),
+  };
+}
+
+async function writeRuntimeFiles(paths: RuntimePaths): Promise<void> {
+  await mkdir(paths.dataDir, { recursive: true });
+  await mkdir(paths.logsDir, { recursive: true });
+  await writeEnvFile({ OPENAI_API_KEY: "sk-test" }, paths);
+  await writeFile(paths.systemPromptPath, "You are Miu.\n");
 }
