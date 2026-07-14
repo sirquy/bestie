@@ -4,12 +4,14 @@ import { DEFAULT_LLM_TIMEOUT_MS, configExists, loadConfig } from "../../runtime/
 import { loadEnvFile } from "../../runtime/env.js";
 import { InvalidConfigError, MissingConfigError } from "../../runtime/errors.js";
 import { getRuntimePaths } from "../../runtime/paths.js";
+import { checkForPackageUpdate, loadPackageVersionInfo } from "../../runtime/version.js";
 
 export async function runStatusCommand(): Promise<void> {
   const paths = getRuntimePaths();
   const hasConfig = await configExists(paths);
 
   console.log("Bestie Status");
+  await printVersionStatus();
   console.log(`Config: ${hasConfig ? "found" : "missing"} (${paths.configPath})`);
 
   if (!hasConfig) {
@@ -36,6 +38,23 @@ export async function runStatusCommand(): Promise<void> {
     }
 
     throw error;
+  }
+}
+
+async function printVersionStatus(): Promise<void> {
+  try {
+    const update = await checkForPackageUpdate();
+    console.log(`Version: ${update.currentVersion}`);
+
+    if (update.updateAvailable) {
+      console.log(`Update: ${update.latestVersion} available (run \`bestie update\`)`);
+    } else {
+      console.log("Update: up to date");
+    }
+  } catch {
+    const packageInfo = await loadPackageVersionInfo();
+    console.log(`Version: ${packageInfo.version}`);
+    console.log("Update: unable to check npm right now");
   }
 }
 

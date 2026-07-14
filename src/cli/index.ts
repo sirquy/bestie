@@ -11,6 +11,7 @@ import { runStatusCommand } from "./commands/status.js";
 import { runChannelsCommand } from "./commands/channels.js";
 import { runSkillsCommand } from "./commands/skills.js";
 import { runToolsCommand } from "./commands/tools.js";
+import { runUpdateCommand } from "./commands/update.js";
 
 type CommandHandler = (argv?: string[]) => Promise<void> | void;
 
@@ -27,6 +28,7 @@ const commandHandlers: Record<string, CommandHandler> = {
   channels: runChannelsCommand,
   skills: runSkillsCommand,
   tools: runToolsCommand,
+  update: runUpdateCommand,
 };
 
 const helpText = `Bestie
@@ -46,6 +48,7 @@ Commands:
   channels  Start, configure, or inspect channel adapters (telegram, zalo)
   skills    List installed skills from .bestie/skills
   tools     Run permission-gated local tools
+  update    Check npm for a newer Bestie version, or install it with --apply
 
 Options:
   -h, --help  Show this help
@@ -85,6 +88,9 @@ Tools options:
   memories --limit N  Read active local memories through the permission gate
   attachments cleanup --older-than 7d --kinds voice,audio --confirm
     Delete old Telegram attachment files; omit --confirm for a dry run
+
+Update options:
+  --apply  Run npm install -g bestie-agent@latest after a newer version is found
 `;
 
 async function main(argv: string[]): Promise<void> {

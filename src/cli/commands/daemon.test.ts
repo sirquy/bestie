@@ -17,6 +17,7 @@ test("runDaemonCommand starts, reports, and stops the daemon", async () => {
       argv: ["node", "bestie", "daemon", "start"],
       paths,
       writeLine: (message) => output.push(message),
+      printUpdateNotice: async () => undefined,
       spawnProcess: (() => ({ pid: 4242, unref: () => undefined })) as never,
       isProcessRunning: (pid) => pid === 4242 && !killed.includes(pid),
       killProcess: (pid) => killed.push(pid),
@@ -57,6 +58,7 @@ test("runDaemonCommand can manage all channel daemons", async () => {
       argv: ["node", "bestie", "daemon", "start", "--channel", "all"],
       paths,
       writeLine: (message) => output.push(message),
+      printUpdateNotice: async () => undefined,
       spawnProcess,
       isProcessRunning: (pid) => runningPids.has(pid) && !killed.includes(pid),
       killProcess: (pid) => killed.push(pid),
@@ -131,6 +133,7 @@ test("runDaemonCommand restarts the daemon", async () => {
       argv: ["node", "bestie", "daemon", "start"],
       paths,
       writeLine: (message) => output.push(message),
+      printUpdateNotice: async () => undefined,
       spawnProcess,
       isProcessRunning: (pid) => runningPids.has(pid),
       killProcess: (pid) => {
@@ -143,6 +146,7 @@ test("runDaemonCommand restarts the daemon", async () => {
       argv: ["node", "bestie", "daemon", "restart"],
       paths,
       writeLine: (message) => output.push(message),
+      printUpdateNotice: async () => undefined,
       spawnProcess,
       isProcessRunning: (pid) => runningPids.has(pid),
       killProcess: (pid) => {
@@ -179,6 +183,7 @@ test("runDaemonCommand does not kill a reused stale daemon pid", async () => {
       argv: ["node", "bestie", "daemon", "restart"],
       paths,
       writeLine: (message) => output.push(message),
+      printUpdateNotice: async () => undefined,
       spawnProcess: (() => ({ pid: spawnedPids.shift(), unref: () => undefined })) as never,
       isProcessRunning: (pid) => pid === 4242 || pid === 4343,
       killProcess: (pid) => killed.push(pid),
@@ -208,6 +213,7 @@ test("runDaemonCommand restarts when the old daemon exits before SIGTERM", async
       argv: ["node", "bestie", "daemon", "start"],
       paths,
       writeLine: (message) => output.push(message),
+      printUpdateNotice: async () => undefined,
       spawnProcess,
       isProcessRunning: (pid) => runningPids.has(pid),
     });
@@ -216,6 +222,7 @@ test("runDaemonCommand restarts when the old daemon exits before SIGTERM", async
       argv: ["node", "bestie", "daemon", "restart"],
       paths,
       writeLine: (message) => output.push(message),
+      printUpdateNotice: async () => undefined,
       spawnProcess,
       isProcessRunning: (pid) => runningPids.has(pid),
       killProcess: (pid) => {
@@ -261,6 +268,7 @@ test("runDaemonCommand does not restart when the old daemon stays alive", async 
         argv: ["node", "bestie", "daemon", "restart"],
         paths,
         writeLine: (message) => output.push(message),
+        printUpdateNotice: async () => undefined,
         spawnProcess,
         isProcessRunning: (pid) => pid === 4242 || pid === 4343,
         killProcess: (pid) => killed.push(pid),

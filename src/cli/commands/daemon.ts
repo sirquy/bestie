@@ -5,6 +5,7 @@ import { resolve } from "node:path";
 
 import { UserFacingError } from "../../runtime/errors.js";
 import { getRuntimePaths, type RuntimePaths } from "../../runtime/paths.js";
+import { maybePrintUpdateNotice } from "../update-notice.js";
 
 const DAEMON_STOP_TIMEOUT_MS = 30_000;
 const DAEMON_STOP_POLL_INTERVAL_MS = 1000;
@@ -17,6 +18,7 @@ interface DaemonCommandOptions {
   argv?: string[];
   paths?: RuntimePaths;
   writeLine?: (message: string) => void;
+  printUpdateNotice?: (paths: RuntimePaths, writeLine: (message: string) => void) => Promise<void>;
   spawnProcess?: typeof spawn;
   isProcessRunning?: (pid: number) => boolean;
   killProcess?: (pid: number) => void;
@@ -50,6 +52,7 @@ export async function runDaemonCommand(optionsOrArgv: string[] | DaemonCommandOp
   const writeLine = options.writeLine ?? console.log;
 
   if (subcommand === "start") {
+    await printDaemonUpdateNotice(options, paths, writeLine);
     for (const channel of channels) {
       await startDaemon({ ...options, paths, writeLine }, channel);
     }
@@ -64,6 +67,7 @@ export async function runDaemonCommand(optionsOrArgv: string[] | DaemonCommandOp
   }
 
   if (subcommand === "restart") {
+    await printDaemonUpdateNotice(options, paths, writeLine);
     for (const channel of channels) {
       await restartDaemon({ ...options, paths, writeLine }, channel);
     }
@@ -78,6 +82,15 @@ export async function runDaemonCommand(optionsOrArgv: string[] | DaemonCommandOp
   }
 
   throw new UserFacingError("Usage: bestie daemon start|stop|restart|status [--channel telegram|zalo|all]", "DaemonUsageError");
+}
+
+async function printDaemonUpdateNotice(options: DaemonCommandOptions, paths: RuntimePaths, writeLine: (message: string) => void): Promise<void> {
+  if (options.printUpdateNotice) {
+    await options.printUpdateNotice(paths, writeLine);
+    return;
+  }
+
+  await maybePrintUpdateNotice({ paths, writeLine });
 }
 
 async function startDaemon(options: Required<Pick<DaemonCommandOptions, "paths" | "writeLine">> & DaemonCommandOptions, channel: DaemonChannel): Promise<void> {
