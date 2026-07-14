@@ -1,7 +1,7 @@
 import { runDoctor } from "../../runtime/doctor.js";
 
 export async function runDoctorCommand(argv: string[] = process.argv): Promise<void> {
-  const report = await runDoctor(undefined, { connectTelegram: argv.includes("--telegram-connect"), testTelegramSpeech: argv.includes("--telegram-speech-test"), fix: argv.includes("--fix") });
+  const report = await runDoctor(undefined, { connectTelegram: argv.includes("--telegram-connect"), connectZalo: argv.includes("--zalo-connect"), testTelegramSpeech: argv.includes("--telegram-speech-test"), fix: argv.includes("--fix") });
 
   if (argv.includes("--json")) {
     console.log(JSON.stringify(report, null, 2));

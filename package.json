@@ -42,6 +42,8 @@
     "smoke:telegram:real": "npm run build && node scripts/smoke-telegram-real.mjs",
     "smoke:telegram:setup": "npm run build && npm run smoke:telegram:setup:run",
     "smoke:telegram:setup:run": "tmpdir=$(mktemp -d) && cd $tmpdir && printf 'Bestie\nBoss\nvi\n7\nask\nopenai-compatible\nhttp://127.0.0.1:9/v1\ntest-model\ntest-key\n' | node $INIT_CWD/dist/cli/index.js onboard --skip-provider-test >/dev/null && printf '12345\ntest-telegram-token\n' | node $INIT_CWD/dist/cli/index.js telegram setup >/dev/null && grep -q 'BESTIE_TELEGRAM_BOT_TOKEN' .bestie/.env && grep -q '\"ownerUserId\": \"12345\"' .bestie/config.json; code=$?; rm -rf $tmpdir; exit $code",
+    "smoke:zalo:setup": "npm run build && npm run smoke:zalo:setup:run",
+    "smoke:zalo:setup:run": "node scripts/smoke-zalo-setup.mjs",
     "smoke:tools": "npm run build && npm run smoke:tools:run",
     "smoke:tools:run": "node dist/cli/index.js tools logs --lines 5 | grep -q 'action_permission_decision' && node dist/cli/index.js tools memories --limit 5 >/dev/null && node dist/cli/index.js tools git status >/dev/null"
   },

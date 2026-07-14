@@ -33,7 +33,7 @@ const helpText = `Bestie
 Usage:
   bestie <command>
 
-Phase Now commands:
+Commands:
   onboard   Create local .bestie config and character files
   chat      Start terminal chat after onboarding
   status    Show local setup status
@@ -56,6 +56,7 @@ Doctor options:
   --json  Print machine-readable diagnostic output
   --fix  Repair safe local filesystem, permission, and SQLite issues
   --telegram-connect  Verify enabled Telegram bot identity with a network call
+  --zalo-connect  Verify enabled Zalo bot identity with a network call
   --telegram-speech-test  Generate and convert a local Telegram voice sample
 
 MCP options:

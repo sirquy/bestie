@@ -373,6 +373,90 @@ test("runDoctor skips Telegram identity network check unless requested", async (
   }
 });
 
+test("runDoctor checks Zalo token only when Zalo is enabled", async () => {
+  const paths = await createTempPaths();
+
+  try {
+    await writeZaloConfiguredFiles(paths, { OPENAI_API_KEY: "sk-test" });
+
+    const report = await runDoctor(paths);
+    const zaloCheck = report.checks.find((check) => check.name === "Zalo channel");
+
+    assert.equal(zaloCheck?.status, "fail");
+    assert.match(zaloCheck?.message ?? "", /BESTIE_ZALO_BOT_TOKEN/);
+    assert.doesNotMatch(JSON.stringify(report), /sk-test/);
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("runDoctor skips Zalo identity network check unless requested", async () => {
+  const paths = await createTempPaths();
+  let called = false;
+
+  try {
+    await writeZaloConfiguredFiles(paths, { OPENAI_API_KEY: "sk-test", BESTIE_ZALO_BOT_TOKEN: "zalo-secret-token" });
+
+    const report = await runDoctor(paths, {
+      zaloIdentityChecker: async () => {
+        called = true;
+        return { id: "bot-1", username: "miu_zalo" };
+      },
+    });
+
+    assert.equal(called, false);
+    assert.equal(report.checks.find((check) => check.name === "Zalo channel")?.status, "pass");
+    assert.equal(report.checks.find((check) => check.name === "Zalo bot identity"), undefined);
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("runDoctor verifies Zalo bot identity when requested", async () => {
+  const paths = await createTempPaths();
+
+  try {
+    await writeZaloConfiguredFiles(paths, { OPENAI_API_KEY: "sk-test", BESTIE_ZALO_BOT_TOKEN: "zalo-secret-token" });
+
+    const report = await runDoctor(paths, {
+      connectZalo: true,
+      zaloIdentityChecker: async (token) => {
+        assert.equal(token, "zalo-secret-token");
+        return { id: "bot-1", username: "miu_zalo" };
+      },
+    });
+    const identityCheck = report.checks.find((check) => check.name === "Zalo bot identity");
+
+    assert.equal(identityCheck?.status, "pass");
+    assert.match(identityCheck?.message ?? "", /@miu_zalo/);
+    assert.doesNotMatch(JSON.stringify(report), /zalo-secret-token/);
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("runDoctor reports Zalo bot identity failures without exposing token", async () => {
+  const paths = await createTempPaths();
+
+  try {
+    await writeZaloConfiguredFiles(paths, { OPENAI_API_KEY: "sk-test", BESTIE_ZALO_BOT_TOKEN: "zalo-secret-token" });
+
+    const report = await runDoctor(paths, {
+      connectZalo: true,
+      zaloIdentityChecker: async () => {
+        throw new Error("Unauthorized");
+      },
+    });
+    const identityCheck = report.checks.find((check) => check.name === "Zalo bot identity");
+
+    assert.equal(identityCheck?.status, "fail");
+    assert.match(identityCheck?.message ?? "", /Unauthorized/);
+    assert.doesNotMatch(JSON.stringify(report), /zalo-secret-token/);
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
 test("runDoctor warns when retained Telegram attachments exceed the storage threshold", async () => {
   const paths = await createTempPaths();
 
@@ -751,6 +835,21 @@ async function writeTelegramConfiguredFiles(paths: RuntimePaths, envValues: Reco
       agent: { name: "Miu", ownerName: "Sep", language: "vi", toneIntensity: 7 },
       llm: { provider: "openai-compatible", baseUrl: "https://example.com/v1", model: "example-model", apiKeyEnv: "OPENAI_API_KEY", timeoutMs: 60_000 },
       channels: { telegram: { enabled: true, botTokenEnv: "BESTIE_TELEGRAM_BOT_TOKEN", ownerUserId: "12345" } },
+    },
+    paths,
+  );
+  await writeEnvFile(envValues, paths);
+  await writeFile(paths.systemPromptPath, "You are Miu.\n");
+}
+
+async function writeZaloConfiguredFiles(paths: RuntimePaths, envValues: Record<string, string>): Promise<void> {
+  await mkdir(paths.appDir, { recursive: true });
+  await writeConfig(
+    {
+      version: 1,
+      agent: { name: "Miu", ownerName: "Sep", language: "vi", toneIntensity: 7 },
+      llm: { provider: "openai-compatible", baseUrl: "https://example.com/v1", model: "example-model", apiKeyEnv: "OPENAI_API_KEY", timeoutMs: 60_000 },
+      channels: { zalo: { enabled: true, botTokenEnv: "BESTIE_ZALO_BOT_TOKEN", ownerUserId: "zalo-owner-1" } },
     },
     paths,
   );

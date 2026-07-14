@@ -10,6 +10,7 @@ import { SqliteMemoryStore } from "../memory/sqlite-store.js";
 import { listMcpServers, type McpServerSummary } from "../mcp/servers.js";
 import { getRuntimePaths, type RuntimePaths } from "./paths.js";
 import { TelegramHttpClient, convertSpeechToTelegramVoice } from "../channels/telegram.js";
+import { ZaloHttpClient, type ZaloUser } from "../channels/zalo.js";
 import { createSpeech } from "../llm/openai-speech.js";
 import { formatProviderFallbackHealth } from "../llm/fallbacks.js";
 
@@ -37,18 +38,27 @@ export interface DoctorFix {
 export interface DoctorOptions {
   fix?: boolean;
   connectTelegram?: boolean;
+  connectZalo?: boolean;
   testTelegramSpeech?: boolean;
   telegramIdentityChecker?: TelegramIdentityChecker;
+  zaloIdentityChecker?: ZaloIdentityChecker;
   telegramSpeechTester?: TelegramSpeechTester;
   telegramWorkspaceWarnBytes?: number;
 }
 
 export type TelegramIdentityChecker = (token: string) => Promise<TelegramBotIdentity>;
+export type ZaloIdentityChecker = (token: string) => Promise<ZaloBotIdentity>;
 export type TelegramSpeechTester = (config: AppConfig, paths: RuntimePaths) => Promise<{ bytes: number; mimeType: string }>;
 
 export interface TelegramBotIdentity {
   id: number;
   username?: string;
+}
+
+export interface ZaloBotIdentity {
+  id: string;
+  username?: string;
+  firstName?: string;
 }
 
 const MIN_RECOMMENDED_LLM_TIMEOUT_MS = 10_000;
@@ -74,6 +84,7 @@ export async function runDoctor(paths: RuntimePaths = getRuntimePaths(), options
 
   let apiKeyEnv: string | undefined;
   let telegramConfig: { enabled: boolean; botTokenEnv: string; ownerUserId: string } | undefined;
+  let zaloConfig: { enabled: boolean; botTokenEnv: string; ownerUserId: string } | undefined;
   let configForChecks: AppConfig | undefined;
   let mcpServers: McpServerSummary[] | undefined;
   if (hasConfig) {
@@ -82,6 +93,7 @@ export async function runDoctor(paths: RuntimePaths = getRuntimePaths(), options
       configForChecks = config;
       apiKeyEnv = config.llm.apiKeyEnv;
       telegramConfig = config.channels?.telegram;
+      zaloConfig = config.channels?.zalo;
       mcpServers = listMcpServers(config);
       checks.push({ name: "Config parse", status: "pass", message: "Config parses successfully." });
       checks.push(checkLlmTimeout(config.llm.timeoutMs));
@@ -127,6 +139,17 @@ export async function runDoctor(paths: RuntimePaths = getRuntimePaths(), options
     if (options.connectTelegram && telegramCheck.status === "pass") {
       const token = process.env[telegramConfig.botTokenEnv] ?? envValues[telegramConfig.botTokenEnv];
       checks.push(await checkTelegramBotIdentity(token, options.telegramIdentityChecker ?? getTelegramBotIdentity));
+    }
+  }
+
+  if (zaloConfig?.enabled) {
+    const envValues = await loadEnvFile(paths);
+    const zaloCheck = checkZaloConfig(zaloConfig, envValues);
+    checks.push(zaloCheck);
+
+    if (options.connectZalo && zaloCheck.status === "pass") {
+      const token = process.env[zaloConfig.botTokenEnv] ?? envValues[zaloConfig.botTokenEnv];
+      checks.push(await checkZaloBotIdentity(token, options.zaloIdentityChecker ?? getZaloBotIdentity));
     }
   }
 
@@ -553,6 +576,31 @@ async function getTelegramBotIdentity(token: string): Promise<TelegramBotIdentit
   return { id: me.id, username: me.username };
 }
 
+async function checkZaloBotIdentity(token: string, checker: ZaloIdentityChecker): Promise<DoctorCheck> {
+  try {
+    const identity = await checker(token);
+    const label = identity.username ? `@${identity.username}` : identity.firstName ? `${identity.firstName} (${identity.id})` : `id ${identity.id}`;
+    return {
+      name: "Zalo bot identity",
+      status: "pass",
+      message: `Zalo bot is reachable as ${label}.`,
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown Zalo identity error.";
+    return {
+      name: "Zalo bot identity",
+      status: "fail",
+      message: `Zalo bot identity check failed: ${message}`,
+      fix: "Verify the Zalo bot token in .bestie/.env, then rerun `bestie doctor --zalo-connect`.",
+    };
+  }
+}
+
+async function getZaloBotIdentity(token: string): Promise<ZaloBotIdentity> {
+  const me: ZaloUser = await new ZaloHttpClient(token).getMe();
+  return { id: me.id, username: me.username, firstName: me.first_name };
+}
+
 function checkMcpServers(servers: McpServerSummary[]): DoctorCheck {
   const disabled = servers.filter((server) => !server.enabled);
   const serversWithoutTools = servers.filter((server) => server.enabled && server.tools.length === 0);
@@ -599,6 +647,25 @@ function checkTelegramConfig(telegramConfig: { enabled: boolean; botTokenEnv: st
     status: hasToken ? "pass" : "fail",
     message: hasToken ? "Telegram bot token env is present." : `Telegram bot token env ${telegramConfig.botTokenEnv} is missing.`,
     fix: hasToken ? undefined : `Add ${telegramConfig.botTokenEnv} to .bestie/.env before starting Telegram.`,
+  };
+}
+
+function checkZaloConfig(zaloConfig: { enabled: boolean; botTokenEnv: string; ownerUserId: string }, envValues: Record<string, string>): DoctorCheck {
+  if (!zaloConfig.ownerUserId.trim()) {
+    return {
+      name: "Zalo channel",
+      status: "fail",
+      message: "Zalo is enabled, but owner user id is missing.",
+      fix: "Set channels.zalo.ownerUserId in .bestie/config.json before starting Zalo.",
+    };
+  }
+
+  const hasToken = Boolean(process.env[zaloConfig.botTokenEnv] ?? envValues[zaloConfig.botTokenEnv]);
+  return {
+    name: "Zalo channel",
+    status: hasToken ? "pass" : "fail",
+    message: hasToken ? "Zalo bot token env is present." : `Zalo bot token env ${zaloConfig.botTokenEnv} is missing.`,
+    fix: hasToken ? undefined : `Add ${zaloConfig.botTokenEnv} to .bestie/.env before starting Zalo.`,
   };
 }
 
