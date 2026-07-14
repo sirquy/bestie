@@ -22,7 +22,7 @@ export interface ChannelAttachmentAdapter<TAttachment = unknown> {
 
 export interface ChannelOutboundAdapter<TChatId = unknown, TAction extends string = string> {
   createResponseAdapter(chatId: TChatId): ChannelResponseAdapter;
-  createActivityOptions(chatId: TChatId, action: TAction): ChannelActivityControllerOptions<TAction>;
+  createActivityOptions(chatId: TChatId, action: TAction): ChannelActivityControllerOptions<TAction, TChatId>;
 }
 
 export interface ChannelRuntimeAdapter<TAttachment = unknown, TChatId = unknown, TAction extends string = string> {

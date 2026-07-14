@@ -103,6 +103,12 @@ export interface AppConfig {
         allowedMimeTypes?: string[];
       };
     };
+    zalo?: {
+      enabled: boolean;
+      botTokenEnv: string;
+      ownerUserId: string;
+      pollingTimeoutSeconds?: number;
+    };
   };
   memory?: {
     writePolicy?: MemoryWritePolicy;
@@ -585,8 +591,32 @@ function optionalChannels(value: unknown): AppConfig["channels"] | undefined {
 
   const channels = requireRecord(value, "channels");
   const telegram = optionalTelegramChannel(channels.telegram);
+  const zalo = optionalZaloChannel(channels.zalo);
 
-  return telegram === undefined ? {} : { telegram };
+  return {
+    ...(telegram === undefined ? {} : { telegram }),
+    ...(zalo === undefined ? {} : { zalo }),
+  };
+}
+
+function optionalZaloChannel(value: unknown): NonNullable<NonNullable<AppConfig["channels"]>["zalo"]> | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  const zalo = requireRecord(value, "channels.zalo");
+  const enabled = zalo.enabled;
+
+  if (typeof enabled !== "boolean") {
+    throw new InvalidConfigError("channels.zalo.enabled must be a boolean.");
+  }
+
+  return {
+    enabled,
+    botTokenEnv: requireString(zalo.botTokenEnv, "channels.zalo.botTokenEnv"),
+    ownerUserId: requireOptionalString(zalo.ownerUserId, "channels.zalo.ownerUserId"),
+    ...(zalo.pollingTimeoutSeconds === undefined ? {} : { pollingTimeoutSeconds: optionalPositiveInteger(zalo.pollingTimeoutSeconds, "channels.zalo.pollingTimeoutSeconds") }),
+  };
 }
 
 function optionalTelegramChannel(value: unknown): NonNullable<NonNullable<AppConfig["channels"]>["telegram"]> | undefined {

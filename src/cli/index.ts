@@ -10,6 +10,7 @@ import { runOnboardCommand } from "./commands/onboard.js";
 import { runStatusCommand } from "./commands/status.js";
 import { runTelegramCommand } from "./commands/telegram.js";
 import { runToolsCommand } from "./commands/tools.js";
+import { runZaloCommand } from "./commands/zalo.js";
 
 type CommandHandler = (argv?: string[]) => Promise<void> | void;
 
@@ -24,6 +25,7 @@ const commandHandlers: Record<string, CommandHandler> = {
   mcp: runMcpCommand,
   telegram: runTelegramCommand,
   tools: runToolsCommand,
+  zalo: runZaloCommand,
 };
 
 const helpText = `Bestie
@@ -42,6 +44,7 @@ Phase Now commands:
   mcp       List configured MCP servers
   telegram  Start the local Telegram polling bot
   tools     Run permission-gated local tools
+  zalo      Start the local Zalo polling bot
 
 Options:
   -h, --help  Show this help
@@ -73,6 +76,10 @@ Telegram options:
     Download tiny, small, medium, or large-v3-turbo whisper.cpp model
   --once  Poll Telegram once, then exit
   --transcript <path>  Write a redacted JSONL smoke transcript for Telegram polling
+
+Zalo options:
+  setup   Configure Zalo owner id and local bot token
+  --once  Poll Zalo once, then exit
 
 Daemon options:
   start   Start Telegram polling in the background

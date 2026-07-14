@@ -262,6 +262,25 @@ test("validateConfig accepts optional Telegram channel config", () => {
   assert.equal(config.channels?.telegram?.voiceReplyCooldownMs, 10_000);
 });
 
+test("validateConfig accepts optional Zalo channel config", () => {
+  const config = validateConfig({
+    ...validConfig,
+    channels: {
+      zalo: {
+        enabled: true,
+        botTokenEnv: "BESTIE_ZALO_BOT_TOKEN",
+        ownerUserId: "zalo-owner-1",
+        pollingTimeoutSeconds: 20,
+      },
+    },
+  });
+
+  assert.equal(config.channels?.zalo?.enabled, true);
+  assert.equal(config.channels?.zalo?.botTokenEnv, "BESTIE_ZALO_BOT_TOKEN");
+  assert.equal(config.channels?.zalo?.ownerUserId, "zalo-owner-1");
+  assert.equal(config.channels?.zalo?.pollingTimeoutSeconds, 20);
+});
+
 test("validateConfig accepts optional Telegram attachment policy", () => {
   const config = validateConfig({
     ...validConfig,

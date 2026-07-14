@@ -39,9 +39,29 @@ Shared channel modules should continue to own policy enforcement and LLM-facing 
 - `src/channels/audio-transcription.ts`
 - `src/channels/attachment-prompt.ts`
 
-## Zalo And WhatsApp Notes
+## Zalo Notes
 
-Do not add a real Zalo or WhatsApp runtime until the API constraints are clear:
+Zalo Bot Platform constraints are now grounded from `https://bot.zapps.me/docs`:
+
+- API calls use `https://bot-api.zaloplatforms.com/bot<BOT_TOKEN>/<functionName>`.
+- Bot Token is a long-lived secret until reset; keep it in `.bestie/.env` only.
+- `getUpdates` long polling is POST-based and intended for local/dev polling; it is mutually exclusive with webhook mode.
+- Webhook mode requires HTTPS and validates `X-Bot-Api-Secret-Token`; it is a later production slice, not part of initial local polling.
+- Zalo user and chat ids are strings; do not assume Telegram-style numeric ids.
+- `sendMessage` accepts text from 1 to 2000 characters, so outbound replies must chunk at 2000 characters.
+- `sendChatAction` supports typing activity and can back shared progress indicators.
+- `sendVoice` requires a public `.aac` URL and only supports 1-1 chats, so voice reply is out of the initial text polling slice.
+
+Initial Zalo support is intentionally text-only local polling:
+
+- descriptor capability: polling and tool activity enabled; attachments, voice input, and voice reply disabled
+- config key: `channels.zalo` with `enabled`, `botTokenEnv`, `ownerUserId`, and optional `pollingTimeoutSeconds`
+- CLI setup: `bestie zalo setup` writes `BESTIE_ZALO_BOT_TOKEN` and owner allowlist config
+- CLI polling: `bestie zalo --once` runs one local polling pass
+
+## WhatsApp Notes
+
+Do not add a real WhatsApp runtime until the API constraints are clear:
 
 - bot account type and approval requirements
 - webhook versus polling support
@@ -54,10 +74,10 @@ Do not add a real Zalo or WhatsApp runtime until the API constraints are clear:
 
 If a platform provides ASR text with an audio message, store it as a platform transcript source rather than treating it as provider STT. Provider STT should remain the fallback when policy allows it and no usable platform transcript exists.
 
-## Out Of Scope For This Step
+## Out Of Scope For The Initial Zalo Step
 
-- no real Zalo or WhatsApp transport
-- no new channel config schema
-- no new CLI command
-- no hosted webhook service
+- no Zalo webhook server or hosted callback setup
+- no Zalo attachment download/pipeline support
+- no Zalo voice reply upload/public URL support
 - no installer changes
+- no WhatsApp transport

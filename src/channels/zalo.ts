@@ -1,0 +1,494 @@
+import { loadSystemPrompt } from "../character/prompt-loader.js";
+import { MEMORY_CONTEXT_ITEM_LIMIT, buildChatMessages } from "../chat/message-builder.js";
+import { buildMcpToolSystemPrompt, completeWithAgentTools, runAgentToolRequest, type AgentToolActivity } from "../chat/mcp-tool-use.js";
+import { fallbackLogDetail, formatProviderFallbackDiagnostics, formatProviderFallbackHealth } from "../llm/fallbacks.js";
+import { ProviderFallbackError, ProviderTimeoutError } from "../llm/errors.js";
+import { sendChatCompletionWithFallbacks } from "../llm/openai-compatible.js";
+import type { ChatCompletionOptions, ChatMessage } from "../llm/types.js";
+import { runMemoryReasoningPass } from "../memory/reasoning.js";
+import { SqliteMemoryStore } from "../memory/sqlite-store.js";
+import type { AppConfig } from "../runtime/config.js";
+import { loadRequiredSecret } from "../runtime/env.js";
+import { appendLog, redactSecrets } from "../runtime/logger.js";
+import type { RuntimePaths } from "../runtime/paths.js";
+import { executeApprovedAction } from "../safety/approval-executor.js";
+import type { PermissionApprover, PermissionPolicy } from "../safety/permission-policy.js";
+import type { ChannelIncomingMessage, ChannelOutboundAdapter, ChannelRuntimeAdapter } from "./adapter.js";
+import { createChannelActivityController } from "./activity.js";
+import { ZALO_CHANNEL, formatChannelHelpCommands } from "./registry.js";
+import { createChannelResponseController } from "./response-controller.js";
+
+const ZALO_API_BASE_URL = "https://bot-api.zaloplatforms.com";
+const ZALO_MESSAGE_MAX_CHARS = 2_000;
+const ZALO_POLLING_TIMEOUT_SECONDS = 25;
+const ZALO_TOOL_PROGRESS_EVERY = 3;
+const ZALO_PERMISSION_POLICY: PermissionPolicy = {
+  allowTrustedRead: true,
+  allowLocalWrite: false,
+};
+
+export type ZaloUpdateResult = "ignored" | "replied";
+export type ZaloChatCompletionRunner = (config: AppConfig, apiKeyValue: string, options: ChatCompletionOptions) => Promise<string>;
+
+export interface ZaloUser {
+  id: string;
+  is_bot?: boolean;
+  first_name?: string;
+  last_name?: string;
+  username?: string;
+}
+
+export interface ZaloChat {
+  id: string;
+  type?: string;
+}
+
+export interface ZaloMessage {
+  message_id?: string | number;
+  messageId?: string | number;
+  from?: ZaloUser;
+  chat?: ZaloChat;
+  text?: string | { text?: string };
+  caption?: string;
+  [key: string]: unknown;
+}
+
+export interface ZaloUpdate {
+  update_id: number;
+  message?: ZaloMessage;
+  [key: string]: unknown;
+}
+
+export interface ZaloClient {
+  getMe?(): Promise<ZaloUser>;
+  getUpdates(offset: number | undefined, timeoutSeconds: number): Promise<ZaloUpdate[]>;
+  sendMessage(chatId: string, text: string): Promise<ZaloSentMessage | void>;
+  sendChatAction(chatId: string, action: "typing"): Promise<void>;
+}
+
+export interface ZaloSentMessage {
+  messageId?: string | number;
+}
+
+export interface ZaloPollingOptions extends ZaloUpdateHandlerOptions {
+  once?: boolean;
+  shouldStop?: () => boolean;
+  onIdle?: () => Promise<void> | void;
+  retryDelayMs?: number;
+  maxRetryDelayMs?: number;
+}
+
+export interface ZaloUpdateHandlerOptions {
+  config: AppConfig;
+  paths: RuntimePaths;
+  client: ZaloClient;
+  chatCompletion?: ZaloChatCompletionRunner;
+}
+
+export class ZaloHttpClient implements ZaloClient {
+  constructor(private readonly botToken: string, private readonly fetchImpl: typeof fetch = fetch) {}
+
+  async getMe(): Promise<ZaloUser> {
+    return this.call<ZaloUser>("getMe", {});
+  }
+
+  async getUpdates(offset: number | undefined, timeoutSeconds: number): Promise<ZaloUpdate[]> {
+    return this.call<ZaloUpdate[]>("getUpdates", { ...(offset === undefined ? {} : { offset }), timeout: timeoutSeconds });
+  }
+
+  async sendMessage(chatId: string, text: string): Promise<ZaloSentMessage | void> {
+    return this.call<ZaloSentMessage | void>("sendMessage", { chat_id: chatId, text });
+  }
+
+  async sendChatAction(chatId: string, action: "typing"): Promise<void> {
+    await this.call<void>("sendChatAction", { chat_id: chatId, action });
+  }
+
+  private async call<T>(method: string, body: Record<string, unknown>): Promise<T> {
+    const response = await this.fetchImpl(`${ZALO_API_BASE_URL}/bot${this.botToken}/${method}`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const payload = await readJsonResponse(response);
+
+    if (!response.ok || payload.ok === false) {
+      const detail = typeof payload.description === "string" ? payload.description : response.statusText;
+      const code = typeof payload.error_code === "number" ? ` (${payload.error_code})` : "";
+      throw new Error(`Zalo ${method} failed${code}: ${redactSecrets(detail)}`);
+    }
+
+    return payload.result as T;
+  }
+}
+
+export async function runZaloPollingLoop(options: ZaloPollingOptions): Promise<void> {
+  let offset: number | undefined;
+  let consecutiveFailures = 0;
+  const retryDelayMs = options.retryDelayMs ?? 1_000;
+  const maxRetryDelayMs = options.maxRetryDelayMs ?? 30_000;
+  const timeoutSeconds = options.config.channels?.zalo?.pollingTimeoutSeconds ?? ZALO_POLLING_TIMEOUT_SECONDS;
+
+  do {
+    let updates: ZaloUpdate[];
+
+    try {
+      updates = await options.client.getUpdates(offset, timeoutSeconds);
+    } catch (error) {
+      consecutiveFailures += 1;
+      const delayMs = Math.min(retryDelayMs * 2 ** (consecutiveFailures - 1), maxRetryDelayMs);
+      const message = error instanceof Error ? error.message : "Unknown Zalo polling error.";
+      await appendLog({ event: "zalo_polling_failure", detail: { message, consecutiveFailures, retryDelayMs: delayMs } }, { paths: options.paths });
+
+      if (options.once) {
+        throw error;
+      }
+
+      await sleep(delayMs);
+      await options.onIdle?.();
+      continue;
+    }
+
+    if (consecutiveFailures > 0) {
+      await appendLog({ event: "zalo_polling_recovered", detail: { consecutiveFailures } }, { paths: options.paths });
+      consecutiveFailures = 0;
+    }
+
+    for (const update of updates) {
+      await handleZaloUpdate(update, options);
+      offset = update.update_id + 1;
+    }
+
+    if (options.once) {
+      return;
+    }
+
+    await options.onIdle?.();
+  } while (!options.shouldStop?.());
+}
+
+export async function handleZaloUpdate(update: ZaloUpdate, options: ZaloUpdateHandlerOptions): Promise<ZaloUpdateResult> {
+  const zaloConfig = options.config.channels?.zalo;
+  const message = update.message;
+  const incoming = message ? mapZaloIncomingMessage(message) : undefined;
+  const text = (incoming?.text ?? incoming?.caption ?? "").trim();
+
+  if (!zaloConfig?.enabled || !incoming || !zaloConfig.ownerUserId || incoming.senderId !== zaloConfig.ownerUserId) {
+    return "ignored";
+  }
+
+  await sendZaloChatActionBestEffort(options.client, incoming.chatId, "typing");
+
+  if (!text) {
+    await options.client.sendMessage(incoming.chatId, `${options.config.agent.name} received this Zalo message type, but this first version only supports text.`);
+    return "replied";
+  }
+
+  if (text === "/help") {
+    await options.client.sendMessage(incoming.chatId, formatChannelHelpCommands(ZALO_CHANNEL));
+    return "replied";
+  }
+
+  if (await handleZaloSlashCommand(text, incoming.chatId, options)) {
+    return "replied";
+  }
+
+  if (text.startsWith("/")) {
+    await options.client.sendMessage(incoming.chatId, `Unknown command: ${text}. Try /help.`);
+    return "replied";
+  }
+
+  const chatCompletion = options.chatCompletion ?? ((config, _apiKeyValue, requestOptions) => sendChatCompletionWithFallbacks(config, { ...requestOptions, stream: requestOptions.stream ?? true }, { paths: options.paths }));
+  const apiKey = await loadRequiredSecret(options.config.llm.apiKeyEnv, options.paths);
+  const adapter = createZaloRuntimeAdapter(options.client);
+  const typing = createChannelActivityController(adapter.outbound.createActivityOptions(incoming.chatId, "typing"));
+  typing.start();
+
+  try {
+    const systemPrompt = await loadSystemPrompt(options.paths);
+    const memories = await loadActiveMemories(options.paths);
+    const recentTurns = await loadRecentZaloTurns(options.paths, zaloConfig.ownerUserId);
+    const messages = buildChatMessages(buildMcpToolSystemPrompt(systemPrompt, options.config), recentTurns, text, memories);
+    const response = createChannelResponseController(adapter.outbound.createResponseAdapter(incoming.chatId));
+    const assistantText = await completeWithAgentTools({
+      config: options.config,
+      paths: options.paths,
+      apiKey,
+      messages,
+      chatCompletion,
+      toolRunner: runAgentToolRequest,
+      approver: createZaloPermissionApprover(options.client, incoming.chatId, options.paths),
+      policy: ZALO_PERMISSION_POLICY,
+      streamFinalResponse: true,
+      onToolActivity: async (activity) => handleZaloToolActivity(response, activity, options.config.agent.name),
+    });
+    typing.stop();
+    await response.replyFinal(assistantText);
+    await persistZaloConversationTurn(options.paths, zaloConfig.ownerUserId, text, assistantText);
+    await runZaloMemoryReasoningPass({ config: options.config, paths: options.paths, apiKey, turn: { channel: "zalo", userId: zaloConfig.ownerUserId, userInput: text, assistantText }, chatCompletion });
+    await appendLog({ event: "zalo_chat_success", detail: { model: options.config.llm.model } }, { paths: options.paths });
+    return "replied";
+  } catch (error) {
+    typing.stop();
+    const errorMessage = error instanceof Error ? error.message : "Unknown Zalo chat error.";
+    await appendLog({ event: "zalo_chat_failure", detail: { message: errorMessage, ...fallbackLogDetail(error) } }, { paths: options.paths, knownSecrets: [apiKey] });
+    await options.client.sendMessage(incoming.chatId, zaloChatFailureMessage(options.config, error));
+    return "replied";
+  }
+}
+
+export function mapZaloIncomingMessage(message: ZaloMessage): ChannelIncomingMessage<string, string | number | undefined, ZaloMessage> {
+  return {
+    chatId: String(message.chat?.id ?? message.from?.id ?? ""),
+    messageId: message.message_id ?? message.messageId,
+    senderId: String(message.from?.id ?? ""),
+    text: typeof message.text === "string" ? message.text : message.text?.text,
+    caption: message.caption,
+    raw: message,
+  };
+}
+
+export function createZaloRuntimeAdapter(client: ZaloClient): ChannelRuntimeAdapter<never, string, "typing"> {
+  return { descriptor: ZALO_CHANNEL, outbound: createZaloOutboundAdapter(client) };
+}
+
+export function createZaloOutboundAdapter(client: ZaloClient): ChannelOutboundAdapter<string, "typing"> {
+  return {
+    createResponseAdapter: (chatId) => ({
+      sendMessage: async (text) => normalizeZaloSentMessage(await client.sendMessage(chatId, text)),
+      editMessage: async (_messageId, text) => {
+        await client.sendMessage(chatId, text);
+      },
+      splitMessage: splitZaloMessage,
+      isNoopEditError: () => true,
+    }),
+    createActivityOptions: (chatId, action) => ({ client, chatId, action, refreshMs: 4_000 }),
+  };
+}
+
+async function handleZaloSlashCommand(text: string, chatId: string, options: ZaloUpdateHandlerOptions): Promise<boolean> {
+  if (text === "/status") {
+    const store = await SqliteMemoryStore.open(options.paths);
+    try {
+      const state = store.getMemoryState();
+      const activeCount = store.listActiveMemories().length;
+      const pendingCount = store.listPendingMemories().length;
+      const providerHealth = await formatProviderFallbackHealth(options.paths);
+      await options.client.sendMessage(chatId, [`Status -> memory ${state.paused ? "paused" : "active"}; active ${activeCount}; pending ${pendingCount}`, providerHealth].filter(Boolean).join("; "));
+      return true;
+    } finally {
+      store.close();
+    }
+  }
+
+  if (text === "/providers") {
+    await options.client.sendMessage(chatId, await formatProviderFallbackDiagnostics(options.paths));
+    return true;
+  }
+
+  if (text === "/approvals") {
+    const store = await SqliteMemoryStore.open(options.paths);
+    try {
+      const approvals = store.listPendingActionApprovals("zalo", undefined, 5);
+      await options.client.sendMessage(chatId, approvals.length === 0 ? "No pending action approvals." : `Pending approvals:\n${approvals.map(formatPendingApprovalSummary).join("\n\n")}`);
+      return true;
+    } finally {
+      store.close();
+    }
+  }
+
+  const approvalDecision = parseZaloApprovalDecision(text);
+  if (approvalDecision) {
+    const store = await SqliteMemoryStore.open(options.paths);
+    try {
+      const approval = approvalDecision.decision === "approve" ? store.approvePendingActionApproval(approvalDecision.id) : store.denyPendingActionApproval(approvalDecision.id);
+      if (!approval) {
+        await options.client.sendMessage(chatId, `Approval request ${approvalDecision.id} is no longer pending. It may have already been handled or expired.`);
+        return true;
+      }
+      const actionResult = await executeApprovedAction(store, approval, approvalDecision.decision, { config: options.config, paths: options.paths });
+      await options.client.sendMessage(chatId, actionResult.message);
+      return true;
+    } finally {
+      store.close();
+    }
+  }
+
+  const memoryCommand = parseZaloMemoryCommand(text);
+  if (memoryCommand === "list") {
+    const store = await SqliteMemoryStore.open(options.paths);
+    try {
+      const memories = store.listActiveMemories().slice(0, 5);
+      await options.client.sendMessage(chatId, memories.length === 0 ? "No active memories." : `Active memories:\n${memories.map((memory) => `${memory.id}. [${memory.type}] ${memory.content}`).join("\n")}`);
+      return true;
+    } finally {
+      store.close();
+    }
+  }
+
+  if (memoryCommand === "pending") {
+    const store = await SqliteMemoryStore.open(options.paths);
+    try {
+      const memories = store.listPendingMemories(5);
+      await options.client.sendMessage(chatId, memories.length === 0 ? "No pending memories." : `Pending memories:\n${memories.map((memory) => `${memory.id}. [${memory.type}] ${memory.content}\n   Reason: ${memory.reason || "needs review"}`).join("\n")}`);
+      return true;
+    } finally {
+      store.close();
+    }
+  }
+
+  if (memoryCommand === "pause" || memoryCommand === "resume") {
+    const paused = memoryCommand === "pause";
+    const store = await SqliteMemoryStore.open(options.paths);
+    try {
+      store.setMemoryPaused(paused);
+      await options.client.sendMessage(chatId, `Memory ${paused ? "paused" : "resumed"}.`);
+      return true;
+    } finally {
+      store.close();
+    }
+  }
+
+  return false;
+}
+
+function createZaloPermissionApprover(client: ZaloClient, chatId: string, paths: RuntimePaths): PermissionApprover {
+  return async (request, proposed) => {
+      const store = await SqliteMemoryStore.open(paths);
+      try {
+        const approval = store.addPendingActionApproval({ channel: "zalo", category: request.category, action: request.action, target: request.target, reason: request.reason, proposedReason: proposed.reason, payloadJson: request.payloadJson });
+        await client.sendMessage(chatId, [`Approval needed. Request: ${approval.id}`, `Action: ${request.action}`, `Category: ${request.category}`, request.target ? `Target: ${request.target}` : undefined, request.reason ? `Reason: ${request.reason}` : undefined, `Reply /approve ${approval.id} or /deny ${approval.id}.`].filter(Boolean).join("\n"));
+        return { approved: false, reason: `Approval request ${approval.id} is pending in Zalo.` };
+      } finally {
+        store.close();
+      }
+  };
+}
+
+async function handleZaloToolActivity(response: ReturnType<typeof createChannelResponseController>, activity: AgentToolActivity, agentName: string): Promise<void> {
+  if (activity.phase !== "start") {
+    return;
+  }
+  if (activity.callIndex !== 1 && activity.callIndex % ZALO_TOOL_PROGRESS_EVERY !== 0) {
+    return;
+  }
+  await response.showProgress(activity.toolName === "internal.remember_memory" ? `${agentName} is preparing a memory approval` : `${agentName} is using ${activity.toolName}`);
+}
+
+async function runZaloMemoryReasoningPass(options: Parameters<typeof runMemoryReasoningPass>[0]): Promise<void> {
+  try {
+    await runMemoryReasoningPass(options);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown memory reasoning error.";
+    await appendLog({ event: "memory_reasoning_failure", detail: { channel: "zalo", message } }, { paths: options.paths, knownSecrets: [options.apiKey] });
+  }
+}
+
+async function loadRecentZaloTurns(paths: RuntimePaths, userId: string): Promise<ChatMessage[]> {
+  const store = await SqliteMemoryStore.open(paths);
+  try {
+    if (store.getMemoryState().paused) {
+      return [];
+    }
+    return store.listRecentMessagesForChannel("zalo", userId, 12).map((message) => ({ role: message.role, content: message.content }));
+  } finally {
+    store.close();
+  }
+}
+
+async function persistZaloConversationTurn(paths: RuntimePaths, userId: string, userInput: string, assistantText: string): Promise<void> {
+  const store = await SqliteMemoryStore.open(paths);
+  try {
+    if (store.getMemoryState().paused) {
+      return;
+    }
+    store.addMessage({ channel: "zalo", userId, role: "user", content: userInput });
+    store.addMessage({ channel: "zalo", userId, role: "assistant", content: assistantText });
+  } finally {
+    store.close();
+  }
+}
+
+async function loadActiveMemories(paths: RuntimePaths): Promise<import("../memory/sqlite-store.js").StoredMemory[]> {
+  const store = await SqliteMemoryStore.open(paths);
+  try {
+    if (store.getMemoryState().paused) {
+      return [];
+    }
+    return store.listActiveMemories(MEMORY_CONTEXT_ITEM_LIMIT);
+  } finally {
+    store.close();
+  }
+}
+
+function zaloChatFailureMessage(config: AppConfig, error: unknown): string {
+  if (error instanceof ProviderTimeoutError || (error instanceof ProviderFallbackError && error.finalError instanceof ProviderTimeoutError)) {
+    return `${config.agent.name} timed out while handling this Zalo message. Try again, ask a narrower question, or raise llm.timeoutMs in .bestie/config.json.`;
+  }
+  return `${config.agent.name} hit an error while handling this Zalo message. Try again or ask a narrower question.`;
+}
+
+function splitZaloMessage(text: string): string[] {
+  if (text.length <= ZALO_MESSAGE_MAX_CHARS) {
+    return [text];
+  }
+  const chunks: string[] = [];
+  for (let index = 0; index < text.length; index += ZALO_MESSAGE_MAX_CHARS) {
+    chunks.push(text.slice(index, index + ZALO_MESSAGE_MAX_CHARS));
+  }
+  return chunks;
+}
+
+function normalizeZaloSentMessage(message: ZaloSentMessage | void): { messageId?: number } | void {
+  if (!message || message.messageId === undefined) {
+    return undefined;
+  }
+
+  const messageId = typeof message.messageId === "number" ? message.messageId : Number(message.messageId);
+  return Number.isFinite(messageId) ? { messageId } : undefined;
+}
+
+async function sendZaloChatActionBestEffort(client: ZaloClient, chatId: string, action: "typing"): Promise<void> {
+  try {
+    await client.sendChatAction(chatId, action);
+  } catch {
+    // Typing indicators are best-effort; message delivery should continue.
+  }
+}
+
+function formatPendingApprovalSummary(approval: { id: number; category: string; action: string; target?: string | null; reason?: string | null }): string {
+  return redactSecrets([`Request ${approval.id}`, `Action: ${approval.action}`, `Category: ${approval.category}`, approval.target ? `Target: ${approval.target}` : undefined, approval.reason ? `Reason: ${approval.reason}` : undefined, `Reply with /approve ${approval.id} or /deny ${approval.id}.`].filter(Boolean).join("\n"));
+}
+
+function parseZaloApprovalDecision(text: string): { decision: "approve" | "deny"; id: number } | undefined {
+  const match = text.match(/^\/(approve|deny) (\d+)$/);
+  return match ? { decision: match[1] as "approve" | "deny", id: Number(match[2]) } : undefined;
+}
+
+function parseZaloMemoryCommand(text: string): "list" | "pending" | "pause" | "resume" | undefined {
+  if (text === "/memory" || text === "/memory list" || text === "/memory status") {
+    return "list";
+  }
+  if (text === "/memory pending") {
+    return "pending";
+  }
+  if (text === "/memory pause" || text === "/pause_memory" || text === "/pause-memory") {
+    return "pause";
+  }
+  if (text === "/memory resume" || text === "/resume_memory" || text === "/resume-memory") {
+    return "resume";
+  }
+  return undefined;
+}
+
+async function readJsonResponse(response: Response): Promise<{ ok?: boolean; result?: unknown; description?: unknown; error_code?: unknown }> {
+  try {
+    return await response.json() as { ok?: boolean; result?: unknown; description?: unknown; error_code?: unknown };
+  } catch {
+    return { ok: response.ok, description: response.statusText };
+  }
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}

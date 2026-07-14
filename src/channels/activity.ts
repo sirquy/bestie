@@ -1,10 +1,10 @@
-export interface ChannelChatActionClient<TAction extends string = string> {
-  sendChatAction(chatId: number, action: TAction): Promise<void>;
+export interface ChannelChatActionClient<TAction extends string = string, TChatId = number> {
+  sendChatAction(chatId: TChatId, action: TAction): Promise<void>;
 }
 
-export interface ChannelActivityControllerOptions<TAction extends string = string> {
-  client: ChannelChatActionClient<TAction>;
-  chatId: number;
+export interface ChannelActivityControllerOptions<TAction extends string = string, TChatId = number> {
+  client: ChannelChatActionClient<TAction, TChatId>;
+  chatId: TChatId;
   action: TAction;
   refreshMs: number;
   maxConsecutiveFailures?: number;
@@ -20,7 +20,7 @@ export interface ChannelActivityController {
   pulse(): Promise<boolean>;
 }
 
-export function createChannelActivityController<TAction extends string>({
+export function createChannelActivityController<TAction extends string, TChatId = number>({
   client,
   chatId,
   action,
@@ -30,7 +30,7 @@ export function createChannelActivityController<TAction extends string>({
   setTimer = setInterval,
   clearTimer = clearInterval,
   now = () => Date.now(),
-}: ChannelActivityControllerOptions<TAction>): ChannelActivityController {
+}: ChannelActivityControllerOptions<TAction, TChatId>): ChannelActivityController {
   let stopped = true;
   let timer: ReturnType<typeof setInterval> | undefined;
   let consecutiveFailures = 0;

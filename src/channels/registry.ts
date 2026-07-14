@@ -45,7 +45,30 @@ export const TELEGRAM_CHANNEL: ChannelDescriptor = {
   ],
 };
 
-export const CHANNELS = [TELEGRAM_CHANNEL] as const;
+export const ZALO_CHANNEL: ChannelDescriptor = {
+  id: "zalo",
+  displayName: "Zalo",
+  configKey: "zalo",
+  capabilities: {
+    polling: true,
+    attachments: false,
+    voiceInput: false,
+    voiceReply: false,
+    toolActivity: true,
+    approvals: true,
+  },
+  commands: [
+    { command: "help", description: "Show supported commands", native: true },
+    { command: "status", description: "Show local bot and memory status", native: true },
+    { command: "providers", description: "Show recent provider fallback diagnostics", native: true },
+    { command: "memory", description: "Show or control local memory", aliases: ["memory list", "memory pending", "memory pause", "memory resume"], native: true },
+    { command: "approvals", description: "Show pending action approvals", native: true },
+    { command: "approve", description: "Approve a pending request" },
+    { command: "deny", description: "Deny a pending request" },
+  ],
+};
+
+export const CHANNELS = [TELEGRAM_CHANNEL, ZALO_CHANNEL] as const;
 
 export function formatChannelHelpCommands(channel: ChannelDescriptor): string {
   const commands = channel.commands.flatMap((entry) => [entry.command, ...(entry.aliases ?? [])]);
