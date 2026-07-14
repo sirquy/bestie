@@ -27,7 +27,7 @@ test("runZaloCommand setup writes Zalo config and token env", async () => {
     await writeEnvFile({ OPENAI_API_KEY: "sk-test" }, paths);
 
     await runZaloCommand({
-      argv: ["node", "bestie", "zalo", "setup"],
+      argv: ["node", "bestie", "channels", "zalo", "setup"],
       paths,
       questioner: {
         ask: async () => "zalo-owner-1",

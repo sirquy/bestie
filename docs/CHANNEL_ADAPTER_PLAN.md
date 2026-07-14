@@ -56,8 +56,8 @@ Initial Zalo support is intentionally text-only local polling:
 
 - descriptor capability: polling and tool activity enabled; attachments, voice input, and voice reply disabled
 - config key: `channels.zalo` with `enabled`, `botTokenEnv`, `ownerUserId`, and optional `pollingTimeoutSeconds`
-- CLI setup: `bestie zalo setup` writes `BESTIE_ZALO_BOT_TOKEN` and owner allowlist config
-- CLI polling: `bestie zalo --once` runs one local polling pass
+- CLI setup: `bestie channels zalo setup` writes `BESTIE_ZALO_BOT_TOKEN` and owner allowlist config
+- CLI polling: `bestie channels zalo --once` runs one local polling pass
 
 ## WhatsApp Notes
 

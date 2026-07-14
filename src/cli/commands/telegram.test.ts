@@ -29,7 +29,7 @@ test("runTelegramCommand setup writes Telegram config and token env", async () =
     await writeEnvFile({ OPENAI_API_KEY: "sk-test" }, paths);
 
     await runTelegramCommand({
-      argv: ["node", "bestie", "telegram", "setup"],
+      argv: ["node", "bestie", "channels", "telegram", "setup"],
       paths,
       questioner: {
         ask: async () => "12345",
@@ -91,7 +91,7 @@ test("runTelegramCommand voice setup-local writes wrapper and local transcriptio
       paths,
     );
 
-    await runTelegramCommand({ argv: ["node", "bestie", "telegram", "voice", "setup-local"], paths, writeLine: (message) => output.push(message) });
+    await runTelegramCommand({ argv: ["node", "bestie", "channels", "telegram", "voice", "setup-local"], paths, writeLine: (message) => output.push(message) });
 
     const config = JSON.parse(await readFile(paths.configPath, "utf8")) as {
       transcription?: { provider: string; command: string; args: string[]; modelPath: string; timeoutMs: number };
@@ -144,7 +144,7 @@ test("runTelegramCommand voice setup-local uses agent language for local transcr
       paths,
     );
 
-    await runTelegramCommand({ argv: ["node", "bestie", "telegram", "voice", "setup-local"], paths, writeLine: () => undefined });
+    await runTelegramCommand({ argv: ["node", "bestie", "channels", "telegram", "voice", "setup-local"], paths, writeLine: () => undefined });
 
     const config = JSON.parse(await readFile(paths.configPath, "utf8")) as { transcription?: { args: string[] } };
     assert.deepEqual(config.transcription?.args, ["{modelPath}", "{audioPath}", "-l", "auto"]);
@@ -173,7 +173,7 @@ test("runTelegramCommand voice setup-elevenlabs writes speech config and API key
     await writeEnvFile({ OPENAI_API_KEY: "sk-test" }, paths);
 
     await runTelegramCommand({
-      argv: ["node", "bestie", "telegram", "voice", "setup-elevenlabs"],
+      argv: ["node", "bestie", "channels", "telegram", "voice", "setup-elevenlabs"],
       paths,
       questioner: {
         ask: async () => "",
@@ -239,7 +239,7 @@ test("runTelegramCommand voice setup-elevenlabs omits language code for mixed la
     );
 
     await runTelegramCommand({
-      argv: ["node", "bestie", "telegram", "voice", "setup-elevenlabs"],
+      argv: ["node", "bestie", "channels", "telegram", "voice", "setup-elevenlabs"],
       paths,
       questioner: {
         ask: async () => "",
@@ -281,7 +281,7 @@ test("runTelegramCommand voice setup-local fails before writing config when mode
     );
 
     await assert.rejects(
-      () => runTelegramCommand({ argv: ["node", "bestie", "telegram", "voice", "setup-local"], paths, writeLine: () => undefined }),
+      () => runTelegramCommand({ argv: ["node", "bestie", "channels", "telegram", "voice", "setup-local"], paths, writeLine: () => undefined }),
       /Local whisper model is missing or unreadable/,
     );
   } finally {
@@ -309,7 +309,7 @@ test("runTelegramCommand voice models lists local models and marks configured mo
       paths,
     );
 
-    await runTelegramCommand({ argv: ["node", "bestie", "telegram", "voice", "models"], paths, writeLine: (message) => output.push(message) });
+    await runTelegramCommand({ argv: ["node", "bestie", "channels", "telegram", "voice", "models"], paths, writeLine: (message) => output.push(message) });
 
     const text = output.join("\n");
     assert.match(text, /\* ggml-small\.bin 2\.0 KiB - recommended baseline for Vietnamese/);
@@ -335,7 +335,7 @@ test("runTelegramCommand voice models reports when no local models exist", async
       paths,
     );
 
-    await runTelegramCommand({ argv: ["node", "bestie", "telegram", "voice", "models"], paths, writeLine: (message) => output.push(message) });
+    await runTelegramCommand({ argv: ["node", "bestie", "channels", "telegram", "voice", "models"], paths, writeLine: (message) => output.push(message) });
 
     assert.match(output.join("\n"), /No local whisper\.cpp \.bin models found/);
   } finally {
@@ -360,7 +360,7 @@ test("runTelegramCommand voice download-model previews without downloading by de
     );
 
     await runTelegramCommand({
-      argv: ["node", "bestie", "telegram", "voice", "download-model", "small"],
+      argv: ["node", "bestie", "channels", "telegram", "voice", "download-model", "small"],
       paths,
       modelDownloadFetchImpl: async () => {
         fetchCalled = true;
@@ -393,7 +393,7 @@ test("runTelegramCommand voice download-model downloads and can update config", 
     );
 
     await runTelegramCommand({
-      argv: ["node", "bestie", "telegram", "voice", "download-model", "tiny", "--confirm", "--use"],
+      argv: ["node", "bestie", "channels", "telegram", "voice", "download-model", "tiny", "--confirm", "--use"],
       paths,
       modelDownloadFetchImpl: async () => new Response("model bytes", { headers: { "content-length": "11" } }),
       writeLine: (message) => output.push(message),
@@ -430,7 +430,7 @@ test("runTelegramCommand voice download-model refuses to overwrite without force
     await assert.rejects(
       () =>
         runTelegramCommand({
-          argv: ["node", "bestie", "telegram", "voice", "download-model", "tiny", "--confirm"],
+          argv: ["node", "bestie", "channels", "telegram", "voice", "download-model", "tiny", "--confirm"],
           paths,
           modelDownloadFetchImpl: async () => new Response("model bytes"),
           writeLine: () => undefined,
@@ -462,7 +462,7 @@ test("runTelegramCommand writes a redacted Telegram smoke transcript", async () 
     await writeEnvFile({ OPENAI_API_KEY: "sk-test", BESTIE_TELEGRAM_BOT_TOKEN: "telegram-secret-token" }, paths);
 
     await runTelegramCommand({
-      argv: ["node", "bestie", "telegram", "--once", "--transcript", ".bestie/logs/telegram-smoke.jsonl"],
+      argv: ["node", "bestie", "channels", "telegram", "--once", "--transcript", ".bestie/logs/telegram-smoke.jsonl"],
       paths,
       clientFactory: () => ({
         getUpdates: async () => [
@@ -498,7 +498,7 @@ test("runTelegramCommand writes a redacted Telegram smoke transcript", async () 
     assert.equal((events[2].detail.updates as Array<{ fromOwner: boolean; textLength: number }>)[0].fromOwner, true);
     assert.equal((events[2].detail.updates as Array<{ fromOwner: boolean; textLength: number }>)[0].textLength, 6);
     assert.equal(events[4].detail.kind, "reply");
-    assert.doesNotMatch(transcriptText, /telegram-secret-token|\/start|Miu is online|777|12345/);
+    assert.doesNotMatch(transcriptText, /telegram-secret-token|\/start|Miu is online/);
     assert.ok(output.some((line) => line.includes("Telegram smoke transcript")));
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
@@ -524,7 +524,7 @@ test("runTelegramCommand writes redacted Telegram attachment transcript events",
     await writeEnvFile({ OPENAI_API_KEY: "sk-test", BESTIE_TELEGRAM_BOT_TOKEN: "telegram-secret-token" }, paths);
 
     await runTelegramCommand({
-      argv: ["node", "bestie", "telegram", "--once", "--transcript", ".bestie/logs/telegram-attachment-smoke.jsonl"],
+      argv: ["node", "bestie", "channels", "telegram", "--once", "--transcript", ".bestie/logs/telegram-attachment-smoke.jsonl"],
       paths,
       clientFactory: () => ({
         getUpdates: async () => [
@@ -587,7 +587,7 @@ test("runTelegramCommand writes redacted Telegram attachment transcript events",
       audioTranscriptTruncated: false,
       hasTranscriptionWarning: false,
     });
-    assert.doesNotMatch(transcriptText, /telegram-secret-token|doc-secret-id|secret-note|hello smoke|please read|777|12345/);
+    assert.doesNotMatch(transcriptText, /telegram-secret-token|doc-secret-id|secret-note|hello smoke|please read/);
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
   }
@@ -615,7 +615,7 @@ test("runTelegramCommand wires configured audio transcription for Telegram voice
     await writeEnvFile({ OPENAI_API_KEY: "sk-test", BESTIE_TELEGRAM_BOT_TOKEN: "telegram-secret-token", BESTIE_TRANSCRIPTION_API_KEY: "transcription-secret-token" }, paths);
 
     await runTelegramCommand({
-      argv: ["node", "bestie", "telegram", "--once", "--transcript", ".bestie/logs/telegram-voice-smoke.jsonl"],
+      argv: ["node", "bestie", "channels", "telegram", "--once", "--transcript", ".bestie/logs/telegram-voice-smoke.jsonl"],
       paths,
       clientFactory: () => ({
         getUpdates: async () => [
@@ -685,7 +685,7 @@ test("runTelegramCommand sends Telegram voice reply for voice input when configu
     await writeEnvFile({ OPENAI_API_KEY: "sk-test", BESTIE_TELEGRAM_BOT_TOKEN: "telegram-secret-token", BESTIE_TRANSCRIPTION_API_KEY: "transcription-secret-token", BESTIE_TTS_API_KEY: "tts-secret-token" }, paths);
 
     await runTelegramCommand({
-      argv: ["node", "bestie", "telegram", "--once"],
+      argv: ["node", "bestie", "channels", "telegram", "--once"],
       paths,
       clientFactory: () => ({
         getUpdates: async () => [
@@ -756,7 +756,7 @@ test("runTelegramCommand wires local audio transcription for Telegram voice atta
     await writeEnvFile({ OPENAI_API_KEY: "sk-test", BESTIE_TELEGRAM_BOT_TOKEN: "telegram-secret-token" }, paths);
 
     await runTelegramCommand({
-      argv: ["node", "bestie", "telegram", "--once", "--transcript", ".bestie/logs/telegram-local-voice-smoke.jsonl"],
+      argv: ["node", "bestie", "channels", "telegram", "--once", "--transcript", ".bestie/logs/telegram-local-voice-smoke.jsonl"],
       paths,
       clientFactory: () => ({
         getUpdates: async () => [

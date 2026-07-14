@@ -38,7 +38,7 @@
     "smoke:status": "npm run build && npm run smoke:status:run",
     "smoke:status:run": "npm run start -- status",
     "smoke:telegram": "npm run build && npm run smoke:telegram:run",
-    "smoke:telegram:run": "tmpdir=$(mktemp -d) && cd $tmpdir && node $INIT_CWD/dist/cli/index.js telegram 2>&1 | grep -q 'Telegram is not enabled'; code=$?; rm -rf $tmpdir; exit $code",
+    "smoke:telegram:run": "tmpdir=$(mktemp -d) && cd $tmpdir && HOME=$tmpdir node $INIT_CWD/dist/cli/index.js channels telegram 2>&1 | grep -q 'Telegram is not enabled'; code=$?; rm -rf $tmpdir; exit $code",
     "smoke:telegram:real": "npm run build && node scripts/smoke-telegram-real.mjs",
     "smoke:telegram:setup": "npm run build && npm run smoke:telegram:setup:run",
     "smoke:telegram:setup:run": "node scripts/smoke-telegram-setup.mjs",

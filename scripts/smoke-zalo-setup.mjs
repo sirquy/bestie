@@ -23,7 +23,7 @@ try {
   await writeEnvFile({ OPENAI_API_KEY: "test-key" }, paths);
 
   await runZaloCommand({
-    argv: ["node", "bestie", "zalo", "setup"],
+    argv: ["node", "bestie", "channels", "zalo", "setup"],
     paths,
     questioner: {
       ask: async () => "zalo-owner-1",

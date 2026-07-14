@@ -8,9 +8,8 @@ import { runMemoryCommand } from "./commands/memory.js";
 import { runMcpCommand } from "./commands/mcp.js";
 import { runOnboardCommand } from "./commands/onboard.js";
 import { runStatusCommand } from "./commands/status.js";
-import { runTelegramCommand } from "./commands/telegram.js";
+import { runChannelsCommand } from "./commands/channels.js";
 import { runToolsCommand } from "./commands/tools.js";
-import { runZaloCommand } from "./commands/zalo.js";
 
 type CommandHandler = (argv?: string[]) => Promise<void> | void;
 
@@ -23,9 +22,8 @@ const commandHandlers: Record<string, CommandHandler> = {
   doctor: runDoctorCommand,
   memory: runMemoryCommand,
   mcp: runMcpCommand,
-  telegram: runTelegramCommand,
+  channels: runChannelsCommand,
   tools: runToolsCommand,
-  zalo: runZaloCommand,
 };
 
 const helpText = `Bestie
@@ -42,9 +40,8 @@ Commands:
   doctor    Diagnose local setup problems
   memory    Inspect or manually add local memories
   mcp       List configured MCP servers
-  telegram  Start the local Telegram polling bot
+  channels  Start, configure, or inspect channel adapters (telegram, zalo)
   tools     Run permission-gated local tools
-  zalo      Start the local Zalo polling bot
 
 Options:
   -h, --help  Show this help
@@ -69,25 +66,15 @@ MCP options:
   call <server> <tool> --read --json '{...}'  Run a read-only MCP tool through the permission gate
   call <server> <tool> --read --ask --json '{...}'  Prompt before this read-only MCP call
 
-Telegram options:
-  setup   Configure Telegram owner id and local bot token
-  voice setup-local  Configure local voice transcription from existing whisper.cpp files
-  voice models  List local whisper.cpp models and the configured model
-  voice download-model <name> --confirm [--use] [--force]
-    Download tiny, small, medium, or large-v3-turbo whisper.cpp model
-  --once  Poll Telegram once, then exit
-  --transcript <path>  Write a redacted JSONL smoke transcript for Telegram polling
-
-Zalo options:
-  setup   Configure Zalo owner id and local bot token
-  --once  Poll Zalo once, then exit
-  --transcript <path>  Write a redacted JSONL smoke transcript for Zalo polling
+Channels options:
+  telegram  Telegram channel adapter (see bestie channels telegram --help)
+  zalo      Zalo channel adapter (see bestie channels zalo --help)
 
 Daemon options:
-  start   Start Telegram polling in the background
-  stop    Stop the background daemon
-  restart Stop and start the background daemon
-  status  Show daemon status
+  start [--channel telegram|zalo|all]    Start channel polling in the background
+  stop [--channel telegram|zalo|all]     Stop channel daemon(s)
+  restart [--channel telegram|zalo|all]  Stop and start channel daemon(s)
+  status [--channel telegram|zalo|all]   Show channel daemon status
 
 Tools options:
   logs --lines N  Read recent redacted app logs through the permission gate
@@ -107,6 +94,13 @@ async function main(argv: string[]): Promise<void> {
   const handler = commandHandlers[command];
 
   if (!handler) {
+    if (command === "telegram" || command === "zalo") {
+      console.error(`Channel commands now live under \`bestie channels ${command}\`.`);
+      console.error(`Run \`bestie channels ${command} --help\` to see available options.`);
+      process.exitCode = 1;
+      return;
+    }
+
     console.error(`Unknown command: ${command}`);
     console.error("Run `bestie --help` to see available Phase Now commands.");
     process.exitCode = 1;

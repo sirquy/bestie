@@ -55,7 +55,7 @@ chmod +x .bestie/tools/local-whisper-transcribe.sh
 If the local files above already exist, configure this mode automatically:
 
 ```bash
-npm run start -- telegram voice setup-local
+npm run start -- channels telegram voice setup-local
 ```
 
 The command validates `.bestie/tools/whisper-bin/whisper-cli`, `.bestie/models/ggml-small.bin`, and `ffmpeg`, writes the wrapper, and merges the transcription/attachment config below without storing secrets.
@@ -63,19 +63,19 @@ The command validates `.bestie/tools/whisper-bin/whisper-cli`, `.bestie/models/g
 List local whisper.cpp models and the currently configured model:
 
 ```bash
-npm run start -- telegram voice models
+npm run start -- channels telegram voice models
 ```
 
 Preview a controlled model download:
 
 ```bash
-npm run start -- telegram voice download-model small
+npm run start -- channels telegram voice download-model small
 ```
 
 Download and switch the local transcription config to that model:
 
 ```bash
-npm run start -- telegram voice download-model small --confirm --use
+npm run start -- channels telegram voice download-model small --confirm --use
 ```
 
 Supported names are `tiny`, `small`, `medium`, and `large-v3-turbo`. Existing files are not overwritten unless `--force` is provided.
@@ -140,7 +140,7 @@ OK Local transcription model quality: Local transcription model choice does not 
 Run a real Telegram smoke transcript when debugging:
 
 ```bash
-npm run start -- telegram --once --transcript .bestie/logs/telegram-local-voice-smoke.jsonl
+npm run start -- channels telegram --once --transcript .bestie/logs/telegram-local-voice-smoke.jsonl
 ```
 
 Send a short Vietnamese voice message from the configured owner account. The transcript file must not contain raw message text, transcript text, file ids, file paths, owner ids, chat ids, or token values. It should only record metadata booleans such as `hasAudioTranscript`.

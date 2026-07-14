@@ -120,26 +120,27 @@ interface TelegramSetupUi {
 export async function runTelegramCommand(optionsOrArgv: string[] | TelegramCommandOptions = process.argv): Promise<void> {
   const options = Array.isArray(optionsOrArgv) ? { argv: optionsOrArgv } : optionsOrArgv;
   const argv = options.argv ?? process.argv;
+  const argStart = getTelegramArgStart(argv);
   const paths = options.paths ?? getRuntimePaths();
   const writeLine = options.writeLine ?? console.log;
 
-  if (argv[3] === "voice" && argv[4] === "setup-local") {
+  if (argv[argStart] === "voice" && argv[argStart + 1] === "setup-local") {
     await runTelegramVoiceLocalSetup({ paths, writeLine });
     return;
   }
 
-  if (argv[3] === "voice" && argv[4] === "setup-elevenlabs") {
+  if (argv[argStart] === "voice" && argv[argStart + 1] === "setup-elevenlabs") {
     await runTelegramVoiceElevenLabsSetup({ paths, questioner: options.questioner, writeLine });
     return;
   }
 
-  if (argv[3] === "voice" && argv[4] === "models") {
+  if (argv[argStart] === "voice" && argv[argStart + 1] === "models") {
     await runTelegramVoiceModels({ paths, writeLine });
     return;
   }
 
-  if (argv[3] === "voice" && argv[4] === "download-model") {
-    await runTelegramVoiceDownloadModel({ argv, paths, writeLine, fetchImpl: options.modelDownloadFetchImpl ?? fetch });
+  if (argv[argStart] === "voice" && argv[argStart + 1] === "download-model") {
+    await runTelegramVoiceDownloadModel({ argv, modelKeyIndex: argStart + 2, paths, writeLine, fetchImpl: options.modelDownloadFetchImpl ?? fetch });
     return;
   }
 
@@ -206,6 +207,10 @@ export async function runTelegramCommand(optionsOrArgv: string[] | TelegramComma
   }
 }
 
+function getTelegramArgStart(argv: string[]): number {
+  return argv[2] === "channels" ? 4 : 3;
+}
+
 async function runTelegramVoiceModels(options: { paths: RuntimePaths; writeLine: (message: string) => void }): Promise<void> {
   const config = await loadConfig(options.paths);
   const configuredModelPath = config.transcription?.provider === "local-whisper" ? resolveMaybeRelative(options.paths.rootDir, config.transcription.modelPath) : undefined;
@@ -232,10 +237,10 @@ async function runTelegramVoiceModels(options: { paths: RuntimePaths; writeLine:
   }
 }
 
-async function runTelegramVoiceDownloadModel(options: { argv: string[]; paths: RuntimePaths; writeLine: (message: string) => void; fetchImpl: typeof fetch }): Promise<void> {
-  const modelKey = options.argv[5]?.trim();
+async function runTelegramVoiceDownloadModel(options: { argv: string[]; modelKeyIndex: number; paths: RuntimePaths; writeLine: (message: string) => void; fetchImpl: typeof fetch }): Promise<void> {
+  const modelKey = options.argv[options.modelKeyIndex]?.trim();
   if (!modelKey || modelKey.startsWith("--")) {
-    throw new UserFacingError(`Usage: bestie telegram voice download-model <${Object.keys(WHISPER_MODEL_CATALOG).join("|")}> [--confirm] [--use] [--force]`, "TelegramVoiceDownloadModelUsageError");
+    throw new UserFacingError(`Usage: bestie channels telegram voice download-model <${Object.keys(WHISPER_MODEL_CATALOG).join("|")}> [--confirm] [--use] [--force]`, "TelegramVoiceDownloadModelUsageError");
   }
 
   const model = WHISPER_MODEL_CATALOG[modelKey];
@@ -491,7 +496,7 @@ function createTelegramSetupUi(writeLine: (message: string) => void, useColor: b
     savedPath: (label, path) => writeLine(`  ${accent(label.padEnd(10))} ${path}`),
     final: () => {
       writeLine(`${ok("\nDone")} Telegram setup complete.`);
-      writeLine(`${dim("Next")} Run \`bestie doctor\`, then \`bestie telegram --once\`.`);
+      writeLine(`${dim("Next")} Run \`bestie doctor\`, then \`bestie channels telegram --once\`.`);
     },
   };
 }

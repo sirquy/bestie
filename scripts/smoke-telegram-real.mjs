@@ -23,7 +23,7 @@ await ensureReadable(resolve(projectRoot, ".bestie/config.json"), "Run `npm run 
 await ensureReadable(resolve(projectRoot, ".bestie/.env"), "Add Telegram and LLM secrets to .bestie/.env first.");
 await rm(fullTranscriptPath, { force: true });
 
-await runCli(["telegram", "--once", "--transcript", transcriptPath]);
+await runCli(["channels", "telegram", "--once", "--transcript", transcriptPath]);
 
 const transcript = await readFile(fullTranscriptPath, "utf8");
 const summary = validateTelegramSmokeTranscript(parseTelegramSmokeTranscript(transcript));

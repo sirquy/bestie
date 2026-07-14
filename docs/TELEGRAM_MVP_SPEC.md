@@ -11,12 +11,12 @@ Current implementation status: config schema, setup command, enabled-only Doctor
 Build a local polling bot that runs from the CLI:
 
 ```bash
-bestie telegram
-bestie telegram setup
-bestie telegram voice setup-local
-bestie telegram voice models
-bestie telegram voice download-model small --confirm --use
-bestie telegram --once --transcript .bestie/logs/telegram-smoke.jsonl
+bestie channels telegram
+bestie channels telegram setup
+bestie channels telegram voice setup-local
+bestie channels telegram voice models
+bestie channels telegram voice download-model small --confirm --use
+bestie channels telegram --once --transcript .bestie/logs/telegram-smoke.jsonl
 ```
 
 In scope:
@@ -128,15 +128,15 @@ Rules:
   "timeoutMs": 60000
 }
 ```
-- Prefer `bestie telegram setup` for local setup; manual config edits are still supported.
+- Prefer `bestie channels telegram setup` for local setup; manual config edits are still supported.
 - Do not require Telegram config for terminal-only users.
-- If `channels.telegram.enabled` is false or missing, `bestie telegram` should explain how to enable it.
+- If `channels.telegram.enabled` is false or missing, `bestie channels telegram` should explain how to enable it.
 - `ownerUserId` must be required before the bot replies to messages.
 
 ## Runtime Flow
 
 ```text
-bestie telegram
+bestie channels telegram
   -> load config and env
   -> require Telegram bot token and owner user id
   -> start getUpdates polling loop

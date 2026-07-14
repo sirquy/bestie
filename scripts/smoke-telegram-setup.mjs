@@ -23,7 +23,7 @@ try {
   await writeEnvFile({ OPENAI_API_KEY: "test-key" }, paths);
 
   await runTelegramCommand({
-    argv: ["node", "bestie", "telegram", "setup"],
+    argv: ["node", "bestie", "channels", "telegram", "setup"],
     paths,
     questioner: {
       ask: async () => "12345",

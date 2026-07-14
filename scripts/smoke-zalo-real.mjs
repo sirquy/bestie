@@ -24,7 +24,7 @@ await ensureReadable(resolve(runtimeRoot, ".bestie/config.json"), "Run `npm run 
 await ensureReadable(resolve(runtimeRoot, ".bestie/.env"), "Add Zalo and LLM secrets to .bestie/.env first.");
 await rm(fullTranscriptPath, { force: true });
 
-await runCli(["zalo", "--once", "--transcript", transcriptPath]);
+await runCli(["channels", "zalo", "--once", "--transcript", transcriptPath, "--capture-shape"]);
 
 const transcript = await readFile(fullTranscriptPath, "utf8");
 const summary = validateZaloSmokeTranscript(parseZaloSmokeTranscript(transcript));

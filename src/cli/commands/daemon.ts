@@ -8,6 +8,10 @@ import { getRuntimePaths, type RuntimePaths } from "../../runtime/paths.js";
 
 const DAEMON_STOP_TIMEOUT_MS = 30_000;
 const DAEMON_STOP_POLL_INTERVAL_MS = 1000;
+const DAEMON_CHANNELS = ["telegram", "zalo"] as const;
+
+type DaemonChannel = (typeof DAEMON_CHANNELS)[number];
+type DaemonChannelSelection = DaemonChannel | "all";
 
 interface DaemonCommandOptions {
   argv?: string[];
@@ -22,6 +26,7 @@ interface DaemonCommandOptions {
 }
 
 interface DaemonState {
+  channel?: DaemonChannel;
   pid: number;
   command: string;
   args: string[];
@@ -33,44 +38,56 @@ export async function runDaemonCommand(optionsOrArgv: string[] | DaemonCommandOp
   const options = Array.isArray(optionsOrArgv) ? { argv: optionsOrArgv } : optionsOrArgv;
   const argv = options.argv ?? process.argv;
   const subcommand = argv[3] ?? "status";
+  const channels = getSelectedDaemonChannels(argv);
   const paths = options.paths ?? getRuntimePaths();
   const writeLine = options.writeLine ?? console.log;
 
   if (subcommand === "start") {
-    await startDaemon({ ...options, paths, writeLine });
+    for (const channel of channels) {
+      await startDaemon({ ...options, paths, writeLine }, channel);
+    }
     return;
   }
 
   if (subcommand === "stop") {
-    await stopDaemon({ ...options, paths, writeLine });
+    for (const channel of channels) {
+      await stopDaemon({ ...options, paths, writeLine }, channel);
+    }
     return;
   }
 
   if (subcommand === "restart") {
-    await restartDaemon({ ...options, paths, writeLine });
+    for (const channel of channels) {
+      await restartDaemon({ ...options, paths, writeLine }, channel);
+    }
     return;
   }
 
   if (subcommand === "status") {
-    await showDaemonStatus({ ...options, paths, writeLine });
+    for (const channel of channels) {
+      await showDaemonStatus({ ...options, paths, writeLine }, channel);
+    }
     return;
   }
 
-  throw new UserFacingError("Usage: bestie daemon start|stop|restart|status", "DaemonUsageError");
+  throw new UserFacingError("Usage: bestie daemon start|stop|restart|status [--channel telegram|zalo|all]", "DaemonUsageError");
 }
 
-async function startDaemon(options: Required<Pick<DaemonCommandOptions, "paths" | "writeLine">> & DaemonCommandOptions): Promise<void> {
-  const state = await readDaemonState(options.paths);
+async function startDaemon(options: Required<Pick<DaemonCommandOptions, "paths" | "writeLine">> & DaemonCommandOptions, channel: DaemonChannel): Promise<void> {
+  const state = await readDaemonState(options.paths, channel);
   const isRunning = options.isProcessRunning ?? defaultIsProcessRunning;
   if (state && isRunning(state.pid)) {
-    options.writeLine(`Daemon already running with pid ${state.pid}.`);
+    options.writeLine(`${formatDaemonChannel(channel)} daemon already running with pid ${state.pid}.`);
     return;
+  }
+  if (state) {
+    await removeDaemonState(options.paths, channel);
   }
 
   const command = process.execPath;
   const cliEntry = process.argv[1] ? resolve(process.argv[1]) : resolve(options.paths.rootDir, "dist/cli/index.js");
-  const args = [cliEntry, "telegram"];
-  const logPath = resolve(options.paths.logsDir, "daemon.log");
+  const args = [cliEntry, "channels", channel];
+  const logPath = resolve(options.paths.logsDir, `daemon-${channel}.log`);
 
   await mkdir(options.paths.logsDir, { recursive: true });
   const logFd = openSync(logPath, "a", 0o600);
@@ -90,15 +107,15 @@ async function startDaemon(options: Required<Pick<DaemonCommandOptions, "paths" 
   }
 
   child.unref();
-  await writeDaemonState(options.paths, { pid: child.pid, command, args, startedAt: new Date().toISOString(), logPath });
-  options.writeLine(`Daemon started with pid ${child.pid}.`);
+  await writeDaemonState(options.paths, channel, { channel, pid: child.pid, command, args, startedAt: new Date().toISOString(), logPath });
+  options.writeLine(`${formatDaemonChannel(channel)} daemon started with pid ${child.pid}.`);
   options.writeLine(`Logs: ${logPath}`);
 }
 
-async function stopDaemon(options: Required<Pick<DaemonCommandOptions, "paths" | "writeLine">> & DaemonCommandOptions): Promise<void> {
-  const state = await readDaemonState(options.paths);
+async function stopDaemon(options: Required<Pick<DaemonCommandOptions, "paths" | "writeLine">> & DaemonCommandOptions, channel: DaemonChannel): Promise<void> {
+  const state = await readDaemonState(options.paths, channel);
   if (!state) {
-    options.writeLine("Daemon is not running.");
+    options.writeLine(`${formatDaemonChannel(channel)} daemon is not running.`);
     return;
   }
 
@@ -108,8 +125,8 @@ async function stopDaemon(options: Required<Pick<DaemonCommandOptions, "paths" |
     if (getProcessCommandLine) {
       const commandLine = getProcessCommandLine(state.pid);
       if (!commandLine || !isRecordedDaemonProcess(state, commandLine)) {
-        await rm(getDaemonStatePath(options.paths), { force: true });
-        options.writeLine(`Daemon state was stale; pid ${state.pid} belongs to a different process.`);
+        await removeDaemonState(options.paths, channel);
+        options.writeLine(`${formatDaemonChannel(channel)} daemon state was stale; pid ${state.pid} belongs to a different process.`);
         return;
       }
     }
@@ -124,49 +141,93 @@ async function stopDaemon(options: Required<Pick<DaemonCommandOptions, "paths" |
     await waitForProcessExit(state.pid, isRunning, options.stopTimeoutMs ?? DAEMON_STOP_TIMEOUT_MS, options.sleep ?? sleep);
   }
 
-  await rm(getDaemonStatePath(options.paths), { force: true });
-  options.writeLine(`Daemon stopped: ${state.pid}.`);
+  await removeDaemonState(options.paths, channel);
+  options.writeLine(`${formatDaemonChannel(channel)} daemon stopped: ${state.pid}.`);
 }
 
-async function restartDaemon(options: Required<Pick<DaemonCommandOptions, "paths" | "writeLine">> & DaemonCommandOptions): Promise<void> {
-  await stopDaemon(options);
-  await startDaemon(options);
+async function restartDaemon(options: Required<Pick<DaemonCommandOptions, "paths" | "writeLine">> & DaemonCommandOptions, channel: DaemonChannel): Promise<void> {
+  await stopDaemon(options, channel);
+  await startDaemon(options, channel);
 }
 
-async function showDaemonStatus(options: Required<Pick<DaemonCommandOptions, "paths" | "writeLine">> & DaemonCommandOptions): Promise<void> {
-  const state = await readDaemonState(options.paths);
+async function showDaemonStatus(options: Required<Pick<DaemonCommandOptions, "paths" | "writeLine">> & DaemonCommandOptions, channel: DaemonChannel): Promise<void> {
+  const state = await readDaemonState(options.paths, channel);
   if (!state) {
-    options.writeLine("Daemon is stopped.");
+    options.writeLine(`${formatDaemonChannel(channel)} daemon is stopped.`);
     return;
   }
 
   const isRunning = options.isProcessRunning ?? defaultIsProcessRunning;
-  options.writeLine(isRunning(state.pid) ? `Daemon is running with pid ${state.pid}.` : `Daemon pid ${state.pid} is stale.`);
+  options.writeLine(isRunning(state.pid) ? `${formatDaemonChannel(channel)} daemon is running with pid ${state.pid}.` : `${formatDaemonChannel(channel)} daemon pid ${state.pid} is stale.`);
   options.writeLine(`Logs: ${state.logPath}`);
 }
 
-async function readDaemonState(paths: RuntimePaths): Promise<DaemonState | undefined> {
+async function readDaemonState(paths: RuntimePaths, channel: DaemonChannel): Promise<DaemonState | undefined> {
   try {
-    const parsed = JSON.parse(await readFile(getDaemonStatePath(paths), "utf8")) as unknown;
+    const parsed = JSON.parse(await readFile(getDaemonStatePath(paths, channel), "utf8")) as unknown;
     if (!isDaemonState(parsed)) {
       return undefined;
     }
     return parsed;
   } catch (error) {
     if (isNodeError(error) && error.code === "ENOENT") {
+      if (channel === "telegram") {
+        return readLegacyDaemonState(paths);
+      }
       return undefined;
     }
     throw error;
   }
 }
 
-async function writeDaemonState(paths: RuntimePaths, state: DaemonState): Promise<void> {
-  await mkdir(paths.appDir, { recursive: true });
-  await writeFile(getDaemonStatePath(paths), `${JSON.stringify(state, null, 2)}\n`, { mode: 0o600 });
+async function readLegacyDaemonState(paths: RuntimePaths): Promise<DaemonState | undefined> {
+  try {
+    const parsed = JSON.parse(await readFile(resolve(paths.appDir, "daemon.json"), "utf8")) as unknown;
+    return isDaemonState(parsed) ? { ...parsed, channel: "telegram" } : undefined;
+  } catch (error) {
+    if (isNodeError(error) && error.code === "ENOENT") return undefined;
+    throw error;
+  }
 }
 
-function getDaemonStatePath(paths: RuntimePaths): string {
-  return resolve(paths.appDir, "daemon.json");
+async function writeDaemonState(paths: RuntimePaths, channel: DaemonChannel, state: DaemonState): Promise<void> {
+  await mkdir(paths.appDir, { recursive: true });
+  await writeFile(getDaemonStatePath(paths, channel), `${JSON.stringify(state, null, 2)}\n`, { mode: 0o600 });
+}
+
+function getDaemonStatePath(paths: RuntimePaths, channel: DaemonChannel): string {
+  return resolve(paths.appDir, `daemon-${channel}.json`);
+}
+
+async function removeDaemonState(paths: RuntimePaths, channel: DaemonChannel): Promise<void> {
+  await rm(getDaemonStatePath(paths, channel), { force: true });
+  if (channel === "telegram") {
+    await rm(resolve(paths.appDir, "daemon.json"), { force: true });
+  }
+}
+
+function getSelectedDaemonChannels(argv: string[]): DaemonChannel[] {
+  const selection = getDaemonChannelSelection(argv);
+  return selection === "all" ? [...DAEMON_CHANNELS] : [selection];
+}
+
+function getDaemonChannelSelection(argv: string[]): DaemonChannelSelection {
+  const channelIndex = argv.indexOf("--channel");
+  const value = channelIndex === -1 ? "telegram" : argv[channelIndex + 1];
+
+  if (value === "all" || isDaemonChannel(value)) {
+    return value;
+  }
+
+  throw new UserFacingError("Usage: bestie daemon start|stop|restart|status [--channel telegram|zalo|all]", "DaemonUsageError");
+}
+
+function isDaemonChannel(value: string | undefined): value is DaemonChannel {
+  return DAEMON_CHANNELS.some((channel) => channel === value);
+}
+
+function formatDaemonChannel(channel: DaemonChannel): string {
+  return channel[0].toUpperCase() + channel.slice(1);
 }
 
 function defaultIsProcessRunning(pid: number): boolean {
@@ -220,7 +281,7 @@ function isDaemonState(value: unknown): value is DaemonState {
     return false;
   }
   const state = value as Record<string, unknown>;
-  return typeof state.pid === "number" && typeof state.command === "string" && Array.isArray(state.args) && state.args.every((arg) => typeof arg === "string") && typeof state.startedAt === "string" && typeof state.logPath === "string";
+  return (state.channel === undefined || isDaemonChannel(String(state.channel))) && typeof state.pid === "number" && typeof state.command === "string" && Array.isArray(state.args) && state.args.every((arg) => typeof arg === "string") && typeof state.startedAt === "string" && typeof state.logPath === "string";
 }
 
 function isNodeError(error: unknown): error is NodeJS.ErrnoException {

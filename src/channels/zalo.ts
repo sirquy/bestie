@@ -79,6 +79,10 @@ export interface ZaloSentMessage {
   messageId?: string | number;
 }
 
+export interface ZaloHttpClientOptions {
+  captureGetUpdatesShape?: (shape: Record<string, unknown>) => Promise<void> | void;
+}
+
 export interface ZaloPollingOptions extends ZaloUpdateHandlerOptions {
   once?: boolean;
   shouldStop?: () => boolean;
@@ -95,7 +99,7 @@ export interface ZaloUpdateHandlerOptions {
 }
 
 export class ZaloHttpClient implements ZaloClient {
-  constructor(private readonly botToken: string, private readonly fetchImpl: typeof fetch = fetch) {}
+  constructor(private readonly botToken: string, private readonly fetchImpl: typeof fetch = fetch, private readonly options: ZaloHttpClientOptions = {}) {}
 
   async getMe(): Promise<ZaloUser> {
     return this.call<ZaloUser>("getMe", {});
@@ -103,6 +107,7 @@ export class ZaloHttpClient implements ZaloClient {
 
   async getUpdates(offset: number | undefined, timeoutSeconds: number): Promise<ZaloUpdate[]> {
     const result = await this.call<unknown>("getUpdates", { ...(offset === undefined ? {} : { offset }), timeout: timeoutSeconds });
+    await this.options.captureGetUpdatesShape?.(summarizeZaloPayloadShape(result));
     return normalizeZaloUpdatesResult(result);
   }
 
@@ -134,6 +139,31 @@ export class ZaloHttpClient implements ZaloClient {
 
     return payload.result as T;
   }
+}
+
+export function summarizeZaloPayloadShape(value: unknown, depth = 0): Record<string, unknown> {
+  if (value === null) {
+    return { type: "null" };
+  }
+
+  if (Array.isArray(value)) {
+    return { type: "array", length: value.length, sample: value.length > 0 && depth < 3 ? summarizeZaloPayloadShape(value[0], depth + 1) : undefined };
+  }
+
+  if (typeof value === "object") {
+    const entries = Object.entries(value as Record<string, unknown>);
+    return {
+      type: "object",
+      keys: entries.map(([key]) => key).slice(0, 50),
+      fields: depth < 3 ? Object.fromEntries(entries.slice(0, 20).map(([key, fieldValue]) => [key, summarizeZaloPayloadShape(fieldValue, depth + 1)])) : undefined,
+    };
+  }
+
+  if (typeof value === "string") {
+    return { type: "string", length: value.length };
+  }
+
+  return { type: typeof value };
 }
 
 export async function runZaloPollingLoop(options: ZaloPollingOptions): Promise<void> {

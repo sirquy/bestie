@@ -1,7 +1,6 @@
-import { execFile, spawn } from "node:child_process";
+import { spawn } from "node:child_process";
 import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, relative, resolve } from "node:path";
-import { promisify } from "node:util";
 
 import { DEFAULT_INTERNAL_EXEC_TIMEOUT_MS, type AppConfig, type InternalToolPolicy } from "../runtime/config.js";
 import type { RuntimePaths } from "../runtime/paths.js";
@@ -48,7 +47,6 @@ const MAX_EDIT_BYTES = 256 * 1024;
 const MAX_PATCH_BYTES = 256 * 1024;
 const MAX_EXEC_OUTPUT_BYTES = 48 * 1024;
 const MAX_EXEC_TIMEOUT_MS = 10 * 60_000;
-const execFileAsync = promisify(execFile);
 
 export async function writeLocalFileTool(options: LocalActionToolOptions & { path: string; content: string; overwrite?: boolean }): Promise<LocalFileWriteResult> {
   const permission = await reviewInternalToolPermission(options, "internal.write_file", "local_write", options.path, "Write a local project file requested by the agent.");
@@ -145,14 +143,50 @@ export async function listProcessesTool(options: LocalActionToolOptions & { limi
   if (!permission.allowed) return { ...permission, processes: [] };
 
   const limit = Math.min(Math.max(options.limit ?? 20, 1), 100);
-  const { stdout } = await execFileAsync("ps", ["-eo", "pid=,ppid=,comm=,args="], { encoding: "utf8", timeout: 5_000, maxBuffer: MAX_EXEC_OUTPUT_BYTES });
-  const processes = stdout
-    .split(/\r?\n/)
-    .map(parseProcessLine)
-    .filter((process): process is LocalProcessListResult["processes"][number] => process !== undefined)
-    .slice(0, limit);
+  const processes = await readProcessList(limit);
 
   return { allowed: true, reason: permission.reason, processes };
+}
+
+function readProcessList(limit: number): Promise<LocalProcessListResult["processes"]> {
+  return new Promise((resolvePromise) => {
+    const child = spawn("ps", ["-eo", "pid=,ppid=,comm=,args="], { shell: false, stdio: ["ignore", "pipe", "ignore"] });
+    const processes: LocalProcessListResult["processes"] = [];
+    let pending = "";
+    let settled = false;
+    const timer = setTimeout(() => {
+      child.kill("SIGTERM");
+      finish();
+    }, 5_000);
+
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      const lastProcess = parseProcessLine(pending);
+      if (lastProcess && processes.length < limit) processes.push(lastProcess);
+      resolvePromise(processes);
+    };
+
+    child.stdout.setEncoding("utf8");
+    child.stdout.on("data", (chunk) => {
+      pending += chunk;
+      const lines = pending.split(/\r?\n/);
+      pending = lines.pop() ?? "";
+
+      for (const line of lines) {
+        const process = parseProcessLine(line);
+        if (process) processes.push(process);
+        if (processes.length >= limit) {
+          child.kill("SIGTERM");
+          finish();
+          return;
+        }
+      }
+    });
+    child.once("error", finish);
+    child.once("exit", finish);
+  });
 }
 
 async function reviewInternalToolPermission(

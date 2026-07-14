@@ -22,7 +22,7 @@ try {
   await writeEnvFile({ OPENAI_API_KEY: "test-key" }, paths);
 
   await assertRejectsWithMessage(
-    () => runZaloCommand({ argv: ["node", "bestie", "zalo"], paths, writeLine: () => undefined }),
+    () => runZaloCommand({ argv: ["node", "bestie", "channels", "zalo"], paths, writeLine: () => undefined }),
     "Zalo is not enabled",
   );
   console.log("Zalo disabled smoke passed.");

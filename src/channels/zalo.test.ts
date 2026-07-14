@@ -46,6 +46,26 @@ test("ZaloHttpClient accepts object-wrapped getUpdates results", async () => {
   assert.equal(updates[0]?.update_id, 1);
 });
 
+test("ZaloHttpClient can capture redacted getUpdates result structure", async () => {
+  const captured: Record<string, unknown>[] = [];
+  const client = new ZaloHttpClient(
+    "test-token",
+    async () => jsonResponse({ ok: true, result: { event_name: "message.text.received", message: { text: "secret text" } } }),
+    { captureGetUpdatesShape: (shape) => { captured.push(shape); } },
+  );
+
+  await client.getUpdates(undefined, 20);
+
+  assert.deepEqual(captured[0], {
+    type: "object",
+    keys: ["event_name", "message"],
+    fields: {
+      event_name: { type: "string", length: 21 },
+      message: { type: "object", keys: ["text"], fields: { text: { type: "string", length: 11 } } },
+    },
+  });
+});
+
 test("ZaloHttpClient accepts a single getUpdates result object", async () => {
   const client = new ZaloHttpClient("test-token", async () => jsonResponse({ ok: true, result: { event_name: "message.text.received", message: { text: "hello" } } }));
 

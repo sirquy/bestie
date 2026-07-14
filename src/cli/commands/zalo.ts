@@ -61,7 +61,7 @@ export async function runZaloCommand(optionsOrArgv: string[] | ZaloCommandOption
   const zalo = config.channels?.zalo;
 
   if (!zalo?.enabled) {
-    throw new UserFacingError("Zalo is not enabled. Run `bestie zalo setup` first.", "ZaloNotEnabledError");
+    throw new UserFacingError("Zalo is not enabled. Run `bestie channels zalo setup` first.", "ZaloNotEnabledError");
   }
 
   const envValues = await loadEnvFile(paths);
@@ -77,11 +77,15 @@ export async function runZaloCommand(optionsOrArgv: string[] | ZaloCommandOption
 
   const transcriptPath = getTranscriptPath(argv, paths);
   const appendTranscript = transcriptPath ? createTranscriptAppender(transcriptPath) : undefined;
-  const baseClient = options.clientFactory?.(token) ?? new ZaloHttpClient(token);
+  const captureShape = argv.includes("--capture-shape");
+  const baseClient = options.clientFactory?.(token) ?? new ZaloHttpClient(token, fetch, captureShape && appendTranscript ? { captureGetUpdatesShape: (shape) => appendTranscript("zalo_get_updates_shape", shape) } : undefined);
   const client = appendTranscript ? createTranscriptZaloClient(baseClient, appendTranscript, zalo.ownerUserId) : baseClient;
   writeLine(argv.includes("--once") ? "Zalo polling once." : "Zalo polling started. Press Ctrl+C to stop.");
   if (transcriptPath) {
     writeLine(`Zalo smoke transcript: ${transcriptPath}`);
+    if (captureShape) {
+      writeLine("Zalo getUpdates shape capture enabled.");
+    }
   }
   let stopping = false;
   const stop = () => {
@@ -169,7 +173,7 @@ function createZaloSetupUi(writeLine: (message: string) => void, useColor: boole
     savedPath: (label, path) => writeLine(`  ${accent(label.padEnd(10))} ${path}`),
     final: () => {
       writeLine(`${ok("\nDone")} Zalo setup complete.`);
-      writeLine(`${dim("Next")} Run \`bestie doctor\`, then \`bestie zalo --once\`.`);
+      writeLine(`${dim("Next")} Run \`bestie doctor\`, then \`bestie channels zalo --once\`.`);
     },
   };
 }
