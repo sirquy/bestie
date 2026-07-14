@@ -81,6 +81,7 @@ Telegram options:
 Zalo options:
   setup   Configure Zalo owner id and local bot token
   --once  Poll Zalo once, then exit
+  --transcript <path>  Write a redacted JSONL smoke transcript for Zalo polling
 
 Daemon options:
   start   Start Telegram polling in the background

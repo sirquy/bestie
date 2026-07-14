@@ -47,7 +47,16 @@ export interface ZaloMessage {
   message_id?: string | number;
   messageId?: string | number;
   from?: ZaloUser;
+  sender?: ZaloUser;
+  user?: ZaloUser;
   chat?: ZaloChat;
+  recipient?: ZaloChat;
+  conversation?: ZaloChat;
+  user_id?: string | number;
+  uid?: string | number;
+  sender_id?: string | number;
+  from_id?: string | number;
+  chat_id?: string | number;
   text?: string | { text?: string };
   caption?: string;
   [key: string]: unknown;
@@ -93,7 +102,8 @@ export class ZaloHttpClient implements ZaloClient {
   }
 
   async getUpdates(offset: number | undefined, timeoutSeconds: number): Promise<ZaloUpdate[]> {
-    return this.call<ZaloUpdate[]>("getUpdates", { ...(offset === undefined ? {} : { offset }), timeout: timeoutSeconds });
+    const result = await this.call<unknown>("getUpdates", { ...(offset === undefined ? {} : { offset }), timeout: timeoutSeconds });
+    return normalizeZaloUpdatesResult(result);
   }
 
   async sendMessage(chatId: string, text: string): Promise<ZaloSentMessage | void> {
@@ -111,6 +121,10 @@ export class ZaloHttpClient implements ZaloClient {
       body: JSON.stringify(body),
     });
     const payload = await readJsonResponse(response);
+
+    if (method === "getUpdates" && payload.ok === false && Number(payload.error_code) === 408) {
+      return [] as T;
+    }
 
     if (!response.ok || payload.ok === false) {
       const detail = typeof payload.description === "string" ? payload.description : response.statusText;
@@ -238,14 +252,24 @@ export async function handleZaloUpdate(update: ZaloUpdate, options: ZaloUpdateHa
 }
 
 export function mapZaloIncomingMessage(message: ZaloMessage): ChannelIncomingMessage<string, string | number | undefined, ZaloMessage> {
+  const senderId = extractZaloSenderId(message);
   return {
-    chatId: String(message.chat?.id ?? message.from?.id ?? ""),
+    chatId: extractZaloChatId(message) ?? senderId,
     messageId: message.message_id ?? message.messageId,
-    senderId: String(message.from?.id ?? ""),
+    senderId,
     text: typeof message.text === "string" ? message.text : message.text?.text,
     caption: message.caption,
     raw: message,
   };
+}
+
+function extractZaloSenderId(message: ZaloMessage): string {
+  return String(message.from?.id ?? message.sender?.id ?? message.user?.id ?? message.user_id ?? message.uid ?? message.sender_id ?? message.from_id ?? "");
+}
+
+function extractZaloChatId(message: ZaloMessage): string | undefined {
+  const chatId = message.chat?.id ?? message.recipient?.id ?? message.conversation?.id ?? message.chat_id;
+  return chatId === undefined ? undefined : String(chatId);
 }
 
 export function createZaloRuntimeAdapter(client: ZaloClient): ChannelRuntimeAdapter<never, string, "typing"> {
@@ -446,6 +470,51 @@ function normalizeZaloSentMessage(message: ZaloSentMessage | void): { messageId?
 
   const messageId = typeof message.messageId === "number" ? message.messageId : Number(message.messageId);
   return Number.isFinite(messageId) ? { messageId } : undefined;
+}
+
+function normalizeZaloUpdatesResult(result: unknown): ZaloUpdate[] {
+  if (result === undefined || result === null) {
+    return [];
+  }
+
+  if (Array.isArray(result)) {
+    return result as ZaloUpdate[];
+  }
+
+  if (typeof result === "object" && result !== null) {
+    const keys = Object.keys(result);
+    for (const key of ["updates", "data", "items", "messages"]) {
+      const value = (result as Record<string, unknown>)[key];
+      if (Array.isArray(value)) {
+        return value as ZaloUpdate[];
+      }
+    }
+
+    if ("message" in result || "event_name" in result || "update_id" in result) {
+      return [normalizeSingleZaloUpdate(result as Record<string, unknown>)];
+    }
+
+    if (["count", "total", "total_count"].some((key) => (result as Record<string, unknown>)[key] === 0)) {
+      return [];
+    }
+
+    if (keys.length === 0 || keys.every((key) => ["count", "total", "total_count", "offset", "next_offset", "has_more"].includes(key))) {
+      return [];
+    }
+
+    throw new Error(`Zalo getUpdates returned an unexpected response shape with result keys: ${keys.join(", ") || "none"}.`);
+  }
+
+  throw new Error(`Zalo getUpdates returned an unexpected response shape: ${typeof result}.`);
+}
+
+function normalizeSingleZaloUpdate(result: Record<string, unknown>): ZaloUpdate {
+  const updateId = typeof result.update_id === "number" ? result.update_id : Date.now();
+  return {
+    ...result,
+    update_id: updateId,
+    ...(typeof result.message === "object" && result.message !== null ? { message: result.message as ZaloMessage } : {}),
+  };
 }
 
 async function sendZaloChatActionBestEffort(client: ZaloClient, chatId: string, action: "typing"): Promise<void> {

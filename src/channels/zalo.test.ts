@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import type { AppConfig } from "../runtime/config.js";
-import { createZaloOutboundAdapter, handleZaloUpdate, mapZaloIncomingMessage, type ZaloClient } from "./zalo.js";
+import { ZaloHttpClient, createZaloOutboundAdapter, handleZaloUpdate, mapZaloIncomingMessage, type ZaloClient } from "./zalo.js";
 
 const config: AppConfig = {
   version: 1,
@@ -20,6 +20,14 @@ test("mapZaloIncomingMessage normalizes string ids and text", () => {
   assert.equal(incoming.text, "hello");
 });
 
+test("mapZaloIncomingMessage accepts alternate Zalo id fields", () => {
+  const incoming = mapZaloIncomingMessage({ message_id: "m-2", sender_id: "owner-2", chat_id: "chat-2", text: "hello" });
+
+  assert.equal(incoming.chatId, "chat-2");
+  assert.equal(incoming.senderId, "owner-2");
+  assert.equal(incoming.text, "hello");
+});
+
 test("createZaloOutboundAdapter chunks messages at Zalo text limit", () => {
   const adapter = createZaloOutboundAdapter(createRecordingClient([]));
   const chunks = adapter.createResponseAdapter("chat-1").splitMessage("a".repeat(2_001));
@@ -27,6 +35,55 @@ test("createZaloOutboundAdapter chunks messages at Zalo text limit", () => {
   assert.equal(chunks.length, 2);
   assert.equal(chunks[0].length, 2_000);
   assert.equal(chunks[1], "a");
+});
+
+test("ZaloHttpClient accepts object-wrapped getUpdates results", async () => {
+  const client = new ZaloHttpClient("test-token", async () => jsonResponse({ ok: true, result: { updates: [{ update_id: 1, message: { text: "hello" } }] } }));
+
+  const updates = await client.getUpdates(undefined, 20);
+
+  assert.equal(updates.length, 1);
+  assert.equal(updates[0]?.update_id, 1);
+});
+
+test("ZaloHttpClient accepts a single getUpdates result object", async () => {
+  const client = new ZaloHttpClient("test-token", async () => jsonResponse({ ok: true, result: { event_name: "message.text.received", message: { text: "hello" } } }));
+
+  const updates = await client.getUpdates(undefined, 20);
+
+  assert.equal(updates.length, 1);
+  assert.equal(updates[0]?.message?.text, "hello");
+  assert.equal(typeof updates[0]?.update_id, "number");
+});
+
+test("ZaloHttpClient treats getUpdates timeout as no updates", async () => {
+  const client = new ZaloHttpClient("test-token", async () => jsonResponse({ ok: false, error_code: 408, description: "Request timeout" }));
+
+  assert.deepEqual(await client.getUpdates(undefined, 20), []);
+});
+
+test("ZaloHttpClient treats string timeout code as no updates", async () => {
+  const client = new ZaloHttpClient("test-token", async () => jsonResponse({ ok: false, error_code: "408", description: "Request timeout" }));
+
+  assert.deepEqual(await client.getUpdates(undefined, 20), []);
+});
+
+test("ZaloHttpClient treats empty getUpdates result as no updates", async () => {
+  const client = new ZaloHttpClient("test-token", async () => jsonResponse({ ok: true, result: { count: 0 } }));
+
+  assert.deepEqual(await client.getUpdates(undefined, 20), []);
+});
+
+test("ZaloHttpClient treats metadata-only getUpdates result as no updates", async () => {
+  const client = new ZaloHttpClient("test-token", async () => jsonResponse({ ok: true, result: { count: 0, offset: 10, has_more: false } }));
+
+  assert.deepEqual(await client.getUpdates(undefined, 20), []);
+});
+
+test("ZaloHttpClient rejects unexpected getUpdates result shape", async () => {
+  const client = new ZaloHttpClient("test-token", async () => jsonResponse({ ok: true, result: { status: "ready" } }));
+
+  await assert.rejects(() => client.getUpdates(undefined, 20), /result keys: status/);
 });
 
 test("handleZaloUpdate ignores non-owner messages", async () => {
@@ -59,6 +116,10 @@ function createRecordingClient(sent: Array<{ chatId: string; text: string }>): Z
     },
     sendChatAction: async () => undefined,
   };
+}
+
+function jsonResponse(payload: unknown): Response {
+  return new Response(JSON.stringify(payload), { status: 200, headers: { "content-type": "application/json" } });
 }
 
 function fakePaths() {
