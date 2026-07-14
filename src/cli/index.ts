@@ -9,6 +9,7 @@ import { runMcpCommand } from "./commands/mcp.js";
 import { runOnboardCommand } from "./commands/onboard.js";
 import { runStatusCommand } from "./commands/status.js";
 import { runChannelsCommand } from "./commands/channels.js";
+import { runSkillsCommand } from "./commands/skills.js";
 import { runToolsCommand } from "./commands/tools.js";
 
 type CommandHandler = (argv?: string[]) => Promise<void> | void;
@@ -24,6 +25,7 @@ const commandHandlers: Record<string, CommandHandler> = {
   mcp: runMcpCommand,
   channel: runChannelsCommand,
   channels: runChannelsCommand,
+  skills: runSkillsCommand,
   tools: runToolsCommand,
 };
 
@@ -42,6 +44,7 @@ Commands:
   memory    Inspect or manually add local memories
   mcp       List configured MCP servers
   channels  Start, configure, or inspect channel adapters (telegram, zalo)
+  skills    List installed skills from .bestie/skills
   tools     Run permission-gated local tools
 
 Options:

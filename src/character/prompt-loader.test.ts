@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import test from "node:test";
@@ -25,6 +25,41 @@ test("loadSystemPrompt rejects empty prompt files", async () => {
   try {
     await writeFile(paths.systemPromptPath, "  \n");
     await assert.rejects(() => loadSystemPrompt(paths), EmptyPromptError);
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("loadSystemPrompt appends installed skills from .bestie/skills", async () => {
+  const paths = await createTempPaths();
+
+  try {
+    await writeFile(paths.systemPromptPath, "Hello prompt\n");
+    await mkdir(resolve(paths.appDir, "skills", "weather"), { recursive: true });
+    await mkdir(resolve(paths.appDir, "skills", "self-improving-agent"), { recursive: true });
+    await writeFile(resolve(paths.appDir, "skills", "weather", "SKILL.md"), "Use weather APIs only when asked for forecasts.\n");
+    await writeFile(resolve(paths.appDir, "skills", "self-improving-agent", "SKILL.md"), "Reflect on failures and propose improvements.\n");
+
+    const prompt = await loadSystemPrompt(paths);
+
+    assert.match(prompt, /^Hello prompt\n\nInstalled skills from \.bestie\/skills\./);
+    assert.match(prompt, /## Skill: self-improving-agent\nReflect on failures/);
+    assert.match(prompt, /## Skill: weather\nUse weather APIs/);
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("loadSystemPrompt ignores missing and empty skills", async () => {
+  const paths = await createTempPaths();
+
+  try {
+    await writeFile(paths.systemPromptPath, "Hello prompt\n");
+    await mkdir(resolve(paths.appDir, "skills", "empty"), { recursive: true });
+    await mkdir(resolve(paths.appDir, "skills", "missing"), { recursive: true });
+    await writeFile(resolve(paths.appDir, "skills", "empty", "SKILL.md"), "  \n");
+
+    assert.equal(await loadSystemPrompt(paths), "Hello prompt\n");
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
   }
