@@ -37,6 +37,7 @@ export interface DoctorFix {
 
 export interface DoctorOptions {
   fix?: boolean;
+  platform?: NodeJS.Platform;
   connectTelegram?: boolean;
   connectZalo?: boolean;
   testTelegramSpeech?: boolean;
@@ -62,12 +63,13 @@ export interface ZaloBotIdentity {
 }
 
 const MIN_RECOMMENDED_LLM_TIMEOUT_MS = 10_000;
-const MAX_RECOMMENDED_LLM_TIMEOUT_MS = 300_000;
+const MAX_RECOMMENDED_LLM_TIMEOUT_MS = 120_000;
 const TELEGRAM_WORKSPACE_WARN_BYTES = 500 * 1024 * 1024;
 const LEGACY_APP_DIR_NAME = ".ai-bestie";
 
 export async function runDoctor(paths: RuntimePaths = getRuntimePaths(), options: DoctorOptions = {}): Promise<DoctorReport> {
-  const fixes = options.fix ? await runDoctorFixes(paths) : [];
+  const platform = options.platform ?? process.platform;
+  const fixes = options.fix ? await runDoctorFixes(paths, platform) : [];
   const checks: DoctorCheck[] = [];
 
   checks.push(checkNodeVersion());
@@ -116,7 +118,7 @@ export async function runDoctor(paths: RuntimePaths = getRuntimePaths(), options
   });
 
   if (envExists) {
-    checks.push(await checkEnvFilePermissions(paths));
+    checks.push(await checkEnvFilePermissions(paths, platform));
   }
 
   if (apiKeyEnv) {
@@ -169,7 +171,7 @@ export async function runDoctor(paths: RuntimePaths = getRuntimePaths(), options
   checks.push(await checkWritableLogDir(paths));
 
   if (await fileExists(paths.appLogPath)) {
-    checks.push(await checkLogFilePermissions(paths));
+    checks.push(await checkLogFilePermissions(paths, platform));
   }
 
   checks.push(await checkProviderFallbackHealth(paths));
@@ -433,15 +435,15 @@ async function commandUsesFfmpeg(commandPath: string | undefined): Promise<boole
   }
 }
 
-async function runDoctorFixes(paths: RuntimePaths): Promise<DoctorFix[]> {
+async function runDoctorFixes(paths: RuntimePaths, platform = process.platform): Promise<DoctorFix[]> {
   const fixes: DoctorFix[] = [];
 
   fixes.push(await migrateLegacyRuntimeDirectory(paths));
   fixes.push(await ensureDirectory(paths.appDir, "App directory"));
   fixes.push(await ensureDirectory(paths.logsDir, "Log directory"));
   fixes.push(await ensureDirectory(paths.dataDir, "Data directory"));
-  fixes.push(await restrictFilePermissions(paths.envPath, ".env permissions"));
-  fixes.push(await restrictFilePermissions(paths.appLogPath, "Log file permissions"));
+  fixes.push(await restrictFilePermissions(paths.envPath, ".env permissions", platform));
+  fixes.push(await restrictFilePermissions(paths.appLogPath, "Log file permissions", platform));
   fixes.push(await initializeMemoryDatabase(paths));
 
   return fixes;
@@ -513,9 +515,13 @@ async function ensureDirectory(path: string, name: string): Promise<DoctorFix> {
   }
 }
 
-async function restrictFilePermissions(path: string, name: string): Promise<DoctorFix> {
+async function restrictFilePermissions(path: string, name: string, platform = process.platform): Promise<DoctorFix> {
   if (!(await fileExists(path))) {
     return { name, status: "skipped", message: `${path} does not exist.` };
+  }
+
+  if (platform === "win32") {
+    return { name, status: "skipped", message: `${path} uses Windows ACLs; POSIX chmod is not applied.` };
   }
 
   try {
@@ -771,7 +777,15 @@ function checkNodeVersion(): DoctorCheck {
   };
 }
 
-async function checkEnvFilePermissions(paths: RuntimePaths): Promise<DoctorCheck> {
+async function checkEnvFilePermissions(paths: RuntimePaths, platform = process.platform): Promise<DoctorCheck> {
+  if (platform === "win32") {
+    return {
+      name: ".env permissions",
+      status: "pass",
+      message: ".env file exists; Windows ACLs are managed by the operating system.",
+    };
+  }
+
   try {
     const mode = (await stat(paths.envPath)).mode & 0o777;
     const isPrivate = (mode & 0o077) === 0;
@@ -828,7 +842,15 @@ async function checkWritableLogDir(paths: RuntimePaths): Promise<DoctorCheck> {
   }
 }
 
-async function checkLogFilePermissions(paths: RuntimePaths): Promise<DoctorCheck> {
+async function checkLogFilePermissions(paths: RuntimePaths, platform = process.platform): Promise<DoctorCheck> {
+  if (platform === "win32") {
+    return {
+      name: "Log file permissions",
+      status: "pass",
+      message: "Log file exists; Windows ACLs are managed by the operating system.",
+    };
+  }
+
   try {
     const mode = (await stat(paths.appLogPath)).mode & 0o777;
     const isPrivate = (mode & 0o077) === 0;

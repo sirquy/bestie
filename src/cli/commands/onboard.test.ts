@@ -48,7 +48,7 @@ test("runOnboardCommand writes local files and skips provider test when requeste
     assert.equal(closed, true);
     assert.equal(providerTestCalled, false);
     assert.equal(config.llm.baseUrl, "http://127.0.0.1:9/v1");
-    assert.equal(config.llm.timeoutMs, 300_000);
+    assert.equal(config.llm.timeoutMs, 60_000);
     assert.equal(config.agent.language, "ja");
     assert.equal(config.memory?.writePolicy, "ask");
     assert.match(envText, /OPENAI_API_KEY="test-key"/);

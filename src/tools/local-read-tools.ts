@@ -1,6 +1,6 @@
 import type { Dirent } from "node:fs";
 import { execFile } from "node:child_process";
-import { readdir, readFile, stat } from "node:fs/promises";
+import { access, readdir, readFile, stat } from "node:fs/promises";
 import { isAbsolute, relative, resolve } from "node:path";
 import { promisify } from "node:util";
 
@@ -510,7 +510,7 @@ export async function readGitStatusTool(options: LocalToolOptions): Promise<Read
     return { allowed: false, reason: permission.reason, output: "" };
   }
 
-  const output = await runGitReadCommand(options.paths, ["status", "--short"]);
+  const output = await runGitReadCommand(options, ["status", "--short"]);
   if (!output.ok) {
     return { allowed: false, reason: output.message, output: "" };
   }
@@ -535,7 +535,7 @@ export async function readGitDiffTool(options: LocalToolOptions & { staged?: boo
   }
 
   const maxBytes = Math.min(Math.max(options.maxBytes ?? MAX_INTERNAL_GIT_DIFF_BYTES, 1), MAX_INTERNAL_GIT_DIFF_BYTES);
-  const output = await runGitReadCommand(options.paths, ["--no-pager", "diff", ...(options.staged ? ["--staged"] : [])]);
+  const output = await runGitReadCommand(options, ["--no-pager", "diff", ...(options.staged ? ["--staged"] : [])]);
   if (!output.ok) {
     return { allowed: false, reason: output.message, output: "", truncated: false };
   }
@@ -562,7 +562,7 @@ export async function readGitLogTool(options: LocalToolOptions & { limit?: numbe
   }
 
   const limit = Math.min(Math.max(options.limit ?? 10, 1), MAX_INTERNAL_GIT_LOG_COMMITS);
-  const output = await runGitReadCommand(options.paths, ["--no-pager", "log", `--max-count=${limit}`, "--oneline", "--decorate"]);
+  const output = await runGitReadCommand(options, ["--no-pager", "log", `--max-count=${limit}`, "--oneline", "--decorate"]);
   if (!output.ok) {
     return { allowed: false, reason: output.message, output: "" };
   }
@@ -570,9 +570,9 @@ export async function readGitLogTool(options: LocalToolOptions & { limit?: numbe
   return { allowed: true, reason: permission.reason, output: output.output };
 }
 
-async function runGitReadCommand(paths: RuntimePaths, args: string[]): Promise<{ ok: true; output: string } | { ok: false; message: string }> {
+async function runGitReadCommand(options: LocalToolOptions, args: string[]): Promise<{ ok: true; output: string } | { ok: false; message: string }> {
   try {
-    const { stdout } = await execFileAsync("git", args, { cwd: paths.rootDir, encoding: "utf8", timeout: 10_000, maxBuffer: MAX_INTERNAL_GIT_DIFF_BYTES * 2 });
+    const { stdout } = await execFileAsync("git", args, { cwd: await resolveGitReadDirectory(options), encoding: "utf8", timeout: 10_000, maxBuffer: MAX_INTERNAL_GIT_DIFF_BYTES * 2 });
     return { ok: true, output: stdout.trimEnd() };
   } catch (error) {
     if (error instanceof Error) {
@@ -706,6 +706,32 @@ function isIgnoredProjectPath(relativePath: string): boolean {
 
 function resolveReadableProjectPath(options: LocalToolOptions, inputPath: string): string {
   return resolveWorkspacePath({ config: options.config, paths: options.paths, inputPath, defaultBase: "root", access: "read" });
+}
+
+async function resolveGitReadDirectory(options: LocalToolOptions): Promise<string> {
+  const explicitWorkspace = process.env.BESTIE_WORKSPACE_DIR ?? options.config?.workspace?.defaultPath;
+  if (explicitWorkspace?.trim()) {
+    return isAbsolute(explicitWorkspace) ? resolve(explicitWorkspace) : resolve(options.paths.rootDir, explicitWorkspace);
+  }
+
+  const candidates = [options.paths.rootDir, process.cwd()].map((value) => resolve(value));
+
+  for (const candidate of candidates) {
+    if (await isGitWorkingTree(candidate)) {
+      return candidate;
+    }
+  }
+
+  return options.paths.rootDir;
+}
+
+async function isGitWorkingTree(directory: string): Promise<boolean> {
+  try {
+    await access(resolve(directory, ".git"));
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function resolveReadableListPath(options: LocalToolOptions, inputPath: string): string {

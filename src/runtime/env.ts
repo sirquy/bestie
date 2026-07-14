@@ -27,7 +27,7 @@ export async function writeEnvFile(values: EnvValues, paths: RuntimePaths = getR
 
 export async function loadRequiredSecret(envVarName: string, paths: RuntimePaths = getRuntimePaths()): Promise<string> {
   const envValues = await loadEnvFile(paths);
-  const value = process.env[envVarName] ?? envValues[envVarName];
+  const value = envValues[envVarName] ?? process.env[envVarName];
 
   if (!value) {
     throw new MissingSecretError(envVarName, paths.envPath);

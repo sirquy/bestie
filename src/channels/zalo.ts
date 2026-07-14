@@ -5,7 +5,7 @@ import { fallbackLogDetail, formatProviderFallbackDiagnostics, formatProviderFal
 import { ProviderAuthError, ProviderFallbackError, ProviderNetworkError, ProviderRateLimitError, ProviderResponseError, ProviderTimeoutError } from "../llm/errors.js";
 import { sendChatCompletionWithFallbacks } from "../llm/openai-compatible.js";
 import type { ChatCompletionOptions, ChatMessage } from "../llm/types.js";
-import { runMemoryReasoningPass } from "../memory/reasoning.js";
+import { runMemoryReasoningPass, type MemoryReasoningResult } from "../memory/reasoning.js";
 import { SqliteMemoryStore } from "../memory/sqlite-store.js";
 import type { AppConfig } from "../runtime/config.js";
 import { loadRequiredSecret } from "../runtime/env.js";
@@ -269,7 +269,8 @@ export async function handleZaloUpdate(update: ZaloUpdate, options: ZaloUpdateHa
     typing.stop();
     await response.replyFinal(assistantText);
     await persistZaloConversationTurn(options.paths, zaloConfig.ownerUserId, text, assistantText);
-    await runZaloMemoryReasoningPass({ config: options.config, paths: options.paths, apiKey, turn: { channel: "zalo", userId: zaloConfig.ownerUserId, userInput: text, assistantText }, chatCompletion });
+    const memoryReasoning = await runZaloMemoryReasoningPass({ config: options.config, paths: options.paths, apiKey, turn: { channel: "zalo", userId: zaloConfig.ownerUserId, userInput: text, assistantText }, chatCompletion });
+    await sendZaloMemoryReasoningApprovalsIfNeeded(options.client, incoming.chatId, options.paths, zaloConfig.ownerUserId, memoryReasoning);
     await appendLog({ event: "zalo_chat_success", detail: { model: options.config.llm.model } }, { paths: options.paths });
     return "replied";
   } catch (error) {
@@ -426,16 +427,72 @@ async function handleZaloToolActivity(response: ReturnType<typeof createChannelR
   if (activity.callIndex !== 1 && activity.callIndex % ZALO_TOOL_PROGRESS_EVERY !== 0) {
     return;
   }
-  await response.showProgress(activity.toolName === "internal.remember_memory" ? `${agentName} is preparing a memory approval` : `${agentName} is using ${activity.toolName}`);
+  await response.showProgress(formatZaloToolActivity(activity, agentName));
 }
 
-async function runZaloMemoryReasoningPass(options: Parameters<typeof runMemoryReasoningPass>[0]): Promise<void> {
+async function runZaloMemoryReasoningPass(options: Parameters<typeof runMemoryReasoningPass>[0]): Promise<MemoryReasoningResult> {
   try {
-    await runMemoryReasoningPass(options);
+    return await runMemoryReasoningPass(options);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown memory reasoning error.";
     await appendLog({ event: "memory_reasoning_failure", detail: { channel: "zalo", message } }, { paths: options.paths, knownSecrets: [options.apiKey] });
+    return { stored: [], pending: [], skipped: [] };
   }
+}
+
+async function sendZaloMemoryReasoningApprovalsIfNeeded(
+  client: ZaloClient,
+  chatId: string,
+  paths: RuntimePaths,
+  ownerUserId: string,
+  result: MemoryReasoningResult,
+): Promise<void> {
+  for (const pending of result.pending) {
+    const store = await SqliteMemoryStore.open(paths);
+    let approvalId: number;
+
+    try {
+      approvalId = store.addPendingActionApproval({
+        channel: "zalo",
+        userId: ownerUserId,
+        category: "local_write",
+        action: "memory_approve",
+        target: `pending-memory:${pending.id}`,
+        reason: "Approve or deny a memory inferred from the latest conversation.",
+        proposedReason: pending.reason ?? "Memory reasoning proposed this candidate.",
+      }).id;
+    } finally {
+      store.close();
+    }
+
+    await client.sendMessage(
+      chatId,
+      redactSecrets([
+        `Memory approval needed. Request: ${approvalId}`,
+        `Type: ${pending.type}`,
+        `Content: ${pending.content}`,
+        pending.reason ? `Reason: ${pending.reason}` : undefined,
+        `Reply /approve ${approvalId} to save it or /deny ${approvalId} to reject it.`,
+      ].filter(Boolean).join("\n")),
+    );
+  }
+}
+
+function formatZaloToolActivity(activity: AgentToolActivity, agentName: string): string {
+  const target = activity.label.trim();
+  const suffix = target ? ` ${target}` : "";
+
+  if (activity.toolName === "internal.list_files") return `${agentName} is listing files in${suffix}`;
+  if (activity.toolName === "internal.read_file") return `${agentName} is reading file${suffix}`;
+  if (activity.toolName === "internal.read_many_files") return `${agentName} is reading files${suffix}`;
+  if (activity.toolName === "internal.read_markdown_bundle") return `${agentName} is collecting Markdown docs from${suffix}`;
+  if (activity.toolName === "internal.search_files") return `${agentName} is searching files for${suffix}`;
+  if (activity.toolName === "internal.read_logs") return `${agentName} is reading recent logs`;
+  if (activity.toolName === "internal.list_memories") return `${agentName} is listing saved memories`;
+  if (activity.toolName === "internal.search_memories") return `${agentName} is searching memories for${suffix}`;
+  if (activity.toolName === "internal.remember_memory") return `${agentName} is preparing a memory approval`;
+  if (activity.toolName.startsWith("mcp.") || activity.toolName.includes("/")) return `${agentName} is using read tool${suffix}`;
+  return `${agentName} is working${suffix}`;
 }
 
 async function loadRecentZaloTurns(paths: RuntimePaths, userId: string): Promise<ChatMessage[]> {

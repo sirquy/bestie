@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import test from "node:test";
 
-import { loadEnvFile, parseEnv, writeEnvFile } from "./env.js";
+import { loadEnvFile, loadRequiredSecret, parseEnv, writeEnvFile } from "./env.js";
 import type { RuntimePaths } from "./paths.js";
 
 test("parseEnv reads JSON-quoted values", () => {
@@ -22,6 +22,25 @@ test("writeEnvFile round-trips values with spaces and symbols", async () => {
       OPENAI_API_KEY: 'sk value # "quoted"',
     });
   } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("loadRequiredSecret prefers the local runtime .env over inherited process env", async () => {
+  const paths = await createTempPaths();
+  const oldValue = process.env.OPENAI_API_KEY;
+
+  try {
+    process.env.OPENAI_API_KEY = "stale-process-key";
+    await writeEnvFile({ OPENAI_API_KEY: "local-runtime-key" }, paths);
+
+    assert.equal(await loadRequiredSecret("OPENAI_API_KEY", paths), "local-runtime-key");
+  } finally {
+    if (oldValue === undefined) {
+      delete process.env.OPENAI_API_KEY;
+    } else {
+      process.env.OPENAI_API_KEY = oldValue;
+    }
     await rm(paths.rootDir, { recursive: true, force: true });
   }
 });

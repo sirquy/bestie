@@ -311,6 +311,48 @@ test("runDoctor fails broad log file permissions", async () => {
   }
 });
 
+test("runDoctor skips POSIX chmod permission checks on Windows", async () => {
+  const paths = await createConfiguredPaths();
+
+  try {
+    await chmod(paths.envPath, 0o666);
+    await mkdir(paths.logsDir, { recursive: true });
+    await writeFile(paths.appLogPath, "{\"event\":\"test\"}\n", { mode: 0o666 });
+    await chmod(paths.appLogPath, 0o666);
+
+    const report = await runDoctor(paths, { platform: "win32" });
+    const envPermissionsCheck = report.checks.find((check) => check.name === ".env permissions");
+    const logPermissionsCheck = report.checks.find((check) => check.name === "Log file permissions");
+
+    assert.equal(report.issueCount, 0);
+    assert.equal(envPermissionsCheck?.status, "pass");
+    assert.match(envPermissionsCheck?.message ?? "", /Windows ACLs/);
+    assert.equal(logPermissionsCheck?.status, "pass");
+    assert.match(logPermissionsCheck?.message ?? "", /Windows ACLs/);
+    assert.doesNotMatch(JSON.stringify(report), /chmod/);
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("runDoctor --fix skips chmod fixes on Windows", async () => {
+  const paths = await createConfiguredPaths();
+
+  try {
+    await chmod(paths.envPath, 0o666);
+    await mkdir(paths.logsDir, { recursive: true });
+    await writeFile(paths.appLogPath, "{\"event\":\"test\"}\n", { mode: 0o666 });
+
+    const report = await runDoctor(paths, { fix: true, platform: "win32" });
+
+    assert.equal(report.fixes.find((fix) => fix.name === ".env permissions")?.status, "skipped");
+    assert.match(report.fixes.find((fix) => fix.name === ".env permissions")?.message ?? "", /Windows ACLs/);
+    assert.equal(report.fixes.find((fix) => fix.name === "Log file permissions")?.status, "skipped");
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
 test("runDoctor ignores Telegram checks when Telegram is not configured", async () => {
   const paths = await createConfiguredPaths();
 

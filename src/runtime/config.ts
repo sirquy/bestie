@@ -142,8 +142,8 @@ export interface AppConfig {
   };
 }
 
-export const DEFAULT_LLM_TIMEOUT_MS = 300_000;
-export const DEFAULT_LLM_MAX_RETRIES = 3;
+export const DEFAULT_LLM_TIMEOUT_MS = 60_000;
+export const DEFAULT_LLM_MAX_RETRIES = 1;
 export const DEFAULT_LLM_RETRY_DELAY_MS = 500;
 export const DEFAULT_INTERNAL_EXEC_TIMEOUT_MS = 300_000;
 

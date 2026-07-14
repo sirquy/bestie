@@ -78,7 +78,7 @@ export interface RunAgentToolRequestOptions extends Omit<RunMcpToolRequestOption
   request: AgentToolRequest;
 }
 
-const DEFAULT_MAX_AGENT_TOOL_CALLS = 255;
+const DEFAULT_MAX_AGENT_TOOL_CALLS = 16;
 
 export async function completeWithAgentTools(options: CompleteWithAgentToolsOptions): Promise<string> {
   const toolRunner = options.toolRunner ?? runAgentToolRequest;

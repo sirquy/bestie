@@ -914,13 +914,13 @@ test("completeWithAgentTools gives recovery guidance for missing internal paths"
   }
 });
 
-test("completeWithAgentTools returns a normal answer when git tools fail outside a repository", async () => {
+test("completeWithAgentTools can use current repo git status when runtime root is not a repository", async () => {
   const paths = await createTempPaths();
   const requests: unknown[] = [];
 
   try {
     const answer = await completeWithAgentTools({
-      config: createConfig(),
+      config: { ...createConfig(), workspace: { defaultPath: paths.rootDir } },
       paths,
       apiKey: "test-key",
       messages: [{ role: "user", content: "review repo" }],
@@ -930,12 +930,13 @@ test("completeWithAgentTools returns a normal answer when git tools fail outside
           return '{"tool":"internal.git_status","arguments":{}}';
         }
 
-        assert.match(JSON.stringify(options.messages), /not a git repository/);
-        return '{"answer":"Mình chưa review repo được vì thư mục hiện tại không phải git repository. Chạy trong repo có .git hoặc init git trước rồi thử lại."}';
+        assert.match(JSON.stringify(options.messages), /Tool result for internal\.git_status/);
+        assert.match(JSON.stringify(options.messages), /\\"status\\":\\"pass\\"/);
+        return '{"answer":"Git status read succeeded."}';
       },
     });
 
-    assert.equal(answer, "Mình chưa review repo được vì thư mục hiện tại không phải git repository. Chạy trong repo có .git hoặc init git trước rồi thử lại.");
+    assert.equal(answer, "Git status read succeeded.");
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
   }

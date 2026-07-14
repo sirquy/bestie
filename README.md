@@ -85,7 +85,7 @@ Example provider config:
   "llm": {
     "provider": "openai-compatible",
     "baseUrl": "https://api.openai.com/v1",
-    "model": "gpt-5.5",
+      "model": "provider-model-name",
     "apiKeyEnv": "OPENAI_API_KEY"
   }
 }

@@ -2,7 +2,7 @@
 
 ## Project State
 
-Bestie is currently in planning/spec phase. Treat the docs as the product contract; do not infer missing implementation patterns from the empty source skeleton.
+Bestie now has a functional TypeScript CLI/runtime implementation. Treat the docs as the product contract for scope and behavior, but use the existing `src/` code and tests as the implementation pattern.
 
 Start with:
 
@@ -13,15 +13,17 @@ Start with:
 
 ## Current Scope
 
-Phase Now is intentionally small:
+Current shipped scope is intentionally small:
 
 - terminal chat
 - character prompt
 - minimal onboarding/config wizard
 - OpenAI-compatible LLM call
 - basic logs
+- Telegram and Zalo channel runtimes
+- local memory, approvals, and read-only internal tools
 
-Do not pull Telegram, memory, Zep, MCP/ACP, plugins, installer, UI, avatar, voice, or hosted/SaaS work into Phase Now unless the user explicitly asks.
+Do not pull Zep, broad MCP/ACP platform work, plugins, UI, avatar, voice, or hosted/SaaS work into the current scope unless the user explicitly asks.
 
 ## Architecture Rules
 

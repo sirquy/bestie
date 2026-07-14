@@ -160,6 +160,68 @@ test("handleZaloUpdate replies with sanitized provider error details", async () 
   }
 });
 
+test("handleZaloUpdate sends memory approval prompts for reasoned Zalo memories", async () => {
+  const paths = await createTempPaths();
+  const sent: Array<{ chatId: string; text: string }> = [];
+  let callCount = 0;
+
+  try {
+    await writeRuntimeFiles(paths);
+    const result = await handleZaloUpdate(
+      { update_id: 1, message: { from: { id: "owner-1" }, chat: { id: "chat-1" }, text: "This repo is called Bestie." } },
+      {
+        config: { ...config, memory: { writePolicy: "ask" } },
+        paths,
+        client: createRecordingClient(sent),
+        chatCompletion: async () => {
+          callCount += 1;
+          return callCount === 1
+            ? '{"answer":"Noted."}'
+            : '{"candidates":[{"type":"project_context","content":"The repo is called Bestie.","reason":"The user named the repo.","confidence":0.95}]}';
+        },
+      },
+    );
+
+    assert.equal(result, "replied");
+    assert.match(sent.at(-1)?.text ?? "", /Memory approval needed\. Request: \d+/);
+    assert.match(sent.at(-1)?.text ?? "", /Content: The repo is called Bestie\./);
+    assert.match(sent.at(-1)?.text ?? "", /Reply \/approve \d+ to save it or \/deny \d+ to reject it\./);
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("handleZaloUpdate uses friendly tool progress labels", async () => {
+  const paths = await createTempPaths();
+  const sent: Array<{ chatId: string; text: string }> = [];
+  let callCount = 0;
+
+  try {
+    await writeRuntimeFiles(paths);
+    await mkdir(paths.workspaceDir, { recursive: true });
+    await writeFile(resolve(paths.workspaceDir, "notes.md"), "hello\n");
+
+    const result = await handleZaloUpdate(
+      { update_id: 1, message: { from: { id: "owner-1" }, chat: { id: "chat-1" }, text: "read notes" } },
+      {
+        config,
+        paths,
+        client: createRecordingClient(sent),
+        chatCompletion: async () => {
+          callCount += 1;
+          return callCount === 1 ? '{"tool":"internal.read_file","arguments":{"path":"notes.md"}}' : '{"answer":"notes read"}';
+        },
+      },
+    );
+
+    assert.equal(result, "replied");
+    assert.ok(sent.some((message) => /Miu is reading file notes\.md/.test(message.text)));
+    assert.equal(sent.some((message) => /internal\.read_file/.test(message.text)), false);
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
 function createRecordingClient(sent: Array<{ chatId: string; text: string }>): ZaloClient {
   return {
     getUpdates: async () => [],
