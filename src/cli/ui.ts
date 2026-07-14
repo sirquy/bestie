@@ -55,6 +55,26 @@ export function table(headers: string[], rows: string[][]): string[] {
   return [formatRow(headers), formatRow(widths.map((width) => "-".repeat(width))), ...rows.map(formatRow)];
 }
 
+export function withColorMode(useColor: boolean): <T>(render: () => T) => T {
+  return (render) => {
+    if (useColor) {
+      return render();
+    }
+
+    const previousNoColor = process.env.NO_COLOR;
+    process.env.NO_COLOR = "1";
+    try {
+      return render();
+    } finally {
+      if (previousNoColor === undefined) {
+        delete process.env.NO_COLOR;
+      } else {
+        process.env.NO_COLOR = previousNoColor;
+      }
+    }
+  };
+}
+
 export function statusBadge(status: "pass" | "warn" | "fail" | "info"): string {
   if (status === "pass") return badge("PASS", "green");
   if (status === "warn") return badge("WARN", "yellow");

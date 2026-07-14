@@ -1,3 +1,5 @@
+import { containsSecretLikeValue } from "../runtime/secret-redaction.js";
+
 export type MemoryDecision = "store" | "pending" | "never";
 
 export type MemoryType =
@@ -65,7 +67,7 @@ export function evaluateMemoryCandidate(candidate: MemoryCandidate): MemoryPolic
 }
 
 function containsSecretLikeContent(content: string): boolean {
-  return [
+  return containsSecretLikeValue(content) || [
     /password\s*[:=]/i,
     /api[_ -]?key\s*[:=]/i,
     /token\s*[:=]/i,

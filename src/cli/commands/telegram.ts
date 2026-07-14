@@ -17,6 +17,7 @@ import { loadConfig, type AppConfig, writeConfig } from "../../runtime/config.js
 import { loadEnvFile, writeEnvFile } from "../../runtime/env.js";
 import { UserFacingError } from "../../runtime/errors.js";
 import { getRuntimePaths, type RuntimePaths } from "../../runtime/paths.js";
+import { badge, bold, color, dim, title, withColorMode } from "../ui.js";
 
 const DEFAULT_TELEGRAM_TOKEN_ENV = "BESTIE_TELEGRAM_BOT_TOKEN";
 const DEFAULT_ELEVENLABS_API_KEY_ENV = "ELEVENLABS_API_KEY";
@@ -28,13 +29,6 @@ const LOCAL_VOICE_WRAPPER_PATH = ".bestie/tools/local-whisper-transcribe.sh";
 const LOCAL_WHISPER_COMMAND_PATH = ".bestie/tools/whisper-bin/whisper-cli";
 const LOCAL_WHISPER_MODEL_PATH = ".bestie/models/ggml-small.bin";
 const LOCAL_WHISPER_MODEL_DIR = ".bestie/models";
-const ANSI_RESET = "\x1b[0m";
-const ANSI_BOLD = "\x1b[1m";
-const ANSI_DIM = "\x1b[2m";
-const ANSI_CYAN = "\x1b[36m";
-const ANSI_GREEN = "\x1b[32m";
-const ANSI_YELLOW = "\x1b[33m";
-const ANSI_MAGENTA = "\x1b[35m";
 const WHISPER_MODEL_CATALOG: Record<string, { fileName: string; url: string; estimatedBytes: number; hint: string }> = {
   tiny: {
     fileName: "ggml-tiny.bin",
@@ -474,29 +468,25 @@ async function runTelegramSetup(options: { paths: RuntimePaths; questioner?: Tel
 }
 
 function createTelegramSetupUi(writeLine: (message: string) => void, useColor: boolean): TelegramSetupUi {
-  const paint = (text: string, code: string) => useColor ? `${code}${text}${ANSI_RESET}` : text;
-  const dim = (text: string) => paint(text, ANSI_DIM);
-  const accent = (text: string) => paint(text, ANSI_CYAN);
-  const ok = (text: string) => paint(text, ANSI_GREEN);
-  const title = (text: string) => useColor ? `${ANSI_BOLD}${ANSI_MAGENTA}${text}${ANSI_RESET}` : text;
+  const render = withColorMode(useColor);
 
   return {
     intro: (paths) => {
-      writeLine(title("Telegram setup"));
-      writeLine(dim("Connect a Telegram bot to your local Bestie runtime."));
-      writeLine(`${accent("Runtime")} ${paths.appDir}`);
-      writeLine(`${accent("Privacy")} Bot tokens stay local in .bestie/.env and are hidden while typing.`);
-      writeLine(`${dim("Plan")} Account -> Save -> Files\n`);
+      writeLine(render(() => title("Telegram Setup")));
+      writeLine(render(() => dim("Connect a Telegram bot to your local Bestie runtime.")));
+      writeLine(`${render(() => color("cyan", "Runtime"))} ${paths.appDir}`);
+      writeLine(`${render(() => color("cyan", "Privacy"))} Bot tokens stay local in .bestie/.env and are hidden while typing.`);
+      writeLine(render(() => `${dim("Plan")} Account -> Save -> Files\n`));
     },
     section: (sectionTitle, detail) => {
-      writeLine(`${accent("\n>")} ${paint(sectionTitle, ANSI_BOLD)}${detail ? ` ${dim(detail)}` : ""}`);
+      writeLine(render(() => `${color("cyan", "\n>")} ${bold(sectionTitle)}${detail ? ` ${dim(detail)}` : ""}`));
     },
-    success: (message) => writeLine(`${ok("OK")} ${message}`),
-    info: (message) => writeLine(`${paint("INFO", ANSI_YELLOW)} ${message}`),
-    savedPath: (label, path) => writeLine(`  ${accent(label.padEnd(10))} ${path}`),
+    success: (message) => writeLine(`${render(() => badge("OK", "green"))} ${message}`),
+    info: (message) => writeLine(`${render(() => badge("INFO", "yellow"))} ${message}`),
+    savedPath: (label, path) => writeLine(`  ${render(() => color("cyan", label.padEnd(10)))} ${path}`),
     final: () => {
-      writeLine(`${ok("\nDone")} Telegram setup complete.`);
-      writeLine(`${dim("Next")} Run \`bestie doctor\`, then \`bestie channels telegram --once\`.`);
+      writeLine(`${render(() => badge("DONE", "green"))} Telegram setup complete.`);
+      writeLine(`${render(() => dim("Next"))} Run \`bestie doctor\`, then \`bestie channels telegram --once\`.`);
     },
   };
 }

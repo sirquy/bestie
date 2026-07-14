@@ -42,7 +42,7 @@ test("validateDoctorReportContract rejects mismatched issue counts", () => {
 
 test("validateDoctorReportJsonContract rejects secret-like values before parsing report shape", () => {
   const result = validateDoctorReportJsonContract(JSON.stringify({
-    checks: [{ name: "LLM API key", status: "pass", message: "sk-secret-value" }],
+    checks: [{ name: "LLM API key", status: "pass", message: "qc_3abfb56d945c3467787f6c0b4646681337e9317224370654" }],
     issueCount: 0,
     fixes: [],
   }));

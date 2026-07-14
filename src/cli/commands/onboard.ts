@@ -11,7 +11,7 @@ import { DEFAULT_LLM_MAX_RETRIES, DEFAULT_LLM_RETRY_DELAY_MS, DEFAULT_LLM_TIMEOU
 import { writeEnvFile } from "../../runtime/env.js";
 import { appendLog } from "../../runtime/logger.js";
 import { getRuntimePaths, type RuntimePaths } from "../../runtime/paths.js";
-import { badge, bold, color, dim, title } from "../ui.js";
+import { badge, bold, color, dim, title, withColorMode } from "../ui.js";
 
 const DEFAULT_API_KEY_ENV = "OPENAI_API_KEY";
 
@@ -291,26 +291,6 @@ function createPromptTheme(useColor: boolean): PromptTheme {
     step: (step, label, text) => render(() => `${dim(`[${step}/9]`)} ${color("cyan", label)} ${text} `),
     defaultValue: (value) => render(() => dim(`[${value}]`)),
     warning: (message) => render(() => color("yellow", message)),
-  };
-}
-
-function withColorMode(useColor: boolean): <T>(render: () => T) => T {
-  return (render) => {
-    if (useColor) {
-      return render();
-    }
-
-    const previousNoColor = process.env.NO_COLOR;
-    process.env.NO_COLOR = "1";
-    try {
-      return render();
-    } finally {
-      if (previousNoColor === undefined) {
-        delete process.env.NO_COLOR;
-      } else {
-        process.env.NO_COLOR = previousNoColor;
-      }
-    }
   };
 }
 
