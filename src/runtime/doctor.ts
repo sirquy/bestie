@@ -178,7 +178,17 @@ export async function runDoctor(paths: RuntimePaths = getRuntimePaths(), options
 
   checks.push(await checkMemoryDatabase(paths));
 
-  return { checks, issueCount: checks.filter((check) => check.status === "fail").length, fixes };
+  const normalizedChecks = checks.map(normalizeDoctorCheck);
+  return { checks: normalizedChecks, issueCount: normalizedChecks.filter((check) => check.status === "fail").length, fixes };
+}
+
+function normalizeDoctorCheck(check: DoctorCheck): DoctorCheck {
+  if (check.fix === undefined) {
+    const { fix: _fix, ...normalizedCheck } = check;
+    return normalizedCheck;
+  }
+
+  return check;
 }
 
 async function checkProviderFallbackHealth(paths: RuntimePaths): Promise<DoctorCheck> {

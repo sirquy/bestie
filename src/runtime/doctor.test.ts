@@ -8,6 +8,7 @@ import { writeConfig } from "./config.js";
 import { writeEnvFile } from "./env.js";
 import { appendLog } from "./logger.js";
 import { runDoctor } from "./doctor.js";
+import { validateDoctorReportContract } from "./doctor-report-contract.js";
 import type { RuntimePaths } from "./paths.js";
 
 test("runDoctor reports missing local setup", async () => {
@@ -20,6 +21,21 @@ test("runDoctor reports missing local setup", async () => {
     assert.equal(report.checks.find((check) => check.name === "Config file")?.status, "fail");
     assert.equal(report.checks.find((check) => check.name === ".env file")?.status, "fail");
     assert.equal(report.checks.find((check) => check.name === "Character prompt")?.status, "fail");
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("runDoctor omits undefined check fixes from its report contract", async () => {
+  const paths = await createConfiguredPaths();
+
+  try {
+    const report = await runDoctor(paths);
+    const passCheck = report.checks.find((check) => check.status === "pass");
+
+    assert.ok(passCheck);
+    assert.equal(Object.hasOwn(passCheck, "fix"), false);
+    assert.deepEqual(validateDoctorReportContract(report), { valid: true, errors: [] });
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
   }
