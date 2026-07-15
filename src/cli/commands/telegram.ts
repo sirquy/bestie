@@ -474,6 +474,7 @@ async function runTelegramSetup(options: { paths: RuntimePaths; questioner?: Tel
     ui.section("Account", "Connect one Telegram bot to this local runtime.");
     const config = await loadConfig(options.paths);
     let ownerUserId = (await questioner.ask("[1/2] Owner Telegram id or username Numeric id, username, or @username allowed to chat with Bestie. Leave blank to detect from the latest bot message: ")).trim();
+    ui.section("Bot token", "Paste the secret token. Input is hidden while typing.");
     const token = await questioner.askHidden("[2/2] Bot token Paste the Telegram bot token. It is hidden while typing: ");
 
     if (!token.trim()) {
@@ -914,7 +915,9 @@ function createQuestioner(): TelegramQuestioner {
       },
       askHidden: async (question) => {
         output.write(question);
-        return lines[index++] ?? "";
+        const answer = lines[index++] ?? "";
+        output.write("\n");
+        return answer;
       },
       close: () => undefined,
     };

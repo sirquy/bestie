@@ -1,4 +1,6 @@
+import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { appendFile, mkdir } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { createInterface } from "node:readline/promises";
@@ -105,6 +107,7 @@ async function runZaloSetup(options: { paths: RuntimePaths; questioner?: ZaloQue
     ui.section("Account", "Connect one Zalo bot to this local runtime.");
     const config = await loadConfig(options.paths);
     const ownerUserId = (await questioner.ask("[1/2] Owner Zalo user id allowed to chat with Bestie: ")).trim();
+    ui.section("Bot token", "Paste the secret token. Input is hidden while typing.");
     const token = await questioner.askHidden("[2/2] Bot token Paste the Zalo Bot Token. It is hidden while typing: ");
 
     if (!ownerUserId) {
@@ -267,10 +270,46 @@ function hashIdentifier(value: string | number): string {
 }
 
 function createQuestioner(): ZaloQuestioner {
+  if (!input.isTTY) {
+    const lines = readFileSync(0, "utf8").split(/\r?\n/);
+    let index = 0;
+
+    return {
+      ask: async (question) => {
+        output.write(question);
+        return lines[index++] ?? "";
+      },
+      askHidden: async (question) => {
+        output.write(question);
+        const answer = lines[index++] ?? "";
+        output.write("\n");
+        return answer;
+      },
+      close: () => undefined,
+    };
+  }
+
   const rl = createInterface({ input, output });
   return {
     ask: (question) => rl.question(question),
-    askHidden: async (question) => rl.question(question),
+    askHidden: async (question) => {
+      output.write(question);
+      setTerminalEcho(false);
+      try {
+        return await rl.question("");
+      } finally {
+        setTerminalEcho(true);
+        output.write("\n");
+      }
+    },
     close: () => rl.close(),
   };
+}
+
+function setTerminalEcho(enabled: boolean): void {
+  try {
+    execFileSync("stty", [enabled ? "echo" : "-echo"], { stdio: ["inherit", "ignore", "ignore"] });
+  } catch {
+    // If stty is unavailable, continue rather than blocking Zalo setup.
+  }
 }

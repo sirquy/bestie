@@ -51,6 +51,7 @@ test("runZaloCommand setup writes Zalo config and token env", async () => {
     assert.match(envText, /OPENAI_API_KEY="sk-test"/);
     assert.match(envText, /BESTIE_ZALO_BOT_TOKEN="zalo-secret-token"/);
     assert.ok(output.some((line) => line.includes("Zalo setup")));
+    assert.ok(output.some((line) => line.includes("Bot token") && line.includes("Input is hidden")));
     assert.ok(output.some((line) => line.includes("Zalo setup saved")));
     assert.ok(output.every((line) => !line.includes("zalo-secret-token")));
   } finally {

@@ -58,6 +58,7 @@ test("runTelegramCommand setup writes Telegram config and token env", async () =
     assert.ok(output.some((line) => line.includes("Telegram setup")));
     assert.ok(output.some((line) => line.includes("Runtime")));
     assert.ok(output.some((line) => line.includes("Account") && line.includes("Connect one Telegram bot")));
+    assert.ok(output.some((line) => line.includes("Bot token") && line.includes("Input is hidden")));
     assert.ok(output.some((line) => line.includes("OK") && line.includes("Telegram owner and bot token collected")));
     assert.ok(output.some((line) => line.includes("Telegram setup saved")));
     assert.ok(output.some((line) => line.includes("Token env") && line.includes("BESTIE_TELEGRAM_BOT_TOKEN")));
