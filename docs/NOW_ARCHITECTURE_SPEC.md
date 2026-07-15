@@ -81,6 +81,15 @@ Responsibilities:
 - Present friendly output and actionable errors.
 - Avoid direct LLM, config parsing, or prompt assembly logic inside command files.
 
+Commander routing rules:
+
+- `src/cli/index.ts` owns the declarative command tree only; do not hand-roll command lookup there.
+- `src/cli/command-router.ts` is the only place that directly translates command specs into Commander registrations.
+- Every command and nested command must be represented as a `CliCommandSpec` with `name`, `description`, `handler`, and optional `children`.
+- Nested help such as `bestie channels -h`, `bestie mcp -h`, and `bestie channels telegram -h` must come from the command tree, not from ad hoc string matching inside handlers.
+- Command files in `src/cli/commands/` may parse behavior-specific flags while executing, but they should not define their own top-level help/router style.
+- Human output should use shared line UI helpers from `src/cli/ui.ts`; JSON or other machine-readable output must stay plain and banner-free.
+
 ### `src/runtime`
 
 Owns local runtime foundations shared by all commands.

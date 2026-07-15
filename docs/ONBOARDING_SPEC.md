@@ -52,7 +52,8 @@ Use this for offline setup, smoke tests, or slow/unavailable providers. The comm
 - Roast level 1-10?
 - Warmth level 1-10?
 - Bluntness level 1-10?
-- Language: Vietnamese / English / mixed?
+- Language: any BCP-47 language tag or common language name, for example Vietnamese, English, ja, pt-BR, mixed, or auto.
+- Time zone: IANA time zone for local dates and schedules, for example Asia/Ho_Chi_Minh or America/New_York.
 - Memory write policy: ask / allow / deny? Default: ask.
 - Emoji level: none / light / expressive?
 - Any topics it should never joke about?

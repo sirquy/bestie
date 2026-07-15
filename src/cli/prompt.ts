@@ -33,7 +33,7 @@ export function createCliQuestioner(options: CliQuestionerOptions = {}): CliQues
     const write = options.write ?? ((chunk: string) => outputStream.write(chunk));
 
     const readLine = async (question: string): Promise<string | undefined> => {
-      const answer = lines[index++];
+      const answer = lines[index++] ?? "";
       if (answer === undefined || (answer === "" && options.returnUndefinedOnInputEnd && index >= lines.length)) {
         return undefined;
       }

@@ -32,40 +32,6 @@ const channelHandlers: Record<string, ChannelHandler> = {
   zalo: runZaloCommand,
 };
 
-const helpText = `Bestie channels
-
-Usage:
-  bestie channels <channel> [options]
-  bestie channels list
-  bestie channels status
-  bestie channels doctor [--channel telegram|zalo|all] [--connect] [--json]
-
-Channels:
-  telegram  Start the local Telegram polling bot
-  zalo      Start the local Zalo polling bot
-
-Channel commands:
-  list      Show configured channels and daemon state
-  status    Alias for list
-  doctor    Run channel-focused diagnostics
-
-Telegram options:
-  setup   Configure Telegram owner id/username and local bot token
-  whoami  Show the id and username from the most recent Telegram bot message
-  voice setup-local  Configure local voice transcription from existing whisper.cpp files
-  voice models  List local whisper.cpp models and the configured model
-  voice download-model <name> --confirm [--use] [--force]
-    Download tiny, small, medium, or large-v3-turbo whisper.cpp model
-  --once  Poll Telegram once, then exit
-  --transcript <path>  Write a redacted JSONL smoke transcript for Telegram polling
-
-Zalo options:
-  setup   Configure Zalo owner id and local bot token
-  --once  Poll Zalo once, then exit
-  --transcript <path>  Write a redacted JSONL smoke transcript for Zalo polling
-  --capture-shape  Include redacted getUpdates result structure in the transcript
-`;
-
 export async function runChannelsCommand(optionsOrArgv: string[] | ChannelsCommandOptions = process.argv): Promise<void> {
   const options = Array.isArray(optionsOrArgv) ? { argv: optionsOrArgv } : optionsOrArgv;
   const argv = options.argv ?? process.argv;
@@ -73,12 +39,7 @@ export async function runChannelsCommand(optionsOrArgv: string[] | ChannelsComma
   const writeLine = options.writeLine ?? console.log;
   const channelName = argv[3];
 
-  if (!channelName || channelName === "--help" || channelName === "-h") {
-    writeLine(helpText);
-    return;
-  }
-
-  if (channelName === "list" || channelName === "status") {
+  if (!channelName || channelName === "list" || channelName === "status") {
     await showChannelsStatus({ paths, writeLine, isProcessRunning: options.isProcessRunning });
     return;
   }

@@ -6,6 +6,7 @@ import { writeCharacterFiles } from "../../character/writer.js";
 import { testOpenAICompatibleProvider } from "../../llm/provider-test.js";
 import { DEFAULT_LLM_MAX_RETRIES, DEFAULT_LLM_RETRY_DELAY_MS, DEFAULT_LLM_TIMEOUT_MS, type AppConfig, writeConfig } from "../../runtime/config.js";
 import { writeEnvFile } from "../../runtime/env.js";
+import { getLocalTimeZone, isValidTimeZone, normalizeLanguageInput, normalizeTimeZoneInput } from "../../runtime/locale.js";
 import { appendLog } from "../../runtime/logger.js";
 import { getRuntimePaths, type RuntimePaths } from "../../runtime/paths.js";
 import { createCliQuestioner } from "../prompt.js";
@@ -27,6 +28,7 @@ interface OnboardingAnswers {
   agentName: string;
   ownerName: string;
   language: LanguageMode;
+  timeZone: string;
   toneIntensity: number;
   memoryWritePolicy: MemoryWritePolicy;
   provider: string;
@@ -60,13 +62,14 @@ interface OnboardUi {
 }
 
 interface PromptTheme {
-  step: (step: number, label: string, text: string) => string;
+  step: (step: number, total: number, label: string, text: string) => string;
   defaultValue: (value: string) => string;
   warning: (message: string) => string;
 }
 
 let promptTheme: PromptTheme = createPromptTheme(output.isTTY);
 let providerTestReporter: ProviderTestReporter = createProviderTestReporter(console.log, output.isTTY);
+let promptWarningWriter: (message: string) => void = console.log;
 
 export async function runOnboardCommand(optionsOrArgv: string[] | OnboardCommandOptions = process.argv): Promise<void> {
   const options = Array.isArray(optionsOrArgv) ? { argv: optionsOrArgv } : optionsOrArgv;
@@ -78,6 +81,7 @@ export async function runOnboardCommand(optionsOrArgv: string[] | OnboardCommand
   const ui = createOnboardUi(writeLine, options.useColor ?? output.isTTY);
   promptTheme = createPromptTheme(options.useColor ?? output.isTTY);
   providerTestReporter = createProviderTestReporter(writeLine, options.useColor ?? output.isTTY);
+  promptWarningWriter = writeLine;
   await mkdir(paths.appDir, { recursive: true });
   await mkdir(paths.logsDir, { recursive: true });
   await appendLog({ event: "command_start", detail: { command: "onboard" } }, { paths });
@@ -97,6 +101,7 @@ export async function runOnboardCommand(optionsOrArgv: string[] | OnboardCommand
       name: answers.agentName,
       ownerName: answers.ownerName,
       language: answers.language,
+      timeZone: answers.timeZone,
       toneIntensity: answers.toneIntensity,
     });
     const systemPrompt = generateSystemPrompt(character);
@@ -131,17 +136,18 @@ async function createQuestioner(): Promise<Questioner> {
 
 async function collectAnswers(questioner: Pick<Questioner, "ask" | "askHidden">): Promise<OnboardingAnswers> {
   const { ask, askHidden } = questioner;
-  const agentName = await askNonEmpty(ask, promptTheme.step(1, "Bestie name", "What should your bestie be called?"), "Bestie");
-  const ownerName = await askNonEmpty(ask, promptTheme.step(2, "Your name", "What should it call you?"), "boss");
+  const agentName = await askNonEmpty(ask, promptTheme.step(1, 10, "Bestie name", "What should your bestie be called?"), "Bestie");
+  const ownerName = await askNonEmpty(ask, promptTheme.step(2, 10, "Your name", "What should it call you?"), "boss");
   const language = await askLanguage(ask);
+  const timeZone = await askTimeZone(ask);
   const toneIntensity = await askToneIntensity(ask);
   const memoryWritePolicy = await askMemoryWritePolicy(ask);
-  const provider = await askNonEmpty(ask, promptTheme.step(6, "Provider", "Provider label?"), "openai-compatible");
-  const baseUrl = await askNonEmpty(ask, promptTheme.step(7, "Base URL", "OpenAI-compatible base URL?"), "https://api.openai.com/v1");
-  const model = await askNonEmpty(ask, promptTheme.step(8, "Model", "Model name?"), "gpt-4o-mini");
-  const apiKey = await askNonEmpty(askHidden, promptTheme.step(9, "API key", `Paste your provider API key. It will be saved as ${DEFAULT_API_KEY_ENV} and hidden while typing.`));
+  const provider = await askNonEmpty(ask, promptTheme.step(7, 10, "Provider", "Provider label?"), "openai-compatible");
+  const baseUrl = await askNonEmpty(ask, promptTheme.step(8, 10, "Base URL", "OpenAI-compatible base URL?"), "https://api.openai.com/v1");
+  const model = await askNonEmpty(ask, promptTheme.step(9, 10, "Model", "Model name?"), "gpt-4o-mini");
+  const apiKey = await askNonEmpty(askHidden, promptTheme.step(10, 10, "API key", `Paste your provider API key. It will be saved as ${DEFAULT_API_KEY_ENV} and hidden while typing.`));
 
-  return { agentName, ownerName, language, toneIntensity, memoryWritePolicy, provider, baseUrl, model, apiKey };
+  return { agentName, ownerName, language, timeZone, toneIntensity, memoryWritePolicy, provider, baseUrl, model, apiKey };
 }
 
 async function askNonEmpty(
@@ -158,47 +164,46 @@ async function askNonEmpty(
       return value;
     }
 
-    console.log(promptTheme.warning("Please enter a value."));
+    promptWarningWriter(promptTheme.warning("Please enter a value."));
   }
 }
 
 async function askLanguage(ask: AskLine): Promise<LanguageMode> {
+  const answer = await ask(`${promptTheme.step(3, 10, "Language", "Default language tag or name? Examples: vi, English, ja, pt-BR, auto.")}${promptTheme.defaultValue("vi")} `);
+  return normalizeLanguageInput(answer, "vi");
+}
+
+async function askTimeZone(ask: AskLine): Promise<string> {
+  const defaultTimeZone = getLocalTimeZone();
+
   while (true) {
-    const answer = (await ask(`${promptTheme.step(3, "Language", "Default language code or auto? Examples: vi, en, ja, ko, fr, pt-BR, auto.")}${promptTheme.defaultValue("vi")} `)).trim();
-    const normalized = answer.toLowerCase();
+    const answer = await ask(`${promptTheme.step(4, 10, "Time zone", "IANA time zone for local dates and schedules?")}${promptTheme.defaultValue(defaultTimeZone)} `);
+    const timeZone = normalizeTimeZoneInput(answer, defaultTimeZone);
 
-    if (!answer || normalized === "vietnamese") {
-      return "vi";
+    if (isValidTimeZone(timeZone)) {
+      return timeZone;
     }
 
-    if (normalized === "english") {
-      return "en";
-    }
-
-    if (normalized === "mix") {
-      return "mixed";
-    }
-
-    return answer;
+    promptWarningWriter(promptTheme.warning("Use a valid IANA time zone, for example Asia/Ho_Chi_Minh or America/New_York."));
   }
 }
 
 async function askToneIntensity(ask: AskLine): Promise<number> {
   while (true) {
-    const answer = (await ask(`${promptTheme.step(4, "Tone", "Tone intensity from 1 to 10?")}${promptTheme.defaultValue("7")} `)).trim();
+    const answer = (await ask(`${promptTheme.step(5, 10, "Tone", "Tone intensity from 1 to 10?")}${promptTheme.defaultValue("7")} `)).trim();
     const value = Number(answer || "7");
 
     if (Number.isInteger(value) && value >= 1 && value <= 10) {
       return value;
     }
 
-    console.log(promptTheme.warning("Choose a whole number from 1 to 10."));
+    promptWarningWriter(promptTheme.warning("Choose a whole number from 1 to 10."));
   }
 }
 
 async function askMemoryWritePolicy(ask: AskLine): Promise<MemoryWritePolicy> {
   while (true) {
-    const answer = (await ask(`${promptTheme.step(5, "Memory", "Memory write policy: ask, allow, or deny?")}${promptTheme.defaultValue("ask")} `)).trim().toLowerCase();
+    const answer = (await ask(`${promptTheme.step(6, 10, "Memory", "Memory write policy: ask, allow, or deny?")}${promptTheme.defaultValue("ask")} `)).trim().toLowerCase();
 
     if (!answer || answer === "ask") {
       return "ask";
@@ -208,7 +213,7 @@ async function askMemoryWritePolicy(ask: AskLine): Promise<MemoryWritePolicy> {
       return answer;
     }
 
-    console.log(promptTheme.warning("Choose ask, allow, or deny."));
+    promptWarningWriter(promptTheme.warning("Choose ask, allow, or deny."));
   }
 }
 
@@ -255,7 +260,7 @@ function createPromptTheme(useColor: boolean): PromptTheme {
   const render = withColorMode(useColor);
 
   return {
-    step: (step, label, text) => render(() => `${dim(`[${step}/9]`)} ${color("cyan", label)} ${text} `),
+    step: (step, total, label, text) => render(() => `${dim(`[${step}/${total}]`)} ${color("cyan", label)} ${text} `),
     defaultValue: (value) => render(() => dim(`[${value}]`)),
     warning: (message) => render(() => color("yellow", message)),
   };
@@ -268,6 +273,7 @@ function buildConfig(answers: OnboardingAnswers): AppConfig {
       name: answers.agentName,
       ownerName: answers.ownerName,
       language: answers.language,
+      timeZone: answers.timeZone,
       toneIntensity: answers.toneIntensity,
     },
     llm: {

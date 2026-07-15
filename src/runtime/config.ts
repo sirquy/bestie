@@ -1,6 +1,7 @@
 import { access, readFile, writeFile } from "node:fs/promises";
 
 import { InvalidConfigError, MissingConfigError } from "./errors.js";
+import { getLocalTimeZone, isValidTimeZone } from "./locale.js";
 import { getRuntimePaths, type RuntimePaths } from "./paths.js";
 
 export type McpToolCategory = "read" | "local_write" | "external_write" | "public_action" | "destructive" | "money" | "unknown";
@@ -68,6 +69,7 @@ export interface AppConfig {
     name: string;
     ownerName: string;
     language: string;
+    timeZone?: string;
     toneIntensity: number;
   };
   llm: {
@@ -191,6 +193,10 @@ export function validateConfig(config: unknown): AppConfig {
   const agent = requireRecord(config.agent, "agent");
   const llm = requireRecord(config.llm, "llm");
   const language = requireString(agent.language, "agent.language");
+  const timeZone = agent.timeZone === undefined ? getLocalTimeZone() : requireString(agent.timeZone, "agent.timeZone");
+  if (!isValidTimeZone(timeZone)) {
+    throw new InvalidConfigError("agent.timeZone must be a valid IANA time zone.");
+  }
 
   const toneIntensity = requireNumber(agent.toneIntensity, "agent.toneIntensity");
   if (!Number.isInteger(toneIntensity) || toneIntensity < 1 || toneIntensity > 10) {
@@ -214,6 +220,7 @@ export function validateConfig(config: unknown): AppConfig {
       name: requireString(agent.name, "agent.name"),
       ownerName: requireString(agent.ownerName, "agent.ownerName"),
       language,
+      timeZone,
       toneIntensity,
     },
     llm: {

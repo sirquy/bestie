@@ -7,6 +7,7 @@ const character = generateCharacterConfig({
   name: "Miu",
   ownerName: "Sep",
   language: "vi",
+  timeZone: "Asia/Ho_Chi_Minh",
   toneIntensity: 7,
 });
 
@@ -14,6 +15,7 @@ test("generateSystemPrompt preserves Phase Now character and safety contract", (
   const prompt = generateSystemPrompt(character);
 
   assert.match(prompt, /Vietnamese-first by default/);
+  assert.match(prompt, /Asia\/Ho_Chi_Minh/);
   assert.match(prompt, /funny, sharp, blunt/);
   assert.match(prompt, /teasing, never humiliating/);
   assert.match(prompt, /Challenge bad ideas/);

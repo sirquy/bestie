@@ -22,6 +22,8 @@ test("main renders the static banner when BESTIE_BANNER is static", async () => 
 
   assert.match(stdout, /____/);
   assert.match(stdout, /Usage:/);
+  assert.match(stdout, /chat\s+Start terminal chat after onboarding/);
+  assert.match(stdout, /status\s+Show local setup status/);
 });
 
 test("main suppresses the banner for memory export JSON", async () => {
@@ -44,6 +46,20 @@ test("NO_COLOR disables ANSI color in human output", async () => {
   const { stdout } = await captureMain(["node", "bestie", "skills"], { BESTIE_NO_BANNER: "1", NO_COLOR: "1" });
 
   assert.doesNotMatch(stdout, /\x1b\[[0-9;]*m/);
+});
+
+test("nested command help is available for channels and MCP", async () => {
+  const env = { BESTIE_NO_BANNER: "1" };
+  const channelsHelp = await captureMain(["node", "bestie", "channels", "-h"], env);
+  const mcpHelp = await captureMain(["node", "bestie", "mcp", "-h"], env);
+  const telegramHelp = await captureMain(["node", "bestie", "channels", "telegram", "-h"], env);
+
+  assert.match(channelsHelp.stdout, /Usage: bestie channels/);
+  assert.match(channelsHelp.stdout, /telegram\s+Start or configure the Telegram channel adapter/);
+  assert.match(mcpHelp.stdout, /Usage: bestie mcp/);
+  assert.match(mcpHelp.stdout, /classify <server> <tool>/);
+  assert.match(telegramHelp.stdout, /Usage: bestie channels telegram/);
+  assert.match(telegramHelp.stdout, /voice\s+Configure or inspect Telegram local voice support/);
 });
 
 test("linked bin entrypoint runs through npm symlinks", async () => {

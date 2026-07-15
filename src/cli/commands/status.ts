@@ -13,6 +13,7 @@ export async function runStatusCommand(): Promise<void> {
 
   console.log(title("Bestie Status"));
   console.log(rule());
+
   await printVersionStatus();
   console.log(keyValue("Config", `${hasConfig ? badge("FOUND", "green") : badge("MISS", "red")} ${paths.configPath}`));
 
@@ -31,11 +32,13 @@ export async function runStatusCommand(): Promise<void> {
     console.log(keyValue("Model", bold(config.llm.model)));
     console.log(keyValue("API key env", `${config.llm.apiKeyEnv} ${hasSecret ? badge("PRESENT", "green") : badge("MISSING", "red")}`));
     console.log(keyValue("Timeout", `${config.llm.timeoutMs ?? DEFAULT_LLM_TIMEOUT_MS}ms`));
-    console.log(keyValue("Character", (await fileExists(paths.characterPath)) ? badge("FOUND", "green") : badge("MISSING", "red")));
-    console.log(keyValue("Prompt", (await fileExists(paths.systemPromptPath)) ? badge("FOUND", "green") : badge("MISSING", "red")));
+    const hasCharacter = await fileExists(paths.characterPath);
+    const hasPrompt = await fileExists(paths.systemPromptPath);
+    console.log(keyValue("Character", hasCharacter ? badge("FOUND", "green") : badge("MISSING", "red")));
+    console.log(keyValue("Prompt", hasPrompt ? badge("FOUND", "green") : badge("MISSING", "red")));
   } catch (error) {
     if (error instanceof InvalidConfigError) {
-      console.log(error.message);
+      console.log(keyValue("Config parse", error.message));
       return;
     }
 

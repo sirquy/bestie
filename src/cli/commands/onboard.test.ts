@@ -22,7 +22,8 @@ test("runOnboardCommand writes local files and skips provider test when requeste
         ask: async (question) => {
           if (question.includes("What should your bestie")) return "Miu";
           if (question.includes("What should it call")) return "Boss";
-          if (question.includes("Default language code")) return "ja";
+          if (question.includes("Default language tag")) return "Japanese";
+          if (question.includes("IANA time zone")) return "Asia/Tokyo";
           if (question.includes("Tone intensity")) return "7";
           if (question.includes("Memory write policy")) return "ask";
           if (question.includes("Provider label")) return "openai-compatible";
@@ -41,7 +42,7 @@ test("runOnboardCommand writes local files and skips provider test when requeste
       writeLine: (message) => output.push(message),
     });
 
-    const config = JSON.parse(await readFile(paths.configPath, "utf8")) as { agent: { language: string }; llm: { baseUrl: string; timeoutMs: number }; memory?: { writePolicy?: string } };
+    const config = JSON.parse(await readFile(paths.configPath, "utf8")) as { agent: { language: string; timeZone: string }; llm: { baseUrl: string; timeoutMs: number }; memory?: { writePolicy?: string } };
     const envText = await readFile(paths.envPath, "utf8");
     const logText = await readFile(paths.appLogPath, "utf8");
 
@@ -50,6 +51,7 @@ test("runOnboardCommand writes local files and skips provider test when requeste
     assert.equal(config.llm.baseUrl, "http://127.0.0.1:9/v1");
     assert.equal(config.llm.timeoutMs, 60_000);
     assert.equal(config.agent.language, "ja");
+    assert.equal(config.agent.timeZone, "Asia/Tokyo");
     assert.equal(config.memory?.writePolicy, "ask");
     assert.match(envText, /OPENAI_API_KEY="test-key"/);
     assert.match(logText, /provider_test_skipped/);
@@ -120,7 +122,8 @@ function createQuestioner(): { ask: (question: string) => Promise<string>; askHi
     ask: async (question) => {
       if (question.includes("What should your bestie")) return "Miu";
       if (question.includes("What should it call")) return "Boss";
-      if (question.includes("Default language code")) return "vi";
+      if (question.includes("Default language tag")) return "vi";
+      if (question.includes("IANA time zone")) return "UTC";
       if (question.includes("Tone intensity")) return "7";
       if (question.includes("Memory write policy")) return "ask";
       if (question.includes("Provider label")) return "openai-compatible";

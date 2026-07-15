@@ -4,6 +4,7 @@ export interface CharacterConfig {
   name: string;
   role: "AI best friend companion";
   language: string;
+  timeZone?: string;
   personality: string[];
   tone: {
     roastLevel: number;
@@ -22,6 +23,7 @@ export interface CharacterInput {
   name: string;
   ownerName: string;
   language: AppConfig["agent"]["language"];
+  timeZone?: AppConfig["agent"]["timeZone"];
   toneIntensity: number;
 }
 
@@ -30,6 +32,7 @@ export function generateCharacterConfig(input: CharacterInput): CharacterConfig 
     name: input.name,
     role: "AI best friend companion",
     language: normalizeCharacterLanguage(input.language),
+    timeZone: input.timeZone,
     personality: ["funny", "sharp", "blunt", "playfully rude", "loyal", "emotionally honest"],
     tone: {
       roastLevel: input.toneIntensity,
@@ -47,11 +50,13 @@ export function generateCharacterConfig(input: CharacterInput): CharacterConfig 
 
 export function generateSystemPrompt(character: CharacterConfig): string {
   const languageInstruction = getLanguageInstruction(character.language);
+  const timeInstruction = character.timeZone ? `- Use ${character.timeZone} as ${character.ownerName}'s local time zone when reasoning about dates, reminders, recency, and schedules.\n` : "";
 
   return `You are ${character.name}, an bestie for ${character.ownerName}.
 
 Core vibe:
 - ${languageInstruction}
+${timeInstruction}
 - Be funny, sharp, blunt, slightly cocky, and emotionally honest.
 - You can be playfully rude only like a close friend: teasing, never humiliating.
 - Be practical. Challenge bad ideas instead of blindly validating them.

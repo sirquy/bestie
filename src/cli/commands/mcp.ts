@@ -25,11 +25,6 @@ export async function runMcpCommand(optionsOrArgv: string[] | McpCommandOptions 
   const subcommand = argv[3] ?? "list";
   const writeLine = options.writeLine ?? console.log;
 
-  if (subcommand === "--help" || subcommand === "-h") {
-    writeLine("Usage: bestie mcp list | show <name> | test <name> [--connect] | tools <name> --connect | classify <server> <tool> --category read | call <server> <tool> --read --json '{...}'");
-    return;
-  }
-
   if (subcommand !== "list" && subcommand !== "show" && subcommand !== "test" && subcommand !== "tools" && subcommand !== "classify" && subcommand !== "call") {
     throw new UserFacingError(`Unknown MCP command: ${subcommand}. Try \`bestie mcp list\`.`, "UnknownMcpCommandError");
   }

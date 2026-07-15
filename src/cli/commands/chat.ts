@@ -6,8 +6,9 @@ import { UserFacingError } from "../../runtime/errors.js";
 import { getRuntimePaths } from "../../runtime/paths.js";
 import { maybePrintUpdateNotice } from "../update-notice.js";
 
-export async function runChatCommand(): Promise<void> {
+export async function runChatCommand(argv: string[] = process.argv): Promise<void> {
   const paths = getRuntimePaths();
+  void argv;
 
   try {
     const config = await loadConfig(paths);

@@ -40,6 +40,20 @@ test("validateConfig accepts the Phase Now config shape", () => {
 
   assert.equal(config.llm.apiKeyEnv, "OPENAI_API_KEY");
   assert.equal(config.llm.timeoutMs, 90_000);
+  assert.equal(typeof config.agent.timeZone, "string");
+});
+
+test("validateConfig accepts and validates agent.timeZone", () => {
+  const config = validateConfig({
+    ...validConfig,
+    agent: { ...validConfig.agent, timeZone: "Asia/Ho_Chi_Minh" },
+  });
+
+  assert.equal(config.agent.timeZone, "Asia/Ho_Chi_Minh");
+  assert.throws(
+    () => validateConfig({ ...validConfig, agent: { ...validConfig.agent, timeZone: "Moon/Base" } }),
+    InvalidConfigError,
+  );
 });
 
 test("validateConfig keeps llm.timeoutMs optional for existing configs", () => {

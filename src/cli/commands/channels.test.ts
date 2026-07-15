@@ -9,25 +9,6 @@ import { writeEnvFile } from "../../runtime/env.js";
 import type { RuntimePaths } from "../../runtime/paths.js";
 import { runChannelsCommand } from "./channels.js";
 
-test("runChannelsCommand prints channels help", async () => {
-  const lines: string[] = [];
-  const originalLog = console.log;
-
-  try {
-    console.log = (message?: unknown) => {
-      lines.push(String(message ?? ""));
-    };
-
-    await runChannelsCommand(["node", "bestie", "channels", "--help"]);
-
-    assert.match(lines.join("\n"), /bestie channels <channel>/);
-    assert.match(lines.join("\n"), /telegram/);
-    assert.match(lines.join("\n"), /zalo/);
-  } finally {
-    console.log = originalLog;
-  }
-});
-
 test("runChannelsCommand rejects unknown channels", async () => {
   const lines: string[] = [];
   const originalError = console.error;
