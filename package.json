@@ -1,6 +1,6 @@
 {
   "name": "bestie-agent",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "description": "Vietnamese-first bestie agent CLI.",
   "type": "module",
   "files": [
@@ -14,8 +14,12 @@
     "bestie": "dist/cli/index.js"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json && chmod 755 dist/cli/index.js",
+    "clean": "rm -rf dist",
     "dev": "tsx src/cli/index.ts",
+    "pack:check": "npm run clean && npm run build && npm pack --dry-run",
+    "prepack": "npm run clean && npm run build",
+    "prepublishOnly": "npm test",
     "start": "node dist/cli/index.js",
     "test": "npm run build && node --test dist/**/*.test.js",
     "eval:character": "npm run build && node --test dist/character/prompt-generator.test.js dist/character/character-eval-cases.test.js",
