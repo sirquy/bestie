@@ -40,7 +40,12 @@ try {
   assertIncludes(configText, '"zalo"');
   assertIncludes(configText, '"ownerUserId": "zalo-owner-1"');
   assertIncludes(envText, 'BESTIE_ZALO_BOT_TOKEN="test-zalo-token"');
-  assertNotIncludes(output.join("\n"), "test-zalo-token");
+  const outputText = output.join("\n");
+  assertIncludes(outputText, "Account");
+  assertIncludes(outputText, "Bot token");
+  assertIncludes(outputText, "Input is hidden");
+  assertIncludes(outputText, "Zalo setup saved");
+  assertNotIncludes(outputText, "test-zalo-token");
   console.log("Zalo setup smoke passed.");
 } finally {
   await rm(rootDir, { recursive: true, force: true });

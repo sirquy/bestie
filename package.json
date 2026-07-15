@@ -20,7 +20,7 @@
     "test": "npm run build && node --test dist/**/*.test.js",
     "eval:character": "npm run build && node --test dist/character/prompt-generator.test.js dist/character/character-eval-cases.test.js",
     "eval:character:cases": "npm run build && node --test dist/character/character-eval-cases.test.js",
-    "smoke": "npm run build && npm run smoke:status:run && npm run smoke:doctor:run && npm run smoke:doctor:json:run && npm run smoke:channels:doctor:json:run && npm run smoke:doctor:fix:run && npm run smoke:chat:run && npm run smoke:onboard:run",
+    "smoke": "npm run build && npm run smoke:status:run && npm run smoke:doctor:run && npm run smoke:doctor:json:run && npm run smoke:channels:doctor:json:run && npm run smoke:doctor:fix:run && npm run smoke:chat:run && npm run smoke:onboard:run && npm run smoke:telegram:setup:run && npm run smoke:zalo:setup:run",
     "smoke:chat": "npm run build && npm run smoke:chat:run",
     "smoke:chat:run": "node scripts/smoke-cli-temp-runtime.mjs chat",
     "smoke:doctor": "npm run build && npm run smoke:doctor:run",

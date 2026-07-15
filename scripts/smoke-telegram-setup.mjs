@@ -40,7 +40,12 @@ try {
   assertIncludes(configText, '"telegram"');
   assertIncludes(configText, '"ownerUserId": "12345"');
   assertIncludes(envText, 'BESTIE_TELEGRAM_BOT_TOKEN="test-telegram-token"');
-  assertNotIncludes(output.join("\n"), "test-telegram-token");
+  const outputText = output.join("\n");
+  assertIncludes(outputText, "Account");
+  assertIncludes(outputText, "Bot token");
+  assertIncludes(outputText, "Input is hidden");
+  assertIncludes(outputText, "Telegram setup saved");
+  assertNotIncludes(outputText, "test-telegram-token");
   console.log("Telegram setup smoke passed.");
 } finally {
   await rm(rootDir, { recursive: true, force: true });
