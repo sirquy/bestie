@@ -54,6 +54,33 @@ CREATE TABLE IF NOT EXISTS pending_action_approvals (
   expires_at TEXT NOT NULL,
   decided_at TEXT
 );
+
+CREATE TABLE IF NOT EXISTS cron_schedules (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  schedule_type TEXT NOT NULL CHECK(schedule_type IN ('interval', 'cron_expr', 'once')),
+  schedule_value TEXT NOT NULL,
+  prompt TEXT NOT NULL,
+  channel TEXT,
+  enabled INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  last_run_at TEXT,
+  next_run_at TEXT NOT NULL,
+  last_result TEXT,
+  last_error TEXT,
+  run_count INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS cron_logs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  schedule_id INTEGER NOT NULL,
+  started_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  finished_at TEXT,
+  result TEXT,
+  output TEXT,
+  error TEXT,
+  FOREIGN KEY (schedule_id) REFERENCES cron_schedules(id) ON DELETE CASCADE
+);
 `;
 
 export const MEMORY_DB_RELATIVE_PATH = ".bestie/data/memory.sqlite";

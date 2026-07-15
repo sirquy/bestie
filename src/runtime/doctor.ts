@@ -178,6 +178,8 @@ export async function runDoctor(paths: RuntimePaths = getRuntimePaths(), options
 
   checks.push(await checkMemoryDatabase(paths));
 
+  checks.push(await checkCronHealth(paths));
+
   const normalizedChecks = checks.map(normalizeDoctorCheck);
   return { checks: normalizedChecks, issueCount: normalizedChecks.filter((check) => check.status === "fail").length, fixes };
 }
@@ -941,5 +943,45 @@ async function fileExists(path: string): Promise<boolean> {
     return true;
   } catch {
     return false;
+  }
+}
+
+const CRON_MAX_RECOMMENDED_JOBS = 20;
+
+async function checkCronHealth(paths: RuntimePaths): Promise<DoctorCheck> {
+  let store: SqliteMemoryStore | undefined;
+
+  try {
+    store = await SqliteMemoryStore.open(paths);
+    const activeCount = store.countActiveCronSchedules();
+
+    if (activeCount > CRON_MAX_RECOMMENDED_JOBS) {
+      return {
+        name: "Cron schedules",
+        status: "warn",
+        message: `${activeCount} active cron schedules (recommended max: ${CRON_MAX_RECOMMENDED_JOBS}).`,
+        fix: "Review `bestie cron list` and remove unused schedules to avoid excessive LLM calls.",
+      };
+    }
+
+    if (activeCount > 0) {
+      const schedules = store.listEnabledCronSchedules();
+      const overdue = schedules.filter((s) => s.nextRunAt !== "" && new Date(s.nextRunAt) < new Date(Date.now() - 60_000));
+
+      if (overdue.length > 0) {
+        return {
+          name: "Cron schedules",
+          status: "warn",
+          message: `${overdue.length} cron schedule(s) are overdue: ${overdue.map((s) => s.name).join(", ")}.`,
+          fix: "Ensure the daemon is running (`bestie daemon start`) to process cron jobs.",
+        };
+      }
+    }
+
+    return { name: "Cron schedules", status: "pass", message: `${activeCount} active cron schedule(s).` };
+  } catch {
+    return { name: "Cron schedules", status: "pass", message: "No cron schedules configured." };
+  } finally {
+    store?.close();
   }
 }

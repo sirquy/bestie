@@ -307,7 +307,7 @@ async function runTelegramVoiceDownloadModel(options: { argv: string[]; modelKey
     throw new UserFacingError(`Model download failed with HTTP ${response.status}.`, "TelegramVoiceDownloadModelHttpError");
   }
 
-  await pipeline(Readable.fromWeb(response.body as Parameters<typeof Readable.fromWeb>[0]), createWriteStream(tempPath, { mode: 0o600 }));
+  await pipeline(Readable.fromWeb(response.body as unknown as Parameters<typeof Readable.fromWeb>[0]), createWriteStream(tempPath, { mode: 0o600 }));
   const downloadedBytes = await getRequiredFileSize(tempPath);
   if (downloadedBytes <= 0) {
     await rm(tempPath, { force: true });

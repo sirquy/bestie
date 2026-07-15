@@ -79,6 +79,44 @@ export interface NewMessage {
   content: string;
 }
 
+export type CronScheduleType = "interval" | "cron_expr" | "once";
+
+export interface CronSchedule {
+  id: number;
+  name: string;
+  scheduleType: CronScheduleType;
+  scheduleValue: string;
+  prompt: string;
+  channel?: string;
+  enabled: boolean;
+  createdAt: string;
+  lastRunAt?: string;
+  nextRunAt: string;
+  lastResult?: string;
+  lastError?: string;
+  runCount: number;
+}
+
+export interface NewCronSchedule {
+  name: string;
+  scheduleType: CronScheduleType;
+  scheduleValue: string;
+  prompt: string;
+  channel?: string;
+  enabled?: boolean;
+  nextRunAt: string;
+}
+
+export interface CronLog {
+  id: number;
+  scheduleId: number;
+  startedAt: string;
+  finishedAt?: string;
+  result?: string;
+  output?: string;
+  error?: string;
+}
+
 export interface NewMemory {
   type: string;
   content: string;
@@ -444,6 +482,128 @@ export class SqliteMemoryStore {
     return rows.map(mapMemoryRow);
   }
 
+  // --- Cron schedule CRUD ---
+
+  addCronSchedule(schedule: NewCronSchedule): CronSchedule {
+    const result = this.db
+      .prepare(`
+        INSERT INTO cron_schedules (name, schedule_type, schedule_value, prompt, channel, enabled, next_run_at)
+        VALUES (@name, @scheduleType, @scheduleValue, @prompt, @channel, @enabled, @nextRunAt)
+      `)
+      .run({
+        name: schedule.name,
+        scheduleType: schedule.scheduleType,
+        scheduleValue: schedule.scheduleValue,
+        prompt: schedule.prompt,
+        channel: schedule.channel ?? null,
+        enabled: schedule.enabled !== false ? 1 : 0,
+        nextRunAt: schedule.nextRunAt,
+      });
+
+    return this.getCronSchedule(Number(result.lastInsertRowid));
+  }
+
+  getCronSchedule(id: number): CronSchedule {
+    const row = this.db.prepare("SELECT * FROM cron_schedules WHERE id = ?").get(id) as CronScheduleRow | undefined;
+
+    if (!row) {
+      throw new Error(`Cron schedule not found: ${id}`);
+    }
+
+    return mapCronScheduleRow(row);
+  }
+
+  listCronSchedules(limit = 50): CronSchedule[] {
+    const rows = this.db.prepare("SELECT * FROM cron_schedules ORDER BY next_run_at ASC LIMIT ?").all(limit) as CronScheduleRow[];
+
+    return rows.map(mapCronScheduleRow);
+  }
+
+  listEnabledCronSchedules(): CronSchedule[] {
+    const rows = this.db.prepare("SELECT * FROM cron_schedules WHERE enabled = 1 ORDER BY next_run_at ASC").all() as CronScheduleRow[];
+
+    return rows.map(mapCronScheduleRow);
+  }
+
+  listDueCronJobs(now: string): CronSchedule[] {
+    const rows = this.db
+      .prepare("SELECT * FROM cron_schedules WHERE enabled = 1 AND next_run_at != '' AND next_run_at <= ? ORDER BY next_run_at ASC")
+      .all(now) as CronScheduleRow[];
+
+    return rows.map(mapCronScheduleRow);
+  }
+
+  updateCronNextRun(id: number, nextRunAt: string): void {
+    this.db.prepare("UPDATE cron_schedules SET next_run_at = ? WHERE id = ?").run(nextRunAt, id);
+  }
+
+  updateCronRunResult(id: number, result: string, error?: string): void {
+    this.db
+      .prepare(`
+        UPDATE cron_schedules
+        SET last_run_at = datetime('now'), last_result = ?, last_error = ?, run_count = run_count + 1
+        WHERE id = ?
+      `)
+      .run(result, error ?? null, id);
+  }
+
+  toggleCronSchedule(id: number, enabled: boolean): CronSchedule {
+    this.db.prepare("UPDATE cron_schedules SET enabled = ? WHERE id = ?").run(enabled ? 1 : 0, id);
+    return this.getCronSchedule(id);
+  }
+
+  removeCronSchedule(id: number): boolean {
+    const result = this.db.prepare("DELETE FROM cron_schedules WHERE id = ?").run(id);
+    return result.changes > 0;
+  }
+
+  // --- Cron log ---
+
+  createCronLog(scheduleId: number): CronLog {
+    const result = this.db.prepare("INSERT INTO cron_logs (schedule_id) VALUES (?)").run(scheduleId);
+    return this.getCronLog(Number(result.lastInsertRowid));
+  }
+
+  getCronLog(id: number): CronLog {
+    const row = this.db.prepare("SELECT * FROM cron_logs WHERE id = ?").get(id) as CronLogRow | undefined;
+
+    if (!row) {
+      throw new Error(`Cron log not found: ${id}`);
+    }
+
+    return mapCronLogRow(row);
+  }
+
+  finishCronLog(id: number, result: string, output?: string, error?: string): void {
+    this.db
+      .prepare("UPDATE cron_logs SET finished_at = datetime('now'), result = ?, output = ?, error = ? WHERE id = ?")
+      .run(result, output ?? null, error ?? null, id);
+  }
+
+  listCronLogs(scheduleId?: number, limit = 20): CronLog[] {
+    if (scheduleId !== undefined) {
+      const rows = this.db
+        .prepare("SELECT * FROM cron_logs WHERE schedule_id = ? ORDER BY id DESC LIMIT ?")
+        .all(scheduleId, limit) as CronLogRow[];
+      return rows.map(mapCronLogRow);
+    }
+
+    const rows = this.db.prepare("SELECT * FROM cron_logs ORDER BY id DESC LIMIT ?").all(limit) as CronLogRow[];
+    return rows.map(mapCronLogRow);
+  }
+
+  countActiveCronSchedules(): number {
+    const row = this.db.prepare("SELECT COUNT(*) as count FROM cron_schedules WHERE enabled = 1").get() as { count: number };
+    return row.count;
+  }
+
+  pruneOldCronLogs(maxAgeDays = 30): number {
+    const result = this.db
+      .prepare(`DELETE FROM cron_logs WHERE started_at < datetime('now', '-' || ? || ' days')`)
+      .run(maxAgeDays);
+    return result.changes;
+  }
+
   getTableColumns(table: "memories" | "messages" | "pending_memories" | "memory_state"): string[] {
     const rows = this.db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
 
@@ -452,6 +612,8 @@ export class SqliteMemoryStore {
 
   clearAllData(): void {
     const transaction = this.db.transaction(() => {
+      this.db.prepare("DELETE FROM cron_logs").run();
+      this.db.prepare("DELETE FROM cron_schedules").run();
       this.db.prepare("DELETE FROM pending_memories").run();
       this.db.prepare("DELETE FROM pending_action_approvals").run();
       this.db.prepare("DELETE FROM memories").run();
@@ -583,6 +745,32 @@ interface MemoryRow {
   updated_at: string;
 }
 
+interface CronScheduleRow {
+  id: number;
+  name: string;
+  schedule_type: CronScheduleType;
+  schedule_value: string;
+  prompt: string;
+  channel: string | null;
+  enabled: number;
+  created_at: string;
+  last_run_at: string | null;
+  next_run_at: string;
+  last_result: string | null;
+  last_error: string | null;
+  run_count: number;
+}
+
+interface CronLogRow {
+  id: number;
+  schedule_id: number;
+  started_at: string;
+  finished_at: string | null;
+  result: string | null;
+  output: string | null;
+  error: string | null;
+}
+
 function mapMemoryRow(row: MemoryRow): StoredMemory {
   return {
     id: row.id,
@@ -597,6 +785,36 @@ function mapMemoryRow(row: MemoryRow): StoredMemory {
     policyReason: row.policy_reason ?? undefined,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+  };
+}
+
+function mapCronScheduleRow(row: CronScheduleRow): CronSchedule {
+  return {
+    id: row.id,
+    name: row.name,
+    scheduleType: row.schedule_type,
+    scheduleValue: row.schedule_value,
+    prompt: row.prompt,
+    channel: row.channel ?? undefined,
+    enabled: row.enabled === 1,
+    createdAt: row.created_at,
+    lastRunAt: row.last_run_at ?? undefined,
+    nextRunAt: row.next_run_at,
+    lastResult: row.last_result ?? undefined,
+    lastError: row.last_error ?? undefined,
+    runCount: row.run_count,
+  };
+}
+
+function mapCronLogRow(row: CronLogRow): CronLog {
+  return {
+    id: row.id,
+    scheduleId: row.schedule_id,
+    startedAt: row.started_at,
+    finishedAt: row.finished_at ?? undefined,
+    result: row.result ?? undefined,
+    output: row.output ?? undefined,
+    error: row.error ?? undefined,
   };
 }
 

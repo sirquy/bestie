@@ -1,5 +1,6 @@
 import { runChannelsCommand } from "./commands/channels.js";
 import { runChatCommand } from "./commands/chat.js";
+import { runCronCommand } from "./commands/cron.js";
 import { runDaemonCommand } from "./commands/daemon.js";
 import { runDoctorCommand } from "./commands/doctor.js";
 import { runLogsCommand } from "./commands/logs.js";
@@ -43,6 +44,13 @@ Tools options:
 
 Update options:
   --apply  Run npm install -g bestie-agent@latest after a newer version is found
+
+Cron options:
+  list           List all cron schedules
+  add            Create a new cron schedule (interactive or with --name --type --schedule --prompt)
+  remove <id>    Remove a cron schedule by ID
+  toggle <id>    Toggle a cron schedule on/off
+  logs [id]      Show recent cron execution logs
 `;
 
 export const cliCommandSpecs: CliCommandSpec[] = [
@@ -70,6 +78,7 @@ export const cliCommandSpecs: CliCommandSpec[] = [
   createChannelsCommandSpec("channel", true),
   { name: "skills", description: "List installed skills from .bestie/skills", handler: runSkillsCommand },
   { name: "tools", description: "Run permission-gated local tools", handler: runToolsCommand },
+  { name: "cron", description: "Manage scheduled cron jobs for the agent", handler: runCronCommand },
   { name: "update", description: "Check npm for a newer Bestie version, or install it with --apply", handler: runUpdateCommand },
 ];
 
