@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { realpathSync } from "node:fs";
+import { pathToFileURL } from "node:url";
 import { CommanderError, type Command } from "commander";
 
 import { createCliProgram } from "./command-router.js";
@@ -144,5 +145,5 @@ if (isCliEntrypoint()) {
 }
 
 function isCliEntrypoint(): boolean {
-  return process.argv[1] ? import.meta.url === new URL(realpathSync(process.argv[1]), "file:").href : false;
+  return process.argv[1] ? import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href : false;
 }
