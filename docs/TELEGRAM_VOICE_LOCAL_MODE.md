@@ -80,6 +80,8 @@ npm run start -- channels telegram voice download-model small --confirm --use
 
 Supported names are `tiny`, `small`, `medium`, and `large-v3-turbo`. Existing files are not overwritten unless `--force` is provided.
 
+These commands use the shared human CLI style: titled sections, badges, key/value rows, and model tables. Set `NO_COLOR=1` when capturing output in scripts. The download command is intentionally a dry run unless `--confirm` is present; `--use` only updates `.bestie/config.json` after a successful download.
+
 Use this non-secret config shape in `.bestie/config.json`:
 
 ```json

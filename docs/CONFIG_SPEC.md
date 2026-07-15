@@ -222,6 +222,8 @@ COMPOSIO_CONSUMER_API_KEY=
 
 Secrets must not be printed after entry and must be redacted from logs.
 
+Telegram voice setup commands follow the same rule. `bestie channels telegram voice setup-elevenlabs` prompts for `ELEVENLABS_API_KEY` and writes the secret only to `.bestie/.env`; `.bestie/config.json` stores the env var name plus non-secret voice/model IDs. `bestie channels telegram voice setup-local`, `models`, and `download-model` should print only local paths, model names, sizes, and status details.
+
 Set `BESTIE_NO_BANNER=1` to suppress the decorative CLI banner for human-facing commands in scripts. Set `BESTIE_BANNER=static` to disable the interactive animation while keeping the static banner. Machine-readable JSON outputs such as `bestie doctor --json`, `bestie channels doctor --json`, and `bestie memory export` suppress the banner automatically.
 
 Set `NO_COLOR=1` to disable ANSI colors in human-facing tables, badges, and progress indicators. Commands that emit raw data, logs, git output, transcripts, or JSON payloads should remain script-friendly and avoid decorative formatting.
