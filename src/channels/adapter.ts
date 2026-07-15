@@ -10,6 +10,7 @@ export interface ChannelMessageRef<TChatId = unknown, TMessageId = unknown> {
 
 export interface ChannelIncomingMessage<TChatId = unknown, TMessageId = unknown, TRaw = unknown> extends ChannelMessageRef<TChatId, TMessageId> {
   senderId: string;
+  senderUsername?: string;
   text?: string;
   caption?: string;
   raw: TRaw;

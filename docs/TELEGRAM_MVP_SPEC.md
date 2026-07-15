@@ -131,14 +131,14 @@ Rules:
 - Prefer `bestie channels telegram setup` for local setup; manual config edits are still supported.
 - Do not require Telegram config for terminal-only users.
 - If `channels.telegram.enabled` is false or missing, `bestie channels telegram` should explain how to enable it.
-- `ownerUserId` must be required before the bot replies to messages.
+- `ownerUserId` must be required before the bot replies to messages. Despite the legacy key name, the value may be a numeric Telegram id, username, or `@username`; matching is case-insensitive for usernames.
 
 ## Runtime Flow
 
 ```text
 bestie channels telegram
   -> load config and env
-  -> require Telegram bot token and owner user id
+  -> require Telegram bot token and owner id or username
   -> start getUpdates polling loop
   -> ignore messages from non-owner users
   -> map owner text into a shared chat turn
@@ -198,7 +198,7 @@ Doctor should remain useful before the bot starts:
 
 - Telegram config exists when enabled.
 - Bot token env name is present and secret value exists.
-- Owner user id is configured.
+- Owner id or username is configured.
 - `bestie doctor --telegram-connect` calls Telegram `getMe` through grammY and reports the reachable bot identity without printing the token.
 - Terminal-only configs should not fail Telegram checks.
 

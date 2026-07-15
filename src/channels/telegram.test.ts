@@ -28,12 +28,13 @@ const config: AppConfig = {
 const execFileAsync = promisify(execFile);
 
 test("mapTelegramIncomingMessage normalizes owner text and captions", () => {
-  const textMessage = createTextUpdate("hello", 12345).message!;
+  const textMessage = createTextUpdate("hello", 12345, 1, "boss_user").message!;
   const textIncoming = mapTelegramIncomingMessage(textMessage);
 
   assert.equal(textIncoming.chatId, 777);
   assert.equal(textIncoming.messageId, 10);
   assert.equal(textIncoming.senderId, "12345");
+  assert.equal(textIncoming.senderUsername, "boss_user");
   assert.equal(textIncoming.text, "hello");
   assert.equal(textIncoming.raw, textMessage);
 
@@ -96,6 +97,50 @@ test("handleTelegramUpdate ignores non-owner messages", async () => {
   try {
     const result = await handleTelegramUpdate(createTextUpdate("/start", 99999), {
       config,
+      paths,
+      client: createRecordingClient(sentMessages),
+    });
+
+    assert.equal(result, "ignored");
+    assert.deepEqual(sentMessages, []);
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("handleTelegramUpdate accepts configured owner username", async () => {
+  const paths = await createTempPaths();
+  const sentMessages: Array<{ chatId: number; text: string }> = [];
+  const usernameConfig: AppConfig = {
+    ...config,
+    channels: { telegram: { enabled: true, botTokenEnv: "BESTIE_TELEGRAM_BOT_TOKEN", ownerUserId: "@boss_user" } },
+  };
+
+  try {
+    const result = await handleTelegramUpdate(createTextUpdate("/start", 99999, 1, "Boss_User"), {
+      config: usernameConfig,
+      paths,
+      client: createRecordingClient(sentMessages),
+    });
+
+    assert.equal(result, "replied");
+    assert.match(sentMessages[0]?.text ?? "", /online/);
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("handleTelegramUpdate ignores non-owner username messages", async () => {
+  const paths = await createTempPaths();
+  const sentMessages: Array<{ chatId: number; text: string }> = [];
+  const usernameConfig: AppConfig = {
+    ...config,
+    channels: { telegram: { enabled: true, botTokenEnv: "BESTIE_TELEGRAM_BOT_TOKEN", ownerUserId: "boss_user" } },
+  };
+
+  try {
+    const result = await handleTelegramUpdate(createTextUpdate("/start", 12345, 1, "other_user"), {
+      config: usernameConfig,
       paths,
       client: createRecordingClient(sentMessages),
     });
@@ -997,6 +1042,40 @@ test("handleTelegramUpdate approves pending memory from inline approval callback
     } finally {
       verifyStore.close();
     }
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("handleTelegramUpdate accepts approval callbacks from configured owner username", async () => {
+  const paths = await createTempPaths();
+  const sentMessages: Array<{ chatId: number; text: string; options?: unknown }> = [];
+  const editedMessages: Array<{ chatId: number; messageId: number; text: string }> = [];
+  const callbackAnswers: Array<{ id: string; text?: string }> = [];
+  const usernameConfig: AppConfig = {
+    ...config,
+    channels: { telegram: { enabled: true, botTokenEnv: "BESTIE_TELEGRAM_BOT_TOKEN", ownerUserId: "boss_user" } },
+  };
+
+  try {
+    await writeRuntimeFiles(paths);
+    const store = await SqliteMemoryStore.open(paths);
+    let approvalId: number;
+    try {
+      const pending = store.addPendingMemory({ type: "preference", content: "User likes concise replies.", source: "reasoning", explicitConsent: true });
+      approvalId = store.addPendingActionApproval({ channel: "telegram", userId: "boss_user", category: "local_write", action: "memory_approve", target: `pending-memory:${pending.id}` }).id;
+    } finally {
+      store.close();
+    }
+
+    const result = await handleTelegramUpdate(createCallbackUpdate(`approval:approve:${approvalId}`, 99999, 1, "Boss_User"), {
+      config: usernameConfig,
+      paths,
+      client: createRecordingClient(sentMessages, [], editedMessages, callbackAnswers),
+    });
+
+    assert.equal(result, "replied");
+    assert.deepEqual(callbackAnswers, [{ id: "callback-1", text: "Memory saved." }]);
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
   }
@@ -2108,14 +2187,14 @@ test("TelegramHttpClient calls getUpdates and sendMessage endpoints", async () =
   assert.equal(new TextDecoder().decode(fileBytes), "hello file");
 });
 
-function createTextUpdate(text: string, fromId: number, updateId = 1): TelegramUpdate {
+function createTextUpdate(text: string, fromId: number, updateId = 1, username?: string): TelegramUpdate {
   return {
     update_id: updateId,
     message: {
       message_id: 10,
       date: 1,
       chat: { id: 777, type: "private", first_name: "Boss" },
-      from: { id: fromId, is_bot: false, first_name: "Boss" },
+      from: { id: fromId, is_bot: false, first_name: "Boss", username },
       text,
     },
   };
@@ -2165,12 +2244,12 @@ function createVoiceUpdate(fromId: number, caption?: string, updateId = 1, provi
   };
 }
 
-function createCallbackUpdate(data: string, fromId: number, updateId = 1): TelegramUpdate {
+function createCallbackUpdate(data: string, fromId: number, updateId = 1, username?: string): TelegramUpdate {
   return {
     update_id: updateId,
     callback_query: {
       id: "callback-1",
-      from: { id: fromId, is_bot: false, first_name: "Boss" },
+      from: { id: fromId, is_bot: false, first_name: "Boss", username },
       chat_instance: "chat-instance-1",
       data,
       message: {

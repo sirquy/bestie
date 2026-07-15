@@ -32,7 +32,10 @@ test("runTelegramCommand setup writes Telegram config and token env", async () =
       argv: ["node", "bestie", "channels", "telegram", "setup"],
       paths,
       questioner: {
-        ask: async () => "12345",
+        ask: async (question) => {
+          assert.match(question, /id or username/i);
+          return "@boss_user";
+        },
         askHidden: async () => "telegram-secret-token",
         close: () => {
           closed = true;
@@ -49,7 +52,7 @@ test("runTelegramCommand setup writes Telegram config and token env", async () =
     assert.equal(closed, true);
     assert.equal(config.channels?.telegram?.enabled, true);
     assert.equal(config.channels?.telegram?.botTokenEnv, "BESTIE_TELEGRAM_BOT_TOKEN");
-    assert.equal(config.channels?.telegram?.ownerUserId, "12345");
+    assert.equal(config.channels?.telegram?.ownerUserId, "@boss_user");
     assert.match(envText, /OPENAI_API_KEY="sk-test"/);
     assert.match(envText, /BESTIE_TELEGRAM_BOT_TOKEN="telegram-secret-token"/);
     assert.ok(output.some((line) => line.includes("Telegram setup")));

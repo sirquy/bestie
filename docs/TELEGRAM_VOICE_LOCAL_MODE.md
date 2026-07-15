@@ -97,7 +97,7 @@ Use this non-secret config shape in `.bestie/config.json`:
     "telegram": {
       "enabled": true,
       "botTokenEnv": "BESTIE_TELEGRAM_BOT_TOKEN",
-      "ownerUserId": "<telegram-owner-id>",
+      "ownerUserId": "<telegram-owner-id-or-username>",
       "attachments": {
         "downloadPolicy": "allow",
         "maxBytes": 20971520,

@@ -550,7 +550,8 @@ function getTelegramMessageDecision(options: {
     return { kind: "ignored" };
   }
 
-  if (!options.ownerUserId || options.incoming.senderId !== options.ownerUserId) {
+  const ownerUserId = normalizeTelegramOwner(options.ownerUserId);
+  if (!matchesTelegramOwner(ownerUserId, options.incoming.senderId, options.incoming.senderUsername)) {
     return { kind: "ignored" };
   }
 
@@ -562,7 +563,7 @@ function getTelegramMessageDecision(options: {
     return { kind: "ignored" };
   }
 
-  return { kind: "process", chatId: options.incoming.chatId, ownerUserId: options.ownerUserId, incoming: options.incoming, attachment: options.attachment, text: options.text };
+  return { kind: "process", chatId: options.incoming.chatId, ownerUserId, incoming: options.incoming, attachment: options.attachment, text: options.text };
 }
 
 export function mapTelegramIncomingMessage(message: NonNullable<TelegramUpdate["message"]>): ChannelIncomingMessage<number, number, NonNullable<TelegramUpdate["message"]>> {
@@ -570,10 +571,27 @@ export function mapTelegramIncomingMessage(message: NonNullable<TelegramUpdate["
     chatId: message.chat.id,
     messageId: message.message_id,
     senderId: String(message.from?.id ?? ""),
+    senderUsername: message.from?.username,
     text: message.text,
     caption: message.caption,
     raw: message,
   };
+}
+
+function matchesTelegramOwner(owner: string, senderId: string, senderUsername: string | undefined): boolean {
+  if (!owner) {
+    return false;
+  }
+
+  if (senderId === owner) {
+    return true;
+  }
+
+  return Boolean(senderUsername && normalizeTelegramOwner(senderUsername) === owner);
+}
+
+function normalizeTelegramOwner(value: string | undefined): string {
+  return value?.trim().replace(/^@/, "").toLowerCase() ?? "";
 }
 
 export function createTelegramRuntimeAdapter(update: TelegramUpdate, options: TelegramUpdateHandlerOptions): ChannelRuntimeAdapter<TelegramAttachmentSummary, number, "typing"> {
@@ -752,7 +770,7 @@ async function handleTelegramCallbackQuery(update: TelegramUpdate, options: Tele
     return "ignored";
   }
 
-  if (String(callbackQuery.from.id) !== telegramConfig.ownerUserId) {
+  if (!matchesTelegramOwner(telegramConfig.ownerUserId, String(callbackQuery.from.id), callbackQuery.from.username)) {
     return "ignored";
   }
 

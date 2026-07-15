@@ -652,8 +652,8 @@ function checkTelegramConfig(telegramConfig: { enabled: boolean; botTokenEnv: st
     return {
       name: "Telegram channel",
       status: "fail",
-      message: "Telegram is enabled, but owner user id is missing.",
-      fix: "Set channels.telegram.ownerUserId in .bestie/config.json before starting Telegram.",
+      message: "Telegram is enabled, but owner id or username is missing.",
+      fix: "Set channels.telegram.ownerUserId to a numeric Telegram id, username, or @username before starting Telegram.",
     };
   }
 

@@ -159,7 +159,7 @@ export async function runTelegramCommand(optionsOrArgv: string[] | TelegramComma
   }
 
   if (!telegram.ownerUserId.trim()) {
-    throw new UserFacingError("Telegram owner user id is missing. Set channels.telegram.ownerUserId in .bestie/config.json.", "TelegramMissingOwnerError");
+    throw new UserFacingError("Telegram owner id or username is missing. Set channels.telegram.ownerUserId in .bestie/config.json.", "TelegramMissingOwnerError");
   }
 
   const transcriptPath = getTranscriptPath(argv, paths);
@@ -448,11 +448,11 @@ async function runTelegramSetup(options: { paths: RuntimePaths; questioner?: Tel
 
     ui.section("Account", "Connect one Telegram bot to this local runtime.");
     const config = await loadConfig(options.paths);
-    const ownerUserId = (await questioner.ask("[1/2] Owner user id Telegram numeric user id allowed to chat with Bestie: ")).trim();
+    const ownerUserId = (await questioner.ask("[1/2] Owner Telegram id or username Numeric id, username, or @username allowed to chat with Bestie: ")).trim();
     const token = await questioner.askHidden("[2/2] Bot token Paste the Telegram bot token. It is hidden while typing: ");
 
     if (!ownerUserId) {
-      throw new UserFacingError("Telegram owner user id is required.", "TelegramMissingOwnerError");
+      throw new UserFacingError("Telegram owner id or username is required.", "TelegramMissingOwnerError");
     }
 
     if (!token.trim()) {
@@ -470,7 +470,7 @@ async function runTelegramSetup(options: { paths: RuntimePaths; questioner?: Tel
     ui.section("Files", "Secrets stay local and are not printed.");
     ui.savedPath("Config", options.paths.configPath);
     ui.savedPath("Token env", `${DEFAULT_TELEGRAM_TOKEN_ENV} in ${options.paths.envPath}`);
-    ui.info("Telegram is enabled for the configured owner user id only.");
+    ui.info("Telegram is enabled for the configured owner id or username only.");
     ui.final();
   } finally {
     questioner.close();
