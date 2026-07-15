@@ -83,7 +83,8 @@ Responsibilities:
 
 Commander routing rules:
 
-- `src/cli/index.ts` owns the declarative command tree only; do not hand-roll command lookup there.
+- `src/cli/index.ts` owns entrypoint lifecycle only: banner, program creation, parse, and top-level errors.
+- `src/cli/command-specs.ts` owns the declarative command tree; add new commands and nested commands there.
 - `src/cli/command-router.ts` is the only place that directly translates command specs into Commander registrations.
 - Every command and nested command must be represented as a `CliCommandSpec` with `name`, `description`, `handler`, and optional `children`.
 - Nested help such as `bestie channels -h`, `bestie mcp -h`, and `bestie channels telegram -h` must come from the command tree, not from ad hoc string matching inside handlers.
