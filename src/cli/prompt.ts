@@ -19,24 +19,27 @@ export interface EofAwareCliQuestioner extends Omit<CliQuestioner, "ask" | "askH
 
 interface CliQuestionerOptions {
   echoAnswer?: boolean;
+  inputText?: string;
   returnUndefinedOnInputEnd?: boolean;
+  write?: (chunk: string) => void;
 }
 
 export function createCliQuestioner(options: CliQuestionerOptions & { returnUndefinedOnInputEnd: true }): EofAwareCliQuestioner;
 export function createCliQuestioner(options?: CliQuestionerOptions): CliQuestioner;
 export function createCliQuestioner(options: CliQuestionerOptions = {}): CliQuestioner | EofAwareCliQuestioner {
-  if (!inputStream.isTTY) {
-    const lines = readFileSync(0, "utf8").split(/\r?\n/);
+  if (options.inputText !== undefined || !inputStream.isTTY) {
+    const lines = (options.inputText ?? readFileSync(0, "utf8")).split(/\r?\n/);
     let index = 0;
+    const write = options.write ?? ((chunk: string) => outputStream.write(chunk));
 
     const readLine = async (question: string): Promise<string | undefined> => {
       const answer = lines[index++];
-      if (answer === undefined || (answer === "" && options.returnUndefinedOnInputEnd && index > lines.length)) {
+      if (answer === undefined || (answer === "" && options.returnUndefinedOnInputEnd && index >= lines.length)) {
         return undefined;
       }
-      outputStream.write(options.echoAnswer ? `${question}${answer}\n` : question);
+      write(options.echoAnswer ? `${question}${answer}\n` : question);
       if (!options.echoAnswer) {
-        outputStream.write("\n");
+        write("\n");
       }
       return answer;
     };
