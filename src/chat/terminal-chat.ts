@@ -12,7 +12,7 @@ import { loadRequiredSecret } from "../runtime/env.js";
 import type { ChatCompletionOptions, ChatMessage } from "../llm/types.js";
 import { createCliQuestioner } from "../cli/prompt.js";
 import { badge, bold, color, dim, rule } from "../cli/ui.js";
-import { MEMORY_CONTEXT_ITEM_LIMIT, appendConversationTurn, buildChatMessages } from "./message-builder.js";
+import { appendConversationTurn, buildChatMessages } from "./message-builder.js";
 import { buildMcpToolSystemPrompt, completeWithAgentTools, runAgentToolRequest, type AgentToolActivity, type RunAgentToolRequestOptions } from "./mcp-tool-use.js";
 
 export interface TerminalChatOptions {
@@ -353,7 +353,7 @@ async function loadActiveMemories(paths: RuntimePaths): Promise<import("../memor
       return [];
     }
 
-    return store.listActiveMemories(MEMORY_CONTEXT_ITEM_LIMIT);
+    return store.listActiveMemories();
   } finally {
     store.close();
   }

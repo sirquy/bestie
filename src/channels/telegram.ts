@@ -7,7 +7,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { basename, extname, join, resolve } from "node:path";
 
 import { loadSystemPrompt } from "../character/prompt-loader.js";
-import { MEMORY_CONTEXT_ITEM_LIMIT, buildChatMessages } from "../chat/message-builder.js";
+import { buildChatMessages } from "../chat/message-builder.js";
 import {
   buildMcpToolSystemPrompt,
   completeWithAgentTools,
@@ -1567,7 +1567,7 @@ async function loadActiveMemories(paths: RuntimePaths): Promise<import("../memor
       return [];
     }
 
-    return store.listActiveMemories(MEMORY_CONTEXT_ITEM_LIMIT);
+    return store.listActiveMemories();
   } finally {
     store.close();
   }

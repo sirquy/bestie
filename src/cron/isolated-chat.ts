@@ -4,8 +4,8 @@ import { sendChatCompletionWithFallbacks } from "../llm/openai-compatible.js";
 import { loadRequiredSecret } from "../runtime/env.js";
 import { appendLog } from "../runtime/logger.js";
 import { SqliteMemoryStore } from "../memory/sqlite-store.js";
-import { buildChatMessages, MEMORY_CONTEXT_ITEM_LIMIT } from "../chat/message-builder.js";
-import { completeWithAgentTools, type AgentToolChatCompletionRunner } from "../chat/mcp-tool-use.js";
+import { buildChatMessages } from "../chat/message-builder.js";
+import { buildMcpToolSystemPrompt, completeWithAgentTools, type AgentToolChatCompletionRunner } from "../chat/mcp-tool-use.js";
 import type { ChatCompletionOptions } from "../llm/types.js";
 
 const CRON_MAX_TOOL_CALLS = 50;
@@ -48,9 +48,9 @@ export async function runIsolatedChat(options: IsolatedChatOptions): Promise<str
   return result;
 }
 
-function buildCronSystemPrompt(config: AppConfig): string {
+export function buildCronSystemPrompt(config: AppConfig): string {
   const base = [CRON_SYSTEM_PREFIX, `Agent name: ${config.agent.name}. Owner: ${config.agent.ownerName}.`].join("\n\n");
-  return base;
+  return buildMcpToolSystemPrompt(base, config);
 }
 
 async function loadActiveMemories(paths: RuntimePaths): Promise<import("../memory/sqlite-store.js").StoredMemory[]> {
@@ -61,7 +61,7 @@ async function loadActiveMemories(paths: RuntimePaths): Promise<import("../memor
       return [];
     }
 
-    return store.listActiveMemories(MEMORY_CONTEXT_ITEM_LIMIT);
+    return store.listActiveMemories();
   } finally {
     store.close();
   }

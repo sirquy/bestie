@@ -51,6 +51,23 @@ test("SqliteMemoryStore forgetMemory hides active memories", async () => {
   }
 });
 
+test("SqliteMemoryStore lists all active memories by default", async () => {
+  const paths = await createTempPaths();
+  const store = await SqliteMemoryStore.open(paths);
+
+  try {
+    for (let index = 1; index <= 25; index += 1) {
+      store.addMemory({ type: "preference", content: `Memory ${index}` });
+    }
+
+    assert.equal(store.listActiveMemories().length, 25);
+    assert.equal(store.listActiveMemories(20).length, 20);
+  } finally {
+    store.close();
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
 test("SqliteMemoryStore searches active memories by content and type", async () => {
   const paths = await createTempPaths();
   const store = await SqliteMemoryStore.open(paths);

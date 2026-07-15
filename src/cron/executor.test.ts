@@ -5,6 +5,7 @@ import { resolve } from "node:path";
 import test from "node:test";
 
 import { CronExecutor } from "./executor.js";
+import { buildCronSystemPrompt } from "./isolated-chat.js";
 import { SqliteMemoryStore } from "../memory/sqlite-store.js";
 import { writeEnvFile } from "../runtime/env.js";
 import { getRuntimePaths, type RuntimePaths } from "../runtime/paths.js";
@@ -51,6 +52,18 @@ test("CronExecutor starts and stops cleanly", async () => {
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
   }
+});
+
+test("cron isolated prompt exposes internal and configured MCP tools", () => {
+  const prompt = buildCronSystemPrompt({
+    ...TEST_CONFIG,
+    mcp: { servers: [{ name: "composio", enabled: true, transport: "http", url: "https://connect.composio.dev/mcp", tools: [{ name: "gmail_search", category: "read" }] }] },
+  });
+
+  assert.match(prompt, /Available internal tools/);
+  assert.match(prompt, /internal\.mcp_list_tools/);
+  assert.match(prompt, /Available read-only MCP tools/);
+  assert.match(prompt, /composio\/gmail_search/);
 });
 
 test("CronExecutor tick picks up due jobs", async () => {

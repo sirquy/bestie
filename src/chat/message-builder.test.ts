@@ -75,7 +75,7 @@ test("buildChatMessages prioritizes important recent memories in context", () =>
   assert.equal(memoryLines.at(-1), "- preference: Memory 1");
 });
 
-test("buildChatMessages includes up to 50 active memories in context", () => {
+test("buildChatMessages includes all active memories that fit the context budget", () => {
   const memories: StoredMemory[] = Array.from({ length: 55 }, (_, index) => ({
     id: index + 1,
     type: "preference",
@@ -91,9 +91,9 @@ test("buildChatMessages includes up to 50 active memories in context", () => {
   const messages = buildChatMessages("system prompt", [], "hello", memories);
   const memoryContext = String(messages[1]?.content ?? "");
 
-  assert.equal(memoryContext.split("\n- preference:").length - 1, 50);
+  assert.equal(memoryContext.split("\n- preference:").length - 1, 55);
   assert.match(memoryContext, /Memory 55/);
-  assert.doesNotMatch(memoryContext, /- preference: Memory 5$/m);
+  assert.match(memoryContext, /- preference: Memory 1$/m);
 });
 
 test("buildChatMessages keeps memory context under the character budget", () => {

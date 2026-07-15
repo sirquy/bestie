@@ -433,10 +433,10 @@ export class SqliteMemoryStore {
     return row ? mapMemoryRow(row) : undefined;
   }
 
-  listActiveMemories(limit = 20): StoredMemory[] {
-    const rows = this.db
-      .prepare("SELECT * FROM memories WHERE status = 'active' ORDER BY importance DESC, updated_at DESC LIMIT ?")
-      .all(limit) as MemoryRow[];
+  listActiveMemories(limit?: number): StoredMemory[] {
+    const rows = limit === undefined
+      ? (this.db.prepare("SELECT * FROM memories WHERE status = 'active' ORDER BY importance DESC, updated_at DESC").all() as MemoryRow[])
+      : (this.db.prepare("SELECT * FROM memories WHERE status = 'active' ORDER BY importance DESC, updated_at DESC LIMIT ?").all(limit) as MemoryRow[]);
 
     return rows.map(mapMemoryRow);
   }

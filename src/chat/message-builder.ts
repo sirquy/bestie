@@ -2,7 +2,6 @@ import type { StoredMemory } from "../memory/sqlite-store.js";
 import type { ChatMessage } from "../llm/types.js";
 
 const MAX_RECENT_TURNS = 12;
-export const MEMORY_CONTEXT_ITEM_LIMIT = 50;
 export const MEMORY_CONTEXT_CHAR_LIMIT = 12_000;
 const MEMORY_CONTEXT_PREFIX = "Approved local memories for this user. Use them when relevant; do not claim perfect memory.";
 
@@ -19,7 +18,6 @@ function buildMemoryContextMessages(memories: StoredMemory[]): ChatMessage[] {
   const memoryLines = memories
     .filter((memory) => memory.status === "active")
     .sort(compareMemoryContextPriority)
-    .slice(0, MEMORY_CONTEXT_ITEM_LIMIT)
     .map((memory) => `- ${memory.type}: ${memory.content}`)
     .filter(createMemoryContextBudgetFilter(MEMORY_CONTEXT_PREFIX.length));
 

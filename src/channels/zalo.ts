@@ -1,5 +1,5 @@
 import { loadSystemPrompt } from "../character/prompt-loader.js";
-import { MEMORY_CONTEXT_ITEM_LIMIT, buildChatMessages } from "../chat/message-builder.js";
+import { buildChatMessages } from "../chat/message-builder.js";
 import { buildMcpToolSystemPrompt, completeWithAgentTools, runAgentToolRequest, type AgentToolActivity } from "../chat/mcp-tool-use.js";
 import { fallbackLogDetail, formatProviderFallbackDiagnostics, formatProviderFallbackHealth } from "../llm/fallbacks.js";
 import { ProviderAuthError, ProviderFallbackError, ProviderNetworkError, ProviderRateLimitError, ProviderResponseError, ProviderTimeoutError } from "../llm/errors.js";
@@ -533,7 +533,7 @@ async function loadActiveMemories(paths: RuntimePaths): Promise<import("../memor
     if (store.getMemoryState().paused) {
       return [];
     }
-    return store.listActiveMemories(MEMORY_CONTEXT_ITEM_LIMIT);
+    return store.listActiveMemories();
   } finally {
     store.close();
   }
