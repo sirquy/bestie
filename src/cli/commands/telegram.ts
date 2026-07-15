@@ -139,7 +139,7 @@ export async function runTelegramCommand(optionsOrArgv: string[] | TelegramComma
   }
 
   if (argv.includes("setup")) {
-    await runTelegramSetup({ paths, questioner: options.questioner, writeLine, useColor: options.useColor ?? output.isTTY });
+    await runTelegramSetup({ paths, questioner: options.questioner, clientFactory: options.clientFactory, writeLine, useColor: options.useColor ?? output.isTTY });
     return;
   }
 
@@ -208,8 +208,7 @@ export async function runTelegramCommand(optionsOrArgv: string[] | TelegramComma
 }
 
 async function runTelegramWhoami(options: { client: TelegramClient; writeLine: (message: string) => void; useColor: boolean }): Promise<void> {
-  const updates = await options.client.getUpdates(undefined);
-  const sender = [...updates].reverse().map((update) => update.message?.from ?? update.callback_query?.from).find((from) => from && !from.is_bot);
+  const sender = await getRecentTelegramOwner(options.client);
   const render = withColorMode(options.useColor);
 
   options.writeLine(render(() => title("Telegram Owner Lookup")));
@@ -465,7 +464,7 @@ function createTelegramSpeechSynthesizer(config: AppConfig, paths: RuntimePaths,
   return async (text) => createSpeech(config, { text }, { paths, fetchImpl });
 }
 
-async function runTelegramSetup(options: { paths: RuntimePaths; questioner?: TelegramQuestioner; writeLine: (message: string) => void; useColor?: boolean }): Promise<void> {
+async function runTelegramSetup(options: { paths: RuntimePaths; questioner?: TelegramQuestioner; clientFactory?: (token: string) => TelegramClient; writeLine: (message: string) => void; useColor?: boolean }): Promise<void> {
   const questioner = options.questioner ?? createQuestioner();
   const ui = createTelegramSetupUi(options.writeLine, options.useColor ?? output.isTTY);
 
@@ -474,15 +473,19 @@ async function runTelegramSetup(options: { paths: RuntimePaths; questioner?: Tel
 
     ui.section("Account", "Connect one Telegram bot to this local runtime.");
     const config = await loadConfig(options.paths);
-    const ownerUserId = (await questioner.ask("[1/2] Owner Telegram id or username Numeric id, username, or @username allowed to chat with Bestie: ")).trim();
+    let ownerUserId = (await questioner.ask("[1/2] Owner Telegram id or username Numeric id, username, or @username allowed to chat with Bestie. Leave blank to detect from the latest bot message: ")).trim();
     const token = await questioner.askHidden("[2/2] Bot token Paste the Telegram bot token. It is hidden while typing: ");
-
-    if (!ownerUserId) {
-      throw new UserFacingError("Telegram owner id or username is required.", "TelegramMissingOwnerError");
-    }
 
     if (!token.trim()) {
       throw new UserFacingError("Telegram bot token is required.", "TelegramMissingTokenError");
+    }
+
+    if (!ownerUserId) {
+      ownerUserId = await detectTelegramOwnerFromSetup({ token: token.trim(), questioner, clientFactory: options.clientFactory, ui });
+    }
+
+    if (!ownerUserId) {
+      throw new UserFacingError("Telegram owner id or username is required. Send any message to the bot, rerun setup, or provide the owner manually.", "TelegramMissingOwnerError");
     }
 
     ui.success("Telegram owner and bot token collected.");
@@ -501,6 +504,29 @@ async function runTelegramSetup(options: { paths: RuntimePaths; questioner?: Tel
   } finally {
     questioner.close();
   }
+}
+
+async function detectTelegramOwnerFromSetup(options: { token: string; questioner: TelegramQuestioner; clientFactory?: (token: string) => TelegramClient; ui: TelegramSetupUi }): Promise<string> {
+  options.ui.section("Owner lookup", "Reading the latest message sent to this bot.");
+  const client = options.clientFactory?.(options.token) ?? new TelegramHttpClient(options.token);
+  const owner = await getRecentTelegramOwner(client);
+
+  if (!owner) {
+    options.ui.info("No recent Telegram user message found. Send any message to the bot, then rerun setup or `bestie channels telegram whoami`.");
+    return "";
+  }
+
+  const suggestedOwner = owner.username ? `@${owner.username}` : String(owner.id);
+  options.ui.info(`Found recent Telegram sender ${suggestedOwner} (id ${owner.id}).`);
+  const answer = (await options.questioner.ask(`Use ${suggestedOwner} as the Telegram owner? [Y/n]: `)).trim().toLowerCase();
+  return answer === "n" || answer === "no" ? "" : suggestedOwner;
+}
+
+async function getRecentTelegramOwner(client: TelegramClient): Promise<{ id: number; username?: string } | undefined> {
+  const updates = await client.getUpdates(undefined);
+  const sender = [...updates].reverse().map((update) => update.message?.from ?? update.callback_query?.from).find((from) => from && !from.is_bot);
+
+  return sender ? { id: sender.id, username: sender.username } : undefined;
 }
 
 function createTelegramSetupUi(writeLine: (message: string) => void, useColor: boolean): TelegramSetupUi {

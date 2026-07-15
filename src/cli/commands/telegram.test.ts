@@ -68,6 +68,108 @@ test("runTelegramCommand setup writes Telegram config and token env", async () =
   }
 });
 
+test("runTelegramCommand setup can detect owner username when owner prompt is blank", async () => {
+  const paths = await createTempPaths();
+  const output: string[] = [];
+  let askCount = 0;
+
+  try {
+    await mkdir(paths.appDir, { recursive: true });
+    await writeConfig(
+      {
+        version: 1,
+        agent: { name: "Miu", ownerName: "Boss", language: "vi", toneIntensity: 7 },
+        llm: { provider: "openai-compatible", baseUrl: "https://example.com/v1", model: "example-model", apiKeyEnv: "OPENAI_API_KEY" },
+      },
+      paths,
+    );
+
+    await runTelegramCommand({
+      argv: ["node", "bestie", "channels", "telegram", "setup"],
+      paths,
+      questioner: {
+        ask: async (question) => {
+          askCount += 1;
+          return /Use @boss_user/.test(question) ? "" : "";
+        },
+        askHidden: async () => "telegram-secret-token",
+        close: () => undefined,
+      },
+      clientFactory: () => ({
+        async getUpdates() {
+          return [{ update_id: 1, message: { message_id: 10, date: 1, chat: { id: 777, type: "private", first_name: "Boss" }, from: { id: 12345, is_bot: false, first_name: "Boss", username: "boss_user" }, text: "hi" } }];
+        },
+        async sendMessage() {},
+        async editMessageText() {},
+        async sendChatAction() {},
+        async setMyCommands() {},
+      }),
+      writeLine: (message) => output.push(message),
+      useColor: false,
+    });
+
+    const config = JSON.parse(await readFile(paths.configPath, "utf8")) as {
+      channels?: { telegram?: { ownerUserId: string } };
+    };
+
+    assert.equal(askCount, 2);
+    assert.equal(config.channels?.telegram?.ownerUserId, "@boss_user");
+    assert.ok(output.some((line) => line.includes("Owner lookup")));
+    assert.ok(output.some((line) => line.includes("Found recent Telegram sender @boss_user")));
+    assert.ok(output.every((line) => !line.includes("telegram-secret-token")));
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("runTelegramCommand setup explains blank owner when no recent Telegram sender exists", async () => {
+  const paths = await createTempPaths();
+  const output: string[] = [];
+
+  try {
+    await mkdir(paths.appDir, { recursive: true });
+    await writeConfig(
+      {
+        version: 1,
+        agent: { name: "Miu", ownerName: "Boss", language: "vi", toneIntensity: 7 },
+        llm: { provider: "openai-compatible", baseUrl: "https://example.com/v1", model: "example-model", apiKeyEnv: "OPENAI_API_KEY" },
+      },
+      paths,
+    );
+
+    await assert.rejects(
+      () => runTelegramCommand({
+        argv: ["node", "bestie", "channels", "telegram", "setup"],
+        paths,
+        questioner: {
+          ask: async () => "",
+          askHidden: async () => "telegram-secret-token",
+          close: () => undefined,
+        },
+        clientFactory: () => ({
+          async getUpdates() {
+            return [];
+          },
+          async sendMessage() {},
+          async editMessageText() {},
+          async sendChatAction() {},
+          async setMyCommands() {},
+        }),
+        writeLine: (message) => output.push(message),
+        useColor: false,
+      }),
+      /Send any message to the bot/,
+    );
+
+    assert.ok(output.some((line) => line.includes("No recent Telegram user message found")));
+    const config = JSON.parse(await readFile(paths.configPath, "utf8")) as { channels?: { telegram?: { enabled: boolean } } };
+    assert.equal(config.channels?.telegram, undefined);
+    await assert.rejects(() => access(paths.envPath), /ENOENT/);
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
 test("runTelegramCommand whoami prints recent Telegram sender id and username before owner is configured", async () => {
   const paths = await createTempPaths();
   const output: string[] = [];

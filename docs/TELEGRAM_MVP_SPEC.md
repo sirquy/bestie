@@ -133,6 +133,7 @@ Rules:
 - Do not require Telegram config for terminal-only users.
 - If `channels.telegram.enabled` is false or missing, `bestie channels telegram` should explain how to enable it.
 - `ownerUserId` must be required before the bot replies to messages. Despite the legacy key name, the value may be a numeric Telegram id, username, or `@username`; matching is case-insensitive for usernames.
+- During `bestie channels telegram setup`, leaving the owner prompt blank should detect the owner from the latest user message sent to the bot, ask for confirmation, and save the detected username when available. `bestie channels telegram whoami` exposes the same lookup as a standalone helper.
 
 ## Runtime Flow
 

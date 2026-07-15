@@ -94,6 +94,8 @@ bestie channels telegram voice download-model small --confirm --use
 
 `setup-local` configures local whisper.cpp transcription when the local binary, model, and `ffmpeg` are present. `setup-elevenlabs` configures ElevenLabs speech replies and stores only the API key environment value in `~/.bestie/.env`. `models` lists local `.bin` models and marks the configured one; `download-model` previews by default and downloads only with `--confirm`.
 
+During `bestie channels telegram setup`, leave the owner prompt blank to detect the owner from the latest message sent to the bot. You can also run `bestie channels telegram whoami` after messaging the bot to print the numeric id and username.
+
 Human-facing CLI commands print a built-in `Bestie Agent` ASCII banner. In an interactive terminal the banner animates briefly; piped output uses the static banner. Set `BESTIE_NO_BANNER=1` to hide it, or `BESTIE_BANNER=static` to keep it still. JSON modes such as `bestie doctor --json` suppress the banner automatically.
 
 Bestie uses colored badges, tables, and short progress indicators for human output. Set `NO_COLOR=1` to disable ANSI colors. Raw and machine-readable commands stay script-friendly: `bestie doctor --json`, `bestie channels doctor --json`, and `bestie memory export` suppress the banner, while log, git, transcript, and JSON payload output avoids decorative formatting.
