@@ -163,6 +163,11 @@ async function notifyConfiguredChannels(config: AppConfig, paths: RuntimePaths, 
       const chatId = Number(destination.userId);
       if (telegram?.enabled && token && Number.isSafeInteger(chatId)) {
         sends.push(new TelegramHttpClient(token).sendMessage(chatId, message).then(() => undefined));
+      } else if (telegram?.enabled && token) {
+        await appendLog(
+          { event: "cron_notification_skipped", detail: { channel: "telegram", reason: "numeric_chat_id_required", scheduleId: notification.job.id, destination: notification.job.channel } },
+          { paths },
+        );
       }
     } else {
       const zalo = config.channels?.zalo;
@@ -199,6 +204,12 @@ async function notifyConfiguredChannels(config: AppConfig, paths: RuntimePaths, 
   }
 
   await Promise.all(sends);
+  if (sends.length > 0) {
+    await appendLog(
+      { event: "cron_notification_success", detail: { scheduleId: notification.job.id, name: notification.job.name, channel: notification.job.channel ?? "configured" } },
+      { paths },
+    );
+  }
 }
 
 function formatCronJobNotification(config: AppConfig, notification: CronJobNotification): string {

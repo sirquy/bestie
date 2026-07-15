@@ -253,7 +253,8 @@ export async function handleZaloUpdate(update: ZaloUpdate, options: ZaloUpdateHa
     const systemPrompt = await loadSystemPrompt(options.paths);
     const memories = await loadActiveMemories(options.paths);
     const recentTurns = await loadRecentZaloTurns(options.paths, zaloConfig.ownerUserId);
-    const messages = buildChatMessages(buildMcpToolSystemPrompt(systemPrompt, options.config), recentTurns, text, memories);
+    const runtimeContext = buildZaloRuntimeToolContext(incoming, zaloConfig.ownerUserId);
+    const messages = buildChatMessages(buildMcpToolSystemPrompt(systemPrompt, options.config, runtimeContext), recentTurns, text, memories);
     const response = createChannelResponseController(adapter.outbound.createResponseAdapter(incoming.chatId));
     const assistantText = await completeWithAgentTools({
       config: options.config,
@@ -266,6 +267,7 @@ export async function handleZaloUpdate(update: ZaloUpdate, options: ZaloUpdateHa
       policy: ZALO_PERMISSION_POLICY,
       streamFinalResponse: true,
       onToolActivity: async (activity) => handleZaloToolActivity(response, activity, options.config.agent.name),
+      runtimeContext,
     });
     typing.stop();
     await response.replyFinal(assistantText);
@@ -548,6 +550,10 @@ function zaloChatFailureMessage(config: AppConfig, error: unknown): string {
   }
 
   return `${config.agent.name} hit an error while handling this Zalo message. Try again or ask a narrower question.`;
+}
+
+function buildZaloRuntimeToolContext(incoming: ChannelIncomingMessage<string, string | number | undefined, ZaloMessage>, ownerUserId: string): string {
+  return `Current channel: zalo. Current Zalo chat id: ${incoming.chatId}. Current owner/user id: ${ownerUserId}. For internal.add_cron_schedule reports back to this chat, set arguments.channel to "zalo:${incoming.chatId}".`;
 }
 
 function formatProviderChatFailure(error: unknown): string | undefined {

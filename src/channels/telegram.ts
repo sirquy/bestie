@@ -460,7 +460,7 @@ export async function handleTelegramUpdate(update: TelegramUpdate, options: Tele
     const systemPrompt = await loadSystemPrompt(options.paths);
     const memories = await loadActiveMemories(options.paths);
     const recentTurns = await loadRecentTelegramTurns(options.paths, ownerUserId);
-    const messages = buildChatMessages(buildMcpToolSystemPrompt(systemPrompt, options.config), recentTurns, userInput, memories);
+    const messages = buildChatMessages(buildMcpToolSystemPrompt(systemPrompt, options.config, buildTelegramRuntimeToolContext(decision.incoming)), recentTurns, userInput, memories);
     if (savedAttachment?.visionImage) {
       attachTelegramVisionImage(messages, userInput, savedAttachment.visionImage.dataUrl);
     }
@@ -491,6 +491,7 @@ export async function handleTelegramUpdate(update: TelegramUpdate, options: Tele
       policy: TELEGRAM_PERMISSION_POLICY,
       streamFinalResponse: true,
       onToolActivity: handleToolActivity,
+      runtimeContext: buildTelegramRuntimeToolContext(decision.incoming),
     });
     typing.stop();
     await response.replyFinal(assistantText);
@@ -617,6 +618,11 @@ function telegramChatFailureMessage(config: AppConfig, error: unknown): string {
   }
 
   return `${config.agent.name} hit an error while handling this message. Try again or ask a narrower question.`;
+}
+
+function buildTelegramRuntimeToolContext(incoming: ChannelIncomingMessage<number, number, NonNullable<TelegramUpdate["message"]>>): string {
+  const username = incoming.senderUsername ? `, username @${incoming.senderUsername}` : "";
+  return `Current channel: telegram. Current Telegram chat id: ${incoming.chatId}. Current owner/user id: ${incoming.senderId}${username}. For internal.add_cron_schedule reports back to this chat, set arguments.channel to "telegram:${incoming.chatId}".`;
 }
 
 function formatProviderChatFailure(error: unknown): string | undefined {

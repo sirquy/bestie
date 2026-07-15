@@ -42,6 +42,14 @@ test("buildMcpToolInstructions includes global tool selection guidance", () => {
   assert.match(instructions, /do not merely explain the edit/);
 });
 
+test("buildMcpToolInstructions includes runtime channel context", () => {
+  const instructions = buildMcpToolInstructions(createConfig(), 'Current channel: telegram. For cron reports, use "telegram:777".') ?? "";
+
+  assert.match(instructions, /Runtime context/);
+  assert.match(instructions, /telegram:777/);
+  assert.match(instructions, /internal\.add_cron_schedule/);
+});
+
 test("buildAgentToolResultMessage guides empty and failed internal tool results", () => {
   const empty = buildAgentToolResultMessage("internal.search_memories", { ok: true, status: "pass", message: "ok", result: { query: "concise", memories: [] } });
   const failed = buildAgentToolResultMessage("internal.search_files", { ok: false, status: "fail", message: "Permission denied." });

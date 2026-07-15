@@ -40,6 +40,7 @@ export interface CompleteWithAgentToolsOptions {
   streamFinalResponse?: boolean;
   onToken?: (token: string) => void;
   onToolActivity?: AgentToolActivityHandler;
+  runtimeContext?: string;
 }
 
 export interface McpToolRequest {
@@ -226,14 +227,15 @@ function isPlainFinalResponse(text: string): boolean {
   return !text.trim().startsWith("{");
 }
 
-export function buildMcpToolInstructions(config: AppConfig): string | undefined {
+export function buildMcpToolInstructions(config: AppConfig, runtimeContext?: string): string | undefined {
   const readTools = (config.mcp?.servers ?? [])
     .filter((server) => server.enabled)
     .flatMap((server) => (server.tools ?? []).filter((tool) => tool.category === "read").map((tool) => `${server.name}/${tool.name}`));
 
+  const contextSection = runtimeContext?.trim() ? `\nRuntime context:\n${runtimeContext.trim()}` : "";
   const mcpSection = readTools.length === 0 ? "" : `\nAvailable read-only MCP tools:\n${readTools.map((tool) => `- ${tool}`).join("\n")}`;
 
-  return `Available internal tools:\n- internal.read_file {"path":"relative/or/allowed/absolute/path"}\n- internal.read_many_files {"paths":["README.md","docs/ARCHITECTURE.md"],"maxBytesPerFile":24576,"maxTotalBytes":163840}\n- internal.read_markdown_bundle {"path":".","limit":40,"maxBytesPerFile":24576,"maxTotalBytes":163840}\n- internal.list_files {"path":"optional/path","limit":50}\n- internal.search_files {"query":"*.log","path":"optional/path","limit":20}\n- internal.read_logs {"lines":40}\n- internal.read_url {"url":"https://example.com/mcp-docs","maxBytes":131072,"timeoutMs":10000}\n- internal.git_status {"path":"optional/repo/path"}\n- internal.git_diff {"path":"optional/repo/path","staged":false,"maxBytes":98304}\n- internal.git_log {"path":"optional/repo/path","limit":10}\n- internal.mcp_list_servers {}\n- internal.mcp_list_tools {"server":"server-name","connect":true}\n- internal.write_file {"path":"relative/path","content":"text","overwrite":false}\n- internal.edit_file {"path":"relative/path","oldText":"exact text","newText":"replacement","replaceAll":false}\n- internal.apply_patch {"patch":"git apply compatible patch"}\n- internal.exec {"command":"npm","args":["test"],"cwd":".","timeoutMs":30000}\n- internal.list_processes {"limit":20}\n- internal.list_memories {"limit":50}\n- internal.search_memories {"query":"memory search text","limit":50}\n- internal.remember_memory {"type":"preference|communication_preference|user_fact|project_context|durable_decision|sensitive_personal","content":"durable memory to save"}
+  return `Available internal tools:${contextSection}\n- internal.read_file {"path":"relative/or/allowed/absolute/path"}\n- internal.read_many_files {"paths":["README.md","docs/ARCHITECTURE.md"],"maxBytesPerFile":24576,"maxTotalBytes":163840}\n- internal.read_markdown_bundle {"path":".","limit":40,"maxBytesPerFile":24576,"maxTotalBytes":163840}\n- internal.list_files {"path":"optional/path","limit":50}\n- internal.search_files {"query":"*.log","path":"optional/path","limit":20}\n- internal.read_logs {"lines":40}\n- internal.read_url {"url":"https://example.com/mcp-docs","maxBytes":131072,"timeoutMs":10000}\n- internal.git_status {"path":"optional/repo/path"}\n- internal.git_diff {"path":"optional/repo/path","staged":false,"maxBytes":98304}\n- internal.git_log {"path":"optional/repo/path","limit":10}\n- internal.mcp_list_servers {}\n- internal.mcp_list_tools {"server":"server-name","connect":true}\n- internal.write_file {"path":"relative/path","content":"text","overwrite":false}\n- internal.edit_file {"path":"relative/path","oldText":"exact text","newText":"replacement","replaceAll":false}\n- internal.apply_patch {"patch":"git apply compatible patch"}\n- internal.exec {"command":"npm","args":["test"],"cwd":".","timeoutMs":30000}\n- internal.list_processes {"limit":20}\n- internal.list_memories {"limit":50}\n- internal.search_memories {"query":"memory search text","limit":50}\n- internal.remember_memory {"type":"preference|communication_preference|user_fact|project_context|durable_decision|sensitive_personal","content":"durable memory to save"}
 - internal.add_cron_schedule {"name":"job name","schedule_type":"interval|cron_expr|once","schedule_value":"30m | 0 8 * * * | 2026-12-25T08:00:00Z","prompt":"what to do when triggered","channel":"optional telegram:<userId>|zalo:<userId> destination for completion report"}
 - internal.list_cron_schedules {}
 - internal.remove_cron_schedule {"schedule_id":1}
@@ -244,8 +246,8 @@ export function buildAgentToolDecisionMessage(): string {
   return `Tool decision required. Reply with exactly one JSON object and no extra text:\n- {"answer":"final answer text"} if you can answer without tools.\n- A supported internal or MCP tool request if local files, logs, memories, repo contents, HTTP(S) links, configured MCP data, MCP server discovery, validation, or requested file/config changes are needed.\nNever reply with a plan to call a tool later. If the user asked for a file/config change and a supported tool can do it, call the tool instead of describing the edit.`;
 }
 
-export function buildMcpToolSystemPrompt(systemPrompt: string, config: AppConfig): string {
-  const instructions = buildMcpToolInstructions(config);
+export function buildMcpToolSystemPrompt(systemPrompt: string, config: AppConfig, runtimeContext?: string): string {
+  const instructions = buildMcpToolInstructions(config, runtimeContext);
   return instructions ? `${systemPrompt.trimEnd()}\n\n${instructions}` : systemPrompt;
 }
 
