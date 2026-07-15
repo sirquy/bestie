@@ -1,6 +1,4 @@
-import { readFileSync } from "node:fs";
-import { stdin as input, stdout as output } from "node:process";
-import { createInterface } from "node:readline/promises";
+import { stdout as output } from "node:process";
 
 import { runMemoryReasoningPass } from "../memory/reasoning.js";
 import { SqliteMemoryStore } from "../memory/sqlite-store.js";
@@ -12,6 +10,7 @@ import { sendChatCompletionWithFallbacks } from "../llm/openai-compatible.js";
 import { fallbackLogDetail, formatProviderFallbackDiagnostics, formatProviderFallbackHealth } from "../llm/fallbacks.js";
 import { loadRequiredSecret } from "../runtime/env.js";
 import type { ChatCompletionOptions, ChatMessage } from "../llm/types.js";
+import { createCliQuestioner } from "../cli/prompt.js";
 import { badge, bold, color, dim, rule } from "../cli/ui.js";
 import { MEMORY_CONTEXT_ITEM_LIMIT, appendConversationTurn, buildChatMessages } from "./message-builder.js";
 import { buildMcpToolSystemPrompt, completeWithAgentTools, runAgentToolRequest, type AgentToolActivity, type RunAgentToolRequestOptions } from "./mcp-tool-use.js";
@@ -343,27 +342,7 @@ async function handleSlashCommand(userInput: string, paths: RuntimePaths, writeL
 }
 
 function createQuestioner(): Questioner {
-  if (input.isTTY) {
-    const rl = createInterface({ input, output });
-    return { ask: (question: string) => rl.question(question), close: () => rl.close() };
-  }
-
-  const lines = readFileSync(0, "utf8").split(/\r?\n/);
-  let index = 0;
-
-  return {
-    ask: async (question) => {
-      const line = lines[index++];
-
-      if (line === undefined || (line === "" && index > lines.length)) {
-        return undefined;
-      }
-
-      output.write(`${question}${line}\n`);
-      return line;
-    },
-    close: () => undefined,
-  };
+  return createCliQuestioner({ echoAnswer: true, returnUndefinedOnInputEnd: true });
 }
 
 async function loadActiveMemories(paths: RuntimePaths): Promise<import("../memory/sqlite-store.js").StoredMemory[]> {

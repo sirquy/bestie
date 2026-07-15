@@ -12,15 +12,32 @@ export interface CliQuestioner {
   close: () => void;
 }
 
-export function createCliQuestioner(): CliQuestioner {
+export interface EofAwareCliQuestioner extends Omit<CliQuestioner, "ask" | "askHidden"> {
+  ask: (question: string) => Promise<string | undefined>;
+  askHidden: (question: string) => Promise<string | undefined>;
+}
+
+interface CliQuestionerOptions {
+  echoAnswer?: boolean;
+  returnUndefinedOnInputEnd?: boolean;
+}
+
+export function createCliQuestioner(options: CliQuestionerOptions & { returnUndefinedOnInputEnd: true }): EofAwareCliQuestioner;
+export function createCliQuestioner(options?: CliQuestionerOptions): CliQuestioner;
+export function createCliQuestioner(options: CliQuestionerOptions = {}): CliQuestioner | EofAwareCliQuestioner {
   if (!inputStream.isTTY) {
     const lines = readFileSync(0, "utf8").split(/\r?\n/);
     let index = 0;
 
-    const readLine = async (question: string): Promise<string> => {
-      outputStream.write(question);
-      const answer = lines[index++] ?? "";
-      outputStream.write("\n");
+    const readLine = async (question: string): Promise<string | undefined> => {
+      const answer = lines[index++];
+      if (answer === undefined || (answer === "" && options.returnUndefinedOnInputEnd && index > lines.length)) {
+        return undefined;
+      }
+      outputStream.write(options.echoAnswer ? `${question}${answer}\n` : question);
+      if (!options.echoAnswer) {
+        outputStream.write("\n");
+      }
       return answer;
     };
 
@@ -28,7 +45,7 @@ export function createCliQuestioner(): CliQuestioner {
       ask: readLine,
       askHidden: readLine,
       confirm: async (question, defaultValue = false) => {
-        const answer = (await readLine(question)).trim().toLowerCase();
+        const answer = (await readLine(question))?.trim().toLowerCase() ?? "";
         if (!answer) {
           return defaultValue;
         }
