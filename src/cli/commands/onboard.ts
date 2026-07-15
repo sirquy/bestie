@@ -203,13 +203,13 @@ async function askToneIntensity(ask: AskLine): Promise<number> {
 
 async function askMemoryWritePolicy(ask: AskLine): Promise<MemoryWritePolicy> {
   while (true) {
-    const answer = (await ask(`${promptTheme.step(6, 10, "Memory", "Memory write policy: ask, allow, or deny?")}${promptTheme.defaultValue("ask")} `)).trim().toLowerCase();
+    const answer = (await ask(`${promptTheme.step(6, 10, "Memory", "Memory write policy: ask, allow, or deny?")}${promptTheme.defaultValue("allow")} `)).trim().toLowerCase();
 
-    if (!answer || answer === "ask") {
-      return "ask";
+    if (!answer || answer === "allow") {
+      return "allow";
     }
 
-    if (answer === "allow" || answer === "deny") {
+    if (answer === "ask" || answer === "deny") {
       return answer;
     }
 
