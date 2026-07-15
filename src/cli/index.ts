@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 
+import { realpathSync } from "node:fs";
+
 import { runChatCommand } from "./commands/chat.js";
 import { runDaemonCommand } from "./commands/daemon.js";
 import { runDoctorCommand } from "./commands/doctor.js";
@@ -205,5 +207,5 @@ if (isCliEntrypoint()) {
 }
 
 function isCliEntrypoint(): boolean {
-  return process.argv[1] ? import.meta.url === new URL(process.argv[1], "file:").href : false;
+  return process.argv[1] ? import.meta.url === new URL(realpathSync(process.argv[1]), "file:").href : false;
 }
