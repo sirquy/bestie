@@ -73,6 +73,7 @@ test("runTelegramCommand setup can detect owner username when owner prompt is bl
   const paths = await createTempPaths();
   const output: string[] = [];
   let askCount = 0;
+  let confirmQuestion = "";
 
   try {
     await mkdir(paths.appDir, { recursive: true });
@@ -91,9 +92,14 @@ test("runTelegramCommand setup can detect owner username when owner prompt is bl
       questioner: {
         ask: async (question) => {
           askCount += 1;
-          return /Use @boss_user/.test(question) ? "" : "";
+          return "";
         },
         askHidden: async () => "telegram-secret-token",
+        confirm: async (question, defaultValue) => {
+          confirmQuestion = question;
+          assert.equal(defaultValue, true);
+          return true;
+        },
         close: () => undefined,
       },
       clientFactory: () => ({
@@ -113,7 +119,8 @@ test("runTelegramCommand setup can detect owner username when owner prompt is bl
       channels?: { telegram?: { ownerUserId: string } };
     };
 
-    assert.equal(askCount, 2);
+  assert.equal(askCount, 1);
+  assert.equal(confirmQuestion, "Use @boss_user as the Telegram owner?");
     assert.equal(config.channels?.telegram?.ownerUserId, "@boss_user");
     assert.ok(output.some((line) => line.includes("Owner lookup")));
     assert.ok(output.some((line) => line.includes("Found recent Telegram sender @boss_user")));

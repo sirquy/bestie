@@ -1,8 +1,5 @@
-import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
-import { createInterface } from "node:readline/promises";
-import { stdin as input, stdout as output } from "node:process";
+import { stdout as output } from "node:process";
 
 import { generateCharacterConfig, generateSystemPrompt } from "../../character/prompt-generator.js";
 import { writeCharacterFiles } from "../../character/writer.js";
@@ -11,6 +8,7 @@ import { DEFAULT_LLM_MAX_RETRIES, DEFAULT_LLM_RETRY_DELAY_MS, DEFAULT_LLM_TIMEOU
 import { writeEnvFile } from "../../runtime/env.js";
 import { appendLog } from "../../runtime/logger.js";
 import { getRuntimePaths, type RuntimePaths } from "../../runtime/paths.js";
+import { createCliQuestioner } from "../prompt.js";
 import { badge, bold, color, dim, title, withColorMode } from "../ui.js";
 
 const DEFAULT_API_KEY_ENV = "OPENAI_API_KEY";
@@ -128,38 +126,7 @@ export async function runOnboardCommand(optionsOrArgv: string[] | OnboardCommand
 }
 
 async function createQuestioner(): Promise<Questioner> {
-  if (input.isTTY) {
-    const rl = createInterface({ input, output });
-    return {
-      ask: (question) => rl.question(question),
-      askHidden: async (question) => {
-        output.write(question);
-        setTerminalEcho(false);
-        try {
-          return await rl.question("");
-        } finally {
-          setTerminalEcho(true);
-          output.write("\n");
-        }
-      },
-      close: () => rl.close(),
-    };
-  }
-
-  const lines = readFileSync(0, "utf8").split(/\r?\n/);
-  let index = 0;
-
-  return {
-    ask: async (question) => {
-      output.write(question);
-      return lines[index++] ?? "";
-    },
-    askHidden: async (question) => {
-      output.write(question);
-      return lines[index++] ?? "";
-    },
-    close: () => undefined,
-  };
+  return createCliQuestioner();
 }
 
 async function collectAnswers(questioner: Pick<Questioner, "ask" | "askHidden">): Promise<OnboardingAnswers> {
@@ -340,10 +307,3 @@ async function runProviderTest(config: AppConfig, apiKey: string, paths: Runtime
   reporter.failure("Provider test failed.", result.message ?? "Unknown provider test error.");
 }
 
-function setTerminalEcho(enabled: boolean): void {
-  try {
-    execFileSync("stty", [enabled ? "echo" : "-echo"], { stdio: ["inherit", "ignore", "ignore"] });
-  } catch {
-    // If stty is unavailable, continue rather than blocking onboarding.
-  }
-}

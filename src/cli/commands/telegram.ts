@@ -1,13 +1,11 @@
-import { execFileSync } from "node:child_process";
-import { constants, readFileSync } from "node:fs";
+import { constants } from "node:fs";
 import { createHash } from "node:crypto";
 import { basename, delimiter, dirname, isAbsolute, resolve } from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { access, appendFile, chmod, mkdir, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import { createWriteStream } from "node:fs";
-import { createInterface } from "node:readline/promises";
-import { stdin as input, stdout as output } from "node:process";
+import { stdout as output } from "node:process";
 
 import { TelegramHttpClient, runTelegramPollingLoop, type TelegramAttachmentParseTelemetry, type TelegramAttachmentTranscriber, type TelegramChatCompletionRunner, type TelegramClient, type TelegramSpeechSynthesizer, type TelegramSpeechVoiceConverter, type TelegramUpdate } from "../../channels/telegram.js";
 import { createAudioTranscription } from "../../llm/openai-transcription.js";
@@ -17,6 +15,7 @@ import { loadConfig, type AppConfig, writeConfig } from "../../runtime/config.js
 import { loadEnvFile, writeEnvFile } from "../../runtime/env.js";
 import { UserFacingError } from "../../runtime/errors.js";
 import { getRuntimePaths, type RuntimePaths } from "../../runtime/paths.js";
+import { createCliQuestioner } from "../prompt.js";
 import { badge, bold, color, dim, keyValue, table, title, withColorMode } from "../ui.js";
 
 const DEFAULT_TELEGRAM_TOKEN_ENV = "BESTIE_TELEGRAM_BOT_TOKEN";
@@ -85,6 +84,7 @@ type AskLine = (question: string) => Promise<string>;
 interface TelegramQuestioner {
   ask: AskLine;
   askHidden: AskLine;
+  confirm?: (question: string, defaultValue?: boolean) => Promise<boolean>;
   close: () => void;
 }
 
@@ -519,8 +519,10 @@ async function detectTelegramOwnerFromSetup(options: { token: string; questioner
 
   const suggestedOwner = owner.username ? `@${owner.username}` : String(owner.id);
   options.ui.info(`Found recent Telegram sender ${suggestedOwner} (id ${owner.id}).`);
-  const answer = (await options.questioner.ask(`Use ${suggestedOwner} as the Telegram owner? [Y/n]: `)).trim().toLowerCase();
-  return answer === "n" || answer === "no" ? "" : suggestedOwner;
+  const shouldUseOwner = options.questioner.confirm
+    ? await options.questioner.confirm(`Use ${suggestedOwner} as the Telegram owner?`, true)
+    : !["n", "no"].includes((await options.questioner.ask(`Use ${suggestedOwner} as the Telegram owner? [Y/n]: `)).trim().toLowerCase());
+  return shouldUseOwner ? suggestedOwner : "";
 }
 
 async function getRecentTelegramOwner(client: TelegramClient): Promise<{ id: number; username?: string } | undefined> {
@@ -904,47 +906,5 @@ function formatBytes(value: number): string {
 }
 
 function createQuestioner(): TelegramQuestioner {
-  if (!input.isTTY) {
-    const lines = readFileSync(0, "utf8").split(/\r?\n/);
-    let index = 0;
-
-    return {
-      ask: async (question) => {
-        output.write(question);
-        return lines[index++] ?? "";
-      },
-      askHidden: async (question) => {
-        output.write(question);
-        const answer = lines[index++] ?? "";
-        output.write("\n");
-        return answer;
-      },
-      close: () => undefined,
-    };
-  }
-
-  const rl = createInterface({ input, output });
-
-  return {
-    ask: (question) => rl.question(question),
-    askHidden: async (question) => {
-      output.write(question);
-      setTerminalEcho(false);
-      try {
-        return await rl.question("");
-      } finally {
-        setTerminalEcho(true);
-        output.write("\n");
-      }
-    },
-    close: () => rl.close(),
-  };
-}
-
-function setTerminalEcho(enabled: boolean): void {
-  try {
-    execFileSync("stty", [enabled ? "echo" : "-echo"], { stdio: ["inherit", "ignore", "ignore"] });
-  } catch {
-    // If stty is unavailable, continue rather than blocking Telegram setup.
-  }
+  return createCliQuestioner();
 }

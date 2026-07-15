@@ -31,6 +31,7 @@ export interface TerminalChatOptions {
 
 export interface Questioner {
   ask: (question: string) => Promise<string | undefined>;
+  confirm?: (question: string, defaultValue?: boolean) => Promise<boolean>;
   close: () => void;
 }
 
@@ -45,7 +46,11 @@ export async function runTerminalChat(options: TerminalChatOptions): Promise<voi
   const mcpToolRunner = options.mcpToolRunner ?? runAgentToolRequest;
   const approver = await createCliPermissionApprover({
     writeLine,
-    questioner: { ask: async (question) => (await questioner.ask(question)) ?? "", close: () => undefined },
+    questioner: {
+      ask: async (question) => (await questioner.ask(question)) ?? "",
+      confirm: questioner.confirm,
+      close: () => undefined,
+    },
   });
   let apiKey: string | undefined;
   let recentTurns: ChatMessage[] = [];

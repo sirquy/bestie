@@ -64,6 +64,7 @@
   "dependencies": {
     "@elevenlabs/elevenlabs-js": "^2.57.0",
     "@grammyjs/types": "^3.28.0",
+    "@inquirer/prompts": "^8.5.2",
     "better-sqlite3": "^12.11.1",
     "grammy": "^1.44.0",
     "mammoth": "^1.12.0",

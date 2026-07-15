@@ -525,8 +525,12 @@ test("runTerminalChat passes terminal permission approval to tool requests", asy
       questioner: {
         ask: async (prompt) => {
           prompts.push(prompt);
-          if (prompt.includes("Allow this action once")) return "yes";
           return output.some((line) => line === "[BOT] Bea > Done") ? "/exit" : "write a file";
+        },
+        confirm: async (prompt: string, defaultValue?: boolean) => {
+          prompts.push(prompt);
+          assert.equal(defaultValue, false);
+          return true;
         },
         close: () => undefined,
       },
@@ -546,7 +550,7 @@ test("runTerminalChat passes terminal permission approval to tool requests", asy
       writeLine: (message) => output.push(message),
     });
 
-    assert.ok(prompts.includes("Allow this action once? Type yes to continue: "));
+    assert.ok(prompts.includes("Allow this action once?"));
     assert.ok(output.includes("Permission required"));
     assert.ok(output.includes("[BOT] Bea > Done"));
   } finally {
