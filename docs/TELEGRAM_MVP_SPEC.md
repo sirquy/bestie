@@ -13,6 +13,7 @@ Build a local polling bot that runs from the CLI:
 ```bash
 bestie channels telegram
 bestie channels telegram setup
+bestie channels telegram whoami
 bestie channels telegram voice setup-local
 bestie channels telegram voice models
 bestie channels telegram voice download-model small --confirm --use

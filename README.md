@@ -74,6 +74,7 @@ Useful runtime commands:
 
 ```bash
 bestie channels telegram
+bestie channels telegram whoami
 bestie channels zalo
 bestie daemon restart --channel all
 bestie skills

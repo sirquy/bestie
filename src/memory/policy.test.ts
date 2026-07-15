@@ -32,8 +32,8 @@ test("evaluateMemoryCandidate allows sensitive details with explicit consent", (
 test("evaluateMemoryCandidate never stores secrets or token-like content", () => {
   assert.equal(evaluateMemoryCandidate({ type: "secret", content: "password: hunter2" }).decision, "never");
   assert.equal(evaluateMemoryCandidate({ type: "project_context", content: "api key = sk-testsecret123456" }).decision, "never");
-  assert.equal(evaluateMemoryCandidate({ type: "project_context", content: "quota key qc_3abfb56d945c3467787f6c0b4646681337e9317224370654" }).decision, "never");
-  assert.equal(evaluateMemoryCandidate({ type: "project_context", content: "bot token 8933391784:AAHnD58utPOBr8RNTJHVDO6X-1LctjKsVBQ" }).decision, "never");
+  assert.equal(evaluateMemoryCandidate({ type: "project_context", content: "quota key qc_3abfb56d945c3467787f6c0b464668133xxxxxx" }).decision, "never");
+  assert.equal(evaluateMemoryCandidate({ type: "project_context", content: "bot token 8933391784:AAHnD58utPOBr8RNTJHVDO6X-xxxxxx" }).decision, "never");
 });
 
 test("evaluateMemoryCandidate ignores one-off venting", () => {

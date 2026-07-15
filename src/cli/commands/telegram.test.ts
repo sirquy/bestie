@@ -68,6 +68,92 @@ test("runTelegramCommand setup writes Telegram config and token env", async () =
   }
 });
 
+test("runTelegramCommand whoami prints recent Telegram sender id and username before owner is configured", async () => {
+  const paths = await createTempPaths();
+  const output: string[] = [];
+
+  try {
+    await mkdir(paths.appDir, { recursive: true });
+    await writeConfig(
+      {
+        version: 1,
+        agent: { name: "Miu", ownerName: "Boss", language: "vi", toneIntensity: 7 },
+        llm: { provider: "openai-compatible", baseUrl: "https://example.com/v1", model: "example-model", apiKeyEnv: "OPENAI_API_KEY" },
+        channels: { telegram: { enabled: true, botTokenEnv: "BESTIE_TELEGRAM_BOT_TOKEN", ownerUserId: "" } },
+      },
+      paths,
+    );
+    await writeEnvFile({ BESTIE_TELEGRAM_BOT_TOKEN: "telegram-secret-token" }, paths);
+
+    await runTelegramCommand({
+      argv: ["node", "bestie", "channels", "telegram", "whoami"],
+      paths,
+      clientFactory: () => ({
+        async getUpdates() {
+          return [{ update_id: 1, message: { message_id: 10, date: 1, chat: { id: 777, type: "private", first_name: "Boss" }, from: { id: 12345, is_bot: false, first_name: "Boss", username: "boss_user" }, text: "hi" } }];
+        },
+        async sendMessage() {},
+        async editMessageText() {},
+        async sendChatAction() {},
+        async setMyCommands() {},
+      }),
+      writeLine: (message) => output.push(message),
+      useColor: false,
+    });
+
+    const text = output.join("\n");
+    assert.match(text, /Telegram Owner Lookup/);
+    assert.match(text, /ID\s+12345/);
+    assert.match(text, /Username\s+@boss_user/);
+    assert.match(text, /channels\.telegram\.ownerUserId/);
+    assert.ok(output.every((line) => !line.includes("telegram-secret-token")));
+    assert.ok(output.every((line) => !/\x1b\[[0-9;]*m/.test(line)));
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("runTelegramCommand whoami explains when no recent Telegram sender exists", async () => {
+  const paths = await createTempPaths();
+  const output: string[] = [];
+
+  try {
+    await mkdir(paths.appDir, { recursive: true });
+    await writeConfig(
+      {
+        version: 1,
+        agent: { name: "Miu", ownerName: "Boss", language: "vi", toneIntensity: 7 },
+        llm: { provider: "openai-compatible", baseUrl: "https://example.com/v1", model: "example-model", apiKeyEnv: "OPENAI_API_KEY" },
+        channels: { telegram: { enabled: true, botTokenEnv: "BESTIE_TELEGRAM_BOT_TOKEN", ownerUserId: "" } },
+      },
+      paths,
+    );
+    await writeEnvFile({ BESTIE_TELEGRAM_BOT_TOKEN: "telegram-secret-token" }, paths);
+
+    await runTelegramCommand({
+      argv: ["node", "bestie", "channels", "telegram", "whoami"],
+      paths,
+      clientFactory: () => ({
+        async getUpdates() {
+          return [];
+        },
+        async sendMessage() {},
+        async editMessageText() {},
+        async sendChatAction() {},
+        async setMyCommands() {},
+      }),
+      writeLine: (message) => output.push(message),
+      useColor: false,
+    });
+
+    const text = output.join("\n");
+    assert.match(text, /No recent owner message found/);
+    assert.match(text, /Send any message to your Telegram bot/);
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
 test("runTelegramCommand voice setup-local writes wrapper and local transcription config", async () => {
   const paths = await createTempPaths();
   const output: string[] = [];

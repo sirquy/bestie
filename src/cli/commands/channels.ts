@@ -50,7 +50,8 @@ Channel commands:
   doctor    Run channel-focused diagnostics
 
 Telegram options:
-  setup   Configure Telegram owner id and local bot token
+  setup   Configure Telegram owner id/username and local bot token
+  whoami  Show the id and username from the most recent Telegram bot message
   voice setup-local  Configure local voice transcription from existing whisper.cpp files
   voice models  List local whisper.cpp models and the configured model
   voice download-model <name> --confirm [--use] [--force]

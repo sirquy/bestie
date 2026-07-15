@@ -158,6 +158,12 @@ export async function runTelegramCommand(optionsOrArgv: string[] | TelegramComma
     throw new UserFacingError(`Telegram bot token env ${telegram.botTokenEnv} is missing. Add it to .bestie/.env.`, "TelegramMissingTokenError");
   }
 
+  if (argv[argStart] === "whoami") {
+    const client = options.clientFactory?.(token ?? "") ?? new TelegramHttpClient(token ?? "");
+    await runTelegramWhoami({ client, writeLine, useColor: options.useColor ?? output.isTTY });
+    return;
+  }
+
   if (!telegram.ownerUserId.trim()) {
     throw new UserFacingError("Telegram owner id or username is missing. Set channels.telegram.ownerUserId in .bestie/config.json.", "TelegramMissingOwnerError");
   }
@@ -199,6 +205,26 @@ export async function runTelegramCommand(optionsOrArgv: string[] | TelegramComma
     process.off("SIGINT", stop);
     process.off("SIGTERM", stop);
   }
+}
+
+async function runTelegramWhoami(options: { client: TelegramClient; writeLine: (message: string) => void; useColor: boolean }): Promise<void> {
+  const updates = await options.client.getUpdates(undefined);
+  const sender = [...updates].reverse().map((update) => update.message?.from ?? update.callback_query?.from).find((from) => from && !from.is_bot);
+  const render = withColorMode(options.useColor);
+
+  options.writeLine(render(() => title("Telegram Owner Lookup")));
+
+  if (!sender) {
+    options.writeLine(render(() => `${badge("INFO", "yellow")} No recent owner message found.`));
+    options.writeLine(render(() => `${dim("Next")} Send any message to your Telegram bot, then run this command again.`));
+    return;
+  }
+
+  options.writeLine(render(() => keyValue("ID", String(sender.id))));
+  if (sender.username) {
+    options.writeLine(render(() => keyValue("Username", `@${sender.username}`)));
+  }
+  options.writeLine(render(() => keyValue("Config", sender.username ? `channels.telegram.ownerUserId = "@${sender.username}" or "${sender.id}"` : `channels.telegram.ownerUserId = "${sender.id}"`)));
 }
 
 function getTelegramArgStart(argv: string[]): number {
