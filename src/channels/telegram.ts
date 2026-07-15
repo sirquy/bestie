@@ -27,6 +27,7 @@ import type { RuntimePaths } from "../runtime/paths.js";
 import { runDoctor, type DoctorReport } from "../runtime/doctor.js";
 import { validateDoctorReportContract } from "../runtime/doctor-report-contract.js";
 import { executeApprovedAction } from "../safety/approval-executor.js";
+import { handleCronChannelCommand } from "../cron/channel-commands.js";
 import type { ActionPermissionRequest, ActionPermissionResult, PermissionApprover, PermissionPolicy } from "../safety/permission-policy.js";
 import { buildChannelAttachmentPreview, type AttachmentContentParser } from "./attachment-preview.js";
 import { ProviderAuthError, ProviderFallbackError, ProviderNetworkError, ProviderRateLimitError, ProviderResponseError, ProviderTimeoutError } from "../llm/errors.js";
@@ -1309,6 +1310,10 @@ function summarizeTelegramAttachmentParse(attachment: SavedTelegramAttachment): 
 }
 
 async function handleTelegramSlashCommand(text: string, chatId: number, options: TelegramUpdateHandlerOptions): Promise<boolean> {
+  if (await handleCronChannelCommand({ text, paths: options.paths, channel: "telegram", userId: String(chatId), sendMessage: (message) => options.client.sendMessage(chatId, message).then(() => undefined) })) {
+    return true;
+  }
+
   if (text === "/approvals") {
     const store = await SqliteMemoryStore.open(options.paths);
 

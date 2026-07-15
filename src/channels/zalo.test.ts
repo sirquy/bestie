@@ -5,6 +5,7 @@ import { resolve } from "node:path";
 import test from "node:test";
 
 import { ProviderResponseError } from "../llm/errors.js";
+import { SqliteMemoryStore } from "../memory/sqlite-store.js";
 import type { AppConfig } from "../runtime/config.js";
 import { writeEnvFile } from "../runtime/env.js";
 import type { RuntimePaths } from "../runtime/paths.js";
@@ -132,6 +133,28 @@ test("handleZaloUpdate replies to owner help command", async () => {
 
   assert.equal(result, "replied");
   assert.match(sent[0]?.text ?? "", /\/memory pending/);
+});
+
+test("handleZaloUpdate manages cron schedules for the current chat", async () => {
+  const paths = await createTempPaths();
+  const sent: Array<{ chatId: string; text: string }> = [];
+
+  try {
+    await writeRuntimeFiles(paths);
+    const store = await SqliteMemoryStore.open(paths);
+    const own = store.addCronSchedule({ name: "Zalo mine", scheduleType: "interval", scheduleValue: "1h", prompt: "A", channel: "zalo:chat-1", nextRunAt: new Date(Date.now() + 60_000).toISOString() });
+    store.addCronSchedule({ name: "Zalo other", scheduleType: "interval", scheduleValue: "1h", prompt: "B", channel: "zalo:chat-2", nextRunAt: new Date(Date.now() + 60_000).toISOString() });
+    store.close();
+
+    await handleZaloUpdate({ update_id: 1, message: { from: { id: "owner-1" }, chat: { id: "chat-1" }, text: "/cron list" } }, { config, paths, client: createRecordingClient(sent) });
+    await handleZaloUpdate({ update_id: 2, message: { from: { id: "owner-1" }, chat: { id: "chat-1" }, text: `/cron delete ${own.id}` } }, { config, paths, client: createRecordingClient(sent) });
+
+    assert.match(sent[0].text, /#\d+ Zalo mine/);
+    assert.doesNotMatch(sent[0].text, /Zalo other/);
+    assert.match(sent[1].text, new RegExp(`Cron schedule ${own.id} deleted\\.`));
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
 });
 
 test("handleZaloUpdate replies with sanitized provider error details", async () => {

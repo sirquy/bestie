@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import test from "node:test";
 
 import { CronExecutor } from "./executor.js";
 import { SqliteMemoryStore } from "../memory/sqlite-store.js";
+import { writeEnvFile } from "../runtime/env.js";
 import { getRuntimePaths, type RuntimePaths } from "../runtime/paths.js";
 
 async function createTempPaths(): Promise<RuntimePaths> {
@@ -26,6 +27,14 @@ const TEST_CONFIG = {
   version: 1 as const,
   agent: { name: "Test", ownerName: "Boss", language: "vi" as const, toneIntensity: 5 },
   llm: { provider: "openai-compatible", baseUrl: "http://localhost:1/v1", model: "test", apiKeyEnv: "OPENAI_API_KEY" },
+};
+
+const CHANNEL_CONFIG = {
+  ...TEST_CONFIG,
+  channels: {
+    telegram: { enabled: true, botTokenEnv: "BESTIE_TELEGRAM_BOT_TOKEN", ownerUserId: "111" },
+    zalo: { enabled: true, botTokenEnv: "BESTIE_ZALO_BOT_TOKEN", ownerUserId: "zalo-owner" },
+  },
 };
 
 test("CronExecutor starts and stops cleanly", async () => {
@@ -73,6 +82,111 @@ test("CronExecutor tick picks up due jobs", async () => {
     assert.ok(logs.length > 0, "Expected at least one cron log entry");
     verifyStore.close();
   } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("CronExecutor notifies when a due job fails", async () => {
+  const paths = await createTempPaths();
+  const notifications: Array<{ status: string; name: string; error?: string }> = [];
+  try {
+    const store = await SqliteMemoryStore.open(paths);
+    store.addCronSchedule({
+      name: "Notify failure",
+      scheduleType: "interval",
+      scheduleValue: "1h",
+      prompt: "Test prompt",
+      nextRunAt: new Date(Date.now() - 60_000).toISOString(),
+    });
+    store.close();
+
+    const executor = new CronExecutor({
+      config: TEST_CONFIG,
+      paths,
+      tickIntervalMs: 100,
+      notifier: async (notification) => {
+        notifications.push({ status: notification.status, name: notification.job.name, error: notification.error });
+      },
+    });
+
+    await executor.tick();
+
+    assert.equal(notifications.length, 1);
+    assert.equal(notifications[0].status, "error");
+    assert.equal(notifications[0].name, "Notify failure");
+    assert.match(notifications[0].error ?? "", /Missing API key for OPENAI_API_KEY/);
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("CronExecutor notification failures do not fail the cron job", async () => {
+  const paths = await createTempPaths();
+  try {
+    const store = await SqliteMemoryStore.open(paths);
+    store.addCronSchedule({
+      name: "Notifier failure",
+      scheduleType: "once",
+      scheduleValue: new Date(Date.now() - 60_000).toISOString(),
+      prompt: "Test prompt",
+      nextRunAt: new Date(Date.now() - 60_000).toISOString(),
+    });
+    store.close();
+
+    const executor = new CronExecutor({
+      config: TEST_CONFIG,
+      paths,
+      tickIntervalMs: 100,
+      notifier: async () => {
+        throw new Error("notify failed");
+      },
+    });
+
+    await executor.tick();
+
+    const verifyStore = await SqliteMemoryStore.open(paths);
+    const [schedule] = verifyStore.listCronSchedules();
+    assert.equal(schedule.lastResult, "error");
+    assert.match(schedule.lastError ?? "", /Missing API key for OPENAI_API_KEY/);
+    verifyStore.close();
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("CronExecutor reports to schedule channel destination", async () => {
+  const paths = await createTempPaths();
+  const requests: Array<{ url: string; body: string }> = [];
+  const originalFetch = globalThis.fetch;
+
+  try {
+    globalThis.fetch = (async (url, init) => {
+      requests.push({ url: String(url), body: String(init?.body ?? "") });
+      return new Response(JSON.stringify({ ok: true, result: { message_id: 1 } }), { status: 200, headers: { "content-type": "application/json" } });
+    }) as typeof fetch;
+    await mkdir(paths.appDir, { recursive: true });
+    await writeEnvFile({ BESTIE_TELEGRAM_BOT_TOKEN: "telegram-token", BESTIE_ZALO_BOT_TOKEN: "zalo-token" }, paths);
+
+    const store = await SqliteMemoryStore.open(paths);
+    store.addCronSchedule({
+      name: "Destination failure",
+      scheduleType: "once",
+      scheduleValue: new Date(Date.now() - 60_000).toISOString(),
+      prompt: "Test prompt",
+      channel: "zalo:b66e0333b96650380977",
+      nextRunAt: new Date(Date.now() - 60_000).toISOString(),
+    });
+    store.close();
+
+    const executor = new CronExecutor({ config: CHANNEL_CONFIG, paths, tickIntervalMs: 100 });
+    await executor.tick();
+
+    assert.equal(requests.length, 1);
+    assert.match(requests[0].url, /zaloplatforms/);
+    assert.match(requests[0].body, /b66e0333b96650380977/);
+    assert.doesNotMatch(requests[0].body, /zalo-owner/);
+  } finally {
+    globalThis.fetch = originalFetch;
     await rm(paths.rootDir, { recursive: true, force: true });
   }
 });

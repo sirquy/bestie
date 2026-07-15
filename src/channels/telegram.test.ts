@@ -1309,6 +1309,36 @@ test("handleTelegramUpdate sends owner text to the LLM and replies", async () =>
   }
 });
 
+test("handleTelegramUpdate manages cron schedules for the current chat", async () => {
+  const paths = await createTempPaths();
+  const sentMessages: Array<{ chatId: number; text: string }> = [];
+
+  try {
+    await writeRuntimeFiles(paths);
+    const store = await SqliteMemoryStore.open(paths);
+    const own = store.addCronSchedule({ name: "Mine", scheduleType: "interval", scheduleValue: "1h", prompt: "A", channel: "telegram:777", nextRunAt: new Date(Date.now() + 60_000).toISOString() });
+    store.addCronSchedule({ name: "Other", scheduleType: "interval", scheduleValue: "1h", prompt: "B", channel: "telegram:999", nextRunAt: new Date(Date.now() + 60_000).toISOString() });
+    store.close();
+
+    await handleTelegramUpdate(createTextUpdate("/cron list", 12345), { config, paths, client: createRecordingClient(sentMessages) });
+    await handleTelegramUpdate(createTextUpdate(`/cron delete ${own.id}`, 12345), { config, paths, client: createRecordingClient(sentMessages) });
+
+    assert.match(sentMessages[0].text, /#\d+ Mine/);
+    assert.doesNotMatch(sentMessages[0].text, /Other/);
+    assert.match(sentMessages[1].text, new RegExp(`Cron schedule ${own.id} deleted\\.`));
+
+    const verifyStore = await SqliteMemoryStore.open(paths);
+    try {
+      assert.equal(verifyStore.listCronSchedules().some((schedule) => schedule.id === own.id), false);
+      assert.equal(verifyStore.listCronSchedules().some((schedule) => schedule.name === "Other"), true);
+    } finally {
+      verifyStore.close();
+    }
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
 test("handleTelegramUpdate sends approval for reasoned memory candidates", async () => {
   const paths = await createTempPaths();
   const sentMessages: Array<{ chatId: number; text: string; options?: unknown }> = [];

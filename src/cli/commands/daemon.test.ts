@@ -5,7 +5,18 @@ import { resolve } from "node:path";
 import test from "node:test";
 
 import type { RuntimePaths } from "../../runtime/paths.js";
+import type { AppConfig } from "../../runtime/config.js";
 import { runDaemonCommand } from "./daemon.js";
+
+const TEST_CONFIG: AppConfig = {
+  version: 1,
+  agent: { name: "Bestie", ownerName: "Owner", language: "vi", timeZone: "Asia/Ho_Chi_Minh", toneIntensity: 7 },
+  llm: { provider: "openai-compatible", baseUrl: "https://example.test/v1", model: "test-model", apiKeyEnv: "OPENAI_API_KEY" },
+  channels: {
+    telegram: { enabled: true, botTokenEnv: "BESTIE_TELEGRAM_BOT_TOKEN", ownerUserId: "1" },
+    zalo: { enabled: true, botTokenEnv: "BESTIE_ZALO_BOT_TOKEN", ownerUserId: "2" },
+  },
+};
 
 test("runDaemonCommand starts, reports, and stops the daemon", async () => {
   const paths = await createTempPaths();
@@ -40,11 +51,11 @@ test("runDaemonCommand starts, reports, and stops the daemon", async () => {
   }
 });
 
-test("runDaemonCommand can manage all channel daemons", async () => {
+test("runDaemonCommand can manage all runtime daemons", async () => {
   const paths = await createTempPaths();
   const output: string[] = [];
   const killed: number[] = [];
-  const spawnedPids = [4242, 4343];
+  const spawnedPids = [4242, 4343, 4444];
   const runningPids = new Set<number>();
 
   try {
@@ -66,22 +77,58 @@ test("runDaemonCommand can manage all channel daemons", async () => {
 
     const telegram = JSON.parse(await readFile(resolve(paths.appDir, "daemon-telegram.json"), "utf8")) as { pid: number; args: string[]; logPath: string };
     const zalo = JSON.parse(await readFile(resolve(paths.appDir, "daemon-zalo.json"), "utf8")) as { pid: number; args: string[]; logPath: string };
+    const cron = JSON.parse(await readFile(resolve(paths.appDir, "daemon-cron.json"), "utf8")) as { pid: number; args: string[]; logPath: string };
 
     assert.equal(telegram.pid, 4242);
     assert.equal(zalo.pid, 4343);
+    assert.equal(cron.pid, 4444);
     assert.deepEqual(telegram.args.slice(-2), ["channels", "telegram"]);
     assert.deepEqual(zalo.args.slice(-2), ["channels", "zalo"]);
+    assert.deepEqual(cron.args.slice(-2), ["cron", "run"]);
     assert.equal(telegram.logPath, resolve(paths.logsDir, "daemon-telegram.log"));
     assert.equal(zalo.logPath, resolve(paths.logsDir, "daemon-zalo.log"));
+    assert.equal(cron.logPath, resolve(paths.logsDir, "daemon-cron.log"));
 
     await runDaemonCommand({ argv: ["node", "bestie", "daemon", "status", "--channel", "all"], paths, writeLine: (message) => output.push(message), isProcessRunning: (pid) => runningPids.has(pid) });
     assert.match(output.join("\n"), /Telegram daemon is running with pid 4242/);
     assert.match(output.join("\n"), /Zalo daemon is running with pid 4343/);
+    assert.match(output.join("\n"), /Cron daemon is running with pid 4444/);
 
     await runDaemonCommand({ argv: ["node", "bestie", "daemon", "stop", "--channel", "all"], paths, writeLine: (message) => output.push(message), isProcessRunning: (pid) => runningPids.has(pid) && !killed.includes(pid), killProcess: (pid) => killed.push(pid) });
-    assert.deepEqual(killed, [4242, 4343]);
+    assert.deepEqual(killed, [4242, 4343, 4444]);
     assert.match(output.join("\n"), /Telegram daemon stopped: 4242/);
     assert.match(output.join("\n"), /Zalo daemon stopped: 4343/);
+    assert.match(output.join("\n"), /Cron daemon stopped: 4444/);
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("runDaemonCommand uninstall ignores missing systemd units", async () => {
+  const paths = await createTempPaths();
+  const calls: string[][] = [];
+  const output: string[] = [];
+
+  try {
+    await runDaemonCommand({
+      argv: ["node", "bestie", "daemon", "uninstall"],
+      paths,
+      writeLine: (message) => output.push(message),
+      execFile: async (_file, args) => {
+        calls.push(args);
+        if (args.includes("bestie-zalo.service")) {
+          throw new Error("Failed to disable unit: Unit file bestie-zalo.service does not exist.");
+        }
+      },
+    });
+
+    assert.deepEqual(calls, [
+      ["--user", "disable", "--now", "bestie-telegram.service"],
+      ["--user", "disable", "--now", "bestie-zalo.service"],
+      ["--user", "disable", "--now", "bestie-cron.service"],
+      ["--user", "daemon-reload"],
+    ]);
+    assert.match(output.join("\n"), /Uninstalled Bestie user systemd services/);
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
   }
@@ -286,6 +333,88 @@ test("runDaemonCommand does not restart when the old daemon stays alive", async 
   }
 });
 
+test("runDaemonCommand installs a user systemd service", async () => {
+  const paths = await createTempPaths();
+  const output: string[] = [];
+  const calls: Array<{ file: string; args: string[] }> = [];
+  const oldXdgConfigHome = process.env.XDG_CONFIG_HOME;
+
+  try {
+    process.env.XDG_CONFIG_HOME = resolve(paths.rootDir, "xdg-config");
+    await writeTestConfig(paths, TEST_CONFIG);
+    await writeFile(paths.envPath, "BESTIE_TELEGRAM_BOT_TOKEN=telegram\n", { mode: 0o600 });
+    await runDaemonCommand({
+      argv: ["node", "bestie", "daemon", "install"],
+      paths,
+      writeLine: (message) => output.push(message),
+      execFile: async (file, args) => {
+        calls.push({ file, args });
+      },
+    });
+
+    const telegramService = await readFile(resolve(paths.rootDir, "xdg-config/systemd/user/bestie-telegram.service"), "utf8");
+    const cronService = await readFile(resolve(paths.rootDir, "xdg-config/systemd/user/bestie-cron.service"), "utf8");
+    assert.match(telegramService, /ExecStart=.* channels telegram/);
+    assert.match(cronService, /ExecStart=.* cron run/);
+    assert.match(cronService, /Restart=on-failure/);
+    await assert.rejects(() => readFile(resolve(paths.rootDir, "xdg-config/systemd/user/bestie-zalo.service"), "utf8"), /ENOENT/);
+    assert.deepEqual(calls, [
+      { file: "systemctl", args: ["--user", "daemon-reload"] },
+      { file: "systemctl", args: ["--user", "enable", "--now", "bestie-telegram.service", "bestie-cron.service"] },
+    ]);
+    assert.match(output.join("\n"), /Installed and started Bestie user systemd services/);
+  } finally {
+    if (oldXdgConfigHome === undefined) {
+      delete process.env.XDG_CONFIG_HOME;
+    } else {
+      process.env.XDG_CONFIG_HOME = oldXdgConfigHome;
+    }
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("runDaemonCommand uninstalls a user systemd service", async () => {
+  const paths = await createTempPaths();
+  const output: string[] = [];
+  const calls: Array<{ file: string; args: string[] }> = [];
+  const oldXdgConfigHome = process.env.XDG_CONFIG_HOME;
+
+  try {
+    process.env.XDG_CONFIG_HOME = resolve(paths.rootDir, "xdg-config");
+    await mkdir(resolve(paths.rootDir, "xdg-config/systemd/user"), { recursive: true });
+    await writeFile(resolve(paths.rootDir, "xdg-config/systemd/user/bestie-telegram.service"), "service", { mode: 0o600 });
+    await writeFile(resolve(paths.rootDir, "xdg-config/systemd/user/bestie-zalo.service"), "service", { mode: 0o600 });
+    await writeFile(resolve(paths.rootDir, "xdg-config/systemd/user/bestie-cron.service"), "service", { mode: 0o600 });
+
+    await runDaemonCommand({
+      argv: ["node", "bestie", "daemon", "uninstall"],
+      paths,
+      writeLine: (message) => output.push(message),
+      execFile: async (file, args) => {
+        calls.push({ file, args });
+      },
+    });
+
+    await assert.rejects(() => readFile(resolve(paths.rootDir, "xdg-config/systemd/user/bestie-telegram.service"), "utf8"), /ENOENT/);
+    await assert.rejects(() => readFile(resolve(paths.rootDir, "xdg-config/systemd/user/bestie-zalo.service"), "utf8"), /ENOENT/);
+    await assert.rejects(() => readFile(resolve(paths.rootDir, "xdg-config/systemd/user/bestie-cron.service"), "utf8"), /ENOENT/);
+    assert.deepEqual(calls, [
+      { file: "systemctl", args: ["--user", "disable", "--now", "bestie-telegram.service"] },
+      { file: "systemctl", args: ["--user", "disable", "--now", "bestie-zalo.service"] },
+      { file: "systemctl", args: ["--user", "disable", "--now", "bestie-cron.service"] },
+      { file: "systemctl", args: ["--user", "daemon-reload"] },
+    ]);
+    assert.match(output.join("\n"), /Uninstalled Bestie user systemd services/);
+  } finally {
+    if (oldXdgConfigHome === undefined) {
+      delete process.env.XDG_CONFIG_HOME;
+    } else {
+      process.env.XDG_CONFIG_HOME = oldXdgConfigHome;
+    }
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
 async function createTempPaths(): Promise<RuntimePaths> {
   const rootDir = await mkdtemp(resolve(tmpdir(), "bestie-daemon-command-test-"));
   const appDir = resolve(rootDir, ".bestie");
@@ -305,4 +434,9 @@ async function createTempPaths(): Promise<RuntimePaths> {
     memoryDbPath: resolve(dataDir, "memory.sqlite"),
     workspaceDir: resolve(appDir, "workspace"),
   };
+}
+
+async function writeTestConfig(paths: RuntimePaths, config: AppConfig): Promise<void> {
+  await mkdir(paths.appDir, { recursive: true });
+  await writeFile(paths.configPath, `${JSON.stringify(config, null, 2)}\n`, { mode: 0o600 });
 }

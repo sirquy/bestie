@@ -1,19 +1,25 @@
-import { execFileSync, spawn, type ChildProcess } from "node:child_process";
+import { execFile, execFileSync, spawn, type ChildProcess } from "node:child_process";
 import { closeSync, openSync, readFileSync } from "node:fs";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
-import { resolve } from "node:path";
+import { homedir } from "node:os";
+import { dirname, resolve } from "node:path";
+import { promisify } from "node:util";
 
 import { UserFacingError } from "../../runtime/errors.js";
+import { loadConfig, type AppConfig } from "../../runtime/config.js";
+import { loadEnvFile } from "../../runtime/env.js";
 import { getRuntimePaths, type RuntimePaths } from "../../runtime/paths.js";
 import { maybePrintUpdateNotice } from "../update-notice.js";
 import { badge } from "../ui.js";
 
 const DAEMON_STOP_TIMEOUT_MS = 30_000;
 const DAEMON_STOP_POLL_INTERVAL_MS = 1000;
-export const DAEMON_CHANNELS = ["telegram", "zalo"] as const;
+export const DAEMON_CHANNELS = ["telegram", "zalo", "cron"] as const;
+const execFileAsync = promisify(execFile);
 
 export type DaemonChannel = (typeof DAEMON_CHANNELS)[number];
 type DaemonChannelSelection = DaemonChannel | "all";
+type DaemonProcessKind = "channel" | "cron";
 
 interface DaemonCommandOptions {
   argv?: string[];
@@ -24,6 +30,7 @@ interface DaemonCommandOptions {
   isProcessRunning?: (pid: number) => boolean;
   killProcess?: (pid: number) => void;
   getProcessCommandLine?: (pid: number) => string[] | undefined;
+  execFile?: (file: string, args: string[]) => Promise<void>;
   stopTimeoutMs?: number;
   sleep?: (milliseconds: number) => Promise<void>;
 }
@@ -82,7 +89,81 @@ export async function runDaemonCommand(optionsOrArgv: string[] | DaemonCommandOp
     return;
   }
 
-  throw new UserFacingError("Usage: bestie daemon start|stop|restart|status [--channel telegram|zalo|all]", "DaemonUsageError");
+  if (subcommand === "install" || subcommand === "install-service") {
+    await installSystemdUserService({ ...options, paths, writeLine });
+    return;
+  }
+
+  if (subcommand === "uninstall" || subcommand === "uninstall-service") {
+    await uninstallSystemdUserService({ ...options, paths, writeLine });
+    return;
+  }
+
+  throw new UserFacingError("Usage: bestie daemon start|stop|restart|status [--channel telegram|zalo|cron|all] | install | uninstall", "DaemonUsageError");
+}
+
+async function installSystemdUserService(options: Required<Pick<DaemonCommandOptions, "paths" | "writeLine">> & DaemonCommandOptions): Promise<void> {
+  assertLinuxSystemdUserServiceSupported();
+  const cliEntry = process.argv[1] ? resolve(process.argv[1]) : resolve(options.paths.rootDir, "dist/cli/index.js");
+  const run = options.execFile ?? runExecFile;
+  const channels = await getInstallableSystemdChannels(options.paths);
+
+  for (const channel of channels) {
+    const servicePath = getSystemdUserServicePath(getSystemdServiceName(channel));
+    await mkdir(dirname(servicePath), { recursive: true });
+    await writeFile(servicePath, buildSystemdUserService({ nodePath: process.execPath, cliEntry, rootDir: options.paths.rootDir, channel }), { mode: 0o600 });
+  }
+
+  await run("systemctl", ["--user", "daemon-reload"]);
+  await run("systemctl", ["--user", "enable", "--now", ...channels.map(getSystemdServiceName)]);
+
+  options.writeLine(`${badge("RUN", "green")} Installed and started Bestie user systemd services.`);
+  options.writeLine(`Services: ${channels.map(getSystemdServiceName).join(", ")}`);
+  options.writeLine(`Status: systemctl --user status ${channels.map(getSystemdServiceName).join(" ")}`);
+}
+
+async function uninstallSystemdUserService(options: Required<Pick<DaemonCommandOptions, "paths" | "writeLine">> & DaemonCommandOptions): Promise<void> {
+  assertLinuxSystemdUserServiceSupported();
+  const run = options.execFile ?? runExecFile;
+
+  for (const serviceName of DAEMON_CHANNELS.map(getSystemdServiceName)) {
+    try {
+      await run("systemctl", ["--user", "disable", "--now", serviceName]);
+    } catch (error) {
+      if (!isMissingSystemdUnitError(error)) {
+        throw error;
+      }
+    }
+  }
+  for (const channel of DAEMON_CHANNELS) {
+    await rm(getSystemdUserServicePath(getSystemdServiceName(channel)), { force: true });
+  }
+  await run("systemctl", ["--user", "daemon-reload"]);
+
+  options.writeLine(`${badge("STOP", "gray")} Uninstalled Bestie user systemd services.`);
+}
+
+function isMissingSystemdUnitError(error: unknown): boolean {
+  return error instanceof Error && /Unit file .* does not exist|not loaded|not found/i.test(error.message);
+}
+
+async function getInstallableSystemdChannels(paths: RuntimePaths): Promise<DaemonChannel[]> {
+  const config = await loadConfig(paths);
+  const envValues = await loadEnvFile(paths);
+  return DAEMON_CHANNELS.filter((channel) => channel === "cron" || isChannelServiceConfigured(channel, config, envValues));
+}
+
+function isChannelServiceConfigured(channel: DaemonChannel, config: AppConfig, envValues: Record<string, string>): boolean {
+  if (channel === "cron") {
+    return true;
+  }
+
+  const channelConfig = config.channels?.[channel];
+  if (!channelConfig?.enabled) {
+    return false;
+  }
+
+  return Boolean(process.env[channelConfig.botTokenEnv] ?? envValues[channelConfig.botTokenEnv]);
 }
 
 async function printDaemonUpdateNotice(options: DaemonCommandOptions, paths: RuntimePaths, writeLine: (message: string) => void): Promise<void> {
@@ -107,7 +188,7 @@ async function startDaemon(options: Required<Pick<DaemonCommandOptions, "paths" 
 
   const command = process.execPath;
   const cliEntry = process.argv[1] ? resolve(process.argv[1]) : resolve(options.paths.rootDir, "dist/cli/index.js");
-  const args = [cliEntry, "channels", channel];
+  const args = getDaemonArgs(cliEntry, channel);
   const logPath = resolve(options.paths.logsDir, `daemon-${channel}.log`);
 
   await mkdir(options.paths.logsDir, { recursive: true });
@@ -248,7 +329,7 @@ function getDaemonChannelSelection(argv: string[]): DaemonChannelSelection {
     return value;
   }
 
-  throw new UserFacingError("Usage: bestie daemon start|stop|restart|status [--channel telegram|zalo|all]", "DaemonUsageError");
+  throw new UserFacingError("Usage: bestie daemon start|stop|restart|status [--channel telegram|zalo|cron|all]", "DaemonUsageError");
 }
 
 function isDaemonChannel(value: string | undefined): value is DaemonChannel {
@@ -257,6 +338,57 @@ function isDaemonChannel(value: string | undefined): value is DaemonChannel {
 
 function formatDaemonChannel(channel: DaemonChannel): string {
   return channel[0].toUpperCase() + channel.slice(1);
+}
+
+function getDaemonArgs(cliEntry: string, channel: DaemonChannel): string[] {
+  const kind: DaemonProcessKind = channel === "cron" ? "cron" : "channel";
+  return kind === "cron" ? [cliEntry, "cron", "run"] : [cliEntry, "channels", channel];
+}
+
+function getSystemdUserServicePath(serviceName: string): string {
+  return resolve(process.env.XDG_CONFIG_HOME ?? resolve(homedir(), ".config"), "systemd/user", serviceName);
+}
+
+function buildSystemdUserService(options: { nodePath: string; cliEntry: string; rootDir: string; channel: DaemonChannel }): string {
+  const args = getDaemonArgs(options.cliEntry, options.channel);
+  return `[Unit]
+Description=Bestie ${formatDaemonChannel(options.channel)} daemon
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=${systemdEscape(options.rootDir)}
+ExecStart=${systemdEscape(options.nodePath)} ${args.map(systemdEscape).join(" ")}
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=45
+
+[Install]
+WantedBy=default.target
+`;
+}
+
+function getSystemdServiceName(channel: DaemonChannel): string {
+  return `bestie-${channel}.service`;
+}
+
+function systemdEscape(value: string): string {
+  return value.includes(" ") || value.includes("\t") ? `"${value.replace(/(["\\$`])/g, "\\$1")}"` : value;
+}
+
+function assertLinuxSystemdUserServiceSupported(): void {
+  if (process.platform !== "linux") {
+    throw new UserFacingError("systemd user services are only supported on Linux. Use `bestie daemon start --channel all` on this platform.", "DaemonSystemdUnsupportedError");
+  }
+}
+
+async function runExecFile(file: string, args: string[]): Promise<void> {
+  try {
+    await execFileAsync(file, args, { windowsHide: true });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new UserFacingError(`Failed to run ${file} ${args.join(" ")}: ${message}`, "DaemonSystemdCommandError");
+  }
 }
 
 function defaultIsProcessRunning(pid: number): boolean {

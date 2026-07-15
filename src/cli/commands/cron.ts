@@ -3,6 +3,8 @@ import { stdout as output } from "node:process";
 import { loadConfig } from "../../runtime/config.js";
 import { getRuntimePaths, type RuntimePaths } from "../../runtime/paths.js";
 import { SqliteMemoryStore } from "../../memory/sqlite-store.js";
+import { CronExecutor } from "../../cron/executor.js";
+import { isCronReportDestination } from "../../cron/channel-commands.js";
 import { computeNextRun, validateSchedule } from "../../cron/scheduler.js";
 import { badge, bold, color, dim, title } from "../ui.js";
 import { createCliQuestioner } from "../prompt.js";
@@ -52,6 +54,11 @@ export async function runCronCommand(optionsOrArgv: string[] | CronCommandOption
     return;
   }
 
+  if (subcommand === "run") {
+    await runCronDaemon(paths, writeLine);
+    return;
+  }
+
   writeLine(`Unknown cron subcommand: ${subcommand}`);
   printCronHelp(writeLine);
   process.exitCode = 1;
@@ -66,11 +73,36 @@ Usage:
   bestie cron remove <id>    Remove a cron schedule by ID
   bestie cron toggle <id>    Toggle a cron schedule on/off
   bestie cron logs [id]      Show recent cron execution logs
+  bestie cron run            Run the cron scheduler until stopped
 
 Schedule types:
   interval    Repeating interval, e.g. "30m", "1h", "2d"
   cron_expr   5-field cron expression, e.g. "0 8 * * *"
   once        One-shot at ISO timestamp, e.g. "2026-12-25T08:00:00Z"`);
+}
+
+async function runCronDaemon(paths: RuntimePaths, writeLine: (message: string) => void): Promise<void> {
+  const config = await loadConfig(paths);
+  const executor = new CronExecutor({ config, paths });
+  let stop: (() => void) | undefined;
+
+  const stopped = new Promise<void>((resolve) => {
+    stop = resolve;
+  });
+  const onSignal = () => stop?.();
+
+  process.once("SIGINT", onSignal);
+  process.once("SIGTERM", onSignal);
+  executor.start();
+  writeLine("Cron scheduler started. Press Ctrl+C to stop.");
+
+  try {
+    await stopped;
+  } finally {
+    process.off("SIGINT", onSignal);
+    process.off("SIGTERM", onSignal);
+    executor.stop();
+  }
 }
 
 async function runCronList(paths: RuntimePaths, writeLine: (message: string) => void): Promise<void> {
@@ -132,6 +164,12 @@ async function runCronAdd(argv: string[], paths: RuntimePaths, writeLine: (messa
     return;
   }
 
+  if (channel !== undefined && !isCronReportDestination(channel)) {
+    writeLine(`${badge("FAIL", "red")} Invalid channel destination. Use telegram:<userId> or zalo:<userId>.`);
+    process.exitCode = 1;
+    return;
+  }
+
   const validationError = validateSchedule(scheduleType, scheduleValue);
   if (validationError) {
     writeLine(`${badge("FAIL", "red")} Invalid schedule: ${validationError}`);
@@ -154,6 +192,9 @@ async function runCronAdd(argv: string[], paths: RuntimePaths, writeLine: (messa
 
     writeLine(`${badge("OK", "green")} Cron schedule created: ${name} (ID: ${schedule.id})`);
     writeLine(`  Schedule: ${scheduleType} ${scheduleValue}`);
+    if (channel) {
+      writeLine(`  Channel: ${channel}`);
+    }
     writeLine(`  Next run: ${formatLocalTime(nextRunAt, config.agent.timeZone)}`);
     writeLine(`  Prompt: ${prompt}`);
   } finally {

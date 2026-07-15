@@ -11,6 +11,7 @@ import { runSkillsCommand } from "./commands/skills.js";
 import { runStatusCommand } from "./commands/status.js";
 import { runToolsCommand } from "./commands/tools.js";
 import { runUpdateCommand } from "./commands/update.js";
+import { runVoiceCommand } from "./commands/voice.js";
 import type { CliCommandSpec } from "./command-router.js";
 
 export const cliHelpDetails = `
@@ -31,10 +32,12 @@ Channels options:
   Run bestie channels --help for channel adapters and diagnostics.
 
 Daemon options:
-  start [--channel telegram|zalo|all]    Start channel polling in the background
-  stop [--channel telegram|zalo|all]     Stop channel daemon(s)
-  restart [--channel telegram|zalo|all]  Stop and start channel daemon(s)
-  status [--channel telegram|zalo|all]   Show channel daemon status
+  start [--channel telegram|zalo|cron|all]    Start runtime daemon(s) in the background
+  stop [--channel telegram|zalo|cron|all]     Stop runtime daemon(s)
+  restart [--channel telegram|zalo|cron|all]  Stop and start runtime daemon(s)
+  status [--channel telegram|zalo|cron|all]   Show runtime daemon status
+  install                                    Install and start user systemd service(s)
+  uninstall                                  Stop and remove user systemd service(s)
 
 Tools options:
   logs --lines N  Read recent redacted app logs through the permission gate
@@ -51,13 +54,34 @@ Cron options:
   remove <id>    Remove a cron schedule by ID
   toggle <id>    Toggle a cron schedule on/off
   logs [id]      Show recent cron execution logs
+  run            Run the cron scheduler until stopped
+
+Voice options:
+  setup-local       Configure local whisper.cpp transcription
+  setup-elevenlabs  Configure ElevenLabs speech and transcription
+  models            List local whisper.cpp models
+  download-model    Download a local whisper.cpp model
 `;
 
 export const cliCommandSpecs: CliCommandSpec[] = [
   { name: "onboard", description: "Create local .bestie config and character files", handler: runOnboardCommand },
   { name: "chat", description: "Start terminal chat after onboarding", handler: runChatCommand },
   { name: "status", description: "Show local setup status", handler: runStatusCommand },
-  { name: "daemon", description: "Start, stop, or inspect the local background daemon", handler: runDaemonCommand },
+  {
+    name: "daemon",
+    description: "Start, stop, inspect, or install the local background daemon",
+    handler: runDaemonCommand,
+    children: [
+      { name: "start", description: "Start runtime daemon(s)", handler: runDaemonCommand },
+      { name: "stop", description: "Stop runtime daemon(s)", handler: runDaemonCommand },
+      { name: "restart", description: "Restart runtime daemon(s)", handler: runDaemonCommand },
+      { name: "status", description: "Show runtime daemon status", handler: runDaemonCommand },
+      { name: "install", description: "Install and start user systemd service(s)", handler: runDaemonCommand },
+      { name: "uninstall", description: "Stop and remove user systemd service(s)", handler: runDaemonCommand },
+      { name: "install-service", description: "Alias for install", handler: runDaemonCommand, hidden: true },
+      { name: "uninstall-service", description: "Alias for uninstall", handler: runDaemonCommand, hidden: true },
+    ],
+  },
   { name: "logs", description: "Show recent redacted operational logs", handler: runLogsCommand },
   { name: "doctor", description: "Diagnose local setup problems", handler: runDoctorCommand },
   { name: "memory", description: "Inspect or manually add local memories", handler: runMemoryCommand },
@@ -78,7 +102,30 @@ export const cliCommandSpecs: CliCommandSpec[] = [
   createChannelsCommandSpec("channel", true),
   { name: "skills", description: "List installed skills from .bestie/skills", handler: runSkillsCommand },
   { name: "tools", description: "Run permission-gated local tools", handler: runToolsCommand },
-  { name: "cron", description: "Manage scheduled cron jobs for the agent", handler: runCronCommand },
+  {
+    name: "voice",
+    description: "Configure shared voice input and speech output",
+    handler: runVoiceCommand,
+    children: [
+      { name: "setup-local", description: "Configure local whisper.cpp transcription", handler: runVoiceCommand },
+      { name: "setup-elevenlabs", description: "Configure ElevenLabs voice support", handler: runVoiceCommand },
+      { name: "models", description: "List local whisper.cpp models", handler: runVoiceCommand },
+      { name: "download-model <model>", description: "Download a local whisper.cpp model", handler: runVoiceCommand },
+    ],
+  },
+  {
+    name: "cron",
+    description: "Manage scheduled cron jobs for the agent",
+    handler: runCronCommand,
+    children: [
+      { name: "list", description: "List all cron schedules", handler: runCronCommand },
+      { name: "add", description: "Create a cron schedule", handler: runCronCommand },
+      { name: "remove <id>", description: "Remove a cron schedule", handler: runCronCommand },
+      { name: "toggle <id>", description: "Toggle a cron schedule", handler: runCronCommand },
+      { name: "logs [id]", description: "Show cron execution logs", handler: runCronCommand },
+      { name: "run", description: "Run the cron scheduler until stopped", handler: runCronCommand },
+    ],
+  },
   { name: "update", description: "Check npm for a newer Bestie version, or install it with --apply", handler: runUpdateCommand },
 ];
 
@@ -99,7 +146,7 @@ function createChannelsCommandSpec(name: "channel" | "channels", hidden: boolean
         children: [
           { name: "setup", description: "Configure Telegram owner id/username and bot token", handler: runChannelsCommand },
           { name: "whoami", description: "Show the id and username from the most recent Telegram bot message", handler: runChannelsCommand },
-          { name: "voice", description: "Configure or inspect Telegram local voice support", handler: runChannelsCommand },
+          { name: "voice", description: "Alias for shared voice commands", handler: runChannelsCommand },
         ],
       },
       {

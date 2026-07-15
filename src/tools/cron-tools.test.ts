@@ -44,6 +44,40 @@ test("addCronScheduleTool creates an interval schedule", async () => {
   }
 });
 
+test("addCronScheduleTool stores channel user destination", async () => {
+  const paths = await createTempPaths();
+  try {
+    const result = await addCronScheduleTool(
+      { name: "Report job", schedule_type: "interval", schedule_value: "30m", prompt: "Do something", channel: "telegram:12345" },
+      { config: TEST_CONFIG, paths },
+    );
+
+    assert.equal(result.ok, true);
+    assert.equal((result.result as Record<string, unknown>).channel, "telegram:12345");
+
+    const listResult = await listCronSchedulesTool({ config: TEST_CONFIG, paths });
+    const data = listResult.result as { schedules: Array<{ channel?: string }> };
+    assert.equal(data.schedules[0].channel, "telegram:12345");
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("addCronScheduleTool rejects invalid channel destination", async () => {
+  const paths = await createTempPaths();
+  try {
+    const result = await addCronScheduleTool(
+      { name: "Bad report", schedule_type: "interval", schedule_value: "30m", prompt: "Do something", channel: "telegram" },
+      { config: TEST_CONFIG, paths },
+    );
+
+    assert.equal(result.ok, false);
+    assert.match(result.message ?? "", /telegram:<userId>/);
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
 test("addCronScheduleTool creates a cron_expr schedule", async () => {
   const paths = await createTempPaths();
   try {

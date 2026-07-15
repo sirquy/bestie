@@ -2,6 +2,7 @@ import type { AppConfig } from "../runtime/config.js";
 import type { RuntimePaths } from "../runtime/paths.js";
 import type { McpToolCallResult } from "../mcp/connection.js";
 import { SqliteMemoryStore } from "../memory/sqlite-store.js";
+import { isCronReportDestination } from "../cron/channel-commands.js";
 import { computeNextRun, validateSchedule } from "../cron/scheduler.js";
 
 // --- Tool argument types ---
@@ -59,6 +60,10 @@ export async function addCronScheduleTool(
     return { ok: false, status: "fail", message: "internal.add_cron_schedule requires arguments.prompt." };
   }
 
+  if (channel !== undefined && !isCronReportDestination(channel)) {
+    return { ok: false, status: "fail", message: "internal.add_cron_schedule arguments.channel must be 'telegram:<userId>' or 'zalo:<userId>'." };
+  }
+
   const validationError = validateSchedule(scheduleType, scheduleValue);
   if (validationError) {
     return { ok: false, status: "fail", message: `Invalid schedule: ${validationError}` };
@@ -86,6 +91,7 @@ export async function addCronScheduleTool(
         name: schedule.name,
         scheduleType: schedule.scheduleType,
         scheduleValue: schedule.scheduleValue,
+        channel: schedule.channel,
         nextRunAt: schedule.nextRunAt,
       },
     };

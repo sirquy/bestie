@@ -91,6 +91,15 @@ Commander routing rules:
 - Command files in `src/cli/commands/` may parse behavior-specific flags while executing, but they should not define their own top-level help/router style.
 - Human output should use shared line UI helpers from `src/cli/ui.ts`; JSON or other machine-readable output must stay plain and banner-free.
 
+Runtime daemon rules:
+
+- `bestie daemon --channel all` manages independent runtime processes, currently Telegram, Zalo, and cron.
+- Channel daemons own only channel polling and channel-specific transport concerns.
+- Cron schedules run only through the cron daemon target (`bestie cron run`) so scheduler crashes or provider failures do not take down Telegram or Zalo polling.
+- Linux user systemd integration installs one directly supervised service per configured runtime (`bestie-telegram.service`, `bestie-zalo.service`, `bestie-cron.service`), not one wrapper service that forks child daemons and exits.
+- Systemd installation should skip channel services whose enabled channel config is missing required secrets, while still installing cron.
+- Shared voice input/output provider setup belongs in channel-neutral services under `src/channels/`; channel modules should keep only transport-specific attachment mapping, download, and send behavior.
+
 ### `src/runtime`
 
 Owns local runtime foundations shared by all commands.

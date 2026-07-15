@@ -10,6 +10,7 @@ import { writeConfig } from "../../runtime/config.js";
 import { writeEnvFile } from "../../runtime/env.js";
 import type { RuntimePaths } from "../../runtime/paths.js";
 import { isTelegramToolProgressText, runTelegramCommand } from "./telegram.js";
+import { runVoiceCommand } from "./voice.js";
 
 test("runTelegramCommand setup writes Telegram config and token env", async () => {
   const paths = await createTempPaths();
@@ -264,7 +265,7 @@ test("runTelegramCommand whoami explains when no recent Telegram sender exists",
   }
 });
 
-test("runTelegramCommand voice setup-local writes wrapper and local transcription config", async () => {
+test("runVoiceCommand setup-local writes wrapper and local transcription config", async () => {
   const paths = await createTempPaths();
   const output: string[] = [];
   const oldPath = process.env.PATH;
@@ -290,7 +291,7 @@ test("runTelegramCommand voice setup-local writes wrapper and local transcriptio
       paths,
     );
 
-    await runTelegramCommand({ argv: ["node", "bestie", "channels", "telegram", "voice", "setup-local"], paths, writeLine: (message) => output.push(message), useColor: false });
+    await runVoiceCommand({ argv: ["node", "bestie", "voice", "setup-local"], paths, writeLine: (message) => output.push(message), useColor: false });
 
     const config = JSON.parse(await readFile(paths.configPath, "utf8")) as {
       transcription?: { provider: string; command: string; args: string[]; modelPath: string; timeoutMs: number };
@@ -311,8 +312,8 @@ test("runTelegramCommand voice setup-local writes wrapper and local transcriptio
     assert.equal(config.channels?.telegram?.attachments?.transcriptionPolicy, "allow");
     assert.deepEqual(config.channels?.telegram?.attachments?.deleteAfterProcessingKinds, ["voice", "audio"]);
     assert.deepEqual(config.channels?.telegram?.attachments?.allowedMimeTypes, ["text/*", "audio/*"]);
-    assert.ok(output.some((line) => line.includes("Telegram Local Voice")));
-    assert.ok(output.some((line) => line.includes("Telegram local voice setup saved")));
+    assert.ok(output.some((line) => line.includes("Bestie Local Voice")));
+    assert.ok(output.some((line) => line.includes("Local voice setup saved")));
     assert.ok(output.some((line) => line.includes("Language") && line.includes("vi")));
     assert.ok(output.every((line) => !/\x1b\[[0-9;]*m/.test(line)));
   } finally {
@@ -321,7 +322,7 @@ test("runTelegramCommand voice setup-local writes wrapper and local transcriptio
   }
 });
 
-test("runTelegramCommand voice setup-local uses agent language for local transcription", async () => {
+test("runVoiceCommand setup-local uses agent language for local transcription", async () => {
   const paths = await createTempPaths();
   const oldPath = process.env.PATH;
 
@@ -345,7 +346,7 @@ test("runTelegramCommand voice setup-local uses agent language for local transcr
       paths,
     );
 
-    await runTelegramCommand({ argv: ["node", "bestie", "channels", "telegram", "voice", "setup-local"], paths, writeLine: () => undefined });
+    await runVoiceCommand({ argv: ["node", "bestie", "voice", "setup-local"], paths, writeLine: () => undefined });
 
     const config = JSON.parse(await readFile(paths.configPath, "utf8")) as { transcription?: { args: string[] } };
     assert.deepEqual(config.transcription?.args, ["{modelPath}", "{audioPath}", "-l", "auto"]);
@@ -355,7 +356,7 @@ test("runTelegramCommand voice setup-local uses agent language for local transcr
   }
 });
 
-test("runTelegramCommand voice setup-elevenlabs writes speech config and API key env", async () => {
+test("runVoiceCommand setup-elevenlabs writes speech config and API key env", async () => {
   const paths = await createTempPaths();
   const output: string[] = [];
   let closed = false;
@@ -419,8 +420,8 @@ test("runTelegramCommand voice setup-elevenlabs writes speech config and API key
     assert.deepEqual(config.channels?.telegram?.attachments?.allowedMimeTypes, ["audio/*"]);
     assert.match(envText, /OPENAI_API_KEY="sk-test"/);
     assert.match(envText, /ELEVENLABS_API_KEY="elevenlabs-secret-token"/);
-    assert.ok(output.some((line) => line.includes("Telegram ElevenLabs Voice")));
-    assert.ok(output.some((line) => line.includes("Telegram ElevenLabs voice reply setup saved")));
+    assert.ok(output.some((line) => line.includes("Bestie ElevenLabs Voice")));
+    assert.ok(output.some((line) => line.includes("ElevenLabs voice setup saved")));
     assert.ok(output.every((line) => !line.includes("elevenlabs-secret-token")));
     assert.ok(output.every((line) => !/\x1b\[[0-9;]*m/.test(line)));
   } finally {
@@ -428,7 +429,7 @@ test("runTelegramCommand voice setup-elevenlabs writes speech config and API key
   }
 });
 
-test("runTelegramCommand voice setup-elevenlabs omits language code for mixed language default", async () => {
+test("runVoiceCommand setup-elevenlabs omits language code for mixed language default", async () => {
   const paths = await createTempPaths();
 
   try {
@@ -462,7 +463,7 @@ test("runTelegramCommand voice setup-elevenlabs omits language code for mixed la
   }
 });
 
-test("runTelegramCommand voice setup-local fails before writing config when model is missing", async () => {
+test("runVoiceCommand setup-local fails before writing config when model is missing", async () => {
   const paths = await createTempPaths();
   const oldPath = process.env.PATH;
 
@@ -485,7 +486,7 @@ test("runTelegramCommand voice setup-local fails before writing config when mode
     );
 
     await assert.rejects(
-      () => runTelegramCommand({ argv: ["node", "bestie", "channels", "telegram", "voice", "setup-local"], paths, writeLine: () => undefined }),
+      () => runVoiceCommand({ argv: ["node", "bestie", "voice", "setup-local"], paths, writeLine: () => undefined }),
       /Local whisper model is missing or unreadable/,
     );
   } finally {
@@ -494,7 +495,7 @@ test("runTelegramCommand voice setup-local fails before writing config when mode
   }
 });
 
-test("runTelegramCommand voice models lists local models and marks configured model", async () => {
+test("runVoiceCommand models lists local models and marks configured model", async () => {
   const paths = await createTempPaths();
   const output: string[] = [];
 
@@ -513,10 +514,10 @@ test("runTelegramCommand voice models lists local models and marks configured mo
       paths,
     );
 
-    await runTelegramCommand({ argv: ["node", "bestie", "channels", "telegram", "voice", "models"], paths, writeLine: (message) => output.push(message), useColor: false });
+    await runVoiceCommand({ argv: ["node", "bestie", "voice", "models"], paths, writeLine: (message) => output.push(message), useColor: false });
 
     const text = output.join("\n");
-    assert.match(text, /Telegram Voice Models/);
+    assert.match(text, /Bestie Voice Models/);
     assert.match(text, /\*\s+ggml-small\.bin\s+2\.0 KiB\s+recommended baseline for Vietnamese/);
     assert.match(text, /ggml-tiny\.bin\s+1\.0 KiB\s+fast, low quality for Vietnamese/);
     assert.match(text, /Configured/);
@@ -526,7 +527,7 @@ test("runTelegramCommand voice models lists local models and marks configured mo
   }
 });
 
-test("runTelegramCommand voice models reports when no local models exist", async () => {
+test("runVoiceCommand models reports when no local models exist", async () => {
   const paths = await createTempPaths();
   const output: string[] = [];
 
@@ -541,7 +542,7 @@ test("runTelegramCommand voice models reports when no local models exist", async
       paths,
     );
 
-    await runTelegramCommand({ argv: ["node", "bestie", "channels", "telegram", "voice", "models"], paths, writeLine: (message) => output.push(message) });
+    await runVoiceCommand({ argv: ["node", "bestie", "voice", "models"], paths, writeLine: (message) => output.push(message) });
 
     assert.match(output.join("\n"), /No local whisper\.cpp \.bin models found/);
   } finally {
@@ -549,7 +550,7 @@ test("runTelegramCommand voice models reports when no local models exist", async
   }
 });
 
-test("runTelegramCommand voice download-model previews without downloading by default", async () => {
+test("runVoiceCommand download-model previews without downloading by default", async () => {
   const paths = await createTempPaths();
   const output: string[] = [];
   let fetchCalled = false;
@@ -577,7 +578,7 @@ test("runTelegramCommand voice download-model previews without downloading by de
     });
 
     assert.equal(fetchCalled, false);
-    assert.match(output.join("\n"), /Telegram Voice Model/);
+    assert.match(output.join("\n"), /Bestie Voice Model/);
     assert.match(output.join("\n"), /Dry run only/);
     assert.ok(output.every((line) => !/\x1b\[[0-9;]*m/.test(line)));
     await assert.rejects(() => access(resolve(paths.rootDir, ".bestie/models/ggml-small.bin")), /ENOENT/);
@@ -586,7 +587,7 @@ test("runTelegramCommand voice download-model previews without downloading by de
   }
 });
 
-test("runTelegramCommand voice download-model downloads and can update config", async () => {
+test("runVoiceCommand download-model downloads and can update config", async () => {
   const paths = await createTempPaths();
   const output: string[] = [];
 
@@ -620,7 +621,7 @@ test("runTelegramCommand voice download-model downloads and can update config", 
   }
 });
 
-test("runTelegramCommand voice download-model refuses to overwrite without force", async () => {
+test("runVoiceCommand download-model refuses to overwrite without force", async () => {
   const paths = await createTempPaths();
 
   try {

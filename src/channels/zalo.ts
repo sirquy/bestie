@@ -12,6 +12,7 @@ import { loadRequiredSecret } from "../runtime/env.js";
 import { appendLog, redactSecrets } from "../runtime/logger.js";
 import type { RuntimePaths } from "../runtime/paths.js";
 import { executeApprovedAction } from "../safety/approval-executor.js";
+import { handleCronChannelCommand } from "../cron/channel-commands.js";
 import type { PermissionApprover, PermissionPolicy } from "../safety/permission-policy.js";
 import type { ChannelIncomingMessage, ChannelOutboundAdapter, ChannelRuntimeAdapter } from "./adapter.js";
 import { createChannelActivityController } from "./activity.js";
@@ -322,6 +323,10 @@ export function createZaloOutboundAdapter(client: ZaloClient): ChannelOutboundAd
 }
 
 async function handleZaloSlashCommand(text: string, chatId: string, options: ZaloUpdateHandlerOptions): Promise<boolean> {
+  if (await handleCronChannelCommand({ text, paths: options.paths, channel: "zalo", userId: chatId, sendMessage: (message) => options.client.sendMessage(chatId, message).then(() => undefined) })) {
+    return true;
+  }
+
   if (text === "/status") {
     const store = await SqliteMemoryStore.open(options.paths);
     try {
