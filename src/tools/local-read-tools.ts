@@ -43,6 +43,12 @@ export interface SearchMemoriesResult extends ListActiveMemoriesResult {
   query: string;
 }
 
+export interface InspectMemoryResult {
+  allowed: boolean;
+  reason: string;
+  memory?: StoredMemory;
+}
+
 export type MemoryAnalysisMode = "all" | "duplicates" | "stale" | "conflicts";
 
 export interface AnalyzeMemoriesResult {
@@ -209,6 +215,35 @@ export async function searchMemoriesTool(options: LocalToolOptions & { query: st
         importance: memory.importance,
         updatedAt: memory.updatedAt,
       })),
+    };
+  } finally {
+    store.close();
+  }
+}
+
+export async function inspectMemoryTool(options: LocalToolOptions & { id: number }): Promise<InspectMemoryResult> {
+  const permission = await reviewActionPermission(
+    {
+      category: "read",
+      action: "inspect_active_memory",
+      target: `memory #${options.id}`,
+      reason: "Inspect one approved active local memory and its governance metadata.",
+      trusted: true,
+    },
+    { paths: options.paths, approver: options.approver, policy: options.policy },
+  );
+
+  if (permission.decision !== "allow") {
+    return { allowed: false, reason: permission.reason };
+  }
+
+  const store = await SqliteMemoryStore.open(options.paths);
+
+  try {
+    return {
+      allowed: true,
+      reason: permission.reason,
+      memory: store.getActiveMemory(options.id),
     };
   } finally {
     store.close();

@@ -97,6 +97,10 @@ test("parseMcpToolRequest accepts internal read tool requests", () => {
     tool: "internal.list_memories",
     arguments: { limit: 5 },
   });
+  assert.deepEqual(parseMcpToolRequest('{"tool":"internal.inspect_memory","arguments":{"id":1}}'), {
+    tool: "internal.inspect_memory",
+    arguments: { id: 1 },
+  });
   assert.deepEqual(parseMcpToolRequest('{"tool":"internal.git_diff","arguments":{"staged":true}}'), {
     tool: "internal.git_diff",
     arguments: { staged: true },
@@ -120,6 +124,10 @@ test("parseMcpToolRequest accepts internal read tool requests", () => {
   assert.deepEqual(parseMcpToolRequest('{"tool":"internal.cleanup_memories","arguments":{"ids":[1,2],"reason":"duplicate memories"}}'), {
     tool: "internal.cleanup_memories",
     arguments: { ids: [1, 2], reason: "duplicate memories" },
+  });
+  assert.deepEqual(parseMcpToolRequest('{"tool":"internal.supersede_memory","arguments":{"oldId":1,"newId":2,"reason":"newer memory replaces it"}}'), {
+    tool: "internal.supersede_memory",
+    arguments: { oldId: 1, newId: 2, reason: "newer memory replaces it" },
   });
 });
 
@@ -497,6 +505,35 @@ test("runAgentToolRequest lists active memories", async () => {
   }
 });
 
+test("runAgentToolRequest inspects an active memory", async () => {
+  const paths = await createTempPaths();
+
+  try {
+    const store = await import("../memory/sqlite-store.js").then(({ SqliteMemoryStore }) => SqliteMemoryStore.open(paths));
+    try {
+      store.addMemory({ type: "project_context", content: "Inspect via tool", scope: "session", pinned: true });
+    } finally {
+      store.close();
+    }
+
+    const result = await runAgentToolRequest({
+      config: { ...createConfig(), mcp: undefined },
+      paths,
+      request: { tool: "internal.inspect_memory", arguments: { id: 1 } },
+    });
+
+    assert.equal(result.ok, true);
+    const payload = result.result as { memory: { id: number; content: string; scope: string; pinned: boolean; expiresAt?: string } };
+    assert.equal(payload.memory.id, 1);
+    assert.equal(payload.memory.content, "Inspect via tool");
+    assert.equal(payload.memory.scope, "session");
+    assert.equal(payload.memory.pinned, true);
+    assert.ok(payload.memory.expiresAt);
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
 test("runAgentToolRequest analyzes active memories", async () => {
   const paths = await createTempPaths();
 
@@ -639,6 +676,54 @@ test("runAgentToolRequest cleans multiple memories and reports missing ids", asy
     } finally {
       verifyStore.close();
     }
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("runAgentToolRequest supersedes an active memory when policy allows", async () => {
+  const paths = await createTempPaths();
+
+  try {
+    const store = await import("../memory/sqlite-store.js").then(({ SqliteMemoryStore }) => SqliteMemoryStore.open(paths));
+    try {
+      store.addMemory({ type: "project_context", content: "Old project detail" });
+      store.addMemory({ type: "project_context", content: "New project detail" });
+    } finally {
+      store.close();
+    }
+
+    const result = await runAgentToolRequest({
+      config: { ...createConfig(), memory: { deletePolicy: "allow" }, mcp: undefined },
+      paths,
+      request: { tool: "internal.supersede_memory", arguments: { oldId: 1, newId: 2, reason: "new project detail replaces old detail" } },
+    });
+
+    assert.deepEqual(result, { ok: true, status: "pass", message: "Memory superseded.", result: { oldId: 1, newId: 2, superseded: true } });
+
+    const verifyStore = await import("../memory/sqlite-store.js").then(({ SqliteMemoryStore }) => SqliteMemoryStore.open(paths));
+    try {
+      assert.equal(verifyStore.getActiveMemory(1)?.supersededBy, 2);
+    } finally {
+      verifyStore.close();
+    }
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("runAgentToolRequest blocks memory supersede when delete policy denies", async () => {
+  const paths = await createTempPaths();
+
+  try {
+    const result = await runAgentToolRequest({
+      config: { ...createConfig(), memory: { deletePolicy: "deny" }, mcp: undefined },
+      paths,
+      request: { tool: "internal.supersede_memory", arguments: { oldId: 1, newId: 2, reason: "test deny policy" } },
+    });
+
+    assert.equal(result.ok, false);
+    assert.match(result.message, /Memory deletes are disabled by config/);
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
   }

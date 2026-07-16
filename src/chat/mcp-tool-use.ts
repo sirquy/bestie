@@ -9,7 +9,7 @@ import { reviewActionPermission, type PermissionApprover, type PermissionPolicy 
 import { evaluateMemoryCandidate, type MemoryType } from "../memory/policy.js";
 import { SqliteMemoryStore } from "../memory/sqlite-store.js";
 import { applyPatchTool, editLocalFileTool, execLocalTool, listProcessesTool, writeLocalFileTool } from "../tools/local-action-tools.js";
-import { analyzeMemoriesTool, listActiveMemoriesTool, listLocalFilesTool, readGitDiffTool, readGitLogTool, readGitStatusTool, readLocalFileTool, readManyLocalFilesTool, readMarkdownBundleTool, readRecentAppLogsTool, searchLocalFilesTool, searchMemoriesTool, type MemoryAnalysisMode } from "../tools/local-read-tools.js";
+import { analyzeMemoriesTool, inspectMemoryTool, listActiveMemoriesTool, listLocalFilesTool, readGitDiffTool, readGitLogTool, readGitStatusTool, readLocalFileTool, readManyLocalFilesTool, readMarkdownBundleTool, readRecentAppLogsTool, searchLocalFilesTool, searchMemoriesTool, type MemoryAnalysisMode } from "../tools/local-read-tools.js";
 import { readUrlTool } from "../tools/web-read-tools.js";
 import { addCronScheduleTool, listCronSchedulesTool, removeCronScheduleTool, toggleCronScheduleTool } from "../tools/cron-tools.js";
 
@@ -51,7 +51,7 @@ export interface McpToolRequest {
 }
 
 export interface InternalToolRequest {
-  tool: "internal.read_file" | "internal.read_many_files" | "internal.read_markdown_bundle" | "internal.list_files" | "internal.search_files" | "internal.read_logs" | "internal.read_url" | "internal.git_status" | "internal.git_diff" | "internal.git_log" | "internal.mcp_list_servers" | "internal.mcp_list_tools" | "internal.write_file" | "internal.edit_file" | "internal.apply_patch" | "internal.exec" | "internal.list_processes" | "internal.list_memories" | "internal.search_memories" | "internal.analyze_memories" | "internal.remember_memory" | "internal.delete_memory" | "internal.cleanup_memories" | "internal.add_cron_schedule" | "internal.list_cron_schedules" | "internal.remove_cron_schedule" | "internal.toggle_cron_schedule";
+  tool: "internal.read_file" | "internal.read_many_files" | "internal.read_markdown_bundle" | "internal.list_files" | "internal.search_files" | "internal.read_logs" | "internal.read_url" | "internal.git_status" | "internal.git_diff" | "internal.git_log" | "internal.mcp_list_servers" | "internal.mcp_list_tools" | "internal.write_file" | "internal.edit_file" | "internal.apply_patch" | "internal.exec" | "internal.list_processes" | "internal.list_memories" | "internal.search_memories" | "internal.inspect_memory" | "internal.analyze_memories" | "internal.remember_memory" | "internal.delete_memory" | "internal.cleanup_memories" | "internal.supersede_memory" | "internal.add_cron_schedule" | "internal.list_cron_schedules" | "internal.remove_cron_schedule" | "internal.toggle_cron_schedule";
   arguments: Record<string, unknown>;
 }
 
@@ -235,13 +235,14 @@ export function buildMcpToolInstructions(config: AppConfig, runtimeContext?: str
   const contextSection = runtimeContext?.trim() ? `\nRuntime context:\n${runtimeContext.trim()}` : "";
   const mcpSection = readTools.length === 0 ? "" : `\nAvailable read-only MCP tools:\n${readTools.map((tool) => `- ${tool}`).join("\n")}`;
 
-  return `Available internal tools:${contextSection}\n- internal.read_file {"path":"relative/or/allowed/absolute/path"}\n- internal.read_many_files {"paths":["README.md","docs/ARCHITECTURE.md"],"maxBytesPerFile":24576,"maxTotalBytes":163840}\n- internal.read_markdown_bundle {"path":".","limit":40,"maxBytesPerFile":24576,"maxTotalBytes":163840}\n- internal.list_files {"path":"optional/path","limit":50}\n- internal.search_files {"query":"*.log","path":"optional/path","limit":20}\n- internal.read_logs {"lines":40}\n- internal.read_url {"url":"https://example.com/mcp-docs","maxBytes":131072,"timeoutMs":10000}\n- internal.git_status {"path":"optional/repo/path"}\n- internal.git_diff {"path":"optional/repo/path","staged":false,"maxBytes":98304}\n- internal.git_log {"path":"optional/repo/path","limit":10}\n- internal.mcp_list_servers {}\n- internal.mcp_list_tools {"server":"server-name","connect":true}\n- internal.write_file {"path":"relative/path","content":"text","overwrite":false}\n- internal.edit_file {"path":"relative/path","oldText":"exact text","newText":"replacement","replaceAll":false}\n- internal.apply_patch {"patch":"git apply compatible patch"}\n- internal.exec {"command":"npm","args":["test"],"cwd":".","timeoutMs":30000}\n- internal.list_processes {"limit":20}\n- internal.list_memories {}\n- internal.search_memories {"query":"memory search text"}\n- internal.analyze_memories {"mode":"all|duplicates|stale|conflicts"}\n- internal.remember_memory {"type":"preference|communication_preference|user_fact|project_context|durable_decision|sensitive_personal","content":"durable memory to save"}
+  return `Available internal tools:${contextSection}\n- internal.read_file {"path":"relative/or/allowed/absolute/path"}\n- internal.read_many_files {"paths":["README.md","docs/ARCHITECTURE.md"],"maxBytesPerFile":24576,"maxTotalBytes":163840}\n- internal.read_markdown_bundle {"path":".","limit":40,"maxBytesPerFile":24576,"maxTotalBytes":163840}\n- internal.list_files {"path":"optional/path","limit":50}\n- internal.search_files {"query":"*.log","path":"optional/path","limit":20}\n- internal.read_logs {"lines":40}\n- internal.read_url {"url":"https://example.com/mcp-docs","maxBytes":131072,"timeoutMs":10000}\n- internal.git_status {"path":"optional/repo/path"}\n- internal.git_diff {"path":"optional/repo/path","staged":false,"maxBytes":98304}\n- internal.git_log {"path":"optional/repo/path","limit":10}\n- internal.mcp_list_servers {}\n- internal.mcp_list_tools {"server":"server-name","connect":true}\n- internal.write_file {"path":"relative/path","content":"text","overwrite":false}\n- internal.edit_file {"path":"relative/path","oldText":"exact text","newText":"replacement","replaceAll":false}\n- internal.apply_patch {"patch":"git apply compatible patch"}\n- internal.exec {"command":"npm","args":["test"],"cwd":".","timeoutMs":30000}\n- internal.list_processes {"limit":20}\n- internal.list_memories {}\n- internal.search_memories {"query":"memory search text"}\n- internal.inspect_memory {"id":1}\n- internal.analyze_memories {"mode":"all|duplicates|stale|conflicts"}\n- internal.remember_memory {"type":"preference|communication_preference|user_fact|project_context|durable_decision|sensitive_personal","content":"durable memory to save"}
 - internal.delete_memory {"id":1,"reason":"why this memory is stale, wrong, duplicate, or no longer useful"}
 - internal.cleanup_memories {"ids":[1,2,3],"reason":"why these memories should be deleted"}
+- internal.supersede_memory {"oldId":1,"newId":2,"reason":"why the old memory is replaced by the new memory"}
 - internal.add_cron_schedule {"name":"job name","schedule_type":"interval|cron_expr|once","schedule_value":"30m | 0 8 * * * | 2026-12-25T08:00:00Z","prompt":"what to do when triggered","channel":"optional telegram:<userId>|zalo:<userId> destination for completion report"}
 - internal.list_cron_schedules {}
 - internal.remove_cron_schedule {"schedule_id":1}
-- internal.toggle_cron_schedule {"schedule_id":1,"enabled":true}${mcpSection}\n\nTool selection guide:\n- Answer directly only when the request does not depend on local files, logs, repo contents, git state, HTTP(S) links, configured MCP data, MCP server discovery, or making a requested local change.\n- Approved local memories may already be included in the conversation as system context. Use that memory context directly when it answers the user; do not call memory tools just to rediscover information already shown there.\n- Use memory tools only when the included memory context is missing or insufficient, when the user explicitly asks to search/list memories, when saving a durable memory, or when cleaning stale/incorrect/duplicate memories: search_memories for a specific query, list_memories for a complete broad recall/list request, remember_memory for durable writes in any language, delete_memory for one known stale memory id, cleanup_memories for multiple known stale memory ids. Prefer list_memories before deleting unless the user gave exact ids so cleanup can consider every active memory.\n- Use file tools for repo/local context: read_file for a known path, list_files to inspect a directory, search_files to discover likely paths, read_many_files for a small known set, read_markdown_bundle for repo/docs summaries. If the user asks you to edit a known config or project file, read the file if needed, then use edit_file/write_file/apply_patch; do not merely explain the edit unless the tool is denied or unavailable.\n- Generic list/search requests such as "list files" or internal.list_files with path "." inspect the agent workspace, defaulting to .bestie/workspace. Use an explicit project path such as "src", "docs", or an absolute project root path when the user asks to inspect repository files.\n- Relative read_file/read_many_files/read_markdown_bundle paths resolve from the project root. Relative write/edit/exec paths resolve from the agent workspace to avoid polluting the project root.\n- Absolute paths outside the project root and agent workspace are allowed only when covered by workspace.externalPaths in config.\n- Use read_logs only for recent runtime behavior, failures, diagnostics, or debugging questions.\n- Use read_url when the user gives an HTTP(S) link whose page content is needed, such as MCP setup docs, package pages, or install instructions; it obeys internalTools.policies and may require approval.\n- Use git tools for repository state questions: git_status for changed files, git_diff for current or staged patches, git_log for recent commits.\n- Use internal.mcp_list_servers when the user asks what MCP servers are configured or available. Use internal.mcp_list_tools when the user asks what a configured MCP server can do, or before claiming a remote MCP server has no tools.\n- Use write/edit/apply_patch/exec/process tools when the user asks you to change files, update config, run validation, commit changes, or inspect running processes; these tools obey internalTools.policies and may require approval.\n- Use configured MCP read tools only for external configured data that internal local tools cannot provide. If a server has discovered tools but no configured tool categories, explain that discovery works but tool execution still needs allowlisted categories.\n\nTool-use rule:\n- When asked for a tool decision, reply with exactly one JSON object and no extra text.\n- Use {"answer":"..."} only when no tool is needed by the selection guide.\n- If a listed tool is needed, reply with that executable tool JSON immediately and nothing else. Do not put prose before or after tool JSON.\n- After any empty, denied, or failed result, either try one clearly useful adjacent tool call or answer transparently that the data was not found/available. Do not invent missing facts.\n- Internal examples: {"tool":"internal.mcp_list_servers","arguments":{}} or {"tool":"internal.mcp_list_tools","arguments":{"server":"composio","connect":true}}\n- MCP example: {"tool":"mcp.read","server":"server-name","name":"tool-name","arguments":{}}\n- Do not invent shell command JSON, cmd fields, workdir fields, bash commands, sed, cat, rg, terminal actions, or non-git patch markers. Only the tool schemas above can be executed. internal.apply_patch requires a git apply compatible diff, not *** Begin Patch format.\n- The runtime can execute multiple tool calls in sequence, then show you each result so you can continue or answer the user.`;
+- internal.toggle_cron_schedule {"schedule_id":1,"enabled":true}${mcpSection}\n\nTool selection guide:\n- Answer directly only when the request does not depend on local files, logs, repo contents, git state, HTTP(S) links, configured MCP data, MCP server discovery, or making a requested local change.\n- Approved local memories may already be included in the conversation as system context. Use that memory context directly when it answers the user; do not call memory tools just to rediscover information already shown there.\n- Use memory tools only when the included memory context is missing or insufficient, when the user explicitly asks to search/list/inspect memories, when saving a durable memory, or when cleaning stale/incorrect/duplicate memories: search_memories for a specific query, list_memories for a complete broad recall/list request, inspect_memory before risky governance changes, remember_memory for durable writes in any language, supersede_memory when one active memory clearly replaces another, delete_memory for one known stale memory id, cleanup_memories for multiple known stale memory ids. Prefer list_memories before deleting unless the user gave exact ids so cleanup can consider every active memory.\n- Use file tools for repo/local context: read_file for a known path, list_files to inspect a directory, search_files to discover likely paths, read_many_files for a small known set, read_markdown_bundle for repo/docs summaries. If the user asks you to edit a known config or project file, read the file if needed, then use edit_file/write_file/apply_patch; do not merely explain the edit unless the tool is denied or unavailable.\n- Generic list/search requests such as "list files" or internal.list_files with path "." inspect the agent workspace, defaulting to .bestie/workspace. Use an explicit project path such as "src", "docs", or an absolute project root path when the user asks to inspect repository files.\n- Relative read_file/read_many_files/read_markdown_bundle paths resolve from the project root. Relative write/edit/exec paths resolve from the agent workspace to avoid polluting the project root.\n- Absolute paths outside the project root and agent workspace are allowed only when covered by workspace.externalPaths in config.\n- Use read_logs only for recent runtime behavior, failures, diagnostics, or debugging questions.\n- Use read_url when the user gives an HTTP(S) link whose page content is needed, such as MCP setup docs, package pages, or install instructions; it obeys internalTools.policies and may require approval.\n- Use git tools for repository state questions: git_status for changed files, git_diff for current or staged patches, git_log for recent commits.\n- Use internal.mcp_list_servers when the user asks what MCP servers are configured or available. Use internal.mcp_list_tools when the user asks what a configured MCP server can do, or before claiming a remote MCP server has no tools.\n- Use write/edit/apply_patch/exec/process tools when the user asks you to change files, update config, run validation, commit changes, or inspect running processes; these tools obey internalTools.policies and may require approval.\n- Use configured MCP read tools only for external configured data that internal local tools cannot provide. If a server has discovered tools but no configured tool categories, explain that discovery works but tool execution still needs allowlisted categories.\n\nTool-use rule:\n- When asked for a tool decision, reply with exactly one JSON object and no extra text.\n- Use {"answer":"..."} only when no tool is needed by the selection guide.\n- If a listed tool is needed, reply with that executable tool JSON immediately and nothing else. Do not put prose before or after tool JSON.\n- After any empty, denied, or failed result, either try one clearly useful adjacent tool call or answer transparently that the data was not found/available. Do not invent missing facts.\n- Internal examples: {"tool":"internal.mcp_list_servers","arguments":{}} or {"tool":"internal.mcp_list_tools","arguments":{"server":"composio","connect":true}}\n- MCP example: {"tool":"mcp.read","server":"server-name","name":"tool-name","arguments":{}}\n- Do not invent shell command JSON, cmd fields, workdir fields, bash commands, sed, cat, rg, terminal actions, or non-git patch markers. Only the tool schemas above can be executed. internal.apply_patch requires a git apply compatible diff, not *** Begin Patch format.\n- The runtime can execute multiple tool calls in sequence, then show you each result so you can continue or answer the user.`;
 }
 
 export function buildAgentToolDecisionMessage(): string {
@@ -390,9 +391,17 @@ export function formatToolActivityLabel(request: AgentToolRequest): string {
     return `memory #${numberArg(args.id) ?? "?"}`;
   }
 
+  if (request.tool === "internal.inspect_memory") {
+    return `memory #${numberArg(args.id) ?? "?"}`;
+  }
+
   if (request.tool === "internal.cleanup_memories") {
     const ids = memoryIdsArg(args.ids);
     return ids.length > 0 ? `${ids.length} memories` : "memories";
+  }
+
+  if (request.tool === "internal.supersede_memory") {
+    return `memory #${numberArg(args.oldId) ?? "?"} -> #${numberArg(args.newId) ?? "?"}`;
   }
 
   if (request.tool === "internal.analyze_memories") {
@@ -595,6 +604,13 @@ export async function runAgentToolRequest(options: RunAgentToolRequestOptions): 
     return { ok: result.allowed, status: result.allowed ? "pass" : "fail", message: result.reason, result: { memories: result.memories } };
   }
 
+  if (options.request.tool === "internal.inspect_memory") {
+    const id = numberArg(args.id);
+    if (!id) return { ok: false, status: "fail", message: "internal.inspect_memory requires arguments.id." };
+    const result = await inspectMemoryTool({ paths: options.paths, id, approver: options.approver, policy: options.policy });
+    return { ok: result.allowed && result.memory !== undefined, status: result.allowed && result.memory !== undefined ? "pass" : "fail", message: result.memory ? result.reason : "Active memory not found.", result: { memory: result.memory } };
+  }
+
   if (options.request.tool === "internal.remember_memory") {
     return rememberMemoryTool(options.config, options.paths, args);
   }
@@ -605,6 +621,10 @@ export async function runAgentToolRequest(options: RunAgentToolRequestOptions): 
 
   if (options.request.tool === "internal.cleanup_memories") {
     return cleanupMemoriesTool(options, args);
+  }
+
+  if (options.request.tool === "internal.supersede_memory") {
+    return supersedeMemoryTool(options, args);
   }
 
   if (options.request.tool === "internal.search_memories") {
@@ -640,7 +660,7 @@ export async function runAgentToolRequest(options: RunAgentToolRequestOptions): 
 }
 
 export function isInternalToolName(value: string): value is InternalToolRequest["tool"] {
-  return ["internal.read_file", "internal.read_many_files", "internal.read_markdown_bundle", "internal.list_files", "internal.search_files", "internal.read_logs", "internal.read_url", "internal.git_status", "internal.git_diff", "internal.git_log", "internal.mcp_list_servers", "internal.mcp_list_tools", "internal.write_file", "internal.edit_file", "internal.apply_patch", "internal.exec", "internal.list_processes", "internal.list_memories", "internal.search_memories", "internal.analyze_memories", "internal.remember_memory", "internal.delete_memory", "internal.cleanup_memories", "internal.add_cron_schedule", "internal.list_cron_schedules", "internal.remove_cron_schedule", "internal.toggle_cron_schedule"].includes(value);
+  return ["internal.read_file", "internal.read_many_files", "internal.read_markdown_bundle", "internal.list_files", "internal.search_files", "internal.read_logs", "internal.read_url", "internal.git_status", "internal.git_diff", "internal.git_log", "internal.mcp_list_servers", "internal.mcp_list_tools", "internal.write_file", "internal.edit_file", "internal.apply_patch", "internal.exec", "internal.list_processes", "internal.list_memories", "internal.search_memories", "internal.inspect_memory", "internal.analyze_memories", "internal.remember_memory", "internal.delete_memory", "internal.cleanup_memories", "internal.supersede_memory", "internal.add_cron_schedule", "internal.list_cron_schedules", "internal.remove_cron_schedule", "internal.toggle_cron_schedule"].includes(value);
 }
 
 async function deleteMemoryTool(options: RunAgentToolRequestOptions, args: Record<string, unknown>): Promise<McpToolCallResult> {
@@ -710,9 +730,36 @@ async function cleanupMemoriesTool(options: RunAgentToolRequestOptions, args: Re
   }
 }
 
+async function supersedeMemoryTool(options: RunAgentToolRequestOptions, args: Record<string, unknown>): Promise<McpToolCallResult> {
+  const oldId = numberArg(args.oldId);
+  const newId = numberArg(args.newId);
+  const reason = stringArg(args.reason)?.trim();
+
+  if (!oldId || !newId) {
+    return { ok: false, status: "fail", message: "internal.supersede_memory requires arguments.oldId and arguments.newId." };
+  }
+
+  if (!reason) {
+    return { ok: false, status: "fail", message: "internal.supersede_memory requires arguments.reason." };
+  }
+
+  const permission = await reviewMemoryDeletePermission(options, "internal.supersede_memory", `memory #${oldId} -> #${newId}`, reason, { oldId, newId, reason });
+  if (permission.decision !== "allow") {
+    return { ok: false, status: "fail", message: `Memory supersede denied: ${permission.reason}` };
+  }
+
+  const store = await SqliteMemoryStore.open(options.paths);
+  try {
+    const updated = store.supersedeMemory(oldId, newId);
+    return { ok: updated !== undefined, status: updated ? "pass" : "fail", message: updated ? "Memory superseded." : "Could not supersede memory. Make sure both ids are active and different.", result: { oldId, newId, superseded: updated !== undefined } };
+  } finally {
+    store.close();
+  }
+}
+
 async function reviewMemoryDeletePermission(
   options: RunAgentToolRequestOptions,
-  toolName: "internal.delete_memory" | "internal.cleanup_memories",
+  toolName: "internal.delete_memory" | "internal.cleanup_memories" | "internal.supersede_memory",
   target: string,
   reason: string,
   payload: Record<string, unknown>,

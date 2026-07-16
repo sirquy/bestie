@@ -14,6 +14,8 @@ The model may propose durable memory through the `internal.remember_memory` tool
 - `ask` - queue allowed non-secret memories as pending approval and ask the owner to approve or deny the write in-channel when the channel supports approvals. This is the default when unset.
 - `deny` - reject memory writes.
 
+Agent-side memory governance uses internal tools. `internal.inspect_memory` is a trusted read for one active memory record, including scope, pin, expiry, confidence, and supersession metadata. `internal.supersede_memory` marks one active memory as replaced by another and follows the same approval path as cleanup/delete through `memory.deletePolicy`.
+
 Eligible memory types:
 
 - non-sensitive user facts
@@ -143,6 +145,8 @@ Commands/future UI should support:
 - edit memory
 - delete memory
 - analyze duplicate, stale, and conflicting memory
+- inspect one active memory with metadata before risky changes
+- mark one memory as superseded by another while respecting `memory.deletePolicy`
 - dry-run and apply duplicate/stale cleanup while respecting `memory.deletePolicy`
 - install, inspect, and remove a cron-backed weekly memory maintenance report
 - export memory
