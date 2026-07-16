@@ -19,6 +19,23 @@ test("loadSystemPrompt returns editable prompt text", async () => {
   }
 });
 
+test("loadSystemPrompt injects runtime AGENTS.md instructions", async () => {
+  const paths = await createTempPaths();
+
+  try {
+    await writeFile(paths.systemPromptPath, "Hello prompt\n");
+    await writeFile(resolve(paths.appDir, "AGENTS.md"), "# Runtime Guide\n\nUse live context first.\n");
+
+    const prompt = await loadSystemPrompt(paths);
+
+    assert.match(prompt, /^Hello prompt\n\nRuntime workspace instructions from ~\/\.bestie\/AGENTS\.md:/);
+    assert.match(prompt, /# Runtime Guide/);
+    assert.match(prompt, /Use live context first/);
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
 test("loadSystemPrompt rejects empty prompt files", async () => {
   const paths = await createTempPaths();
 

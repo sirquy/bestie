@@ -1,6 +1,8 @@
-import { mkdir } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import { stdout as output } from "node:process";
+import { resolve } from "node:path";
 
+import { getDefaultAgentsMarkdown } from "../../character/agents-template.js";
 import { generateCharacterConfig, generateSystemPrompt } from "../../character/prompt-generator.js";
 import { writeCharacterFiles } from "../../character/writer.js";
 import { testOpenAICompatibleProvider } from "../../llm/provider-test.js";
@@ -109,11 +111,13 @@ export async function runOnboardCommand(optionsOrArgv: string[] | OnboardCommand
     await writeConfig(config, paths);
     await writeEnvFile({ [DEFAULT_API_KEY_ENV]: answers.apiKey }, paths);
     await writeCharacterFiles(character, systemPrompt, paths);
+    await writeAgentsFile(paths);
     ui.success("Đã ghi các file runtime cục bộ.");
 
     ui.section("File đã lưu", "Mọi thứ được lưu trong runtime cục bộ của bạn.");
     ui.savedPath("Cấu hình", paths.configPath);
     ui.savedPath("Bí mật", paths.envPath);
+    ui.savedPath("Hướng dẫn", getAgentsFilePath(paths));
     ui.savedPath("Tính cách", paths.characterPath);
     ui.savedPath("Prompt hệ thống", paths.systemPromptPath);
 
@@ -132,6 +136,14 @@ export async function runOnboardCommand(optionsOrArgv: string[] | OnboardCommand
 
 async function createQuestioner(): Promise<Questioner> {
   return createCliQuestioner();
+}
+
+async function writeAgentsFile(paths: RuntimePaths): Promise<void> {
+  await writeFile(getAgentsFilePath(paths), getDefaultAgentsMarkdown(), { mode: 0o600 });
+}
+
+function getAgentsFilePath(paths: RuntimePaths): string {
+  return resolve(paths.appDir, "AGENTS.md");
 }
 
 async function collectAnswers(questioner: Pick<Questioner, "ask" | "askHidden">): Promise<OnboardingAnswers> {

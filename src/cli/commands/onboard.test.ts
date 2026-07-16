@@ -4,6 +4,7 @@ import { homedir, tmpdir } from "node:os";
 import { resolve } from "node:path";
 import test from "node:test";
 
+import { getDefaultAgentsMarkdown } from "../../character/agents-template.js";
 import { runOnboardCommand } from "./onboard.js";
 import type { AppConfig } from "../../runtime/config.js";
 import { getRuntimePaths, type RuntimePaths } from "../../runtime/paths.js";
@@ -44,6 +45,7 @@ test("runOnboardCommand writes local files and skips provider test when requeste
 
     const config = JSON.parse(await readFile(paths.configPath, "utf8")) as { agent: { language: string; timeZone: string }; llm: { baseUrl: string; timeoutMs: number }; memory?: { writePolicy?: string } };
     const envText = await readFile(paths.envPath, "utf8");
+    const agentsText = await readFile(resolve(paths.appDir, "AGENTS.md"), "utf8");
     const logText = await readFile(paths.appLogPath, "utf8");
 
     assert.equal(closed, true);
@@ -54,10 +56,14 @@ test("runOnboardCommand writes local files and skips provider test when requeste
     assert.equal(config.agent.timeZone, "Asia/Tokyo");
     assert.equal(config.memory?.writePolicy, "ask");
     assert.match(envText, /OPENAI_API_KEY="test-key"/);
+    assert.equal(agentsText, getDefaultAgentsMarkdown());
+    assert.match(agentsText, /# AGENTS\.md - Bestie Agent Workspace/);
+    assert.match(agentsText, /~\/\.bestie\/AGENTS\.md/);
     assert.match(logText, /provider_test_skipped/);
     assert.ok(output.some((line) => line.includes("Runtime")));
     assert.ok(output.some((line) => line.includes("Hồ sơ -> Tạo cấu hình -> File đã lưu")));
     assert.ok(output.some((line) => line.includes("OK") && line.includes("Đã ghi các file runtime cục bộ")));
+    assert.ok(output.some((line) => line.includes("Hướng dẫn") && line.includes("AGENTS.md")));
     assert.ok(output.every((line) => !line.includes("Kiểm tra nhà cung cấp") || !line.includes("Gửi một completion")));
     assert.ok(output.some((line) => line.includes("INFO") && line.includes("Đã bỏ qua kiểm tra nhà cung cấp")));
   } finally {

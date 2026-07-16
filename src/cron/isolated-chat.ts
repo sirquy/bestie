@@ -7,6 +7,7 @@ import { SqliteMemoryStore } from "../memory/sqlite-store.js";
 import { buildChatMessages } from "../chat/message-builder.js";
 import { buildMcpToolSystemPrompt, completeWithAgentTools, type AgentToolChatCompletionRunner } from "../chat/mcp-tool-use.js";
 import type { ChatCompletionOptions } from "../llm/types.js";
+import { appendWorkspaceInstructionsText, loadWorkspaceInstructions } from "../character/prompt-loader.js";
 
 const CRON_MAX_TOOL_CALLS = 50;
 
@@ -26,7 +27,7 @@ const cronChatCompletion: AgentToolChatCompletionRunner = (config: AppConfig, _a
 export async function runIsolatedChat(options: IsolatedChatOptions): Promise<string> {
   const apiKey = options.apiKey ?? (await loadRequiredSecret(options.config.llm.apiKeyEnv, options.paths));
 
-  const systemPrompt = buildCronSystemPrompt(options.config);
+  const systemPrompt = buildCronSystemPrompt(options.config, await loadWorkspaceInstructions(options.paths));
   const memories = await loadActiveMemories(options.paths);
   const messages = buildChatMessages(systemPrompt, [], options.prompt, memories);
 
@@ -48,9 +49,9 @@ export async function runIsolatedChat(options: IsolatedChatOptions): Promise<str
   return result;
 }
 
-export function buildCronSystemPrompt(config: AppConfig): string {
+export function buildCronSystemPrompt(config: AppConfig, workspaceInstructions?: string): string {
   const base = [CRON_SYSTEM_PREFIX, `Agent name: ${config.agent.name}. Owner: ${config.agent.ownerName}.`].join("\n\n");
-  return buildMcpToolSystemPrompt(base, config);
+  return buildMcpToolSystemPrompt(appendWorkspaceInstructionsText(base, workspaceInstructions), config);
 }
 
 async function loadActiveMemories(paths: RuntimePaths): Promise<import("../memory/sqlite-store.js").StoredMemory[]> {

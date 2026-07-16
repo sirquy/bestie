@@ -58,8 +58,10 @@ test("cron isolated prompt exposes internal and configured MCP tools", () => {
   const prompt = buildCronSystemPrompt({
     ...TEST_CONFIG,
     mcp: { servers: [{ name: "composio", enabled: true, transport: "http", url: "https://connect.composio.dev/mcp", tools: [{ name: "gmail_search", category: "read" }] }] },
-  });
+  }, "# Cron Runtime Guide\n\nUse current scheduler state.");
 
+  assert.match(prompt, /Runtime workspace instructions from ~\/\.bestie\/AGENTS\.md/);
+  assert.match(prompt, /Use current scheduler state/);
   assert.match(prompt, /Available internal tools/);
   assert.match(prompt, /internal\.mcp_list_tools/);
   assert.match(prompt, /Available read-only MCP tools/);
