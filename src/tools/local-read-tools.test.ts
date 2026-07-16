@@ -8,7 +8,7 @@ import { appendLog } from "../runtime/logger.js";
 import type { AppConfig } from "../runtime/config.js";
 import type { RuntimePaths } from "../runtime/paths.js";
 import { SqliteMemoryStore } from "../memory/sqlite-store.js";
-import { analyzeMemoriesTool, listActiveMemoriesTool, listLocalFilesTool, readGitDiffTool, readGitLogTool, readGitStatusTool, readLocalFileTool, readManyLocalFilesTool, readMarkdownBundleTool, readRecentAppLogsTool, searchLocalFilesTool, searchMemoriesTool } from "./local-read-tools.js";
+import { analyzeMemoriesTool, listActiveMemoriesTool, listLocalFilesTool, planMemoryHygieneTool, readGitDiffTool, readGitLogTool, readGitStatusTool, readLocalFileTool, readManyLocalFilesTool, readMarkdownBundleTool, readRecentAppLogsTool, searchLocalFilesTool, searchMemoriesTool } from "./local-read-tools.js";
 
 test("readRecentAppLogsTool reads recent logs through the permission gate", async () => {
   const paths = await createTempPaths();
@@ -184,6 +184,35 @@ test("analyzeMemoriesTool reports duplicate stale and conflicting memories", asy
     assert.deepEqual(result.duplicateGroups, [{ canonicalId: 1, duplicateIds: [2], reason: "Same normalized memory content. Core-scope duplicates are review-only." }]);
     assert.deepEqual(result.staleMemories, [{ id: 5, reason: "Expired at 2020-01-01T00:00:00.000Z." }]);
     assert.deepEqual(result.conflictGroups, [{ ids: [3, 4], reason: "Same type and scope contain opposing preference language." }]);
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("planMemoryHygieneTool returns delete and review-only ids", async () => {
+  const paths = await createTempPaths();
+
+  try {
+    const store = await SqliteMemoryStore.open(paths);
+    try {
+      store.addMemory({ type: "project_context", content: "Duplicate hygiene", importance: 5 });
+      store.addMemory({ type: "project_context", content: "Duplicate hygiene", importance: 1 });
+      store.addMemory({ type: "project_context", content: "Expired hygiene", expiresAt: "2020-01-01T00:00:00.000Z" });
+      store.addMemory({ type: "preference", content: "Use voice replies", importance: 3 });
+      store.addMemory({ type: "preference", content: "Do not use voice replies", importance: 3 });
+    } finally {
+      store.close();
+    }
+
+    const result = await planMemoryHygieneTool({ paths });
+
+    assert.equal(result.allowed, true);
+    assert.equal(result.checked, 5);
+    assert.deepEqual(result.deleteIds, [2, 3]);
+    assert.deepEqual(result.reviewOnlyIds, [4, 5]);
+    assert.equal(result.duplicateGroups.length, 1);
+    assert.equal(result.staleMemories.length, 1);
+    assert.equal(result.conflictGroups.length, 1);
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
   }

@@ -101,6 +101,10 @@ test("parseMcpToolRequest accepts internal read tool requests", () => {
     tool: "internal.inspect_memory",
     arguments: { id: 1 },
   });
+  assert.deepEqual(parseMcpToolRequest('{"tool":"internal.plan_memory_hygiene","arguments":{}}'), {
+    tool: "internal.plan_memory_hygiene",
+    arguments: {},
+  });
   assert.deepEqual(parseMcpToolRequest('{"tool":"internal.git_diff","arguments":{"staged":true}}'), {
     tool: "internal.git_diff",
     arguments: { staged: true },
@@ -557,6 +561,36 @@ test("runAgentToolRequest analyzes active memories", async () => {
     assert.deepEqual(payload.duplicateGroups, [{ canonicalId: 1, duplicateIds: [2], reason: "Same normalized memory content. Core-scope duplicates are review-only." }]);
     assert.deepEqual(payload.staleMemories, []);
     assert.deepEqual(payload.conflictGroups, []);
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("runAgentToolRequest plans memory hygiene", async () => {
+  const paths = await createTempPaths();
+
+  try {
+    const store = await import("../memory/sqlite-store.js").then(({ SqliteMemoryStore }) => SqliteMemoryStore.open(paths));
+    try {
+      store.addMemory({ type: "project_context", content: "Duplicate hygiene tool", importance: 5 });
+      store.addMemory({ type: "project_context", content: "Duplicate hygiene tool", importance: 1 });
+      store.addMemory({ type: "project_context", content: "Expired hygiene tool", expiresAt: "2020-01-01T00:00:00.000Z" });
+      store.addMemory({ type: "preference", content: "Use voice replies" });
+      store.addMemory({ type: "preference", content: "Do not use voice replies" });
+    } finally {
+      store.close();
+    }
+
+    const result = await runAgentToolRequest({
+      config: { ...createConfig(), mcp: undefined },
+      paths,
+      request: { tool: "internal.plan_memory_hygiene", arguments: {} },
+    });
+
+    assert.equal(result.ok, true);
+    const payload = result.result as { deleteIds: number[]; reviewOnlyIds: number[] };
+    assert.deepEqual(payload.deleteIds, [2, 3]);
+    assert.deepEqual(payload.reviewOnlyIds, [4, 5]);
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
   }

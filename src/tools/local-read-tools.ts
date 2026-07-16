@@ -61,6 +61,17 @@ export interface AnalyzeMemoriesResult {
   conflictGroups: Array<{ ids: number[]; reason: string }>;
 }
 
+export interface MemoryHygienePlanResult {
+  allowed: boolean;
+  reason: string;
+  checked: number;
+  deleteIds: number[];
+  duplicateGroups: AnalyzeMemoriesResult["duplicateGroups"];
+  staleMemories: AnalyzeMemoriesResult["staleMemories"];
+  conflictGroups: AnalyzeMemoriesResult["conflictGroups"];
+  reviewOnlyIds: number[];
+}
+
 export interface ReadLocalFileResult {
   allowed: boolean;
   reason: string;
@@ -279,6 +290,47 @@ export async function analyzeMemoriesTool(options: LocalToolOptions & { mode?: M
       duplicateGroups: mode === "all" || mode === "duplicates" ? findDuplicateMemoryGroups(memories) : [],
       staleMemories: mode === "all" || mode === "stale" ? findStaleMemories(memories) : [],
       conflictGroups: mode === "all" || mode === "conflicts" ? findConflictMemoryGroups(memories) : [],
+    };
+  } finally {
+    store.close();
+  }
+}
+
+export async function planMemoryHygieneTool(options: LocalToolOptions): Promise<MemoryHygienePlanResult> {
+  const permission = await reviewActionPermission(
+    {
+      category: "read",
+      action: "plan_memory_hygiene",
+      target: "local memory store",
+      reason: "Create a read-only memory hygiene plan from duplicate, stale, and conflict analysis.",
+      trusted: true,
+    },
+    { paths: options.paths, approver: options.approver, policy: options.policy },
+  );
+
+  if (permission.decision !== "allow") {
+    return { allowed: false, reason: permission.reason, checked: 0, deleteIds: [], duplicateGroups: [], staleMemories: [], conflictGroups: [], reviewOnlyIds: [] };
+  }
+
+  const store = await SqliteMemoryStore.open(options.paths);
+
+  try {
+    const memories = store.listActiveMemories();
+    const duplicateGroups = findDuplicateMemoryGroups(memories);
+    const staleMemories = findStaleMemories(memories);
+    const conflictGroups = findConflictMemoryGroups(memories);
+    const deleteIds = [...new Set([...duplicateGroups.flatMap((group) => group.duplicateIds), ...staleMemories.map((memory) => memory.id)])].sort((left, right) => left - right);
+    const reviewOnlyIds = [...new Set(conflictGroups.flatMap((group) => group.ids))].sort((left, right) => left - right);
+
+    return {
+      allowed: true,
+      reason: permission.reason,
+      checked: memories.length,
+      deleteIds,
+      duplicateGroups,
+      staleMemories,
+      conflictGroups,
+      reviewOnlyIds,
     };
   } finally {
     store.close();
