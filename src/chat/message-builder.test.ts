@@ -15,7 +15,7 @@ function createStoredMemory(overrides: Partial<StoredMemory>): StoredMemory {
     status: "active",
     explicitConsent: false,
     pinned: false,
-    scope: "global",
+    scope: "core",
     confidence: 1,
     accessCount: 0,
     createdAt: "now",
@@ -81,6 +81,21 @@ test("buildChatMessages prioritizes important recent memories in context", () =>
   assert.equal(memoryLines[0], "- #10 [preference] Memory 10");
   assert.equal(memoryLines[1], "- #9 [preference] Memory 9");
   assert.equal(memoryLines.at(-1), "- #1 [preference] Memory 1");
+});
+
+test("buildChatMessages orders memory tiers as core project session", () => {
+  const messages = buildChatMessages("system prompt", [], "hello", [
+    createStoredMemory({ id: 1, type: "project_context", scope: "project", content: "Project memory", importance: 5 }),
+    createStoredMemory({ id: 2, type: "preference", scope: "session", content: "Session memory", importance: 5 }),
+    createStoredMemory({ id: 3, type: "preference", scope: "core", content: "Core memory", importance: 1 }),
+  ]);
+
+  const memoryContext = String(messages[1]?.content ?? "");
+  const memoryLines = memoryContext.split("\n").filter((line) => line.startsWith("- #"));
+
+  assert.equal(memoryLines[0], "- #3 [preference] Core memory");
+  assert.equal(memoryLines[1], "- #1 [project_context] Project memory");
+  assert.equal(memoryLines[2], "- #2 [preference] Session memory");
 });
 
 test("buildChatMessages includes all active memories", () => {

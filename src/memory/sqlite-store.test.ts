@@ -68,6 +68,55 @@ test("SqliteMemoryStore can pin and unpin active memories", async () => {
   }
 });
 
+test("SqliteMemoryStore assigns and moves memory scopes", async () => {
+  const paths = await createTempPaths();
+  const store = await SqliteMemoryStore.open(paths);
+
+  try {
+    const core = store.addMemory({ type: "preference", content: "Core preference" });
+    const project = store.addMemory({ type: "project_context", content: "Project context" });
+    const session = store.addMemory({ type: "preference", content: "Short-lived context", scope: "session" });
+
+    assert.equal(core.scope, "core");
+    assert.equal(core.expiresAt, undefined);
+    assert.equal(project.scope, "project");
+    assert.equal(project.expiresAt, undefined);
+    assert.equal(session.scope, "session");
+    assert.ok(session.expiresAt);
+    assert.ok(Date.parse(session.expiresAt) > Date.now());
+    assert.deepEqual(store.listActiveMemoriesByScope("core").map((memory) => memory.id), [core.id]);
+    const moved = store.setMemoryScope(core.id, "session");
+    assert.equal(moved?.scope, "session");
+    assert.ok(moved?.expiresAt);
+    assert.ok(Date.parse(moved.expiresAt) > Date.now());
+    assert.deepEqual(store.listActiveMemoriesByScope("session").map((memory) => memory.id), [core.id, session.id]);
+    assert.equal(store.setMemoryScope(999, "core"), undefined);
+  } finally {
+    store.close();
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("SqliteMemoryStore marks active memories as superseded", async () => {
+  const paths = await createTempPaths();
+  const store = await SqliteMemoryStore.open(paths);
+
+  try {
+    const oldMemory = store.addMemory({ type: "project_context", content: "Old project fact" });
+    const newMemory = store.addMemory({ type: "project_context", content: "New project fact" });
+
+    const updated = store.supersedeMemory(oldMemory.id, newMemory.id);
+
+    assert.equal(updated?.supersededBy, newMemory.id);
+    assert.equal(store.getActiveMemory(oldMemory.id)?.supersededBy, newMemory.id);
+    assert.equal(store.supersedeMemory(oldMemory.id, oldMemory.id), undefined);
+    assert.equal(store.supersedeMemory(oldMemory.id, 999), undefined);
+  } finally {
+    store.close();
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
 test("SqliteMemoryStore lists all active memories by default", async () => {
   const paths = await createTempPaths();
   const store = await SqliteMemoryStore.open(paths);

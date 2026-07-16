@@ -1,5 +1,5 @@
 import { evaluateMemoryCandidate, type MemoryType } from "../../memory/policy.js";
-import { SqliteMemoryStore, type PendingMemory, type StoredMemory, type StoredMessageRole } from "../../memory/sqlite-store.js";
+import { isMemoryScope, SqliteMemoryStore, type PendingMemory, type StoredMemory, type StoredMessageRole } from "../../memory/sqlite-store.js";
 import { isMemoryRetrievalPolicy, setMemoryRetrievalPolicy } from "../../memory/governance.js";
 import { MEMORY_MAINTENANCE_DEFAULT_SCHEDULE, installMemoryMaintenanceReport, getMemoryMaintenanceReportStatus, removeMemoryMaintenanceReport } from "../../memory/maintenance.js";
 import { loadConfig, type MemoryDeletePolicy } from "../../runtime/config.js";
@@ -46,7 +46,7 @@ export async function runMemoryCommand(argv: string[] = process.argv): Promise<v
   }
 
   if (subcommand === "list") {
-    await listMemories();
+    await listMemories(argv);
     return;
   }
 
@@ -82,6 +82,16 @@ export async function runMemoryCommand(argv: string[] = process.argv): Promise<v
 
   if (subcommand === "pin" || subcommand === "unpin") {
     await setMemoryPinned(argv, subcommand === "pin");
+    return;
+  }
+
+  if (subcommand === "move") {
+    await moveMemoryScope(argv);
+    return;
+  }
+
+  if (subcommand === "supersede") {
+    await supersedeMemory(argv);
     return;
   }
 
@@ -172,18 +182,27 @@ async function setMemoryPaused(paused: boolean): Promise<void> {
   }
 }
 
-async function listMemories(): Promise<void> {
+async function listMemories(argv: string[]): Promise<void> {
+  const args = parseFlagArgs(argv.slice(4));
+  const scope = args["--scope"];
+
+  if (scope !== undefined && !isMemoryScope(scope)) {
+    console.error("--scope must be core, project, or session.");
+    process.exitCode = 1;
+    return;
+  }
+
   const store = await SqliteMemoryStore.open();
 
   try {
-    const memories = store.listActiveMemories();
+    const memories = scope ? store.listActiveMemoriesByScope(scope) : store.listActiveMemories();
 
     if (memories.length === 0) {
-      console.log(`${badge("INFO", "blue")} No active memories yet.`);
+      console.log(`${badge("INFO", "blue")} No active memories${scope ? ` in ${scope} scope` : ""} yet.`);
       return;
     }
 
-    console.log(title(`Active Memories (${memories.length})`));
+    console.log(title(`Active Memories${scope ? ` / ${scope}` : ""} (${memories.length})`));
     console.log(rule());
     for (const memory of memories) {
       console.log(formatActiveMemoryLine(memory));
@@ -524,6 +543,61 @@ async function setMemoryPinned(argv: string[], pinned: boolean): Promise<void> {
   }
 }
 
+async function moveMemoryScope(argv: string[]): Promise<void> {
+  const id = parsePositiveId(argv[4]);
+  const args = parseFlagArgs(argv.slice(5));
+  const scope = args["--scope"];
+
+  if (!id) {
+    return;
+  }
+
+  if (!isMemoryScope(scope)) {
+    console.error("Usage: bestie memory move <id> --scope core|project|session");
+    process.exitCode = 1;
+    return;
+  }
+
+  const store = await SqliteMemoryStore.open();
+
+  try {
+    const updated = store.setMemoryScope(id, scope);
+    if (!updated) {
+      console.log(`${badge("INFO", "blue")} No active memory found for id ${id}.`);
+      return;
+    }
+
+    console.log(`${badge("MOVED", "green")} Memory ${updated.id} moved to ${updated.scope}.`);
+  } finally {
+    store.close();
+  }
+}
+
+async function supersedeMemory(argv: string[]): Promise<void> {
+  const oldId = parsePositiveId(argv[4]);
+  const newId = parsePositiveId(argv[5]);
+
+  if (!oldId || !newId) {
+    console.error("Usage: bestie memory supersede <oldId> <newId>");
+    process.exitCode = 1;
+    return;
+  }
+
+  const store = await SqliteMemoryStore.open();
+
+  try {
+    const updated = store.supersedeMemory(oldId, newId);
+    if (!updated) {
+      console.log(`${badge("INFO", "blue")} Could not supersede memory. Make sure both ids are active and different.`);
+      return;
+    }
+
+    console.log(`${badge("SUPERSEDED", "green")} Memory ${updated.id} superseded by ${updated.supersededBy}.`);
+  } finally {
+    store.close();
+  }
+}
+
 async function editMemory(argv: string[]): Promise<void> {
   const id = parsePositiveId(argv[4]);
   const content = argv.slice(5).join(" ").trim();
@@ -821,7 +895,7 @@ async function rejectPendingMemory(argv: string[]): Promise<void> {
 }
 
 function formatActiveMemoryLine(memory: StoredMemory): string {
-  return `${badge(memory.type.toUpperCase(), "cyan")} #${memory.id} importance ${memory.importance} ${dim(`${memory.sensitivity}; updated ${memory.updatedAt}`)} ${memory.content}`;
+  return `${badge(memory.type.toUpperCase(), "cyan")} #${memory.id} scope ${memory.scope} importance ${memory.importance} ${dim(`${memory.sensitivity}; updated ${memory.updatedAt}`)} ${memory.content}`;
 }
 
 function formatPendingMemoryBlock(memory: PendingMemory): string {

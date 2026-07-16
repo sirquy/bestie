@@ -168,8 +168,8 @@ test("analyzeMemoriesTool reports duplicate stale and conflicting memories", asy
   try {
     const store = await SqliteMemoryStore.open(paths);
     try {
-      store.addMemory({ type: "preference", content: "Vietnamese-first replies", importance: 5 });
-      store.addMemory({ type: "preference", content: "Vietnamese-first replies", importance: 1 });
+      store.addMemory({ type: "project_context", content: "Vietnamese-first replies", importance: 5 });
+      store.addMemory({ type: "project_context", content: "Vietnamese-first replies", importance: 1 });
       store.addMemory({ type: "preference", content: "Use voice replies", importance: 3 });
       store.addMemory({ type: "preference", content: "Do not use voice replies", importance: 3 });
       store.addMemory({ type: "project_context", content: "Old context", importance: 1, expiresAt: "2020-01-01T00:00:00.000Z" });
@@ -181,7 +181,7 @@ test("analyzeMemoriesTool reports duplicate stale and conflicting memories", asy
 
     assert.equal(result.allowed, true);
     assert.equal(result.checked, 5);
-    assert.deepEqual(result.duplicateGroups, [{ canonicalId: 1, duplicateIds: [2], reason: "Same normalized memory content." }]);
+    assert.deepEqual(result.duplicateGroups, [{ canonicalId: 1, duplicateIds: [2], reason: "Same normalized memory content. Core-scope duplicates are review-only." }]);
     assert.deepEqual(result.staleMemories, [{ id: 5, reason: "Expired at 2020-01-01T00:00:00.000Z." }]);
     assert.deepEqual(result.conflictGroups, [{ ids: [3, 4], reason: "Same type and scope contain opposing preference language." }]);
   } finally {
@@ -195,8 +195,8 @@ test("analyzeMemoriesTool supports focused modes", async () => {
   try {
     const store = await SqliteMemoryStore.open(paths);
     try {
-      store.addMemory({ type: "preference", content: "Duplicate", importance: 1 });
-      store.addMemory({ type: "preference", content: "Duplicate", importance: 1 });
+      store.addMemory({ type: "project_context", content: "Duplicate", importance: 1 });
+      store.addMemory({ type: "project_context", content: "Duplicate", importance: 1 });
     } finally {
       store.close();
     }
@@ -207,6 +207,28 @@ test("analyzeMemoriesTool supports focused modes", async () => {
     assert.equal(result.duplicateGroups.length, 1);
     assert.deepEqual(result.staleMemories, []);
     assert.deepEqual(result.conflictGroups, []);
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("analyzeMemoriesTool treats core duplicates as review-only and expires session memories sooner", async () => {
+  const paths = await createTempPaths();
+
+  try {
+    const store = await SqliteMemoryStore.open(paths);
+    try {
+      store.addMemory({ type: "preference", content: "Core duplicate", importance: 1 });
+      store.addMemory({ type: "preference", content: "Core duplicate", importance: 1 });
+      store.addMemory({ type: "preference", content: "Old session", scope: "session", importance: 1, expiresAt: "2020-01-01T00:00:00.000Z" });
+    } finally {
+      store.close();
+    }
+
+    const result = await analyzeMemoriesTool({ paths });
+
+    assert.deepEqual(result.duplicateGroups, []);
+    assert.deepEqual(result.staleMemories, [{ id: 3, reason: "Expired at 2020-01-01T00:00:00.000Z." }]);
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
   }

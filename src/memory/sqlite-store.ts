@@ -16,7 +16,7 @@ export interface StoredMemory {
   explicitConsent: boolean;
   policyReason?: string;
   pinned: boolean;
-  scope: string;
+  scope: MemoryScope;
   confidence: number;
   expiresAt?: string;
   supersededBy?: number;
@@ -134,10 +134,17 @@ export interface NewMemory {
   explicitConsent?: boolean;
   policyReason?: string;
   pinned?: boolean;
-  scope?: string;
+  scope?: MemoryScope;
   confidence?: number;
   expiresAt?: string;
   supersededBy?: number;
+}
+
+export type MemoryScope = "core" | "project" | "session";
+const SESSION_MEMORY_DEFAULT_TTL_DAYS = 14;
+
+export function isMemoryScope(value: string | undefined): value is MemoryScope {
+  return value === "core" || value === "project" || value === "session";
 }
 
 export class SqliteMemoryStore {
@@ -227,6 +234,7 @@ export class SqliteMemoryStore {
   }
 
   addMemory(memory: NewMemory): StoredMemory {
+    const scope = memory.scope ?? defaultMemoryScope(memory.type);
     const statement = this.db.prepare(`
       INSERT INTO memories (type, content, sensitivity, importance, source_message_id, source, explicit_consent, policy_reason, pinned, scope, confidence, expires_at, superseded_by)
       VALUES (@type, @content, @sensitivity, @importance, @sourceMessageId, @source, @explicitConsent, @policyReason, @pinned, @scope, @confidence, @expiresAt, @supersededBy)
@@ -241,9 +249,9 @@ export class SqliteMemoryStore {
       explicitConsent: memory.explicitConsent ? 1 : 0,
       policyReason: memory.policyReason ?? null,
       pinned: memory.pinned ? 1 : 0,
-      scope: memory.scope ?? "global",
+      scope,
       confidence: memory.confidence ?? 1,
-      expiresAt: memory.expiresAt ?? null,
+      expiresAt: memory.expiresAt ?? defaultExpiresAtForScope(scope),
       supersededBy: memory.supersededBy ?? null,
     });
 
@@ -433,6 +441,26 @@ export class SqliteMemoryStore {
     return result.changes === 0 ? undefined : this.getMemory(id);
   }
 
+  setMemoryScope(id: number, scope: MemoryScope): StoredMemory | undefined {
+    const result = this.db
+      .prepare("UPDATE memories SET scope = ?, expires_at = CASE WHEN ? = 'session' AND expires_at IS NULL THEN ? ELSE expires_at END, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND status = 'active'")
+      .run(scope, scope, defaultExpiresAtForScope(scope), id);
+
+    return result.changes === 0 ? undefined : this.getMemory(id);
+  }
+
+  supersedeMemory(oldId: number, newId: number): StoredMemory | undefined {
+    if (oldId === newId || !this.getActiveMemory(newId)) {
+      return undefined;
+    }
+
+    const result = this.db
+      .prepare("UPDATE memories SET superseded_by = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND status = 'active'")
+      .run(newId, oldId);
+
+    return result.changes === 0 ? undefined : this.getMemory(oldId);
+  }
+
   forgetMemory(id: number): boolean {
     const result = this.db
       .prepare("UPDATE memories SET status = 'deleted', updated_at = CURRENT_TIMESTAMP WHERE id = ? AND status = 'active'")
@@ -462,6 +490,12 @@ export class SqliteMemoryStore {
     const rows = limit === undefined
       ? (this.db.prepare("SELECT * FROM memories WHERE status = 'active' ORDER BY importance DESC, updated_at DESC").all() as MemoryRow[])
       : (this.db.prepare("SELECT * FROM memories WHERE status = 'active' ORDER BY importance DESC, updated_at DESC LIMIT ?").all(limit) as MemoryRow[]);
+
+    return rows.map(mapMemoryRow);
+  }
+
+  listActiveMemoriesByScope(scope: MemoryScope): StoredMemory[] {
+    const rows = this.db.prepare("SELECT * FROM memories WHERE status = 'active' AND scope = ? ORDER BY importance DESC, updated_at DESC").all(scope) as MemoryRow[];
 
     return rows.map(mapMemoryRow);
   }
@@ -836,7 +870,7 @@ function mapMemoryRow(row: MemoryRow): StoredMemory {
     explicitConsent: row.explicit_consent === 1,
     policyReason: row.policy_reason ?? undefined,
     pinned: row.pinned === 1,
-    scope: row.scope ?? "global",
+    scope: normalizeMemoryScope(row.scope),
     confidence: row.confidence ?? 1,
     expiresAt: row.expires_at ?? undefined,
     supersededBy: row.superseded_by ?? undefined,
@@ -845,6 +879,26 @@ function mapMemoryRow(row: MemoryRow): StoredMemory {
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
+}
+
+function defaultMemoryScope(type: string): MemoryScope {
+  return type === "project_context" ? "project" : "core";
+}
+
+function defaultExpiresAtForScope(scope: MemoryScope): string | null {
+  if (scope !== "session") {
+    return null;
+  }
+
+  return new Date(Date.now() + SESSION_MEMORY_DEFAULT_TTL_DAYS * 24 * 60 * 60 * 1000).toISOString();
+}
+
+function normalizeMemoryScope(scope: string | null | undefined): MemoryScope {
+  if (isMemoryScope(scope ?? undefined)) {
+    return scope as MemoryScope;
+  }
+
+  return scope === "global" || scope === undefined || scope === null ? "core" : "project";
 }
 
 function mapCronScheduleRow(row: CronScheduleRow): CronSchedule {

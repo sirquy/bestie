@@ -273,13 +273,15 @@ function findDuplicateMemoryGroups(memories: StoredMemory[]): AnalyzeMemoriesRes
 
   return Array.from(groups.values())
     .filter((group) => group.length > 1)
-    .map((group) => {
+    .flatMap((group) => {
       const sorted = [...group].sort(compareCanonicalMemory);
       const canonical = sorted[0];
+      const duplicateIds = sorted.slice(1).filter((memory) => memory.scope !== "core").map((memory) => memory.id);
+      if (duplicateIds.length === 0) return [];
       return {
         canonicalId: canonical.id,
-        duplicateIds: sorted.slice(1).map((memory) => memory.id),
-        reason: "Same normalized memory content.",
+        duplicateIds,
+        reason: "Same normalized memory content. Core-scope duplicates are review-only.",
       };
     });
 }
@@ -290,9 +292,11 @@ function findStaleMemories(memories: StoredMemory[]): AnalyzeMemoriesResult["sta
 
   return memories.flatMap((memory) => {
     if (memory.pinned) return [];
+    if (memory.scope === "core") return [];
     if (memory.supersededBy !== undefined) return [{ id: memory.id, reason: `Superseded by memory #${memory.supersededBy}.` }];
     if (memory.expiresAt && Date.parse(memory.expiresAt) <= now) return [{ id: memory.id, reason: `Expired at ${memory.expiresAt}.` }];
-    if (memory.accessCount === 0 && Date.parse(memory.updatedAt) <= now - staleCutoffMs) return [{ id: memory.id, reason: "Not accessed and not updated for at least 180 days." }];
+    const scopeCutoffMs = memory.scope === "session" ? 14 * 24 * 60 * 60 * 1000 : staleCutoffMs;
+    if (memory.accessCount === 0 && Date.parse(memory.updatedAt) <= now - scopeCutoffMs) return [{ id: memory.id, reason: memory.scope === "session" ? "Session memory not accessed and not updated for at least 14 days." : "Not accessed and not updated for at least 180 days." }];
     return [];
   });
 }

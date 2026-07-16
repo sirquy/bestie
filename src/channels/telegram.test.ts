@@ -819,8 +819,8 @@ test("handleTelegramUpdate reports memory analysis and cleanup dry-run", async (
     await writeRuntimeFiles(paths);
     const store = await SqliteMemoryStore.open(paths);
     try {
-      store.addMemory({ type: "preference", content: "Vietnamese-first replies", importance: 5 });
-      store.addMemory({ type: "preference", content: "Vietnamese-first replies", importance: 1 });
+      store.addMemory({ type: "project_context", content: "Vietnamese-first replies", importance: 5 });
+      store.addMemory({ type: "project_context", content: "Vietnamese-first replies", importance: 1 });
       store.addMemory({ type: "project_context", content: "Old context", importance: 1, expiresAt: "2020-01-01T00:00:00.000Z" });
     } finally {
       store.close();
@@ -847,8 +847,8 @@ test("handleTelegramUpdate reports memory governance status", async () => {
     await writeRuntimeFiles(paths);
     const store = await SqliteMemoryStore.open(paths);
     try {
-      store.addMemory({ type: "preference", content: "Vietnamese-first replies", importance: 5 });
-      store.addMemory({ type: "preference", content: "Vietnamese-first replies", importance: 1 });
+      store.addMemory({ type: "project_context", content: "Vietnamese-first replies", importance: 5 });
+      store.addMemory({ type: "project_context", content: "Vietnamese-first replies", importance: 1 });
       store.addMemory({ type: "project_context", content: "Old context", importance: 1, expiresAt: "2020-01-01T00:00:00.000Z" });
     } finally {
       store.close();
@@ -904,6 +904,63 @@ test("handleTelegramUpdate pins and unpins active memories", async () => {
       assert.match(sentMessages[0].text, new RegExp(`Memory pinned: #${id}`));
       assert.match(sentMessages[1].text, new RegExp(`Memory unpinned: #${id}`));
       assert.equal(checkStore.getActiveMemory(id)?.pinned, false);
+    } finally {
+      checkStore.close();
+    }
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("handleTelegramUpdate lists and moves memory scopes", async () => {
+  const paths = await createTempPaths();
+  const sentMessages: Array<{ chatId: number; text: string }> = [];
+
+  try {
+    await writeRuntimeFiles(paths);
+    const store = await SqliteMemoryStore.open(paths);
+    let id: number;
+    try {
+      id = store.addMemory({ type: "preference", content: "Move from Telegram" }).id;
+    } finally {
+      store.close();
+    }
+
+    await handleTelegramUpdate(createTextUpdate("/memory scope core", 12345), { config, paths, client: createRecordingClient(sentMessages) });
+    await handleTelegramUpdate(createTextUpdate(`/memory move ${id} session`, 12345), { config, paths, client: createRecordingClient(sentMessages) });
+    await handleTelegramUpdate(createTextUpdate("/memory scope session", 12345), { config, paths, client: createRecordingClient(sentMessages) });
+
+    assert.match(sentMessages[0].text, /Active memories \/ core \(1\)/);
+    assert.match(sentMessages[1].text, new RegExp(`Memory #${id} moved to session`));
+    assert.match(sentMessages[2].text, /Active memories \/ session \(1\)/);
+    assert.match(sentMessages[2].text, /Move from Telegram/);
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("handleTelegramUpdate supersedes active memories", async () => {
+  const paths = await createTempPaths();
+  const sentMessages: Array<{ chatId: number; text: string }> = [];
+
+  try {
+    await writeRuntimeFiles(paths);
+    const store = await SqliteMemoryStore.open(paths);
+    let oldId: number;
+    let newId: number;
+    try {
+      oldId = store.addMemory({ type: "project_context", content: "Old Telegram fact" }).id;
+      newId = store.addMemory({ type: "project_context", content: "New Telegram fact" }).id;
+    } finally {
+      store.close();
+    }
+
+    await handleTelegramUpdate(createTextUpdate(`/memory supersede ${oldId} ${newId}`, 12345), { config, paths, client: createRecordingClient(sentMessages) });
+
+    const checkStore = await SqliteMemoryStore.open(paths);
+    try {
+      assert.match(sentMessages[0].text, new RegExp(`Memory #${oldId} superseded by #${newId}`));
+      assert.equal(checkStore.getActiveMemory(oldId)?.supersededBy, newId);
     } finally {
       checkStore.close();
     }

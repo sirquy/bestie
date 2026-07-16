@@ -503,8 +503,8 @@ test("runAgentToolRequest analyzes active memories", async () => {
   try {
     const store = await import("../memory/sqlite-store.js").then(({ SqliteMemoryStore }) => SqliteMemoryStore.open(paths));
     try {
-      store.addMemory({ type: "preference", content: "Keep answers concise", importance: 4 });
-      store.addMemory({ type: "preference", content: "Keep answers concise", importance: 2 });
+      store.addMemory({ type: "project_context", content: "Keep answers concise", importance: 4 });
+      store.addMemory({ type: "project_context", content: "Keep answers concise", importance: 2 });
     } finally {
       store.close();
     }
@@ -517,7 +517,7 @@ test("runAgentToolRequest analyzes active memories", async () => {
 
     assert.equal(result.ok, true);
     const payload = result.result as { duplicateGroups: Array<{ canonicalId: number; duplicateIds: number[] }>; staleMemories: unknown[]; conflictGroups: unknown[] };
-    assert.deepEqual(payload.duplicateGroups, [{ canonicalId: 1, duplicateIds: [2], reason: "Same normalized memory content." }]);
+    assert.deepEqual(payload.duplicateGroups, [{ canonicalId: 1, duplicateIds: [2], reason: "Same normalized memory content. Core-scope duplicates are review-only." }]);
     assert.deepEqual(payload.staleMemories, []);
     assert.deepEqual(payload.conflictGroups, []);
   } finally {

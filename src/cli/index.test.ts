@@ -69,8 +69,8 @@ test("memory cleanup dry-run JSON reports planned deletions", async () => {
     const paths = getRuntimePaths(homeDir);
     const store = await SqliteMemoryStore.open(paths);
     try {
-      store.addMemory({ type: "preference", content: "Duplicate memory", importance: 4 });
-      store.addMemory({ type: "preference", content: "Duplicate memory", importance: 1 });
+      store.addMemory({ type: "project_context", content: "Duplicate memory", importance: 4 });
+      store.addMemory({ type: "project_context", content: "Duplicate memory", importance: 1 });
     } finally {
       store.close();
     }
@@ -93,8 +93,8 @@ test("memory cleanup apply defaults to ask without deleting", async () => {
     const paths = getRuntimePaths(homeDir);
     const store = await SqliteMemoryStore.open(paths);
     try {
-      store.addMemory({ type: "preference", content: "Duplicate memory", importance: 4 });
-      store.addMemory({ type: "preference", content: "Duplicate memory", importance: 1 });
+      store.addMemory({ type: "project_context", content: "Duplicate memory", importance: 4 });
+      store.addMemory({ type: "project_context", content: "Duplicate memory", importance: 1 });
     } finally {
       store.close();
     }
@@ -203,6 +203,62 @@ test("memory pin and unpin update active memory metadata", async () => {
       assert.match(pinned.stdout, /Memory pinned/);
       assert.match(unpinned.stdout, /Memory unpinned/);
       assert.equal(checkStore.getActiveMemory(id)?.pinned, false);
+    } finally {
+      checkStore.close();
+    }
+  } finally {
+    await rm(homeDir, { recursive: true, force: true });
+  }
+});
+
+test("memory list scope and move manage memory tiers", async () => {
+  const homeDir = await mkdtemp(resolve(tmpdir(), "bestie-cli-index-test-"));
+
+  try {
+    const paths = getRuntimePaths(homeDir);
+    const store = await SqliteMemoryStore.open(paths);
+    let id: number;
+    try {
+      id = store.addMemory({ type: "preference", content: "Tiered memory" }).id;
+      store.addMemory({ type: "project_context", content: "Project tier" });
+    } finally {
+      store.close();
+    }
+
+    const coreList = await captureMain(["node", "bestie", "memory", "list", "--scope", "core"], { HOME: homeDir, BESTIE_NO_BANNER: "1" });
+    const moved = await captureMain(["node", "bestie", "memory", "move", String(id), "--scope", "session"], { HOME: homeDir, BESTIE_NO_BANNER: "1" });
+    const sessionList = await captureMain(["node", "bestie", "memory", "list", "--scope", "session"], { HOME: homeDir, BESTIE_NO_BANNER: "1" });
+
+    assert.match(coreList.stdout, /Active Memories \/ core/);
+    assert.match(coreList.stdout, /Tiered memory/);
+    assert.match(moved.stdout, /moved to session/);
+    assert.match(sessionList.stdout, /Active Memories \/ session/);
+    assert.match(sessionList.stdout, /Tiered memory/);
+  } finally {
+    await rm(homeDir, { recursive: true, force: true });
+  }
+});
+
+test("memory supersede marks an active memory as replaced", async () => {
+  const homeDir = await mkdtemp(resolve(tmpdir(), "bestie-cli-index-test-"));
+
+  try {
+    const paths = getRuntimePaths(homeDir);
+    const store = await SqliteMemoryStore.open(paths);
+    let oldId: number;
+    let newId: number;
+    try {
+      oldId = store.addMemory({ type: "project_context", content: "Old CLI project fact" }).id;
+      newId = store.addMemory({ type: "project_context", content: "New CLI project fact" }).id;
+    } finally {
+      store.close();
+    }
+
+    const result = await captureMain(["node", "bestie", "memory", "supersede", String(oldId), String(newId)], { HOME: homeDir, BESTIE_NO_BANNER: "1" });
+    const checkStore = await SqliteMemoryStore.open(paths);
+    try {
+      assert.match(result.stdout, new RegExp(`Memory ${oldId} superseded by ${newId}`));
+      assert.equal(checkStore.getActiveMemory(oldId)?.supersededBy, newId);
     } finally {
       checkStore.close();
     }

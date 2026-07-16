@@ -165,8 +165,8 @@ test("handleZaloUpdate reports memory analysis and cleanup dry-run", async () =>
     await writeRuntimeFiles(paths);
     const store = await SqliteMemoryStore.open(paths);
     try {
-      store.addMemory({ type: "preference", content: "Vietnamese-first replies", importance: 5 });
-      store.addMemory({ type: "preference", content: "Vietnamese-first replies", importance: 1 });
+      store.addMemory({ type: "project_context", content: "Vietnamese-first replies", importance: 5 });
+      store.addMemory({ type: "project_context", content: "Vietnamese-first replies", importance: 1 });
       store.addMemory({ type: "project_context", content: "Old context", importance: 1, expiresAt: "2020-01-01T00:00:00.000Z" });
     } finally {
       store.close();
@@ -193,8 +193,8 @@ test("handleZaloUpdate reports memory governance status", async () => {
     await writeRuntimeFiles(paths);
     const store = await SqliteMemoryStore.open(paths);
     try {
-      store.addMemory({ type: "preference", content: "Vietnamese-first replies", importance: 5 });
-      store.addMemory({ type: "preference", content: "Vietnamese-first replies", importance: 1 });
+      store.addMemory({ type: "project_context", content: "Vietnamese-first replies", importance: 5 });
+      store.addMemory({ type: "project_context", content: "Vietnamese-first replies", importance: 1 });
       store.addMemory({ type: "project_context", content: "Old context", importance: 1, expiresAt: "2020-01-01T00:00:00.000Z" });
     } finally {
       store.close();
@@ -250,6 +250,63 @@ test("handleZaloUpdate pins and unpins active memories", async () => {
       assert.match(sent[0].text, new RegExp(`Memory pinned: #${id}`));
       assert.match(sent[1].text, new RegExp(`Memory unpinned: #${id}`));
       assert.equal(checkStore.getActiveMemory(id)?.pinned, false);
+    } finally {
+      checkStore.close();
+    }
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("handleZaloUpdate lists and moves memory scopes", async () => {
+  const paths = await createTempPaths();
+  const sent: Array<{ chatId: string; text: string }> = [];
+
+  try {
+    await writeRuntimeFiles(paths);
+    const store = await SqliteMemoryStore.open(paths);
+    let id: number;
+    try {
+      id = store.addMemory({ type: "preference", content: "Move from Zalo" }).id;
+    } finally {
+      store.close();
+    }
+
+    await handleZaloUpdate({ update_id: 1, message: { from: { id: "owner-1" }, chat: { id: "chat-1" }, text: "/memory scope core" } }, { config, paths, client: createRecordingClient(sent) });
+    await handleZaloUpdate({ update_id: 2, message: { from: { id: "owner-1" }, chat: { id: "chat-1" }, text: `/memory move ${id} session` } }, { config, paths, client: createRecordingClient(sent) });
+    await handleZaloUpdate({ update_id: 3, message: { from: { id: "owner-1" }, chat: { id: "chat-1" }, text: "/memory scope session" } }, { config, paths, client: createRecordingClient(sent) });
+
+    assert.match(sent[0].text, /Active memories \/ core \(1\)/);
+    assert.match(sent[1].text, new RegExp(`Memory #${id} moved to session`));
+    assert.match(sent[2].text, /Active memories \/ session \(1\)/);
+    assert.match(sent[2].text, /Move from Zalo/);
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("handleZaloUpdate supersedes active memories", async () => {
+  const paths = await createTempPaths();
+  const sent: Array<{ chatId: string; text: string }> = [];
+
+  try {
+    await writeRuntimeFiles(paths);
+    const store = await SqliteMemoryStore.open(paths);
+    let oldId: number;
+    let newId: number;
+    try {
+      oldId = store.addMemory({ type: "project_context", content: "Old Zalo fact" }).id;
+      newId = store.addMemory({ type: "project_context", content: "New Zalo fact" }).id;
+    } finally {
+      store.close();
+    }
+
+    await handleZaloUpdate({ update_id: 1, message: { from: { id: "owner-1" }, chat: { id: "chat-1" }, text: `/memory supersede ${oldId} ${newId}` } }, { config, paths, client: createRecordingClient(sent) });
+
+    const checkStore = await SqliteMemoryStore.open(paths);
+    try {
+      assert.match(sent[0].text, new RegExp(`Memory #${oldId} superseded by #${newId}`));
+      assert.equal(checkStore.getActiveMemory(oldId)?.supersededBy, newId);
     } finally {
       checkStore.close();
     }

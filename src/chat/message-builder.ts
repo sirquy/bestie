@@ -48,7 +48,7 @@ function formatMemoryContextLine(memory: StoredMemory, policy: MemoryRetrievalPo
     memory.confidence < 0.5 ? `low-confidence:${memory.confidence}` : undefined,
     memory.expiresAt && Date.parse(memory.expiresAt) <= Date.now() ? `stale:expired ${memory.expiresAt}` : undefined,
     memory.supersededBy ? `superseded-by:#${memory.supersededBy}` : undefined,
-    memory.scope !== "global" ? `scope:${memory.scope}` : undefined,
+    memory.scope !== "core" ? `scope:${memory.scope}` : undefined,
   ].filter((flag): flag is string => flag !== undefined);
 
   const suffix = flags.length === 0 ? "" : ` (${flags.join(", ")})`;
@@ -56,6 +56,11 @@ function formatMemoryContextLine(memory: StoredMemory, policy: MemoryRetrievalPo
 }
 
 function compareMemoryContextPriority(left: StoredMemory, right: StoredMemory): number {
+  const scope = memoryScopeRank(left) - memoryScopeRank(right);
+  if (scope !== 0) {
+    return scope;
+  }
+
   const importance = right.importance - left.importance;
   if (importance !== 0) {
     return importance;
@@ -79,6 +84,12 @@ function compareGovernedMemoryContextPriority(left: StoredMemory, right: StoredM
 
 function isGovernanceFlagged(memory: StoredMemory): boolean {
   return Boolean(memory.supersededBy || (memory.expiresAt && Date.parse(memory.expiresAt) <= Date.now()) || memory.confidence < 0.5);
+}
+
+function memoryScopeRank(memory: StoredMemory): number {
+  if (memory.scope === "core") return 0;
+  if (memory.scope === "project") return 1;
+  return 2;
 }
 
 export function appendConversationTurn(recentTurns: ChatMessage[], userInput: string, assistantText: string): ChatMessage[] {

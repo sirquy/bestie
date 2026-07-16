@@ -21,7 +21,7 @@ import { fallbackLogDetail, formatProviderFallbackDiagnostics, formatProviderFal
 import { runMemoryReasoningPass, type MemoryReasoningResult } from "../memory/reasoning.js";
 import { isMemoryRetrievalPolicy, setMemoryRetrievalPolicy } from "../memory/governance.js";
 import { getMemoryMaintenanceReportStatus, installMemoryMaintenanceReport, removeMemoryMaintenanceReport } from "../memory/maintenance.js";
-import { SqliteMemoryStore } from "../memory/sqlite-store.js";
+import { isMemoryScope, SqliteMemoryStore } from "../memory/sqlite-store.js";
 import type { AppConfig } from "../runtime/config.js";
 import { loadRequiredSecret } from "../runtime/env.js";
 import { appendLog, redactSecrets } from "../runtime/logger.js";
@@ -1451,6 +1451,24 @@ async function handleTelegramSlashCommand(text: string, chatId: number, options:
     }
   }
 
+  if (memoryCommand?.startsWith("scope:")) {
+    const scope = memoryCommand.split(":")[1];
+    if (!isMemoryScope(scope)) {
+      await options.client.sendMessage(chatId, "Usage: /memory scope core|project|session");
+      return true;
+    }
+
+    const store = await SqliteMemoryStore.open(options.paths);
+    try {
+      const memories = store.listActiveMemoriesByScope(scope);
+      const header = `Active memories / ${scope} (${memories.length})`;
+      await sendTelegramTextChunks(options.client, chatId, memories.length === 0 ? `No active memories in ${scope} scope.` : `${header}:\n${formatMemoryList(memories)}`);
+      return true;
+    } finally {
+      store.close();
+    }
+  }
+
   if (memoryCommand === "analyze" || memoryCommand === "cleanup_dry_run") {
     const analysis = await analyzeMemoriesTool({ paths: options.paths, mode: "all" });
     const message = memoryCommand === "analyze" ? formatMemoryAnalysisReport(analysis) : formatMemoryCleanupDryRunReport(analysis);
@@ -1477,6 +1495,43 @@ async function handleTelegramSlashCommand(text: string, chatId: number, options:
     try {
       const updated = store.setMemoryPinned(id, pinned);
       await options.client.sendMessage(chatId, updated ? `Memory ${pinned ? "pinned" : "unpinned"}: #${updated.id}` : `No active memory found for id ${id}.`);
+      return true;
+    } finally {
+      store.close();
+    }
+  }
+
+  if (memoryCommand?.startsWith("move:")) {
+    const [, rawId, scope] = memoryCommand.split(":");
+    const id = Number(rawId);
+    if (!Number.isSafeInteger(id) || id <= 0 || !isMemoryScope(scope)) {
+      await options.client.sendMessage(chatId, "Usage: /memory move <id> core|project|session");
+      return true;
+    }
+
+    const store = await SqliteMemoryStore.open(options.paths);
+    try {
+      const updated = store.setMemoryScope(id, scope);
+      await options.client.sendMessage(chatId, updated ? `Memory #${updated.id} moved to ${updated.scope}.` : `No active memory found for id ${id}.`);
+      return true;
+    } finally {
+      store.close();
+    }
+  }
+
+  if (memoryCommand?.startsWith("supersede:")) {
+    const [, rawOldId, rawNewId] = memoryCommand.split(":");
+    const oldId = Number(rawOldId);
+    const newId = Number(rawNewId);
+    if (!Number.isSafeInteger(oldId) || oldId <= 0 || !Number.isSafeInteger(newId) || newId <= 0) {
+      await options.client.sendMessage(chatId, "Usage: /memory supersede <oldId> <newId>");
+      return true;
+    }
+
+    const store = await SqliteMemoryStore.open(options.paths);
+    try {
+      const updated = store.supersedeMemory(oldId, newId);
+      await options.client.sendMessage(chatId, updated ? `Memory #${updated.id} superseded by #${updated.supersededBy}.` : "Could not supersede memory. Make sure both ids are active and different.");
       return true;
     } finally {
       store.close();
@@ -1617,7 +1672,7 @@ function isPendingMemoryToolResult(value: unknown): value is { id: number; statu
   return typeof value === "object" && value !== null && "id" in value && "status" in value && Number.isInteger((value as { id: unknown }).id) && (value as { status: unknown }).status === "pending";
 }
 
-function parseTelegramMemoryCommand(text: string): "list" | "pending" | `pending_inspect:${number}` | "pause" | "resume" | "analyze" | "cleanup_dry_run" | "governance_status" | `governance_policy:${string}` | `pin:${number}` | `unpin:${number}` | "maintenance:install" | "maintenance:status" | "maintenance:remove" | undefined {
+function parseTelegramMemoryCommand(text: string): "list" | "pending" | `pending_inspect:${number}` | "pause" | "resume" | "analyze" | "cleanup_dry_run" | "governance_status" | `governance_policy:${string}` | `pin:${number}` | `unpin:${number}` | `scope:${string}` | `move:${number}:${string}` | `supersede:${number}:${number}` | "maintenance:install" | "maintenance:status" | "maintenance:remove" | undefined {
   if (text === "/memory" || text === "/memory list" || text === "/memory status") {
     return "list";
   }
@@ -1646,6 +1701,21 @@ function parseTelegramMemoryCommand(text: string): "list" | "pending" | `pending
   const pinMatch = text.match(/^\/memory (pin|unpin) (\d+)$/);
   if (pinMatch) {
     return `${pinMatch[1]}:${Number(pinMatch[2])}` as `pin:${number}` | `unpin:${number}`;
+  }
+
+  const scopeMatch = text.match(/^\/memory scope (\S+)$/);
+  if (scopeMatch) {
+    return `scope:${scopeMatch[1]}`;
+  }
+
+  const moveMatch = text.match(/^\/memory move (\d+) (\S+)$/);
+  if (moveMatch) {
+    return `move:${Number(moveMatch[1])}:${moveMatch[2]}`;
+  }
+
+  const supersedeMatch = text.match(/^\/memory supersede (\d+) (\d+)$/);
+  if (supersedeMatch) {
+    return `supersede:${Number(supersedeMatch[1])}:${Number(supersedeMatch[2])}`;
   }
 
   if (text === "/memory maintenance install") {
