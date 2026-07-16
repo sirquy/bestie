@@ -67,7 +67,7 @@ test("listActiveMemoriesTool reads active memories through the permission gate",
   }
 });
 
-test("listActiveMemoriesTool returns up to 50 memories by default", async () => {
+test("listActiveMemoriesTool returns all memories by default", async () => {
   const paths = await createTempPaths();
 
   try {
@@ -83,7 +83,7 @@ test("listActiveMemoriesTool returns up to 50 memories by default", async () => 
     const result = await listActiveMemoriesTool({ paths });
 
     assert.equal(result.allowed, true);
-    assert.equal(result.memories.length, 50);
+    assert.equal(result.memories.length, 55);
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
   }
@@ -120,6 +120,28 @@ test("searchMemoriesTool searches active memories through the permission gate", 
     assert.equal(result.allowed, true);
     assert.equal(result.query, "concise");
     assert.deepEqual(result.memories.map((memory) => memory.content), ["likes concise replies"]);
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("searchMemoriesTool returns all matching memories by default", async () => {
+  const paths = await createTempPaths();
+
+  try {
+    const store = await SqliteMemoryStore.open(paths);
+    try {
+      for (let index = 1; index <= 55; index += 1) {
+        store.addMemory({ type: "preference", content: `shared search memory ${index}`, importance: 1 });
+      }
+    } finally {
+      store.close();
+    }
+
+    const result = await searchMemoriesTool({ paths, query: "shared" });
+
+    assert.equal(result.allowed, true);
+    assert.equal(result.memories.length, 55);
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
   }

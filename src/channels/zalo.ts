@@ -23,6 +23,7 @@ const ZALO_API_BASE_URL = "https://bot-api.zaloplatforms.com";
 const ZALO_MESSAGE_MAX_CHARS = 2_000;
 const ZALO_POLLING_TIMEOUT_SECONDS = 25;
 const ZALO_TOOL_PROGRESS_EVERY = 3;
+const ZALO_ACTION_APPROVAL_TTL_MS = 30 * 60 * 1000;
 const ZALO_PERMISSION_POLICY: PermissionPolicy = {
   allowTrustedRead: true,
   allowLocalWrite: false,
@@ -380,8 +381,13 @@ async function handleZaloSlashCommand(text: string, chatId: string, options: Zal
   if (memoryCommand === "list") {
     const store = await SqliteMemoryStore.open(options.paths);
     try {
-      const memories = store.listActiveMemories().slice(0, 5);
-      await options.client.sendMessage(chatId, memories.length === 0 ? "No active memories." : `Active memories:\n${memories.map((memory) => `${memory.id}. [${memory.type}] ${memory.content}`).join("\n")}`);
+      const memories = store.listActiveMemories();
+      if (memories.length === 0) {
+        await options.client.sendMessage(chatId, "No active memories.");
+        return true;
+      }
+
+      await sendZaloTextChunks(options.client, chatId, `Active memories (${memories.length}):\n${formatMemoryList(memories)}`);
       return true;
     } finally {
       store.close();
@@ -418,7 +424,7 @@ function createZaloPermissionApprover(client: ZaloClient, chatId: string, paths:
   return async (request, proposed) => {
       const store = await SqliteMemoryStore.open(paths);
       try {
-        const approval = store.addPendingActionApproval({ channel: "zalo", category: request.category, action: request.action, target: request.target, reason: request.reason, proposedReason: proposed.reason, payloadJson: request.payloadJson });
+        const approval = store.addPendingActionApproval({ channel: "zalo", category: request.category, action: request.action, target: request.target, reason: request.reason, proposedReason: proposed.reason, payloadJson: request.payloadJson, ttlMs: ZALO_ACTION_APPROVAL_TTL_MS });
         await client.sendMessage(chatId, [`Approval needed. Request: ${approval.id}`, `Action: ${request.action}`, `Category: ${request.category}`, request.target ? `Target: ${request.target}` : undefined, request.reason ? `Reason: ${request.reason}` : undefined, `Reply /approve ${approval.id} or /deny ${approval.id}.`].filter(Boolean).join("\n"));
         return { approved: false, reason: `Approval request ${approval.id} is pending in Zalo.` };
       } finally {
@@ -498,8 +504,42 @@ function formatZaloToolActivity(activity: AgentToolActivity, agentName: string):
   if (activity.toolName === "internal.list_memories") return `${agentName} is listing saved memories`;
   if (activity.toolName === "internal.search_memories") return `${agentName} is searching memories for${suffix}`;
   if (activity.toolName === "internal.remember_memory") return `${agentName} is preparing a memory approval`;
+  if (activity.toolName === "internal.delete_memory") return `${agentName} is deleting memory${suffix}`;
+  if (activity.toolName === "internal.cleanup_memories") return `${agentName} is cleaning saved memories`;
   if (activity.toolName.startsWith("mcp.") || activity.toolName.includes("/")) return `${agentName} is using read tool${suffix}`;
   return `${agentName} is working${suffix}`;
+}
+
+async function sendZaloTextChunks(client: ZaloClient, chatId: string, text: string): Promise<void> {
+  for (const chunk of splitZaloMessageText(text)) {
+    await client.sendMessage(chatId, chunk);
+  }
+}
+
+function splitZaloMessageText(text: string): string[] {
+  if (text.length <= ZALO_MESSAGE_MAX_CHARS) {
+    return [text];
+  }
+
+  const chunks: string[] = [];
+  let remaining = text.trim();
+
+  while (remaining.length > ZALO_MESSAGE_MAX_CHARS) {
+    const boundary = remaining.lastIndexOf("\n", ZALO_MESSAGE_MAX_CHARS);
+    const end = boundary > 0 ? boundary : ZALO_MESSAGE_MAX_CHARS;
+    chunks.push(remaining.slice(0, end).trimEnd());
+    remaining = remaining.slice(end).trimStart();
+  }
+
+  if (remaining.length > 0) {
+    chunks.push(remaining);
+  }
+
+  return chunks;
+}
+
+function formatMemoryList(memories: Array<{ id: number; type: string; content: string }>): string {
+  return memories.map((memory) => `${memory.id}. [${memory.type}] ${memory.content}`).join("\n");
 }
 
 async function loadRecentZaloTurns(paths: RuntimePaths, userId: string): Promise<ChatMessage[]> {

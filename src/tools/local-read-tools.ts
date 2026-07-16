@@ -152,7 +152,7 @@ export async function listActiveMemoriesTool(options: LocalToolOptions & { limit
     return {
       allowed: true,
       reason: permission.reason,
-      memories: store.listActiveMemories(normalizeMemoryLimit(options.limit)).map((memory) => ({
+      memories: store.listActiveMemories(normalizeOptionalMemoryLimit(options.limit)).map((memory) => ({
         id: memory.id,
         type: memory.type,
         content: memory.content,
@@ -189,7 +189,7 @@ export async function searchMemoriesTool(options: LocalToolOptions & { query: st
       allowed: true,
       reason: permission.reason,
       query: options.query,
-      memories: store.searchMemories(options.query, normalizeMemoryLimit(options.limit)).map((memory) => ({
+      memories: store.searchMemories(options.query, normalizeOptionalMemoryLimit(options.limit)).map((memory) => ({
         id: memory.id,
         type: memory.type,
         content: memory.content,
@@ -201,6 +201,10 @@ export async function searchMemoriesTool(options: LocalToolOptions & { query: st
   } finally {
     store.close();
   }
+}
+
+function normalizeOptionalMemoryLimit(limit: number | undefined): number | undefined {
+  return limit === undefined ? undefined : normalizeMemoryLimit(limit);
 }
 
 function normalizeMemoryLimit(limit: number | undefined): number {

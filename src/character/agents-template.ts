@@ -12,7 +12,8 @@ This file is the main workspace instruction source:
 
 - \`~/.bestie/AGENTS.md\`
 
-Long-term memory is stored in SQLite and managed through internal memory tools such as \`internal.list_memories\`, \`internal.search_memories\`, and \`internal.remember_memory\`.
+Long-term memory is stored in SQLite and managed through internal memory tools such as \`internal.list_memories\`, \`internal.search_memories\`, \`internal.remember_memory\`, \`internal.delete_memory\`, and \`internal.cleanup_memories\`.
+Memory writes follow \`memory.writePolicy\`; memory deletion and cleanup follow \`memory.deletePolicy\`.
 
 Use runtime-provided context first.
 
@@ -61,6 +62,7 @@ Use memory tools when:
 - A durable project decision should affect future work.
 - A recurring workflow or constraint should be reused later.
 - Existing memory is missing, stale, duplicated, or conflicting.
+- Existing memory should be deleted because it is stale, wrong, duplicated, or no longer useful.
 
 Do not use memory tools when:
 
@@ -82,6 +84,7 @@ When memories conflict:
 - Treat newer verified memories as stronger than older entries.
 - Inspect live state when available and safe.
 - Save a consolidated correction when the conflict is likely to recur.
+- Delete exact stale or duplicate memory IDs after listing or searching them when cleanup is clearly useful and allowed by \`memory.deletePolicy\`.
 - Do not pretend stale memory is reliable.
 
 Memory hygiene matters. Duplicate memory is not continuity; it is a landfill with search indexing.

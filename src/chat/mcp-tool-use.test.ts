@@ -112,6 +112,14 @@ test("parseMcpToolRequest accepts internal read tool requests", () => {
     tool: "internal.remember_memory",
     arguments: { type: "preference", content: "Prefers concise replies" },
   });
+  assert.deepEqual(parseMcpToolRequest('{"tool":"internal.delete_memory","arguments":{"id":1,"reason":"stale duplicate"}}'), {
+    tool: "internal.delete_memory",
+    arguments: { id: 1, reason: "stale duplicate" },
+  });
+  assert.deepEqual(parseMcpToolRequest('{"tool":"internal.cleanup_memories","arguments":{"ids":[1,2],"reason":"duplicate memories"}}'), {
+    tool: "internal.cleanup_memories",
+    arguments: { ids: [1, 2], reason: "duplicate memories" },
+  });
 });
 
 test("parseMcpToolRequestResult rejects supported tool JSON mixed with prose", () => {
@@ -483,6 +491,125 @@ test("runAgentToolRequest lists active memories", async () => {
     assert.equal(payload.memories.length, 1);
     assert.deepEqual({ ...payload.memories[0], updatedAt: "<timestamp>" }, { id: 2, type: "project_context", content: "Working on Telegram MVP", sensitivity: "normal", importance: 5, updatedAt: "<timestamp>" });
     assert.match(payload.memories[0].updatedAt, /\d{4}-\d{2}-\d{2}/);
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("runAgentToolRequest deletes an active memory when policy allows", async () => {
+  const paths = await createTempPaths();
+
+  try {
+    const store = await import("../memory/sqlite-store.js").then(({ SqliteMemoryStore }) => SqliteMemoryStore.open(paths));
+    try {
+      store.addMemory({ type: "preference", content: "Prefers obsolete replies", importance: 4 });
+    } finally {
+      store.close();
+    }
+
+    const result = await runAgentToolRequest({
+      config: { ...createConfig(), memory: { deletePolicy: "allow" }, mcp: undefined },
+      paths,
+      request: { tool: "internal.delete_memory", arguments: { id: 1, reason: "obsolete memory" } },
+    });
+
+    assert.deepEqual(result, { ok: true, status: "pass", message: "Memory deleted.", result: { id: 1, deleted: true } });
+
+    const verifyStore = await import("../memory/sqlite-store.js").then(({ SqliteMemoryStore }) => SqliteMemoryStore.open(paths));
+    try {
+      assert.equal(verifyStore.getActiveMemory(1), undefined);
+    } finally {
+      verifyStore.close();
+    }
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("runAgentToolRequest blocks memory delete when delete policy denies", async () => {
+  const paths = await createTempPaths();
+
+  try {
+    const store = await import("../memory/sqlite-store.js").then(({ SqliteMemoryStore }) => SqliteMemoryStore.open(paths));
+    try {
+      store.addMemory({ type: "preference", content: "Keep this", importance: 4 });
+    } finally {
+      store.close();
+    }
+
+    const result = await runAgentToolRequest({
+      config: { ...createConfig(), memory: { deletePolicy: "deny" }, mcp: undefined },
+      paths,
+      request: { tool: "internal.delete_memory", arguments: { id: 1, reason: "test deny policy" } },
+    });
+
+    assert.equal(result.ok, false);
+    assert.match(result.message, /Memory deletes are disabled by config/);
+
+    const verifyStore = await import("../memory/sqlite-store.js").then(({ SqliteMemoryStore }) => SqliteMemoryStore.open(paths));
+    try {
+      assert.equal(verifyStore.getActiveMemory(1)?.content, "Keep this");
+    } finally {
+      verifyStore.close();
+    }
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("runAgentToolRequest asks before cleanup when delete policy asks", async () => {
+  const paths = await createTempPaths();
+
+  try {
+    const result = await runAgentToolRequest({
+      config: { ...createConfig(), memory: { deletePolicy: "ask" }, mcp: undefined },
+      paths,
+      request: { tool: "internal.cleanup_memories", arguments: { ids: [1, 2], reason: "cleanup duplicates" } },
+      approver: async (request, proposed) => {
+        assert.equal(request.action, "internal.cleanup_memories");
+        assert.equal(request.category, "local_write");
+        assert.equal(request.payloadJson, JSON.stringify({ tool: "internal.cleanup_memories", arguments: { ids: [1, 2], reason: "cleanup duplicates" } }));
+        assert.match(proposed.reason, /Local write actions require approval by default/);
+        return { approved: false, reason: "recorded approval" };
+      },
+    });
+
+    assert.equal(result.ok, false);
+    assert.match(result.message, /recorded approval/);
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("runAgentToolRequest cleans multiple memories and reports missing ids", async () => {
+  const paths = await createTempPaths();
+
+  try {
+    const store = await import("../memory/sqlite-store.js").then(({ SqliteMemoryStore }) => SqliteMemoryStore.open(paths));
+    try {
+      store.addMemory({ type: "preference", content: "Duplicate concise preference", importance: 4 });
+      store.addMemory({ type: "preference", content: "Duplicate concise preference again", importance: 4 });
+      store.addMemory({ type: "project_context", content: "Keep this", importance: 5 });
+    } finally {
+      store.close();
+    }
+
+    const result = await runAgentToolRequest({
+      config: { ...createConfig(), memory: { deletePolicy: "allow" }, mcp: undefined },
+      paths,
+      request: { tool: "internal.cleanup_memories", arguments: { ids: [1, 2, 999, 2], reason: "deduplicate stale memories" } },
+    });
+
+    assert.deepEqual(result, { ok: true, status: "pass", message: "Deleted 2 memory(s); 1 not found.", result: { deletedIds: [1, 2], missingIds: [999] } });
+
+    const verifyStore = await import("../memory/sqlite-store.js").then(({ SqliteMemoryStore }) => SqliteMemoryStore.open(paths));
+    try {
+      assert.equal(verifyStore.getActiveMemory(1), undefined);
+      assert.equal(verifyStore.getActiveMemory(2), undefined);
+      assert.equal(verifyStore.getActiveMemory(3)?.content, "Keep this");
+    } finally {
+      verifyStore.close();
+    }
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
   }

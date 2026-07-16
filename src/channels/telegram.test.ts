@@ -1623,6 +1623,7 @@ test("handleTelegramUpdate executes approved internal action payloads", async ()
       assert.equal(approvals.length, 1);
       assert.equal(approvals[0]?.action, "internal.write_file");
       assert.match(approvals[0]?.payloadJson ?? "", /telegram-note\.txt/);
+      assert.ok(new Date(approvals[0]?.expiresAt ?? 0).getTime() - Date.now() > 25 * 60 * 1000);
       approvalId = approvals[0].id;
     } finally {
       store.close();
@@ -1637,6 +1638,76 @@ test("handleTelegramUpdate executes approved internal action payloads", async ()
     assert.equal(await readFile(resolve(paths.workspaceDir, "telegram-note.txt"), "utf8"), "approved from telegram\n");
     assert.deepEqual(callbackAnswers.at(-1), { id: "callback-1", text: "Action executed." });
     assert.match(editedMessages.at(-1)?.text ?? "", /Executed internal\.write_file/);
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("handleTelegramUpdate executes approved memory cleanup and replies when callback edit fails", async () => {
+  const paths = await createTempPaths();
+  const sentMessages: Array<{ chatId: number; text: string; options?: unknown }> = [];
+  const editedMessages: Array<{ chatId: number; messageId: number; text: string }> = [];
+  const callbackAnswers: Array<{ id: string; text?: string }> = [];
+
+  try {
+    await writeRuntimeFiles(paths);
+    const store = await SqliteMemoryStore.open(paths);
+    let approvalId: number;
+    try {
+      store.addMemory({ type: "preference", content: "old duplicate", importance: 1 });
+      store.addMemory({ type: "preference", content: "stale duplicate", importance: 1 });
+      store.addMemory({ type: "durable_decision", content: "keep this", importance: 5 });
+      approvalId = store.addPendingActionApproval({
+        channel: "telegram",
+        category: "local_write",
+        action: "internal.cleanup_memories",
+        target: "2 memories",
+        reason: "Cleaning duplicate memories.",
+        payloadJson: JSON.stringify({ tool: "internal.cleanup_memories", arguments: { ids: [1, 2], reason: "Cleaning duplicate memories." } }),
+      }).id;
+    } finally {
+      store.close();
+    }
+
+    const result = await handleTelegramUpdate(createCallbackUpdate(`approval:approve:${approvalId}`, 12345, 2), {
+      config,
+      paths,
+      client: createRecordingClient(sentMessages, [], editedMessages, callbackAnswers, { failEditMessage: true }),
+    });
+
+    assert.equal(result, "replied");
+    assert.deepEqual(callbackAnswers.at(-1), { id: "callback-1", text: "Action executed." });
+    assert.match(sentMessages.at(-1)?.text ?? "", /Executed internal\.cleanup_memories/);
+
+    const verifyStore = await SqliteMemoryStore.open(paths);
+    try {
+      assert.deepEqual(verifyStore.listActiveMemories().map((memory) => memory.content), ["keep this"]);
+    } finally {
+      verifyStore.close();
+    }
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("handleTelegramUpdate answers non-owner approval callbacks", async () => {
+  const paths = await createTempPaths();
+  const sentMessages: Array<{ chatId: number; text: string; options?: unknown }> = [];
+  const editedMessages: Array<{ chatId: number; messageId: number; text: string }> = [];
+  const callbackAnswers: Array<{ id: string; text?: string }> = [];
+
+  try {
+    await writeRuntimeFiles(paths);
+    const result = await handleTelegramUpdate(createCallbackUpdate("approval:approve:1", 99999, 2, "not_owner"), {
+      config,
+      paths,
+      client: createRecordingClient(sentMessages, [], editedMessages, callbackAnswers),
+    });
+
+    assert.equal(result, "ignored");
+    assert.deepEqual(callbackAnswers, [{ id: "callback-1", text: "Only the configured owner can approve this action." }]);
+    const logText = await readFile(paths.appLogPath, "utf8");
+    assert.match(logText, /telegram_approval_callback_ignored/);
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
   }
@@ -2297,6 +2368,7 @@ function createRecordingClient(
   chatActions: Array<{ chatId: number; action: string }> = [],
   editedMessages: Array<{ chatId: number; messageId: number; text: string }> = [],
   callbackAnswers: Array<{ id: string; text?: string }> = [],
+  options: { failEditMessage?: boolean } = {},
 ): TelegramClient {
   return {
     async getUpdates() {
@@ -2307,6 +2379,9 @@ function createRecordingClient(
       return { messageId: 999 + sentMessages.length };
     },
     async editMessageText(chatId, messageId, text) {
+      if (options.failEditMessage) {
+        throw new Error("edit failed");
+      }
       editedMessages.push({ chatId, messageId, text });
     },
     async sendChatAction(chatId, action) {

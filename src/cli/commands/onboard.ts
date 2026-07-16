@@ -18,6 +18,7 @@ const DEFAULT_API_KEY_ENV = "OPENAI_API_KEY";
 
 type LanguageMode = AppConfig["agent"]["language"];
 type MemoryWritePolicy = NonNullable<AppConfig["memory"]>["writePolicy"];
+type MemoryDeletePolicy = NonNullable<AppConfig["memory"]>["deletePolicy"];
 type AskLine = (question: string) => Promise<string>;
 
 interface Questioner {
@@ -33,6 +34,7 @@ interface OnboardingAnswers {
   timeZone: string;
   toneIntensity: number;
   memoryWritePolicy: MemoryWritePolicy;
+  memoryDeletePolicy: MemoryDeletePolicy;
   provider: string;
   baseUrl: string;
   model: string;
@@ -154,12 +156,13 @@ async function collectAnswers(questioner: Pick<Questioner, "ask" | "askHidden">)
   const timeZone = await askTimeZone(ask);
   const toneIntensity = await askToneIntensity(ask);
   const memoryWritePolicy = await askMemoryWritePolicy(ask);
+  const memoryDeletePolicy: MemoryDeletePolicy = "ask";
   const provider = await askNonEmpty(ask, promptTheme.step(7, 10, "Nhà cung cấp", "Nhãn nhà cung cấp?"), "openai-compatible");
   const baseUrl = await askNonEmpty(ask, promptTheme.step(8, 10, "Base URL", "Base URL tương thích OpenAI?"), "https://api.openai.com/v1");
   const model = await askNonEmpty(ask, promptTheme.step(9, 10, "Model", "Tên model?"), "gpt-4o-mini");
   const apiKey = await askNonEmpty(askHidden, promptTheme.step(10, 10, "API key", `Dán API key của nhà cung cấp. Key sẽ được lưu dưới tên ${DEFAULT_API_KEY_ENV} và được ẩn khi nhập.`));
 
-  return { agentName, ownerName, language, timeZone, toneIntensity, memoryWritePolicy, provider, baseUrl, model, apiKey };
+  return { agentName, ownerName, language, timeZone, toneIntensity, memoryWritePolicy, memoryDeletePolicy, provider, baseUrl, model, apiKey };
 }
 
 async function askNonEmpty(
@@ -299,6 +302,7 @@ function buildConfig(answers: OnboardingAnswers): AppConfig {
     },
     memory: {
       writePolicy: answers.memoryWritePolicy,
+      deletePolicy: answers.memoryDeletePolicy,
     },
   };
 }

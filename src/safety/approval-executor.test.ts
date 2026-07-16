@@ -114,6 +114,36 @@ test("executeApprovedAction executes stored internal tool payloads", async () =>
   }
 });
 
+test("executeApprovedAction executes approved memory cleanup payloads", async () => {
+  const paths = await createTempPaths();
+  const store = await SqliteMemoryStore.open(paths);
+
+  try {
+    store.addMemory({ type: "preference", content: "old duplicate", importance: 1 });
+    store.addMemory({ type: "preference", content: "stale duplicate", importance: 1 });
+    store.addMemory({ type: "durable_decision", content: "keep this", importance: 5 });
+    const approval = store.addPendingActionApproval({
+      channel: "telegram",
+      category: "local_write",
+      action: "internal.cleanup_memories",
+      target: "2 memories",
+      reason: "Cleaning duplicate memories.",
+      payloadJson: JSON.stringify({ tool: "internal.cleanup_memories", arguments: { ids: [1, 2], reason: "Cleaning duplicate memories." } }),
+    });
+    const approved = store.approvePendingActionApproval(approval.id);
+
+    assert.ok(approved);
+    const result = await executeApprovedAction(store, approved, "approve", { config: createConfig(), paths });
+
+    assert.equal(result.status, "executed");
+    assert.match(result.message, /Executed internal\.cleanup_memories/);
+    assert.deepEqual(store.listActiveMemories().map((memory) => memory.content), ["keep this"]);
+  } finally {
+    store.close();
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
 
 test("executeApprovedAction rejects invalid stored internal tool payloads", async () => {
   const paths = await createTempPaths();

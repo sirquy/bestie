@@ -297,14 +297,14 @@ async function handleSlashCommand(userInput: string, paths: RuntimePaths, writeL
     const store = await SqliteMemoryStore.open(paths);
 
     try {
-      const memories = store.listActiveMemories().slice(0, 5);
+      const memories = store.listActiveMemories();
 
       if (memories.length === 0) {
         writeLine("No active memories.");
         return true;
       }
 
-      writeLine("Active memories:");
+      writeLine(`Active memories (${memories.length}):`);
       for (const memory of memories) {
         writeLine(`${memory.id}. [${memory.type}] ${memory.content}`);
       }

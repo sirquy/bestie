@@ -202,6 +202,7 @@ const TELEGRAM_ATTACHMENT_VISION_MAX_BYTES = 4 * 1024 * 1024;
 const TELEGRAM_ATTACHMENT_TRANSCRIPTION_MAX_BYTES = 10 * 1024 * 1024;
 const TELEGRAM_SPEECH_REPLY_MAX_CHARS = 800;
 const TELEGRAM_SPEECH_REPLY_COOLDOWN_MS = 30_000;
+const TELEGRAM_ACTION_APPROVAL_TTL_MS = 30 * 60 * 1000;
 const TELEGRAM_PERMISSION_POLICY: PermissionPolicy = {
   allowTrustedRead: true,
   allowLocalWrite: false,
@@ -748,6 +749,7 @@ async function sendTelegramMemoryReasoningApprovalsIfNeeded(
         target: `pending-memory:${pending.id}`,
         reason: "Approve or deny a memory inferred from the latest conversation.",
         proposedReason: pending.reason ?? "Memory reasoning proposed this candidate.",
+        ttlMs: TELEGRAM_ACTION_APPROVAL_TTL_MS,
       }).id;
     } finally {
       store.close();
@@ -777,7 +779,9 @@ async function handleTelegramCallbackQuery(update: TelegramUpdate, options: Tele
     return "ignored";
   }
 
-  if (!matchesTelegramOwner(telegramConfig.ownerUserId, String(callbackQuery.from.id), callbackQuery.from.username)) {
+  if (!matchesTelegramOwner(normalizeTelegramOwner(telegramConfig.ownerUserId), String(callbackQuery.from.id), callbackQuery.from.username)) {
+    await appendLog({ event: "telegram_approval_callback_ignored", detail: { reason: "non_owner", fromId: callbackQuery.from.id, fromUsername: callbackQuery.from.username } }, { paths: options.paths });
+    await options.client.answerCallbackQuery?.(callbackQuery.id, "Only the configured owner can approve this action.");
     return "ignored";
   }
 
@@ -794,13 +798,21 @@ async function handleTelegramCallbackQuery(update: TelegramUpdate, options: Tele
     if (!approval) {
       const message = `Approval request ${decision.id} is no longer pending. It may have already been handled or expired.`;
       await options.client.answerCallbackQuery?.(callbackQuery.id, "Approval request is no longer pending.");
-      await replyToTelegramCallbackSource(options.client, callbackQuery.message, message);
+      await replyToTelegramCallbackSource(options.client, callbackQuery.message, message, options.paths);
       return "replied";
     }
 
-    const actionResult = await executeApprovedAction(store, approval, decision.decision, { config: options.config, paths: options.paths });
-    await options.client.answerCallbackQuery?.(callbackQuery.id, actionResult.shortText);
-    await replyToTelegramCallbackSource(options.client, callbackQuery.message, actionResult.message);
+    try {
+      const actionResult = await executeApprovedAction(store, approval, decision.decision, { config: options.config, paths: options.paths });
+      await appendLog({ event: "telegram_approval_execution", detail: { id: approval.id, action: approval.action, decision: decision.decision, status: actionResult.status, message: actionResult.message } }, { paths: options.paths });
+      await options.client.answerCallbackQuery?.(callbackQuery.id, actionResult.shortText);
+      await replyToTelegramCallbackSource(options.client, callbackQuery.message, actionResult.message, options.paths);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      await appendLog({ event: "telegram_approval_execution_failure", detail: { id: approval.id, action: approval.action, decision: decision.decision, message: errorMessage } }, { paths: options.paths });
+      await options.client.answerCallbackQuery?.(callbackQuery.id, "Approval action failed.");
+      await replyToTelegramCallbackSource(options.client, callbackQuery.message, `Approval ${approval.id} failed while executing ${approval.action}: ${errorMessage}`, options.paths);
+    }
 
     return "replied";
   } finally {
@@ -808,11 +820,18 @@ async function handleTelegramCallbackQuery(update: TelegramUpdate, options: Tele
   }
 }
 
-async function replyToTelegramCallbackSource(client: TelegramClient, message: MaybeInaccessibleMessage | undefined, text: string): Promise<void> {
+async function replyToTelegramCallbackSource(client: TelegramClient, message: MaybeInaccessibleMessage | undefined, text: string, paths: RuntimePaths): Promise<void> {
   const callbackMessage = getCallbackMessageLocation(message);
 
   if (callbackMessage) {
-    await safeEditTelegramMessageText(client, callbackMessage.chatId, callbackMessage.messageId, text);
+    try {
+      await safeEditTelegramMessageText(client, callbackMessage.chatId, callbackMessage.messageId, text);
+      return;
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      await appendLog({ event: "telegram_callback_reply_edit_failure", detail: { chatId: callbackMessage.chatId, messageId: callbackMessage.messageId, message: errorMessage } }, { paths });
+      await client.sendMessage(callbackMessage.chatId, text);
+    }
     return;
   }
 
@@ -843,6 +862,7 @@ function createTelegramPermissionApprover(client: TelegramClient, chatId: number
         reason: request.reason,
         proposedReason: proposed.reason,
         payloadJson: request.payloadJson,
+        ttlMs: TELEGRAM_ACTION_APPROVAL_TTL_MS,
       }).id;
     } finally {
       store.close();
@@ -901,6 +921,7 @@ async function sendTelegramMemoryApprovalIfNeeded(
       target: `pending-memory:${pending.id}`,
       reason: "Approve or deny model-requested memory write.",
       proposedReason: pending.reason ?? "Memory write policy is ask.",
+      ttlMs: TELEGRAM_ACTION_APPROVAL_TTL_MS,
     }).id;
   } finally {
     store.close();
@@ -970,6 +991,14 @@ function formatTelegramToolActivity(activity: AgentToolActivity, agentName: stri
     return `${agentName} is preparing a memory approval`;
   }
 
+  if (activity.toolName === "internal.delete_memory") {
+    return `${agentName} is deleting memory${suffix}`;
+  }
+
+  if (activity.toolName === "internal.cleanup_memories") {
+    return `${agentName} is cleaning saved memories`;
+  }
+
   if (activity.toolName.startsWith("mcp.") || activity.toolName.includes("/")) {
     return `${agentName} is using read tool${suffix}`;
   }
@@ -996,6 +1025,16 @@ function splitTelegramMessageText(text: string): string[] {
   }
 
   return chunks.length > 0 ? chunks : [text.slice(0, TELEGRAM_MESSAGE_CHUNK_LIMIT)];
+}
+
+async function sendTelegramTextChunks(client: TelegramClient, chatId: number, text: string): Promise<void> {
+  for (const chunk of splitTelegramMessageText(text)) {
+    await client.sendMessage(chatId, chunk);
+  }
+}
+
+function formatMemoryList(memories: Array<{ id: number; type: string; content: string }>): string {
+  return memories.map((memory) => `${memory.id}. [${memory.type}] ${memory.content}`).join("\n");
 }
 
 export function createTelegramOutboundAdapter(client: TelegramClient, refreshMs = TELEGRAM_TYPING_REFRESH_MS): ChannelOutboundAdapter<number, "typing"> {
@@ -1390,14 +1429,14 @@ async function handleTelegramSlashCommand(text: string, chatId: number, options:
     const store = await SqliteMemoryStore.open(options.paths);
 
     try {
-      const memories = store.listActiveMemories().slice(0, 5);
+      const memories = store.listActiveMemories();
 
       if (memories.length === 0) {
         await options.client.sendMessage(chatId, "No active memories.");
         return true;
       }
 
-      await options.client.sendMessage(chatId, `Active memories:\n${memories.map((memory) => `${memory.id}. [${memory.type}] ${memory.content}`).join("\n")}`);
+      await sendTelegramTextChunks(options.client, chatId, `Active memories (${memories.length}):\n${formatMemoryList(memories)}`);
       return true;
     } finally {
       store.close();

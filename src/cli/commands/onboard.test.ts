@@ -43,7 +43,7 @@ test("runOnboardCommand writes local files and skips provider test when requeste
       writeLine: (message) => output.push(message),
     });
 
-    const config = JSON.parse(await readFile(paths.configPath, "utf8")) as { agent: { language: string; timeZone: string }; llm: { baseUrl: string; timeoutMs: number }; memory?: { writePolicy?: string } };
+    const config = JSON.parse(await readFile(paths.configPath, "utf8")) as { agent: { language: string; timeZone: string }; llm: { baseUrl: string; timeoutMs: number }; memory?: { writePolicy?: string; deletePolicy?: string } };
     const envText = await readFile(paths.envPath, "utf8");
     const agentsText = await readFile(resolve(paths.appDir, "AGENTS.md"), "utf8");
     const logText = await readFile(paths.appLogPath, "utf8");
@@ -55,6 +55,7 @@ test("runOnboardCommand writes local files and skips provider test when requeste
     assert.equal(config.agent.language, "ja");
     assert.equal(config.agent.timeZone, "Asia/Tokyo");
     assert.equal(config.memory?.writePolicy, "ask");
+    assert.equal(config.memory?.deletePolicy, "ask");
     assert.match(envText, /OPENAI_API_KEY="test-key"/);
     assert.equal(agentsText, getDefaultAgentsMarkdown());
     assert.match(agentsText, /# AGENTS\.md - Bestie Agent Workspace/);

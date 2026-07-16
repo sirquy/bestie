@@ -441,7 +441,7 @@ export class SqliteMemoryStore {
     return rows.map(mapMemoryRow);
   }
 
-  searchMemories(query: string, limit = 20): StoredMemory[] {
+  searchMemories(query: string, limit?: number): StoredMemory[] {
     const normalizedQuery = query.trim();
 
     if (normalizedQuery.length === 0) {
@@ -451,8 +451,19 @@ export class SqliteMemoryStore {
     const ftsQuery = normalizeMemoryFtsQuery(normalizedQuery);
     if (ftsQuery && hasMemorySearchIndex(this.db)) {
       try {
-        const rows = this.db
-          .prepare(`
+        const rows = limit === undefined
+          ? (this.db
+              .prepare(`
+            SELECT memories.*
+            FROM memory_search
+            JOIN memories ON memories.id = memory_search.memory_id
+            WHERE memory_search MATCH @query
+              AND memories.status = 'active'
+            ORDER BY bm25(memory_search), memories.importance DESC, memories.updated_at DESC
+          `)
+              .all({ query: ftsQuery }) as MemoryRow[])
+          : (this.db
+              .prepare(`
             SELECT memories.*
             FROM memory_search
             JOIN memories ON memories.id = memory_search.memory_id
@@ -461,7 +472,7 @@ export class SqliteMemoryStore {
             ORDER BY bm25(memory_search), memories.importance DESC, memories.updated_at DESC
             LIMIT @limit
           `)
-          .all({ query: ftsQuery, limit }) as MemoryRow[];
+              .all({ query: ftsQuery, limit }) as MemoryRow[]);
 
         return rows.map(mapMemoryRow);
       } catch {
@@ -469,15 +480,24 @@ export class SqliteMemoryStore {
       }
     }
 
-    const rows = this.db
-      .prepare(`
+    const rows = limit === undefined
+      ? (this.db
+          .prepare(`
+        SELECT * FROM memories
+        WHERE status = 'active'
+          AND (content LIKE @query ESCAPE '\' OR type LIKE @query ESCAPE '\')
+        ORDER BY importance DESC, updated_at DESC
+      `)
+          .all({ query: `%${escapeLike(normalizedQuery)}%` }) as MemoryRow[])
+      : (this.db
+          .prepare(`
         SELECT * FROM memories
         WHERE status = 'active'
           AND (content LIKE @query ESCAPE '\\' OR type LIKE @query ESCAPE '\\')
         ORDER BY importance DESC, updated_at DESC
         LIMIT @limit
       `)
-      .all({ query: `%${escapeLike(normalizedQuery)}%`, limit }) as MemoryRow[];
+          .all({ query: `%${escapeLike(normalizedQuery)}%`, limit }) as MemoryRow[]);
 
     return rows.map(mapMemoryRow);
   }

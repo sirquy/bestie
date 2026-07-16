@@ -333,10 +333,10 @@ test("validateConfig accepts optional Telegram attachment policy", () => {
   });
 });
 
-test("validateConfig accepts optional memory write policy", () => {
-  const config = validateConfig({ ...validConfig, memory: { writePolicy: "ask" } });
+test("validateConfig accepts optional memory policies", () => {
+  const config = validateConfig({ ...validConfig, memory: { writePolicy: "ask", deletePolicy: "deny" } });
 
-  assert.deepEqual(config.memory, { writePolicy: "ask" });
+  assert.deepEqual(config.memory, { writePolicy: "ask", deletePolicy: "deny" });
 });
 
 test("validateConfig accepts optional workspace config", () => {
@@ -583,6 +583,7 @@ test("validateConfig rejects invalid Telegram channel config", () => {
 
 test("validateConfig rejects invalid memory write policy", () => {
   assert.throws(() => validateConfig({ ...validConfig, memory: { writePolicy: "sometimes" } }), /memory.writePolicy must be allow, ask, or deny/);
+  assert.throws(() => validateConfig({ ...validConfig, memory: { deletePolicy: "sometimes" } }), /memory.deletePolicy must be allow, ask, or deny/);
 });
 
 test("validateConfig rejects invalid workspace config", () => {

@@ -18,8 +18,7 @@ function buildMemoryContextMessages(memories: StoredMemory[]): ChatMessage[] {
   const memoryLines = memories
     .filter((memory) => memory.status === "active")
     .sort(compareMemoryContextPriority)
-    .map((memory) => `- ${memory.type}: ${memory.content}`)
-    .filter(createMemoryContextBudgetFilter(MEMORY_CONTEXT_PREFIX.length));
+    .map((memory) => `- #${memory.id} [${memory.type}] ${memory.content}`);
 
   if (memoryLines.length === 0) {
     return [];
@@ -31,20 +30,6 @@ function buildMemoryContextMessages(memories: StoredMemory[]): ChatMessage[] {
       content: `${MEMORY_CONTEXT_PREFIX}\n${memoryLines.join("\n")}`,
     },
   ];
-}
-
-function createMemoryContextBudgetFilter(initialChars: number): (line: string) => boolean {
-  let usedChars = initialChars;
-
-  return (line) => {
-    const nextChars = usedChars + 1 + line.length;
-    if (nextChars > MEMORY_CONTEXT_CHAR_LIMIT) {
-      return false;
-    }
-
-    usedChars = nextChars;
-    return true;
-  };
 }
 
 function compareMemoryContextPriority(left: StoredMemory, right: StoredMemory): number {
