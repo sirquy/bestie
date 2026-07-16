@@ -7,6 +7,8 @@ import { promisify } from "node:util";
 import test from "node:test";
 
 import { main } from "./index.js";
+import { SqliteMemoryStore } from "../memory/sqlite-store.js";
+import { getRuntimePaths } from "../runtime/paths.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -60,6 +62,62 @@ test("main suppresses the banner for memory analyze JSON", async () => {
   }
 });
 
+test("memory cleanup dry-run JSON reports planned deletions", async () => {
+  const homeDir = await mkdtemp(resolve(tmpdir(), "bestie-cli-index-test-"));
+
+  try {
+    const paths = getRuntimePaths(homeDir);
+    const store = await SqliteMemoryStore.open(paths);
+    try {
+      store.addMemory({ type: "preference", content: "Duplicate memory", importance: 4 });
+      store.addMemory({ type: "preference", content: "Duplicate memory", importance: 1 });
+    } finally {
+      store.close();
+    }
+
+    const { stdout } = await captureMain(["node", "bestie", "memory", "cleanup", "--dry-run", "--json"], { HOME: homeDir });
+    const parsed = JSON.parse(stdout) as { allowed: boolean; applied: boolean; plan: { deleteIds: number[] } };
+
+    assert.equal(parsed.allowed, true);
+    assert.equal(parsed.applied, false);
+    assert.deepEqual(parsed.plan.deleteIds, [2]);
+  } finally {
+    await rm(homeDir, { recursive: true, force: true });
+  }
+});
+
+test("memory cleanup apply defaults to ask without deleting", async () => {
+  const homeDir = await mkdtemp(resolve(tmpdir(), "bestie-cli-index-test-"));
+
+  try {
+    const paths = getRuntimePaths(homeDir);
+    const store = await SqliteMemoryStore.open(paths);
+    try {
+      store.addMemory({ type: "preference", content: "Duplicate memory", importance: 4 });
+      store.addMemory({ type: "preference", content: "Duplicate memory", importance: 1 });
+    } finally {
+      store.close();
+    }
+
+    const { stdout } = await captureMain(["node", "bestie", "memory", "cleanup", "--apply", "--json"], { HOME: homeDir });
+    const parsed = JSON.parse(stdout) as { allowed: boolean; applied: boolean; reason: string; plan: { deleteIds: number[] } };
+
+    assert.equal(parsed.allowed, false);
+    assert.equal(parsed.applied, false);
+    assert.match(parsed.reason, /deletePolicy is ask/);
+    assert.deepEqual(parsed.plan.deleteIds, [2]);
+
+    const verifyStore = await SqliteMemoryStore.open(paths);
+    try {
+      assert.equal(verifyStore.listActiveMemories().length, 2);
+    } finally {
+      verifyStore.close();
+    }
+  } finally {
+    await rm(homeDir, { recursive: true, force: true });
+  }
+});
+
 test("NO_COLOR disables ANSI color in human output", async () => {
   const { stdout } = await captureMain(["node", "bestie", "skills"], { BESTIE_NO_BANNER: "1", NO_COLOR: "1" });
 
@@ -97,6 +155,7 @@ test("linked bin entrypoint runs through npm symlinks", async () => {
 async function captureMain(argv: string[], env: Record<string, string> = {}): Promise<{ stdout: string; stderr: string }> {
   const originalLog = console.log;
   const originalError = console.error;
+  const originalExitCode = process.exitCode;
   const originalEnv: Record<string, string | undefined> = {};
   const stdout: string[] = [];
   const stderr: string[] = [];
@@ -114,6 +173,7 @@ async function captureMain(argv: string[], env: Record<string, string> = {}): Pr
   } finally {
     console.log = originalLog;
     console.error = originalError;
+    process.exitCode = originalExitCode;
     for (const [key, value] of Object.entries(originalEnv)) {
       if (value === undefined) {
         delete process.env[key];

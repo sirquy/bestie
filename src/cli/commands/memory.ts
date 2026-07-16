@@ -1,7 +1,8 @@
 import { evaluateMemoryCandidate, type MemoryType } from "../../memory/policy.js";
 import { SqliteMemoryStore, type PendingMemory, type StoredMemory, type StoredMessageRole } from "../../memory/sqlite-store.js";
+import { loadConfig, type MemoryDeletePolicy } from "../../runtime/config.js";
 import { getRuntimePaths } from "../../runtime/paths.js";
-import { analyzeMemoriesTool, type MemoryAnalysisMode } from "../../tools/local-read-tools.js";
+import { analyzeMemoriesTool, type AnalyzeMemoriesResult, type MemoryAnalysisMode } from "../../tools/local-read-tools.js";
 import { badge, dim, rule, title } from "../ui.js";
 
 const allowedTypes = new Set<MemoryType>([
@@ -14,6 +15,15 @@ const allowedTypes = new Set<MemoryType>([
   "secret",
   "one_off",
 ]);
+
+interface MemoryCleanupPlan {
+  checked: number;
+  deleteIds: number[];
+  duplicateGroups: AnalyzeMemoriesResult["duplicateGroups"];
+  staleMemories: AnalyzeMemoriesResult["staleMemories"];
+  conflictGroups: AnalyzeMemoriesResult["conflictGroups"];
+  skippedConflictIds: number[];
+}
 
 export async function runMemoryCommand(argv: string[] = process.argv): Promise<void> {
   const subcommand = argv[3] ?? "list";
@@ -50,6 +60,11 @@ export async function runMemoryCommand(argv: string[] = process.argv): Promise<v
 
   if (subcommand === "analyze") {
     await analyzeMemories(argv);
+    return;
+  }
+
+  if (subcommand === "cleanup") {
+    await cleanupMemories(argv);
     return;
   }
 
@@ -114,7 +129,7 @@ export async function runMemoryCommand(argv: string[] = process.argv): Promise<v
   }
 
   console.error(`Unknown memory command: ${subcommand}`);
-  console.error("Usage: bestie memory status | pause | resume | list | search <query> | analyze [--mode all|duplicates|stale|conflicts] [--json] | add <type> <content> | inspect <id> | edit <id> <content> | forget <id> | messages [--limit <n>] [--role user|assistant|system] | messages search <query> [--limit <n>] [--role user|assistant|system] | export | clear --yes | pending [--limit <n>] | pending search <query> [--limit <n>] | pending inspect <id> | approve <id> | reject <id> | reject-all --yes");
+  console.error("Usage: bestie memory status | pause | resume | list | search <query> | analyze [--mode all|duplicates|stale|conflicts] [--json] | cleanup --dry-run|--apply [--yes] [--json] | add <type> <content> | inspect <id> | edit <id> <content> | forget <id> | messages [--limit <n>] [--role user|assistant|system] | messages search <query> [--limit <n>] [--role user|assistant|system] | export | clear --yes | pending [--limit <n>] | pending search <query> [--limit <n>] | pending inspect <id> | approve <id> | reject <id> | reject-all --yes");
   process.exitCode = 1;
 }
 
@@ -219,6 +234,73 @@ async function analyzeMemories(argv: string[]): Promise<void> {
   if (result.duplicateGroups.length === 0 && result.staleMemories.length === 0 && result.conflictGroups.length === 0) {
     console.log(`${badge("OK", "green")} No duplicate, stale, or conflicting active memories found.`);
   }
+}
+
+async function cleanupMemories(argv: string[]): Promise<void> {
+  const dryRun = argv.includes("--dry-run");
+  const apply = argv.includes("--apply");
+  const json = argv.includes("--json");
+
+  if (dryRun === apply) {
+    console.error("Usage: bestie memory cleanup --dry-run|--apply [--yes] [--json]");
+    process.exitCode = 1;
+    return;
+  }
+
+  const analysis = await analyzeMemoriesTool({ paths: getRuntimePaths(), mode: "all" });
+  const plan = createMemoryCleanupPlan(analysis);
+
+  if (!analysis.allowed) {
+    if (json) {
+      console.log(JSON.stringify({ allowed: false, reason: analysis.reason, plan }, null, 2));
+    } else {
+      console.log(`${badge("DENIED", "red")} ${analysis.reason}`);
+    }
+    process.exitCode = 1;
+    return;
+  }
+
+  if (dryRun) {
+    if (json) {
+      console.log(JSON.stringify({ allowed: true, applied: false, plan }, null, 2));
+      return;
+    }
+
+    printCleanupPlan(plan, false);
+    return;
+  }
+
+  const deletePolicy = await loadMemoryDeletePolicy();
+  if (deletePolicy === "deny") {
+    if (json) {
+      console.log(JSON.stringify({ allowed: false, applied: false, reason: "memory.deletePolicy is deny.", plan }, null, 2));
+    } else {
+      console.log(`${badge("DENIED", "red")} memory.deletePolicy is deny. No memories were deleted.`);
+    }
+    process.exitCode = 1;
+    return;
+  }
+
+  if (deletePolicy === "ask" && !argv.includes("--yes")) {
+    if (json) {
+      console.log(JSON.stringify({ allowed: false, applied: false, reason: "memory.deletePolicy is ask; re-run with --yes to confirm local cleanup.", plan }, null, 2));
+    } else {
+      printCleanupPlan(plan, false);
+      console.log(`${badge("CONFIRM", "yellow")} memory.deletePolicy is ask. Re-run with \`bestie memory cleanup --apply --yes\` to delete planned duplicate and stale memories.`);
+    }
+    process.exitCode = 1;
+    return;
+  }
+
+  const applied = await applyMemoryCleanupPlan(plan);
+
+  if (json) {
+    console.log(JSON.stringify({ allowed: true, applied: true, deletedIds: applied.deletedIds, missingIds: applied.missingIds, plan }, null, 2));
+    return;
+  }
+
+  printCleanupPlan(plan, true);
+  console.log(`${badge("DELETED", "green")} Deleted ${applied.deletedIds.length} planned memory/memories.${applied.missingIds.length > 0 ? ` Missing: ${applied.missingIds.map((id) => `#${id}`).join(", ")}.` : ""}`);
 }
 
 async function addMemory(argv: string[]): Promise<void> {
@@ -642,6 +724,68 @@ function printConflictGroups(groups: Array<{ ids: number[]; reason: string }>): 
   console.log(`${badge("CONFLICTS", "yellow")} ${groups.length} group(s)`);
   for (const group of groups) {
     console.log(`   Review ${group.ids.map((id) => `#${id}`).join(" <-> ")}. ${dim(group.reason)}`);
+  }
+}
+
+function createMemoryCleanupPlan(analysis: AnalyzeMemoriesResult): MemoryCleanupPlan {
+  const duplicateIds = analysis.duplicateGroups.flatMap((group) => group.duplicateIds);
+  const staleIds = analysis.staleMemories.map((memory) => memory.id);
+  const deleteIds = [...new Set([...duplicateIds, ...staleIds])].sort((left, right) => left - right);
+  const skippedConflictIds = [...new Set(analysis.conflictGroups.flatMap((group) => group.ids))].sort((left, right) => left - right);
+
+  return {
+    checked: analysis.checked,
+    deleteIds,
+    duplicateGroups: analysis.duplicateGroups,
+    staleMemories: analysis.staleMemories,
+    conflictGroups: analysis.conflictGroups,
+    skippedConflictIds,
+  };
+}
+
+function printCleanupPlan(plan: MemoryCleanupPlan, applied: boolean): void {
+  console.log(title(`${applied ? "Applied" : "Planned"} Memory Cleanup (${plan.checked} checked)`));
+  console.log(rule());
+  if (plan.deleteIds.length === 0) {
+    console.log(`${badge("OK", "green")} No duplicate or stale memories planned for deletion.`);
+  } else {
+    console.log(`${badge("DELETE", "yellow")} ${plan.deleteIds.length} planned: ${plan.deleteIds.map((id) => `#${id}`).join(", ")}`);
+  }
+  printDuplicateGroups(plan.duplicateGroups);
+  printStaleMemories(plan.staleMemories);
+  if (plan.conflictGroups.length > 0) {
+    printConflictGroups(plan.conflictGroups);
+    console.log(`${badge("SKIP", "cyan")} Conflicts are review-only and are not auto-deleted: ${plan.skippedConflictIds.map((id) => `#${id}`).join(", ")}`);
+  }
+}
+
+async function applyMemoryCleanupPlan(plan: MemoryCleanupPlan): Promise<{ deletedIds: number[]; missingIds: number[] }> {
+  const store = await SqliteMemoryStore.open();
+
+  try {
+    const deletedIds: number[] = [];
+    const missingIds: number[] = [];
+
+    for (const id of plan.deleteIds) {
+      if (store.forgetMemory(id)) {
+        deletedIds.push(id);
+      } else {
+        missingIds.push(id);
+      }
+    }
+
+    return { deletedIds, missingIds };
+  } finally {
+    store.close();
+  }
+}
+
+async function loadMemoryDeletePolicy(): Promise<MemoryDeletePolicy> {
+  try {
+    const config = await loadConfig();
+    return config.memory?.deletePolicy ?? "ask";
+  } catch {
+    return "ask";
   }
 }
 
