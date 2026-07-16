@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { mkdtemp, rm, symlink } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { promisify } from "node:util";
@@ -165,6 +165,52 @@ test("memory maintenance remove deletes the installed cron report schedule", asy
   }
 });
 
+test("memory governance policy updates retrieval policy in config", async () => {
+  const homeDir = await mkdtemp(resolve(tmpdir(), "bestie-cli-index-test-"));
+
+  try {
+    const paths = getRuntimePaths(homeDir);
+    await mkdir(paths.appDir, { recursive: true });
+    await writeFile(paths.configPath, `${JSON.stringify(createTestConfig(), null, 2)}\n`, { mode: 0o600 });
+
+    const { stdout } = await captureMain(["node", "bestie", "memory", "governance", "policy", "governed"], { HOME: homeDir, BESTIE_NO_BANNER: "1" });
+    const updated = JSON.parse(await readFile(paths.configPath, "utf8")) as { memory?: { retrievalPolicy?: string } };
+
+    assert.match(stdout, /memory\.retrievalPolicy set to governed/);
+    assert.equal(updated.memory?.retrievalPolicy, "governed");
+  } finally {
+    await rm(homeDir, { recursive: true, force: true });
+  }
+});
+
+test("memory pin and unpin update active memory metadata", async () => {
+  const homeDir = await mkdtemp(resolve(tmpdir(), "bestie-cli-index-test-"));
+
+  try {
+    const paths = getRuntimePaths(homeDir);
+    const store = await SqliteMemoryStore.open(paths);
+    let id: number;
+    try {
+      id = store.addMemory({ type: "preference", content: "Pinned via CLI" }).id;
+    } finally {
+      store.close();
+    }
+
+    const pinned = await captureMain(["node", "bestie", "memory", "pin", String(id)], { HOME: homeDir, BESTIE_NO_BANNER: "1" });
+    const unpinned = await captureMain(["node", "bestie", "memory", "unpin", String(id)], { HOME: homeDir, BESTIE_NO_BANNER: "1" });
+    const checkStore = await SqliteMemoryStore.open(paths);
+    try {
+      assert.match(pinned.stdout, /Memory pinned/);
+      assert.match(unpinned.stdout, /Memory unpinned/);
+      assert.equal(checkStore.getActiveMemory(id)?.pinned, false);
+    } finally {
+      checkStore.close();
+    }
+  } finally {
+    await rm(homeDir, { recursive: true, force: true });
+  }
+});
+
 test("NO_COLOR disables ANSI color in human output", async () => {
   const { stdout } = await captureMain(["node", "bestie", "skills"], { BESTIE_NO_BANNER: "1", NO_COLOR: "1" });
 
@@ -231,4 +277,13 @@ async function captureMain(argv: string[], env: Record<string, string> = {}): Pr
   }
 
   return { stdout: stdout.join("\n"), stderr: stderr.join("\n") };
+}
+
+function createTestConfig(): unknown {
+  return {
+    version: 1,
+    agent: { name: "Miu", ownerName: "Boss", language: "vi", toneIntensity: 7 },
+    llm: { provider: "openai-compatible", baseUrl: "https://example.com/v1", model: "example-model", apiKeyEnv: "OPENAI_API_KEY" },
+    memory: { writePolicy: "ask", deletePolicy: "ask" },
+  };
 }

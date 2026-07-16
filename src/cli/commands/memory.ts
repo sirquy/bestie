@@ -1,5 +1,6 @@
 import { evaluateMemoryCandidate, type MemoryType } from "../../memory/policy.js";
 import { SqliteMemoryStore, type PendingMemory, type StoredMemory, type StoredMessageRole } from "../../memory/sqlite-store.js";
+import { isMemoryRetrievalPolicy, setMemoryRetrievalPolicy } from "../../memory/governance.js";
 import { MEMORY_MAINTENANCE_DEFAULT_SCHEDULE, installMemoryMaintenanceReport, getMemoryMaintenanceReportStatus, removeMemoryMaintenanceReport } from "../../memory/maintenance.js";
 import { loadConfig, type MemoryDeletePolicy } from "../../runtime/config.js";
 import { getRuntimePaths } from "../../runtime/paths.js";
@@ -71,6 +72,16 @@ export async function runMemoryCommand(argv: string[] = process.argv): Promise<v
 
   if (subcommand === "maintenance") {
     await runMemoryMaintenanceCommand(argv);
+    return;
+  }
+
+  if (subcommand === "governance") {
+    await runMemoryGovernanceCommand(argv);
+    return;
+  }
+
+  if (subcommand === "pin" || subcommand === "unpin") {
+    await setMemoryPinned(argv, subcommand === "pin");
     return;
   }
 
@@ -331,6 +342,32 @@ async function runMemoryMaintenanceCommand(argv: string[]): Promise<void> {
   process.exitCode = 1;
 }
 
+async function runMemoryGovernanceCommand(argv: string[]): Promise<void> {
+  const action = argv[4] ?? "status";
+
+  if (action === "status") {
+    const config = await loadConfig();
+    console.log(`Retrieval policy: ${config.memory?.retrievalPolicy ?? "full"}`);
+    return;
+  }
+
+  if (action === "policy") {
+    const policy = argv[5];
+    if (!isMemoryRetrievalPolicy(policy)) {
+      console.error("Usage: bestie memory governance policy full|governed");
+      process.exitCode = 1;
+      return;
+    }
+
+    await setMemoryRetrievalPolicy(policy);
+    console.log(`${badge("OK", "green")} memory.retrievalPolicy set to ${policy}.`);
+    return;
+  }
+
+  console.error("Usage: bestie memory governance status|policy full|governed");
+  process.exitCode = 1;
+}
+
 async function installMemoryMaintenance(argv: string[]): Promise<void> {
   const args = parseFlagArgs(argv.slice(5));
   const scheduleValue = args["--schedule"] ?? MEMORY_MAINTENANCE_DEFAULT_SCHEDULE;
@@ -460,6 +497,28 @@ async function inspectMemory(argv: string[]): Promise<void> {
     }
 
     console.log(JSON.stringify(memory, null, 2));
+  } finally {
+    store.close();
+  }
+}
+
+async function setMemoryPinned(argv: string[], pinned: boolean): Promise<void> {
+  const id = parsePositiveId(argv[4]);
+
+  if (!id) {
+    return;
+  }
+
+  const store = await SqliteMemoryStore.open();
+
+  try {
+    const updated = store.setMemoryPinned(id, pinned);
+    if (!updated) {
+      console.log(`${badge("INFO", "blue")} No active memory found for id ${id}.`);
+      return;
+    }
+
+    console.log(`${badge(pinned ? "PINNED" : "UNPINNED", "green")} Memory ${pinned ? "pinned" : "unpinned"}: ${updated.id}`);
   } finally {
     store.close();
   }

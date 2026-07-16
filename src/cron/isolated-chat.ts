@@ -29,7 +29,7 @@ export async function runIsolatedChat(options: IsolatedChatOptions): Promise<str
 
   const systemPrompt = buildCronSystemPrompt(options.config, await loadWorkspaceInstructions(options.paths));
   const memories = await loadActiveMemories(options.paths);
-  const messages = buildChatMessages(systemPrompt, [], options.prompt, memories);
+  const messages = buildChatMessages(systemPrompt, [], options.prompt, memories, { memoryRetrievalPolicy: options.config.memory?.retrievalPolicy ?? "full" });
 
   appendLog(
     { event: "cron_isolated_chat_start", detail: { prompt: options.prompt.slice(0, 120) } },

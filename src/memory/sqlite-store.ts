@@ -425,6 +425,14 @@ export class SqliteMemoryStore {
     return memory;
   }
 
+  setMemoryPinned(id: number, pinned: boolean): StoredMemory | undefined {
+    const result = this.db
+      .prepare("UPDATE memories SET pinned = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND status = 'active'")
+      .run(pinned ? 1 : 0, id);
+
+    return result.changes === 0 ? undefined : this.getMemory(id);
+  }
+
   forgetMemory(id: number): boolean {
     const result = this.db
       .prepare("UPDATE memories SET status = 'deleted', updated_at = CURRENT_TIMESTAMP WHERE id = ? AND status = 'active'")

@@ -85,7 +85,7 @@ export async function runTerminalChat(options: TerminalChatOptions): Promise<voi
       try {
         apiKey ??= await loadRequiredSecret(options.config.llm.apiKeyEnv, options.paths);
         const memories = await loadActiveMemories(options.paths);
-        const messages = buildChatMessages(buildTerminalSystemPrompt(options.systemPrompt, options.config), recentTurns, userInput, memories);
+        const messages = buildChatMessages(buildTerminalSystemPrompt(options.systemPrompt, options.config), recentTurns, userInput, memories, { memoryRetrievalPolicy: options.config.memory?.retrievalPolicy ?? "full" });
         const indicator = startChatIndicator(options.agentName);
         let assistantText: string;
         const writeChatLine = (message: string) => {

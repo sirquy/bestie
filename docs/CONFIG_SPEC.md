@@ -36,7 +36,7 @@ Installed skills:
 
 ## config.json
 
-Phase Now config started with non-secret `agent` and `llm` fields. The current local build also supports optional `transcription`, `speech`, `memory.writePolicy`, `workspace`, `internalTools`, `channels`, and `mcp` fields as features are enabled.
+Phase Now config started with non-secret `agent` and `llm` fields. The current local build also supports optional `transcription`, `speech`, `memory.writePolicy`, `memory.deletePolicy`, `memory.retrievalPolicy`, `workspace`, `internalTools`, `channels`, and `mcp` fields as features are enabled.
 
 ```json
 {
@@ -230,6 +230,8 @@ Set `BESTIE_NO_BANNER=1` to suppress the decorative CLI banner for human-facing 
 Set `NO_COLOR=1` to disable ANSI colors in human-facing tables, badges, and progress indicators. Commands that emit raw data, logs, git output, transcripts, or JSON payloads should remain script-friendly and avoid decorative formatting.
 
 `memory.writePolicy` controls model-requested memory writes through `internal.remember_memory`: `allow` stores non-secret allowed memories, `ask` queues them as pending approval and asks the owner to approve or deny in supported channels, and `deny` rejects writes. Onboarding writes this field and defaults it to `ask`; older configs that omit it still behave as `ask` at runtime.
+
+`memory.retrievalPolicy` controls how approved active memories are organized before prompt injection. `full` is the default and injects every active memory in the existing importance/recency order. `governed` still injects every active memory, but promotes pinned/current/high-confidence memories and labels low-confidence, expired, scoped, or superseded memories so the model can reason with them more carefully without silently hiding context. It can be changed with `bestie memory governance policy full|governed` or `/memory governance policy full|governed` in supported owner channels.
 
 `workspace.defaultPath` controls where relative write/edit/exec paths land. It defaults to `~/.bestie/workspace` so ad hoc agent-created files do not pollute the project root. Generic `list_files` and `search_files` requests for `.` also inspect this workspace by default. Explicit project paths such as `src`, `docs`, `README.md`, or the absolute project root still inspect the repository so the agent can review code when asked. `workspace.externalPaths` is an explicit allowlist for absolute paths outside the project root and agent workspace; without it, internal file tools reject external paths. Git read tools also accept explicit `path` or `repoPath` values when they resolve through this workspace allowlist.
 

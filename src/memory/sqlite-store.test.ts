@@ -51,6 +51,23 @@ test("SqliteMemoryStore forgetMemory hides active memories", async () => {
   }
 });
 
+test("SqliteMemoryStore can pin and unpin active memories", async () => {
+  const paths = await createTempPaths();
+  const store = await SqliteMemoryStore.open(paths);
+
+  try {
+    const inserted = store.addMemory({ type: "preference", content: "Important preference" });
+
+    assert.equal(store.setMemoryPinned(inserted.id, true)?.pinned, true);
+    assert.equal(store.getActiveMemory(inserted.id)?.pinned, true);
+    assert.equal(store.setMemoryPinned(inserted.id, false)?.pinned, false);
+    assert.equal(store.setMemoryPinned(999, true), undefined);
+  } finally {
+    store.close();
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
 test("SqliteMemoryStore lists all active memories by default", async () => {
   const paths = await createTempPaths();
   const store = await SqliteMemoryStore.open(paths);

@@ -334,9 +334,9 @@ test("validateConfig accepts optional Telegram attachment policy", () => {
 });
 
 test("validateConfig accepts optional memory policies", () => {
-  const config = validateConfig({ ...validConfig, memory: { writePolicy: "ask", deletePolicy: "deny" } });
+  const config = validateConfig({ ...validConfig, memory: { writePolicy: "ask", deletePolicy: "deny", retrievalPolicy: "governed" } });
 
-  assert.deepEqual(config.memory, { writePolicy: "ask", deletePolicy: "deny" });
+  assert.deepEqual(config.memory, { writePolicy: "ask", deletePolicy: "deny", retrievalPolicy: "governed" });
 });
 
 test("validateConfig accepts optional workspace config", () => {
@@ -584,6 +584,7 @@ test("validateConfig rejects invalid Telegram channel config", () => {
 test("validateConfig rejects invalid memory write policy", () => {
   assert.throws(() => validateConfig({ ...validConfig, memory: { writePolicy: "sometimes" } }), /memory.writePolicy must be allow, ask, or deny/);
   assert.throws(() => validateConfig({ ...validConfig, memory: { deletePolicy: "sometimes" } }), /memory.deletePolicy must be allow, ask, or deny/);
+  assert.throws(() => validateConfig({ ...validConfig, memory: { retrievalPolicy: "sometimes" } }), /memory.retrievalPolicy must be full or governed/);
 });
 
 test("validateConfig rejects invalid workspace config", () => {

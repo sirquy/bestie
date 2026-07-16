@@ -1,5 +1,6 @@
 import type { AnalyzeMemoriesResult } from "../tools/local-read-tools.js";
 import type { CronSchedule } from "../memory/sqlite-store.js";
+import type { MemoryRetrievalPolicy } from "../runtime/config.js";
 
 export function formatMemoryAnalysisReport(analysis: AnalyzeMemoriesResult): string {
   if (!analysis.allowed) {
@@ -69,6 +70,28 @@ export function formatMemoryMaintenanceStatus(schedule: CronSchedule | undefined
 
 export function formatMemoryMaintenanceRemoved(schedule: CronSchedule | undefined): string {
   return schedule ? `Memory maintenance report removed: #${schedule.id}` : "Memory maintenance report is not installed.";
+}
+
+export function formatMemoryGovernanceStatus(analysis: AnalyzeMemoriesResult, retrievalPolicy: MemoryRetrievalPolicy): string {
+  if (!analysis.allowed) {
+    return `Memory governance status denied: ${analysis.reason}`;
+  }
+
+  const duplicateCount = analysis.duplicateGroups.reduce((count, group) => count + group.duplicateIds.length, 0);
+  const conflictMemoryCount = new Set(analysis.conflictGroups.flatMap((group) => group.ids)).size;
+
+  return [
+    "Memory governance status",
+    `Retrieval policy: ${retrievalPolicy}`,
+    `Active checked: ${analysis.checked}`,
+    `Duplicate memories: ${duplicateCount} across ${analysis.duplicateGroups.length} group(s)`,
+    `Stale memories: ${analysis.staleMemories.length}`,
+    `Conflict memories: ${conflictMemoryCount} across ${analysis.conflictGroups.length} group(s)`,
+  ].join("\n");
+}
+
+export function formatMemoryRetrievalPolicyUpdated(policy: MemoryRetrievalPolicy): string {
+  return `memory.retrievalPolicy set to ${policy}.`;
 }
 
 function appendDuplicateGroups(lines: string[], groups: AnalyzeMemoriesResult["duplicateGroups"]): void {

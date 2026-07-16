@@ -5,6 +5,7 @@ import { fallbackLogDetail, formatProviderFallbackDiagnostics, formatProviderFal
 import { ProviderAuthError, ProviderFallbackError, ProviderNetworkError, ProviderRateLimitError, ProviderResponseError, ProviderTimeoutError } from "../llm/errors.js";
 import { sendChatCompletionWithFallbacks } from "../llm/openai-compatible.js";
 import type { ChatCompletionOptions, ChatMessage } from "../llm/types.js";
+import { isMemoryRetrievalPolicy, setMemoryRetrievalPolicy } from "../memory/governance.js";
 import { getMemoryMaintenanceReportStatus, installMemoryMaintenanceReport, removeMemoryMaintenanceReport } from "../memory/maintenance.js";
 import { runMemoryReasoningPass, type MemoryReasoningResult } from "../memory/reasoning.js";
 import { SqliteMemoryStore } from "../memory/sqlite-store.js";
@@ -18,7 +19,7 @@ import { analyzeMemoriesTool } from "../tools/local-read-tools.js";
 import type { PermissionApprover, PermissionPolicy } from "../safety/permission-policy.js";
 import type { ChannelIncomingMessage, ChannelOutboundAdapter, ChannelRuntimeAdapter } from "./adapter.js";
 import { createChannelActivityController } from "./activity.js";
-import { formatMemoryAnalysisReport, formatMemoryCleanupDryRunReport, formatMemoryMaintenanceInstalled, formatMemoryMaintenanceRemoved, formatMemoryMaintenanceStatus } from "./memory-commands.js";
+import { formatMemoryAnalysisReport, formatMemoryCleanupDryRunReport, formatMemoryGovernanceStatus, formatMemoryMaintenanceInstalled, formatMemoryMaintenanceRemoved, formatMemoryMaintenanceStatus, formatMemoryRetrievalPolicyUpdated } from "./memory-commands.js";
 import { ZALO_CHANNEL, formatChannelHelpCommands } from "./registry.js";
 import { createChannelResponseController } from "./response-controller.js";
 
@@ -258,7 +259,7 @@ export async function handleZaloUpdate(update: ZaloUpdate, options: ZaloUpdateHa
     const memories = await loadActiveMemories(options.paths);
     const recentTurns = await loadRecentZaloTurns(options.paths, zaloConfig.ownerUserId);
     const runtimeContext = buildZaloRuntimeToolContext(incoming, zaloConfig.ownerUserId);
-    const messages = buildChatMessages(buildMcpToolSystemPrompt(systemPrompt, options.config, runtimeContext), recentTurns, text, memories);
+    const messages = buildChatMessages(buildMcpToolSystemPrompt(systemPrompt, options.config, runtimeContext), recentTurns, text, memories, { memoryRetrievalPolicy: options.config.memory?.retrievalPolicy ?? "full" });
     const response = createChannelResponseController(adapter.outbound.createResponseAdapter(incoming.chatId));
     const assistantText = await completeWithAgentTools({
       config: options.config,
@@ -401,6 +402,43 @@ async function handleZaloSlashCommand(text: string, chatId: string, options: Zal
     const analysis = await analyzeMemoriesTool({ paths: options.paths, mode: "all" });
     const message = memoryCommand === "analyze" ? formatMemoryAnalysisReport(analysis) : formatMemoryCleanupDryRunReport(analysis);
     await sendZaloTextChunks(options.client, chatId, message);
+    return true;
+  }
+
+  if (memoryCommand === "governance_status") {
+    const analysis = await analyzeMemoriesTool({ paths: options.paths, mode: "all" });
+    await sendZaloTextChunks(options.client, chatId, formatMemoryGovernanceStatus(analysis, options.config.memory?.retrievalPolicy ?? "full"));
+    return true;
+  }
+
+  if (memoryCommand?.startsWith("pin:") || memoryCommand?.startsWith("unpin:")) {
+    const [action, rawId] = memoryCommand.split(":");
+    const id = Number(rawId);
+    if (!Number.isSafeInteger(id) || id <= 0) {
+      await options.client.sendMessage(chatId, "Usage: /memory pin <id> or /memory unpin <id>");
+      return true;
+    }
+
+    const pinned = action === "pin";
+    const store = await SqliteMemoryStore.open(options.paths);
+    try {
+      const updated = store.setMemoryPinned(id, pinned);
+      await options.client.sendMessage(chatId, updated ? `Memory ${pinned ? "pinned" : "unpinned"}: #${updated.id}` : `No active memory found for id ${id}.`);
+      return true;
+    } finally {
+      store.close();
+    }
+  }
+
+  if (memoryCommand?.startsWith("governance_policy:")) {
+    const policy = memoryCommand.split(":")[1];
+    if (!isMemoryRetrievalPolicy(policy)) {
+      await options.client.sendMessage(chatId, "Usage: /memory governance policy full|governed");
+      return true;
+    }
+
+    await setMemoryRetrievalPolicy(policy, options.paths);
+    await options.client.sendMessage(chatId, formatMemoryRetrievalPolicyUpdated(policy));
     return true;
   }
 
@@ -722,7 +760,7 @@ function parseZaloApprovalDecision(text: string): { decision: "approve" | "deny"
   return match ? { decision: match[1] as "approve" | "deny", id: Number(match[2]) } : undefined;
 }
 
-function parseZaloMemoryCommand(text: string): "list" | "pending" | "pause" | "resume" | "analyze" | "cleanup_dry_run" | "maintenance:install" | "maintenance:status" | "maintenance:remove" | undefined {
+function parseZaloMemoryCommand(text: string): "list" | "pending" | "pause" | "resume" | "analyze" | "cleanup_dry_run" | "governance_status" | `governance_policy:${string}` | `pin:${number}` | `unpin:${number}` | "maintenance:install" | "maintenance:status" | "maintenance:remove" | undefined {
   if (text === "/memory" || text === "/memory list" || text === "/memory status") {
     return "list";
   }
@@ -734,6 +772,17 @@ function parseZaloMemoryCommand(text: string): "list" | "pending" | "pause" | "r
   }
   if (text === "/memory cleanup dry-run" || text === "/memory cleanup --dry-run") {
     return "cleanup_dry_run";
+  }
+  if (text === "/memory governance" || text === "/memory governance status") {
+    return "governance_status";
+  }
+  const governancePolicyMatch = text.match(/^\/memory governance policy (\S+)$/);
+  if (governancePolicyMatch) {
+    return `governance_policy:${governancePolicyMatch[1]}`;
+  }
+  const pinMatch = text.match(/^\/memory (pin|unpin) (\d+)$/);
+  if (pinMatch) {
+    return `${pinMatch[1]}:${Number(pinMatch[2])}` as `pin:${number}` | `unpin:${number}`;
   }
   if (text === "/memory maintenance install") {
     return "maintenance:install";

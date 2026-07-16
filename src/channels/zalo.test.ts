@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import test from "node:test";
@@ -185,6 +185,79 @@ test("handleZaloUpdate reports memory analysis and cleanup dry-run", async () =>
   }
 });
 
+test("handleZaloUpdate reports memory governance status", async () => {
+  const paths = await createTempPaths();
+  const sent: Array<{ chatId: string; text: string }> = [];
+
+  try {
+    await writeRuntimeFiles(paths);
+    const store = await SqliteMemoryStore.open(paths);
+    try {
+      store.addMemory({ type: "preference", content: "Vietnamese-first replies", importance: 5 });
+      store.addMemory({ type: "preference", content: "Vietnamese-first replies", importance: 1 });
+      store.addMemory({ type: "project_context", content: "Old context", importance: 1, expiresAt: "2020-01-01T00:00:00.000Z" });
+    } finally {
+      store.close();
+    }
+
+    await handleZaloUpdate({ update_id: 1, message: { from: { id: "owner-1" }, chat: { id: "chat-1" }, text: "/memory governance status" } }, { config: { ...config, memory: { retrievalPolicy: "governed" } }, paths, client: createRecordingClient(sent) });
+
+    assert.match(sent[0].text, /Memory governance status/);
+    assert.match(sent[0].text, /Retrieval policy: governed/);
+    assert.match(sent[0].text, /Duplicate memories: 1 across 1 group\(s\)/);
+    assert.match(sent[0].text, /Stale memories: 1/);
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("handleZaloUpdate updates memory retrieval policy", async () => {
+  const paths = await createTempPaths();
+  const sent: Array<{ chatId: string; text: string }> = [];
+
+  try {
+    await writeRuntimeFiles(paths);
+
+    await handleZaloUpdate({ update_id: 1, message: { from: { id: "owner-1" }, chat: { id: "chat-1" }, text: "/memory governance policy governed" } }, { config, paths, client: createRecordingClient(sent) });
+    const updated = JSON.parse(await readFile(paths.configPath, "utf8")) as { memory?: { retrievalPolicy?: string } };
+
+    assert.match(sent[0].text, /memory\.retrievalPolicy set to governed/);
+    assert.equal(updated.memory?.retrievalPolicy, "governed");
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("handleZaloUpdate pins and unpins active memories", async () => {
+  const paths = await createTempPaths();
+  const sent: Array<{ chatId: string; text: string }> = [];
+
+  try {
+    await writeRuntimeFiles(paths);
+    const store = await SqliteMemoryStore.open(paths);
+    let id: number;
+    try {
+      id = store.addMemory({ type: "preference", content: "Pin from Zalo" }).id;
+    } finally {
+      store.close();
+    }
+
+    await handleZaloUpdate({ update_id: 1, message: { from: { id: "owner-1" }, chat: { id: "chat-1" }, text: `/memory pin ${id}` } }, { config, paths, client: createRecordingClient(sent) });
+    await handleZaloUpdate({ update_id: 2, message: { from: { id: "owner-1" }, chat: { id: "chat-1" }, text: `/memory unpin ${id}` } }, { config, paths, client: createRecordingClient(sent) });
+
+    const checkStore = await SqliteMemoryStore.open(paths);
+    try {
+      assert.match(sent[0].text, new RegExp(`Memory pinned: #${id}`));
+      assert.match(sent[1].text, new RegExp(`Memory unpinned: #${id}`));
+      assert.equal(checkStore.getActiveMemory(id)?.pinned, false);
+    } finally {
+      checkStore.close();
+    }
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
 test("handleZaloUpdate manages memory maintenance reports", async () => {
   const paths = await createTempPaths();
   const sent: Array<{ chatId: string; text: string }> = [];
@@ -348,6 +421,7 @@ async function createTempPaths(): Promise<RuntimePaths> {
 async function writeRuntimeFiles(paths: RuntimePaths): Promise<void> {
   await mkdir(paths.dataDir, { recursive: true });
   await mkdir(paths.logsDir, { recursive: true });
+  await writeFile(paths.configPath, `${JSON.stringify(config, null, 2)}\n`, { mode: 0o600 });
   await writeEnvFile({ OPENAI_API_KEY: "sk-test" }, paths);
   await writeFile(paths.systemPromptPath, "You are Miu.\n");
 }

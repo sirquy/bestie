@@ -839,6 +839,79 @@ test("handleTelegramUpdate reports memory analysis and cleanup dry-run", async (
   }
 });
 
+test("handleTelegramUpdate reports memory governance status", async () => {
+  const paths = await createTempPaths();
+  const sentMessages: Array<{ chatId: number; text: string }> = [];
+
+  try {
+    await writeRuntimeFiles(paths);
+    const store = await SqliteMemoryStore.open(paths);
+    try {
+      store.addMemory({ type: "preference", content: "Vietnamese-first replies", importance: 5 });
+      store.addMemory({ type: "preference", content: "Vietnamese-first replies", importance: 1 });
+      store.addMemory({ type: "project_context", content: "Old context", importance: 1, expiresAt: "2020-01-01T00:00:00.000Z" });
+    } finally {
+      store.close();
+    }
+
+    await handleTelegramUpdate(createTextUpdate("/memory governance status", 12345), { config: { ...config, memory: { retrievalPolicy: "governed" } }, paths, client: createRecordingClient(sentMessages) });
+
+    assert.match(sentMessages[0].text, /Memory governance status/);
+    assert.match(sentMessages[0].text, /Retrieval policy: governed/);
+    assert.match(sentMessages[0].text, /Duplicate memories: 1 across 1 group\(s\)/);
+    assert.match(sentMessages[0].text, /Stale memories: 1/);
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("handleTelegramUpdate updates memory retrieval policy", async () => {
+  const paths = await createTempPaths();
+  const sentMessages: Array<{ chatId: number; text: string }> = [];
+
+  try {
+    await writeRuntimeFiles(paths);
+
+    await handleTelegramUpdate(createTextUpdate("/memory governance policy governed", 12345), { config, paths, client: createRecordingClient(sentMessages) });
+    const updated = JSON.parse(await readFile(paths.configPath, "utf8")) as { memory?: { retrievalPolicy?: string } };
+
+    assert.match(sentMessages[0].text, /memory\.retrievalPolicy set to governed/);
+    assert.equal(updated.memory?.retrievalPolicy, "governed");
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("handleTelegramUpdate pins and unpins active memories", async () => {
+  const paths = await createTempPaths();
+  const sentMessages: Array<{ chatId: number; text: string }> = [];
+
+  try {
+    await writeRuntimeFiles(paths);
+    const store = await SqliteMemoryStore.open(paths);
+    let id: number;
+    try {
+      id = store.addMemory({ type: "preference", content: "Pin from Telegram" }).id;
+    } finally {
+      store.close();
+    }
+
+    await handleTelegramUpdate(createTextUpdate(`/memory pin ${id}`, 12345), { config, paths, client: createRecordingClient(sentMessages) });
+    await handleTelegramUpdate(createTextUpdate(`/memory unpin ${id}`, 12345), { config, paths, client: createRecordingClient(sentMessages) });
+
+    const checkStore = await SqliteMemoryStore.open(paths);
+    try {
+      assert.match(sentMessages[0].text, new RegExp(`Memory pinned: #${id}`));
+      assert.match(sentMessages[1].text, new RegExp(`Memory unpinned: #${id}`));
+      assert.equal(checkStore.getActiveMemory(id)?.pinned, false);
+    } finally {
+      checkStore.close();
+    }
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
 test("handleTelegramUpdate manages memory maintenance reports", async () => {
   const paths = await createTempPaths();
   const sentMessages: Array<{ chatId: number; text: string }> = [];
@@ -2522,6 +2595,7 @@ async function createTempPaths(): Promise<RuntimePaths> {
 
 async function writeRuntimeFiles(paths: RuntimePaths): Promise<void> {
   await mkdir(paths.appDir, { recursive: true });
+  await writeConfig(config, paths);
   await writeEnvFile({ OPENAI_API_KEY: "sk-test" }, paths);
   await writeFile(paths.systemPromptPath, "You are Miu.\n");
 }

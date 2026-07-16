@@ -7,6 +7,7 @@ import { getRuntimePaths, type RuntimePaths } from "./paths.js";
 export type McpToolCategory = "read" | "local_write" | "external_write" | "public_action" | "destructive" | "money" | "unknown";
 export type MemoryWritePolicy = "allow" | "ask" | "deny";
 export type MemoryDeletePolicy = "allow" | "ask" | "deny";
+export type MemoryRetrievalPolicy = "full" | "governed";
 export type InternalToolPolicy = "allow" | "ask" | "deny";
 type OpenAiCompatibleSpeechConfig = Extract<NonNullable<AppConfig["speech"]>, { provider: "openai-compatible" }>;
 
@@ -116,6 +117,7 @@ export interface AppConfig {
   memory?: {
     writePolicy?: MemoryWritePolicy;
     deletePolicy?: MemoryDeletePolicy;
+    retrievalPolicy?: MemoryRetrievalPolicy;
   };
   workspace?: {
     defaultPath?: string;
@@ -462,6 +464,7 @@ function optionalMemory(value: unknown): AppConfig["memory"] | undefined {
   const memory = requireRecord(value, "memory");
   const writePolicy = memory.writePolicy;
   const deletePolicy = memory.deletePolicy;
+  const retrievalPolicy = memory.retrievalPolicy;
 
   if (writePolicy !== undefined && writePolicy !== "allow" && writePolicy !== "ask" && writePolicy !== "deny") {
     throw new InvalidConfigError("memory.writePolicy must be allow, ask, or deny.");
@@ -471,9 +474,14 @@ function optionalMemory(value: unknown): AppConfig["memory"] | undefined {
     throw new InvalidConfigError("memory.deletePolicy must be allow, ask, or deny.");
   }
 
+  if (retrievalPolicy !== undefined && retrievalPolicy !== "full" && retrievalPolicy !== "governed") {
+    throw new InvalidConfigError("memory.retrievalPolicy must be full or governed.");
+  }
+
   return {
     ...(writePolicy === undefined ? {} : { writePolicy }),
     ...(deletePolicy === undefined ? {} : { deletePolicy }),
+    ...(retrievalPolicy === undefined ? {} : { retrievalPolicy }),
   };
 }
 

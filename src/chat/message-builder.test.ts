@@ -104,6 +104,28 @@ test("buildChatMessages includes all active memories", () => {
   assert.match(memoryContext, /- #1 \[preference\] Memory 1$/m);
 });
 
+test("buildChatMessages can organize full memory context with governance labels", () => {
+  const messages = buildChatMessages(
+    "system prompt",
+    [],
+    "hello",
+    [
+      createStoredMemory({ id: 1, content: "normal current memory", confidence: 0.9, importance: 1, updatedAt: "2026-01-01T00:00:00.000Z" }),
+      createStoredMemory({ id: 2, content: "pinned memory", pinned: true, confidence: 0.8, importance: 1, updatedAt: "2026-01-02T00:00:00.000Z" }),
+      createStoredMemory({ id: 3, content: "old low confidence", confidence: 0.2, expiresAt: "2020-01-01T00:00:00.000Z", supersededBy: 1, importance: 5, updatedAt: "2026-01-03T00:00:00.000Z" }),
+    ],
+    { memoryRetrievalPolicy: "governed" },
+  );
+
+  const memoryContext = String(messages[1]?.content ?? "");
+  const memoryLines = memoryContext.split("\n").filter((line) => line.includes("[preference]"));
+
+  assert.match(memoryContext, /organized by memory governance/);
+  assert.equal(memoryLines.length, 3);
+  assert.match(memoryLines[0], /#2 \[preference\] \(pinned\) pinned memory/);
+  assert.match(memoryLines.at(-1) ?? "", /#3 \[preference\] \(low-confidence:0.2, stale:expired 2020-01-01T00:00:00.000Z, superseded-by:#1\) old low confidence/);
+});
+
 test("buildChatMessages does not truncate long active memory context", () => {
   const memories: StoredMemory[] = Array.from({ length: 50 }, (_, index) => createStoredMemory({
     id: index + 1,

@@ -19,6 +19,7 @@ import type { ChatCompletionOptions, ChatMessage, ChatMessageContent } from "../
 import { sendChatCompletionWithFallbacks } from "../llm/openai-compatible.js";
 import { fallbackLogDetail, formatProviderFallbackDiagnostics, formatProviderFallbackHealth } from "../llm/fallbacks.js";
 import { runMemoryReasoningPass, type MemoryReasoningResult } from "../memory/reasoning.js";
+import { isMemoryRetrievalPolicy, setMemoryRetrievalPolicy } from "../memory/governance.js";
 import { getMemoryMaintenanceReportStatus, installMemoryMaintenanceReport, removeMemoryMaintenanceReport } from "../memory/maintenance.js";
 import { SqliteMemoryStore } from "../memory/sqlite-store.js";
 import type { AppConfig } from "../runtime/config.js";
@@ -35,7 +36,7 @@ import { buildChannelAttachmentPreview, type AttachmentContentParser } from "./a
 import { ProviderAuthError, ProviderFallbackError, ProviderNetworkError, ProviderRateLimitError, ProviderResponseError, ProviderTimeoutError } from "../llm/errors.js";
 import type { ChannelIncomingMessage, ChannelOutboundAdapter, ChannelRuntimeAdapter } from "./adapter.js";
 import { createChannelActivityController } from "./activity.js";
-import { formatMemoryAnalysisReport, formatMemoryCleanupDryRunReport, formatMemoryMaintenanceInstalled, formatMemoryMaintenanceRemoved, formatMemoryMaintenanceStatus } from "./memory-commands.js";
+import { formatMemoryAnalysisReport, formatMemoryCleanupDryRunReport, formatMemoryGovernanceStatus, formatMemoryMaintenanceInstalled, formatMemoryMaintenanceRemoved, formatMemoryMaintenanceStatus, formatMemoryRetrievalPolicyUpdated } from "./memory-commands.js";
 import { buildChannelAttachmentPrompt } from "./attachment-prompt.js";
 import { processChannelAttachment } from "./attachment-pipeline.js";
 import { buildChannelVisionAttachment, type ChannelVisionAttachment } from "./attachment-vision.js";
@@ -464,7 +465,7 @@ export async function handleTelegramUpdate(update: TelegramUpdate, options: Tele
     const systemPrompt = await loadSystemPrompt(options.paths);
     const memories = await loadActiveMemories(options.paths);
     const recentTurns = await loadRecentTelegramTurns(options.paths, ownerUserId);
-    const messages = buildChatMessages(buildMcpToolSystemPrompt(systemPrompt, options.config, buildTelegramRuntimeToolContext(decision.incoming)), recentTurns, userInput, memories);
+    const messages = buildChatMessages(buildMcpToolSystemPrompt(systemPrompt, options.config, buildTelegramRuntimeToolContext(decision.incoming)), recentTurns, userInput, memories, { memoryRetrievalPolicy: options.config.memory?.retrievalPolicy ?? "full" });
     if (savedAttachment?.visionImage) {
       attachTelegramVisionImage(messages, userInput, savedAttachment.visionImage.dataUrl);
     }
@@ -1457,6 +1458,43 @@ async function handleTelegramSlashCommand(text: string, chatId: number, options:
     return true;
   }
 
+  if (memoryCommand === "governance_status") {
+    const analysis = await analyzeMemoriesTool({ paths: options.paths, mode: "all" });
+    await sendTelegramTextChunks(options.client, chatId, formatMemoryGovernanceStatus(analysis, options.config.memory?.retrievalPolicy ?? "full"));
+    return true;
+  }
+
+  if (memoryCommand?.startsWith("pin:") || memoryCommand?.startsWith("unpin:")) {
+    const [action, rawId] = memoryCommand.split(":");
+    const id = Number(rawId);
+    if (!Number.isSafeInteger(id) || id <= 0) {
+      await options.client.sendMessage(chatId, "Usage: /memory pin <id> or /memory unpin <id>");
+      return true;
+    }
+
+    const pinned = action === "pin";
+    const store = await SqliteMemoryStore.open(options.paths);
+    try {
+      const updated = store.setMemoryPinned(id, pinned);
+      await options.client.sendMessage(chatId, updated ? `Memory ${pinned ? "pinned" : "unpinned"}: #${updated.id}` : `No active memory found for id ${id}.`);
+      return true;
+    } finally {
+      store.close();
+    }
+  }
+
+  if (memoryCommand?.startsWith("governance_policy:")) {
+    const policy = memoryCommand.split(":")[1];
+    if (!isMemoryRetrievalPolicy(policy)) {
+      await options.client.sendMessage(chatId, "Usage: /memory governance policy full|governed");
+      return true;
+    }
+
+    await setMemoryRetrievalPolicy(policy, options.paths);
+    await options.client.sendMessage(chatId, formatMemoryRetrievalPolicyUpdated(policy));
+    return true;
+  }
+
   if (memoryCommand?.startsWith("maintenance:")) {
     const action = memoryCommand.split(":")[1];
     const destination = `telegram:${chatId}`;
@@ -1579,7 +1617,7 @@ function isPendingMemoryToolResult(value: unknown): value is { id: number; statu
   return typeof value === "object" && value !== null && "id" in value && "status" in value && Number.isInteger((value as { id: unknown }).id) && (value as { status: unknown }).status === "pending";
 }
 
-function parseTelegramMemoryCommand(text: string): "list" | "pending" | `pending_inspect:${number}` | "pause" | "resume" | "analyze" | "cleanup_dry_run" | "maintenance:install" | "maintenance:status" | "maintenance:remove" | undefined {
+function parseTelegramMemoryCommand(text: string): "list" | "pending" | `pending_inspect:${number}` | "pause" | "resume" | "analyze" | "cleanup_dry_run" | "governance_status" | `governance_policy:${string}` | `pin:${number}` | `unpin:${number}` | "maintenance:install" | "maintenance:status" | "maintenance:remove" | undefined {
   if (text === "/memory" || text === "/memory list" || text === "/memory status") {
     return "list";
   }
@@ -1594,6 +1632,20 @@ function parseTelegramMemoryCommand(text: string): "list" | "pending" | `pending
 
   if (text === "/memory cleanup dry-run" || text === "/memory cleanup --dry-run") {
     return "cleanup_dry_run";
+  }
+
+  if (text === "/memory governance" || text === "/memory governance status") {
+    return "governance_status";
+  }
+
+  const governancePolicyMatch = text.match(/^\/memory governance policy (\S+)$/);
+  if (governancePolicyMatch) {
+    return `governance_policy:${governancePolicyMatch[1]}`;
+  }
+
+  const pinMatch = text.match(/^\/memory (pin|unpin) (\d+)$/);
+  if (pinMatch) {
+    return `${pinMatch[1]}:${Number(pinMatch[2])}` as `pin:${number}` | `unpin:${number}`;
   }
 
   if (text === "/memory maintenance install") {
