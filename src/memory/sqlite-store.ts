@@ -15,6 +15,13 @@ export interface StoredMemory {
   source?: string;
   explicitConsent: boolean;
   policyReason?: string;
+  pinned: boolean;
+  scope: string;
+  confidence: number;
+  expiresAt?: string;
+  supersededBy?: number;
+  lastAccessedAt?: string;
+  accessCount: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -126,6 +133,11 @@ export interface NewMemory {
   source?: string;
   explicitConsent?: boolean;
   policyReason?: string;
+  pinned?: boolean;
+  scope?: string;
+  confidence?: number;
+  expiresAt?: string;
+  supersededBy?: number;
 }
 
 export class SqliteMemoryStore {
@@ -216,8 +228,8 @@ export class SqliteMemoryStore {
 
   addMemory(memory: NewMemory): StoredMemory {
     const statement = this.db.prepare(`
-      INSERT INTO memories (type, content, sensitivity, importance, source_message_id, source, explicit_consent, policy_reason)
-      VALUES (@type, @content, @sensitivity, @importance, @sourceMessageId, @source, @explicitConsent, @policyReason)
+      INSERT INTO memories (type, content, sensitivity, importance, source_message_id, source, explicit_consent, policy_reason, pinned, scope, confidence, expires_at, superseded_by)
+      VALUES (@type, @content, @sensitivity, @importance, @sourceMessageId, @source, @explicitConsent, @policyReason, @pinned, @scope, @confidence, @expiresAt, @supersededBy)
     `);
     const result = statement.run({
       type: memory.type,
@@ -228,6 +240,11 @@ export class SqliteMemoryStore {
       source: memory.source ?? "manual",
       explicitConsent: memory.explicitConsent ? 1 : 0,
       policyReason: memory.policyReason ?? null,
+      pinned: memory.pinned ? 1 : 0,
+      scope: memory.scope ?? "global",
+      confidence: memory.confidence ?? 1,
+      expiresAt: memory.expiresAt ?? null,
+      supersededBy: memory.supersededBy ?? null,
     });
 
     const inserted = this.getMemory(Number(result.lastInsertRowid));
@@ -761,6 +778,13 @@ interface MemoryRow {
   source: string | null;
   explicit_consent: number | null;
   policy_reason: string | null;
+  pinned: number | null;
+  scope: string | null;
+  confidence: number | null;
+  expires_at: string | null;
+  superseded_by: number | null;
+  last_accessed_at: string | null;
+  access_count: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -803,6 +827,13 @@ function mapMemoryRow(row: MemoryRow): StoredMemory {
     source: row.source ?? undefined,
     explicitConsent: row.explicit_consent === 1,
     policyReason: row.policy_reason ?? undefined,
+    pinned: row.pinned === 1,
+    scope: row.scope ?? "global",
+    confidence: row.confidence ?? 1,
+    expiresAt: row.expires_at ?? undefined,
+    supersededBy: row.superseded_by ?? undefined,
+    lastAccessedAt: row.last_accessed_at ?? undefined,
+    accessCount: row.access_count ?? 0,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -894,9 +925,29 @@ function applyMemoryMigrations(db: Database.Database): void {
   addColumnIfMissing(db, "memories", "source", "TEXT DEFAULT 'manual'");
   addColumnIfMissing(db, "memories", "explicit_consent", "INTEGER DEFAULT 0");
   addColumnIfMissing(db, "memories", "policy_reason", "TEXT");
+  addColumnIfMissing(db, "memories", "pinned", "INTEGER DEFAULT 0");
+  addColumnIfMissing(db, "memories", "scope", "TEXT DEFAULT 'global'");
+  addColumnIfMissing(db, "memories", "confidence", "REAL DEFAULT 1.0");
+  addColumnIfMissing(db, "memories", "expires_at", "TEXT");
+  addColumnIfMissing(db, "memories", "superseded_by", "INTEGER");
+  addColumnIfMissing(db, "memories", "last_accessed_at", "TEXT");
+  addColumnIfMissing(db, "memories", "access_count", "INTEGER DEFAULT 0");
   addColumnIfMissing(db, "pending_memories", "source", "TEXT DEFAULT 'manual'");
   addColumnIfMissing(db, "pending_memories", "explicit_consent", "INTEGER DEFAULT 0");
   addColumnIfMissing(db, "pending_action_approvals", "payload_json", "TEXT");
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS memory_links (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      source_memory_id INTEGER NOT NULL,
+      target_memory_id INTEGER NOT NULL,
+      kind TEXT NOT NULL CHECK(kind IN ('duplicate', 'conflict', 'supersedes', 'related')),
+      reason TEXT,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (source_memory_id) REFERENCES memories(id) ON DELETE CASCADE,
+      FOREIGN KEY (target_memory_id) REFERENCES memories(id) ON DELETE CASCADE,
+      UNIQUE(source_memory_id, target_memory_id, kind)
+    )
+  `);
 }
 
 function initializeMemorySearchIndex(db: Database.Database): void {

@@ -42,6 +42,24 @@ test("main suppresses the banner for memory export JSON", async () => {
   }
 });
 
+test("main suppresses the banner for memory analyze JSON", async () => {
+  const homeDir = await mkdtemp(resolve(tmpdir(), "bestie-cli-index-test-"));
+
+  try {
+    const { stdout } = await captureMain(["node", "bestie", "memory", "analyze", "--json"], { HOME: homeDir });
+
+    assert.doesNotMatch(stdout, /____/);
+    const parsed = JSON.parse(stdout) as { allowed: boolean; checked: number; duplicateGroups: unknown[]; staleMemories: unknown[]; conflictGroups: unknown[] };
+    assert.equal(parsed.allowed, true);
+    assert.equal(parsed.checked, 0);
+    assert.ok(Array.isArray(parsed.duplicateGroups));
+    assert.ok(Array.isArray(parsed.staleMemories));
+    assert.ok(Array.isArray(parsed.conflictGroups));
+  } finally {
+    await rm(homeDir, { recursive: true, force: true });
+  }
+});
+
 test("NO_COLOR disables ANSI color in human output", async () => {
   const { stdout } = await captureMain(["node", "bestie", "skills"], { BESTIE_NO_BANNER: "1", NO_COLOR: "1" });
 

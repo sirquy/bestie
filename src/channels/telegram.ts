@@ -987,6 +987,10 @@ function formatTelegramToolActivity(activity: AgentToolActivity, agentName: stri
     return `${agentName} is searching memories for${suffix}`;
   }
 
+  if (activity.toolName === "internal.analyze_memories") {
+    return `${agentName} is analyzing saved memories`;
+  }
+
   if (activity.toolName === "internal.remember_memory") {
     return `${agentName} is preparing a memory approval`;
   }

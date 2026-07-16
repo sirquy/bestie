@@ -503,6 +503,7 @@ function formatZaloToolActivity(activity: AgentToolActivity, agentName: string):
   if (activity.toolName === "internal.read_logs") return `${agentName} is reading recent logs`;
   if (activity.toolName === "internal.list_memories") return `${agentName} is listing saved memories`;
   if (activity.toolName === "internal.search_memories") return `${agentName} is searching memories for${suffix}`;
+  if (activity.toolName === "internal.analyze_memories") return `${agentName} is analyzing saved memories`;
   if (activity.toolName === "internal.remember_memory") return `${agentName} is preparing a memory approval`;
   if (activity.toolName === "internal.delete_memory") return `${agentName} is deleting memory${suffix}`;
   if (activity.toolName === "internal.cleanup_memories") return `${agentName} is cleaning saved memories`;

@@ -36,6 +36,7 @@ test("buildMcpToolInstructions includes global tool selection guidance", () => {
   assert.match(instructions, /internal\.git_status/);
   assert.match(instructions, /internal\.mcp_list_servers/);
   assert.match(instructions, /internal\.mcp_list_tools/);
+  assert.match(instructions, /internal\.analyze_memories/);
   assert.match(instructions, /Use git tools for repository state questions/);
   assert.match(instructions, /MCP server discovery/);
   assert.match(instructions, /Do not invent missing facts/);
@@ -491,6 +492,34 @@ test("runAgentToolRequest lists active memories", async () => {
     assert.equal(payload.memories.length, 1);
     assert.deepEqual({ ...payload.memories[0], updatedAt: "<timestamp>" }, { id: 2, type: "project_context", content: "Working on Telegram MVP", sensitivity: "normal", importance: 5, updatedAt: "<timestamp>" });
     assert.match(payload.memories[0].updatedAt, /\d{4}-\d{2}-\d{2}/);
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("runAgentToolRequest analyzes active memories", async () => {
+  const paths = await createTempPaths();
+
+  try {
+    const store = await import("../memory/sqlite-store.js").then(({ SqliteMemoryStore }) => SqliteMemoryStore.open(paths));
+    try {
+      store.addMemory({ type: "preference", content: "Keep answers concise", importance: 4 });
+      store.addMemory({ type: "preference", content: "Keep answers concise", importance: 2 });
+    } finally {
+      store.close();
+    }
+
+    const result = await runAgentToolRequest({
+      config: { ...createConfig(), mcp: undefined },
+      paths,
+      request: { tool: "internal.analyze_memories", arguments: { mode: "duplicates" } },
+    });
+
+    assert.equal(result.ok, true);
+    const payload = result.result as { duplicateGroups: Array<{ canonicalId: number; duplicateIds: number[] }>; staleMemories: unknown[]; conflictGroups: unknown[] };
+    assert.deepEqual(payload.duplicateGroups, [{ canonicalId: 1, duplicateIds: [2], reason: "Same normalized memory content." }]);
+    assert.deepEqual(payload.staleMemories, []);
+    assert.deepEqual(payload.conflictGroups, []);
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
   }

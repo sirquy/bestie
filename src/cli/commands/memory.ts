@@ -1,5 +1,7 @@
 import { evaluateMemoryCandidate, type MemoryType } from "../../memory/policy.js";
 import { SqliteMemoryStore, type PendingMemory, type StoredMemory, type StoredMessageRole } from "../../memory/sqlite-store.js";
+import { getRuntimePaths } from "../../runtime/paths.js";
+import { analyzeMemoriesTool, type MemoryAnalysisMode } from "../../tools/local-read-tools.js";
 import { badge, dim, rule, title } from "../ui.js";
 
 const allowedTypes = new Set<MemoryType>([
@@ -43,6 +45,11 @@ export async function runMemoryCommand(argv: string[] = process.argv): Promise<v
 
   if (subcommand === "search") {
     await searchMemories(argv);
+    return;
+  }
+
+  if (subcommand === "analyze") {
+    await analyzeMemories(argv);
     return;
   }
 
@@ -107,7 +114,7 @@ export async function runMemoryCommand(argv: string[] = process.argv): Promise<v
   }
 
   console.error(`Unknown memory command: ${subcommand}`);
-  console.error("Usage: bestie memory status | pause | resume | list | search <query> | add <type> <content> | inspect <id> | edit <id> <content> | forget <id> | messages [--limit <n>] [--role user|assistant|system] | messages search <query> [--limit <n>] [--role user|assistant|system] | export | clear --yes | pending [--limit <n>] | pending search <query> [--limit <n>] | pending inspect <id> | approve <id> | reject <id> | reject-all --yes");
+  console.error("Usage: bestie memory status | pause | resume | list | search <query> | analyze [--mode all|duplicates|stale|conflicts] [--json] | add <type> <content> | inspect <id> | edit <id> <content> | forget <id> | messages [--limit <n>] [--role user|assistant|system] | messages search <query> [--limit <n>] [--role user|assistant|system] | export | clear --yes | pending [--limit <n>] | pending search <query> [--limit <n>] | pending inspect <id> | approve <id> | reject <id> | reject-all --yes");
   process.exitCode = 1;
 }
 
@@ -180,6 +187,37 @@ async function searchMemories(argv: string[]): Promise<void> {
     }
   } finally {
     store.close();
+  }
+}
+
+async function analyzeMemories(argv: string[]): Promise<void> {
+  const mode = parseAnalyzeMode(argv);
+
+  if (mode === false) {
+    return;
+  }
+
+  const result = await analyzeMemoriesTool({ paths: getRuntimePaths(), mode });
+
+  if (argv.includes("--json")) {
+    console.log(JSON.stringify(result, null, 2));
+    return;
+  }
+
+  if (!result.allowed) {
+    console.log(`${badge("DENIED", "red")} ${result.reason}`);
+    process.exitCode = 1;
+    return;
+  }
+
+  console.log(title(`Memory Analysis (${result.mode}, checked ${result.checked})`));
+  console.log(rule());
+  printDuplicateGroups(result.duplicateGroups);
+  printStaleMemories(result.staleMemories);
+  printConflictGroups(result.conflictGroups);
+
+  if (result.duplicateGroups.length === 0 && result.staleMemories.length === 0 && result.conflictGroups.length === 0) {
+    console.log(`${badge("OK", "green")} No duplicate, stale, or conflicting active memories found.`);
   }
 }
 
@@ -581,6 +619,48 @@ function formatPendingMemoryBlock(memory: PendingMemory): string {
 
   lines.push(`   Next: bestie memory pending inspect ${memory.id}`);
   return lines.join("\n");
+}
+
+function printDuplicateGroups(groups: Array<{ canonicalId: number; duplicateIds: number[]; reason: string }>): void {
+  if (groups.length === 0) return;
+  console.log(`${badge("DUPLICATES", "yellow")} ${groups.length} group(s)`);
+  for (const group of groups) {
+    console.log(`   Keep #${group.canonicalId}; review duplicates ${group.duplicateIds.map((id) => `#${id}`).join(", ")}. ${dim(group.reason)}`);
+  }
+}
+
+function printStaleMemories(memories: Array<{ id: number; reason: string }>): void {
+  if (memories.length === 0) return;
+  console.log(`${badge("STALE", "yellow")} ${memories.length} memory/memories`);
+  for (const memory of memories) {
+    console.log(`   #${memory.id} ${dim(memory.reason)}`);
+  }
+}
+
+function printConflictGroups(groups: Array<{ ids: number[]; reason: string }>): void {
+  if (groups.length === 0) return;
+  console.log(`${badge("CONFLICTS", "yellow")} ${groups.length} group(s)`);
+  for (const group of groups) {
+    console.log(`   Review ${group.ids.map((id) => `#${id}`).join(" <-> ")}. ${dim(group.reason)}`);
+  }
+}
+
+function parseAnalyzeMode(argv: string[]): MemoryAnalysisMode | false | undefined {
+  const modeFlagIndex = argv.indexOf("--mode");
+
+  if (modeFlagIndex === -1) {
+    return undefined;
+  }
+
+  const mode = argv[modeFlagIndex + 1];
+
+  if (mode === "all" || mode === "duplicates" || mode === "stale" || mode === "conflicts") {
+    return mode;
+  }
+
+  console.error("--mode must be one of: all, duplicates, stale, conflicts.");
+  process.exitCode = 1;
+  return false;
 }
 
 function parsePendingSearchQuery(argv: string[]): string {

@@ -9,7 +9,7 @@ import type { AppConfig } from "../runtime/config.js";
 import type { RuntimePaths } from "../runtime/paths.js";
 import { formatWorkspaceRelativePath, resolveWorkspacePath } from "../runtime/workspace.js";
 import { reviewActionPermission, type PermissionApprover, type PermissionPolicy } from "../safety/permission-policy.js";
-import { SqliteMemoryStore } from "../memory/sqlite-store.js";
+import { SqliteMemoryStore, type StoredMemory } from "../memory/sqlite-store.js";
 
 export interface LocalToolOptions {
   config?: AppConfig;
@@ -41,6 +41,18 @@ export interface ListActiveMemoriesResult {
 
 export interface SearchMemoriesResult extends ListActiveMemoriesResult {
   query: string;
+}
+
+export type MemoryAnalysisMode = "all" | "duplicates" | "stale" | "conflicts";
+
+export interface AnalyzeMemoriesResult {
+  allowed: boolean;
+  reason: string;
+  mode: MemoryAnalysisMode;
+  checked: number;
+  duplicateGroups: Array<{ canonicalId: number; duplicateIds: number[]; reason: string }>;
+  staleMemories: Array<{ id: number; reason: string }>;
+  conflictGroups: Array<{ ids: number[]; reason: string }>;
 }
 
 export interface ReadLocalFileResult {
@@ -203,12 +215,133 @@ export async function searchMemoriesTool(options: LocalToolOptions & { query: st
   }
 }
 
+export async function analyzeMemoriesTool(options: LocalToolOptions & { mode?: MemoryAnalysisMode }): Promise<AnalyzeMemoriesResult> {
+  const mode = normalizeMemoryAnalysisMode(options.mode);
+  const permission = await reviewActionPermission(
+    {
+      category: "read",
+      action: "analyze_active_memories",
+      target: "local memory store",
+      reason: "Find duplicate, stale, and conflicting active memories for cleanup planning.",
+      trusted: true,
+    },
+    { paths: options.paths, approver: options.approver, policy: options.policy },
+  );
+
+  if (permission.decision !== "allow") {
+    return { allowed: false, reason: permission.reason, mode, checked: 0, duplicateGroups: [], staleMemories: [], conflictGroups: [] };
+  }
+
+  const store = await SqliteMemoryStore.open(options.paths);
+
+  try {
+    const memories = store.listActiveMemories();
+    return {
+      allowed: true,
+      reason: permission.reason,
+      mode,
+      checked: memories.length,
+      duplicateGroups: mode === "all" || mode === "duplicates" ? findDuplicateMemoryGroups(memories) : [],
+      staleMemories: mode === "all" || mode === "stale" ? findStaleMemories(memories) : [],
+      conflictGroups: mode === "all" || mode === "conflicts" ? findConflictMemoryGroups(memories) : [],
+    };
+  } finally {
+    store.close();
+  }
+}
+
 function normalizeOptionalMemoryLimit(limit: number | undefined): number | undefined {
   return limit === undefined ? undefined : normalizeMemoryLimit(limit);
 }
 
 function normalizeMemoryLimit(limit: number | undefined): number {
   return Math.min(Math.max(limit ?? DEFAULT_MEMORY_TOOL_LIMIT, 1), MAX_MEMORY_TOOL_LIMIT);
+}
+
+function normalizeMemoryAnalysisMode(mode: MemoryAnalysisMode | undefined): MemoryAnalysisMode {
+  return mode === "duplicates" || mode === "stale" || mode === "conflicts" ? mode : "all";
+}
+
+function findDuplicateMemoryGroups(memories: StoredMemory[]): AnalyzeMemoriesResult["duplicateGroups"] {
+  const groups = new Map<string, StoredMemory[]>();
+
+  for (const memory of memories) {
+    const key = normalizeMemoryContent(memory.content);
+    if (!key) continue;
+    groups.set(key, [...(groups.get(key) ?? []), memory]);
+  }
+
+  return Array.from(groups.values())
+    .filter((group) => group.length > 1)
+    .map((group) => {
+      const sorted = [...group].sort(compareCanonicalMemory);
+      const canonical = sorted[0];
+      return {
+        canonicalId: canonical.id,
+        duplicateIds: sorted.slice(1).map((memory) => memory.id),
+        reason: "Same normalized memory content.",
+      };
+    });
+}
+
+function findStaleMemories(memories: StoredMemory[]): AnalyzeMemoriesResult["staleMemories"] {
+  const now = Date.now();
+  const staleCutoffMs = 180 * 24 * 60 * 60 * 1000;
+
+  return memories.flatMap((memory) => {
+    if (memory.pinned) return [];
+    if (memory.supersededBy !== undefined) return [{ id: memory.id, reason: `Superseded by memory #${memory.supersededBy}.` }];
+    if (memory.expiresAt && Date.parse(memory.expiresAt) <= now) return [{ id: memory.id, reason: `Expired at ${memory.expiresAt}.` }];
+    if (memory.accessCount === 0 && Date.parse(memory.updatedAt) <= now - staleCutoffMs) return [{ id: memory.id, reason: "Not accessed and not updated for at least 180 days." }];
+    return [];
+  });
+}
+
+function findConflictMemoryGroups(memories: StoredMemory[]): AnalyzeMemoriesResult["conflictGroups"] {
+  const conflicts: AnalyzeMemoriesResult["conflictGroups"] = [];
+
+  for (let leftIndex = 0; leftIndex < memories.length; leftIndex += 1) {
+    for (let rightIndex = leftIndex + 1; rightIndex < memories.length; rightIndex += 1) {
+      const left = memories[leftIndex];
+      const right = memories[rightIndex];
+      if (left.type !== right.type || left.scope !== right.scope) continue;
+      if (!looksContradictory(left.content, right.content)) continue;
+      conflicts.push({ ids: [left.id, right.id], reason: "Same type and scope contain opposing preference language." });
+    }
+  }
+
+  return conflicts;
+}
+
+function normalizeMemoryContent(content: string): string {
+  return content.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function compareCanonicalMemory(left: StoredMemory, right: StoredMemory): number {
+  const pinned = Number(right.pinned) - Number(left.pinned);
+  if (pinned !== 0) return pinned;
+  const importance = right.importance - left.importance;
+  if (importance !== 0) return importance;
+  return Date.parse(right.updatedAt) - Date.parse(left.updatedAt);
+}
+
+function looksContradictory(leftContent: string, rightContent: string): boolean {
+  const left = normalizeMemoryContent(leftContent);
+  const right = normalizeMemoryContent(rightContent);
+  return (hasNegation(left) && containsMainPhrase(left, right)) || (hasNegation(right) && containsMainPhrase(right, left));
+}
+
+function hasNegation(value: string): boolean {
+  return /\b(do not|don't|does not|never|no longer|khong|không|dung|đừng|khong thich|không thích)\b/i.test(value);
+}
+
+function containsMainPhrase(negative: string, other: string): boolean {
+  const phrase = negative
+    .replace(/\b(do not|don't|does not|never|no longer|khong|không|dung|đừng|khong thich|không thích)\b/gi, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  return phrase.length >= 8 && other.includes(phrase);
 }
 
 export async function readLocalFileTool(options: LocalToolOptions & { path: string; maxBytes?: number }): Promise<ReadLocalFileResult> {

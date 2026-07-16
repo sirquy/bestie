@@ -5,6 +5,25 @@ import { appendConversationTurn, buildChatMessages } from "./message-builder.js"
 import type { ChatMessage } from "../llm/types.js";
 import type { StoredMemory } from "../memory/sqlite-store.js";
 
+function createStoredMemory(overrides: Partial<StoredMemory>): StoredMemory {
+  return {
+    id: 1,
+    type: "preference",
+    content: "memory",
+    sensitivity: "normal",
+    importance: 3,
+    status: "active",
+    explicitConsent: false,
+    pinned: false,
+    scope: "global",
+    confidence: 1,
+    accessCount: 0,
+    createdAt: "now",
+    updatedAt: "now",
+    ...overrides,
+  };
+}
+
 test("buildChatMessages puts system prompt first and current user message last", () => {
   const messages = buildChatMessages("system prompt", [{ role: "assistant", content: "old" }], "hello");
 
@@ -21,28 +40,17 @@ test("buildChatMessages includes approved active memory context", () => {
     [],
     "remember?",
     [
-      {
+      createStoredMemory({
         id: 1,
         type: "communication_preference",
         content: "User prefers concise replies.",
-        sensitivity: "normal",
-        importance: 3,
-        status: "active",
-        explicitConsent: false,
-        createdAt: "now",
-        updatedAt: "now",
-      },
-      {
+      }),
+      createStoredMemory({
         id: 2,
         type: "preference",
         content: "Deleted memory should not appear.",
-        sensitivity: "normal",
-        importance: 3,
         status: "deleted",
-        explicitConsent: false,
-        createdAt: "now",
-        updatedAt: "now",
-      },
+      }),
     ],
   );
 
@@ -54,7 +62,7 @@ test("buildChatMessages includes approved active memory context", () => {
 });
 
 test("buildChatMessages prioritizes important recent memories in context", () => {
-  const memories: StoredMemory[] = Array.from({ length: 10 }, (_, index) => ({
+  const memories: StoredMemory[] = Array.from({ length: 10 }, (_, index) => createStoredMemory({
     id: index + 1,
     type: "preference",
     content: `Memory ${index + 1}`,
@@ -76,7 +84,7 @@ test("buildChatMessages prioritizes important recent memories in context", () =>
 });
 
 test("buildChatMessages includes all active memories", () => {
-  const memories: StoredMemory[] = Array.from({ length: 55 }, (_, index) => ({
+  const memories: StoredMemory[] = Array.from({ length: 55 }, (_, index) => createStoredMemory({
     id: index + 1,
     type: "preference",
     content: `Memory ${index + 1}`,
@@ -97,7 +105,7 @@ test("buildChatMessages includes all active memories", () => {
 });
 
 test("buildChatMessages does not truncate long active memory context", () => {
-  const memories: StoredMemory[] = Array.from({ length: 50 }, (_, index) => ({
+  const memories: StoredMemory[] = Array.from({ length: 50 }, (_, index) => createStoredMemory({
     id: index + 1,
     type: "project_context",
     content: `Important memory ${index + 1}: ${"x".repeat(900)}`,

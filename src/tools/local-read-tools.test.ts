@@ -8,7 +8,7 @@ import { appendLog } from "../runtime/logger.js";
 import type { AppConfig } from "../runtime/config.js";
 import type { RuntimePaths } from "../runtime/paths.js";
 import { SqliteMemoryStore } from "../memory/sqlite-store.js";
-import { listActiveMemoriesTool, listLocalFilesTool, readGitDiffTool, readGitLogTool, readGitStatusTool, readLocalFileTool, readManyLocalFilesTool, readMarkdownBundleTool, readRecentAppLogsTool, searchLocalFilesTool, searchMemoriesTool } from "./local-read-tools.js";
+import { analyzeMemoriesTool, listActiveMemoriesTool, listLocalFilesTool, readGitDiffTool, readGitLogTool, readGitStatusTool, readLocalFileTool, readManyLocalFilesTool, readMarkdownBundleTool, readRecentAppLogsTool, searchLocalFilesTool, searchMemoriesTool } from "./local-read-tools.js";
 
 test("readRecentAppLogsTool reads recent logs through the permission gate", async () => {
   const paths = await createTempPaths();
@@ -157,6 +157,56 @@ test("searchMemoriesTool returns denied result when trusted reads are disabled",
     assert.match(result.reason, /no approver/);
     assert.equal(result.query, "concise");
     assert.deepEqual(result.memories, []);
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("analyzeMemoriesTool reports duplicate stale and conflicting memories", async () => {
+  const paths = await createTempPaths();
+
+  try {
+    const store = await SqliteMemoryStore.open(paths);
+    try {
+      store.addMemory({ type: "preference", content: "Vietnamese-first replies", importance: 5 });
+      store.addMemory({ type: "preference", content: "Vietnamese-first replies", importance: 1 });
+      store.addMemory({ type: "preference", content: "Use voice replies", importance: 3 });
+      store.addMemory({ type: "preference", content: "Do not use voice replies", importance: 3 });
+      store.addMemory({ type: "project_context", content: "Old context", importance: 1, expiresAt: "2020-01-01T00:00:00.000Z" });
+    } finally {
+      store.close();
+    }
+
+    const result = await analyzeMemoriesTool({ paths });
+
+    assert.equal(result.allowed, true);
+    assert.equal(result.checked, 5);
+    assert.deepEqual(result.duplicateGroups, [{ canonicalId: 1, duplicateIds: [2], reason: "Same normalized memory content." }]);
+    assert.deepEqual(result.staleMemories, [{ id: 5, reason: "Expired at 2020-01-01T00:00:00.000Z." }]);
+    assert.deepEqual(result.conflictGroups, [{ ids: [3, 4], reason: "Same type and scope contain opposing preference language." }]);
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("analyzeMemoriesTool supports focused modes", async () => {
+  const paths = await createTempPaths();
+
+  try {
+    const store = await SqliteMemoryStore.open(paths);
+    try {
+      store.addMemory({ type: "preference", content: "Duplicate", importance: 1 });
+      store.addMemory({ type: "preference", content: "Duplicate", importance: 1 });
+    } finally {
+      store.close();
+    }
+
+    const result = await analyzeMemoriesTool({ paths, mode: "duplicates" });
+
+    assert.equal(result.mode, "duplicates");
+    assert.equal(result.duplicateGroups.length, 1);
+    assert.deepEqual(result.staleMemories, []);
+    assert.deepEqual(result.conflictGroups, []);
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
   }

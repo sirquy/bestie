@@ -82,11 +82,11 @@ Before heavy implementation, create `docs/CHARACTER_EVALS.md` with 20-30 test co
 
 ## Memory MVP Policy
 
-Expose model-requested memory search through `internal.search_memories`, model-requested writes through `internal.remember_memory`, and a bounded post-turn Memory Candidate Reasoning pass for configs that explicitly set `memory.writePolicy`; config controls whether allowed non-secret writes are stored, queued, or denied.
+Expose complete model-requested memory listing through `internal.list_memories`, search through `internal.search_memories`, structured governance analysis through `internal.analyze_memories`, model-requested writes through `internal.remember_memory`, and a bounded post-turn Memory Candidate Reasoning pass for configs that explicitly set `memory.writePolicy`; config controls whether allowed non-secret writes are stored, queued, or denied.
 
 Sensitive details should go to pending approval. Secrets must never be stored.
 
-Every stored memory should keep source and consent metadata so users can inspect why it was saved and remove it later.
+Every stored memory should keep source, consent, and lightweight governance metadata so users and tools can inspect why it was saved, detect duplicates/stale/conflicting entries, and remove it later.
 
 ## Onboarding MVP Scope
 

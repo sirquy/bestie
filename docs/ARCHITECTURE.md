@@ -85,7 +85,7 @@ Adapters should normalize errors for Doctor and logs.
 
 MVP memory:
 
-- SQLite local memory with active and pending memories, persisted terminal/Telegram messages, pause/resume state, manual inspect/edit/forget/export/clear controls, and config-gated model-requested memory writes
+- SQLite local memory with active and pending memories, persisted terminal/Telegram messages, pause/resume state, manual inspect/edit/forget/export/clear controls, governance metadata, structured duplicate/stale/conflict analysis, and config-gated model-requested memory writes
 
 Later:
 

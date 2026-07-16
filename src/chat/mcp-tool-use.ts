@@ -9,7 +9,7 @@ import { reviewActionPermission, type PermissionApprover, type PermissionPolicy 
 import { evaluateMemoryCandidate, type MemoryType } from "../memory/policy.js";
 import { SqliteMemoryStore } from "../memory/sqlite-store.js";
 import { applyPatchTool, editLocalFileTool, execLocalTool, listProcessesTool, writeLocalFileTool } from "../tools/local-action-tools.js";
-import { listActiveMemoriesTool, listLocalFilesTool, readGitDiffTool, readGitLogTool, readGitStatusTool, readLocalFileTool, readManyLocalFilesTool, readMarkdownBundleTool, readRecentAppLogsTool, searchLocalFilesTool, searchMemoriesTool } from "../tools/local-read-tools.js";
+import { analyzeMemoriesTool, listActiveMemoriesTool, listLocalFilesTool, readGitDiffTool, readGitLogTool, readGitStatusTool, readLocalFileTool, readManyLocalFilesTool, readMarkdownBundleTool, readRecentAppLogsTool, searchLocalFilesTool, searchMemoriesTool, type MemoryAnalysisMode } from "../tools/local-read-tools.js";
 import { readUrlTool } from "../tools/web-read-tools.js";
 import { addCronScheduleTool, listCronSchedulesTool, removeCronScheduleTool, toggleCronScheduleTool } from "../tools/cron-tools.js";
 
@@ -51,7 +51,7 @@ export interface McpToolRequest {
 }
 
 export interface InternalToolRequest {
-  tool: "internal.read_file" | "internal.read_many_files" | "internal.read_markdown_bundle" | "internal.list_files" | "internal.search_files" | "internal.read_logs" | "internal.read_url" | "internal.git_status" | "internal.git_diff" | "internal.git_log" | "internal.mcp_list_servers" | "internal.mcp_list_tools" | "internal.write_file" | "internal.edit_file" | "internal.apply_patch" | "internal.exec" | "internal.list_processes" | "internal.list_memories" | "internal.search_memories" | "internal.remember_memory" | "internal.delete_memory" | "internal.cleanup_memories" | "internal.add_cron_schedule" | "internal.list_cron_schedules" | "internal.remove_cron_schedule" | "internal.toggle_cron_schedule";
+  tool: "internal.read_file" | "internal.read_many_files" | "internal.read_markdown_bundle" | "internal.list_files" | "internal.search_files" | "internal.read_logs" | "internal.read_url" | "internal.git_status" | "internal.git_diff" | "internal.git_log" | "internal.mcp_list_servers" | "internal.mcp_list_tools" | "internal.write_file" | "internal.edit_file" | "internal.apply_patch" | "internal.exec" | "internal.list_processes" | "internal.list_memories" | "internal.search_memories" | "internal.analyze_memories" | "internal.remember_memory" | "internal.delete_memory" | "internal.cleanup_memories" | "internal.add_cron_schedule" | "internal.list_cron_schedules" | "internal.remove_cron_schedule" | "internal.toggle_cron_schedule";
   arguments: Record<string, unknown>;
 }
 
@@ -235,7 +235,7 @@ export function buildMcpToolInstructions(config: AppConfig, runtimeContext?: str
   const contextSection = runtimeContext?.trim() ? `\nRuntime context:\n${runtimeContext.trim()}` : "";
   const mcpSection = readTools.length === 0 ? "" : `\nAvailable read-only MCP tools:\n${readTools.map((tool) => `- ${tool}`).join("\n")}`;
 
-  return `Available internal tools:${contextSection}\n- internal.read_file {"path":"relative/or/allowed/absolute/path"}\n- internal.read_many_files {"paths":["README.md","docs/ARCHITECTURE.md"],"maxBytesPerFile":24576,"maxTotalBytes":163840}\n- internal.read_markdown_bundle {"path":".","limit":40,"maxBytesPerFile":24576,"maxTotalBytes":163840}\n- internal.list_files {"path":"optional/path","limit":50}\n- internal.search_files {"query":"*.log","path":"optional/path","limit":20}\n- internal.read_logs {"lines":40}\n- internal.read_url {"url":"https://example.com/mcp-docs","maxBytes":131072,"timeoutMs":10000}\n- internal.git_status {"path":"optional/repo/path"}\n- internal.git_diff {"path":"optional/repo/path","staged":false,"maxBytes":98304}\n- internal.git_log {"path":"optional/repo/path","limit":10}\n- internal.mcp_list_servers {}\n- internal.mcp_list_tools {"server":"server-name","connect":true}\n- internal.write_file {"path":"relative/path","content":"text","overwrite":false}\n- internal.edit_file {"path":"relative/path","oldText":"exact text","newText":"replacement","replaceAll":false}\n- internal.apply_patch {"patch":"git apply compatible patch"}\n- internal.exec {"command":"npm","args":["test"],"cwd":".","timeoutMs":30000}\n- internal.list_processes {"limit":20}\n- internal.list_memories {}\n- internal.search_memories {"query":"memory search text"}\n- internal.remember_memory {"type":"preference|communication_preference|user_fact|project_context|durable_decision|sensitive_personal","content":"durable memory to save"}
+  return `Available internal tools:${contextSection}\n- internal.read_file {"path":"relative/or/allowed/absolute/path"}\n- internal.read_many_files {"paths":["README.md","docs/ARCHITECTURE.md"],"maxBytesPerFile":24576,"maxTotalBytes":163840}\n- internal.read_markdown_bundle {"path":".","limit":40,"maxBytesPerFile":24576,"maxTotalBytes":163840}\n- internal.list_files {"path":"optional/path","limit":50}\n- internal.search_files {"query":"*.log","path":"optional/path","limit":20}\n- internal.read_logs {"lines":40}\n- internal.read_url {"url":"https://example.com/mcp-docs","maxBytes":131072,"timeoutMs":10000}\n- internal.git_status {"path":"optional/repo/path"}\n- internal.git_diff {"path":"optional/repo/path","staged":false,"maxBytes":98304}\n- internal.git_log {"path":"optional/repo/path","limit":10}\n- internal.mcp_list_servers {}\n- internal.mcp_list_tools {"server":"server-name","connect":true}\n- internal.write_file {"path":"relative/path","content":"text","overwrite":false}\n- internal.edit_file {"path":"relative/path","oldText":"exact text","newText":"replacement","replaceAll":false}\n- internal.apply_patch {"patch":"git apply compatible patch"}\n- internal.exec {"command":"npm","args":["test"],"cwd":".","timeoutMs":30000}\n- internal.list_processes {"limit":20}\n- internal.list_memories {}\n- internal.search_memories {"query":"memory search text"}\n- internal.analyze_memories {"mode":"all|duplicates|stale|conflicts"}\n- internal.remember_memory {"type":"preference|communication_preference|user_fact|project_context|durable_decision|sensitive_personal","content":"durable memory to save"}
 - internal.delete_memory {"id":1,"reason":"why this memory is stale, wrong, duplicate, or no longer useful"}
 - internal.cleanup_memories {"ids":[1,2,3],"reason":"why these memories should be deleted"}
 - internal.add_cron_schedule {"name":"job name","schedule_type":"interval|cron_expr|once","schedule_value":"30m | 0 8 * * * | 2026-12-25T08:00:00Z","prompt":"what to do when triggered","channel":"optional telegram:<userId>|zalo:<userId> destination for completion report"}
@@ -393,6 +393,10 @@ export function formatToolActivityLabel(request: AgentToolRequest): string {
   if (request.tool === "internal.cleanup_memories") {
     const ids = memoryIdsArg(args.ids);
     return ids.length > 0 ? `${ids.length} memories` : "memories";
+  }
+
+  if (request.tool === "internal.analyze_memories") {
+    return stringArg(args.mode) ?? "all";
   }
 
   if (request.tool === "internal.search_memories") {
@@ -610,6 +614,12 @@ export async function runAgentToolRequest(options: RunAgentToolRequestOptions): 
     return { ok: result.allowed, status: result.allowed ? "pass" : "fail", message: result.reason, result: { query: result.query, memories: result.memories } };
   }
 
+  if (options.request.tool === "internal.analyze_memories") {
+    const mode = memoryAnalysisModeArg(args.mode);
+    const result = await analyzeMemoriesTool({ paths: options.paths, mode, approver: options.approver, policy: options.policy });
+    return { ok: result.allowed, status: result.allowed ? "pass" : "fail", message: result.reason, result };
+  }
+
   if (options.request.tool === "internal.add_cron_schedule") {
     return addCronScheduleTool(options.request.arguments, { config: options.config, paths: options.paths });
   }
@@ -630,7 +640,7 @@ export async function runAgentToolRequest(options: RunAgentToolRequestOptions): 
 }
 
 export function isInternalToolName(value: string): value is InternalToolRequest["tool"] {
-  return ["internal.read_file", "internal.read_many_files", "internal.read_markdown_bundle", "internal.list_files", "internal.search_files", "internal.read_logs", "internal.read_url", "internal.git_status", "internal.git_diff", "internal.git_log", "internal.mcp_list_servers", "internal.mcp_list_tools", "internal.write_file", "internal.edit_file", "internal.apply_patch", "internal.exec", "internal.list_processes", "internal.list_memories", "internal.search_memories", "internal.remember_memory", "internal.delete_memory", "internal.cleanup_memories", "internal.add_cron_schedule", "internal.list_cron_schedules", "internal.remove_cron_schedule", "internal.toggle_cron_schedule"].includes(value);
+  return ["internal.read_file", "internal.read_many_files", "internal.read_markdown_bundle", "internal.list_files", "internal.search_files", "internal.read_logs", "internal.read_url", "internal.git_status", "internal.git_diff", "internal.git_log", "internal.mcp_list_servers", "internal.mcp_list_tools", "internal.write_file", "internal.edit_file", "internal.apply_patch", "internal.exec", "internal.list_processes", "internal.list_memories", "internal.search_memories", "internal.analyze_memories", "internal.remember_memory", "internal.delete_memory", "internal.cleanup_memories", "internal.add_cron_schedule", "internal.list_cron_schedules", "internal.remove_cron_schedule", "internal.toggle_cron_schedule"].includes(value);
 }
 
 async function deleteMemoryTool(options: RunAgentToolRequestOptions, args: Record<string, unknown>): Promise<McpToolCallResult> {
@@ -794,6 +804,10 @@ function memoryIdsArg(value: unknown): number[] {
   }
 
   return [...new Set(value.filter((item): item is number => Number.isInteger(item) && item > 0))];
+}
+
+function memoryAnalysisModeArg(value: unknown): MemoryAnalysisMode | undefined {
+  return value === "all" || value === "duplicates" || value === "stale" || value === "conflicts" ? value : undefined;
 }
 
 function booleanArg(value: unknown): boolean | undefined {

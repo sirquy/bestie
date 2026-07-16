@@ -10,8 +10,28 @@ CREATE TABLE IF NOT EXISTS memories (
   source TEXT DEFAULT 'manual',
   explicit_consent INTEGER DEFAULT 0,
   policy_reason TEXT,
+  pinned INTEGER DEFAULT 0,
+  scope TEXT DEFAULT 'global',
+  confidence REAL DEFAULT 1.0,
+  expires_at TEXT,
+  superseded_by INTEGER,
+  last_accessed_at TEXT,
+  access_count INTEGER DEFAULT 0,
   created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-  updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+  updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (superseded_by) REFERENCES memories(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS memory_links (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  source_memory_id INTEGER NOT NULL,
+  target_memory_id INTEGER NOT NULL,
+  kind TEXT NOT NULL CHECK(kind IN ('duplicate', 'conflict', 'supersedes', 'related')),
+  reason TEXT,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (source_memory_id) REFERENCES memories(id) ON DELETE CASCADE,
+  FOREIGN KEY (target_memory_id) REFERENCES memories(id) ON DELETE CASCADE,
+  UNIQUE(source_memory_id, target_memory_id, kind)
 );
 
 CREATE TABLE IF NOT EXISTS messages (
