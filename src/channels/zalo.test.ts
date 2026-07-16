@@ -157,6 +157,34 @@ test("handleZaloUpdate manages cron schedules for the current chat", async () =>
   }
 });
 
+test("handleZaloUpdate reports memory analysis and cleanup dry-run", async () => {
+  const paths = await createTempPaths();
+  const sent: Array<{ chatId: string; text: string }> = [];
+
+  try {
+    await writeRuntimeFiles(paths);
+    const store = await SqliteMemoryStore.open(paths);
+    try {
+      store.addMemory({ type: "preference", content: "Vietnamese-first replies", importance: 5 });
+      store.addMemory({ type: "preference", content: "Vietnamese-first replies", importance: 1 });
+      store.addMemory({ type: "project_context", content: "Old context", importance: 1, expiresAt: "2020-01-01T00:00:00.000Z" });
+    } finally {
+      store.close();
+    }
+
+    await handleZaloUpdate({ update_id: 1, message: { from: { id: "owner-1" }, chat: { id: "chat-1" }, text: "/memory analyze" } }, { config, paths, client: createRecordingClient(sent) });
+    await handleZaloUpdate({ update_id: 2, message: { from: { id: "owner-1" }, chat: { id: "chat-1" }, text: "/memory cleanup --dry-run" } }, { config, paths, client: createRecordingClient(sent) });
+
+    assert.match(sent[0].text, /Memory analysis \(3 checked\)/);
+    assert.match(sent[0].text, /Duplicates: 1 group\(s\)/);
+    assert.match(sent[0].text, /Stale: 1/);
+    assert.match(sent[1].text, /Memory cleanup dry-run \(3 checked\)/);
+    assert.match(sent[1].text, /Would delete: #2, #3/);
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
 test("handleZaloUpdate replies with sanitized provider error details", async () => {
   const paths = await createTempPaths();
   const sent: Array<{ chatId: string; text: string }> = [];

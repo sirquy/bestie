@@ -1,5 +1,7 @@
 import { evaluateMemoryCandidate, type MemoryType } from "../../memory/policy.js";
 import { SqliteMemoryStore, type PendingMemory, type StoredMemory, type StoredMessageRole } from "../../memory/sqlite-store.js";
+import { isCronReportDestination } from "../../cron/channel-commands.js";
+import { computeNextRun, validateSchedule } from "../../cron/scheduler.js";
 import { loadConfig, type MemoryDeletePolicy } from "../../runtime/config.js";
 import { getRuntimePaths } from "../../runtime/paths.js";
 import { analyzeMemoriesTool, type AnalyzeMemoriesResult, type MemoryAnalysisMode } from "../../tools/local-read-tools.js";
@@ -15,6 +17,10 @@ const allowedTypes = new Set<MemoryType>([
   "secret",
   "one_off",
 ]);
+
+const MEMORY_MAINTENANCE_CRON_NAME = "Bestie memory maintenance report";
+const MEMORY_MAINTENANCE_DEFAULT_SCHEDULE = "0 9 * * 1";
+const MEMORY_MAINTENANCE_PROMPT = "Run a read-only memory maintenance check. Use internal.analyze_memories with mode all. Report duplicate groups, stale memories, and conflicts as a concise cleanup plan. Do not delete, edit, or save memories.";
 
 interface MemoryCleanupPlan {
   checked: number;
@@ -65,6 +71,11 @@ export async function runMemoryCommand(argv: string[] = process.argv): Promise<v
 
   if (subcommand === "cleanup") {
     await cleanupMemories(argv);
+    return;
+  }
+
+  if (subcommand === "maintenance") {
+    await runMemoryMaintenanceCommand(argv);
     return;
   }
 
@@ -129,7 +140,7 @@ export async function runMemoryCommand(argv: string[] = process.argv): Promise<v
   }
 
   console.error(`Unknown memory command: ${subcommand}`);
-  console.error("Usage: bestie memory status | pause | resume | list | search <query> | analyze [--mode all|duplicates|stale|conflicts] [--json] | cleanup --dry-run|--apply [--yes] [--json] | add <type> <content> | inspect <id> | edit <id> <content> | forget <id> | messages [--limit <n>] [--role user|assistant|system] | messages search <query> [--limit <n>] [--role user|assistant|system] | export | clear --yes | pending [--limit <n>] | pending search <query> [--limit <n>] | pending inspect <id> | approve <id> | reject <id> | reject-all --yes");
+  console.error("Usage: bestie memory status | pause | resume | list | search <query> | analyze [--mode all|duplicates|stale|conflicts] [--json] | cleanup --dry-run|--apply [--yes] [--json] | maintenance install|status|remove [--channel telegram:<id>|zalo:<id>] [--schedule <cron>] | add <type> <content> | inspect <id> | edit <id> <content> | forget <id> | messages [--limit <n>] [--role user|assistant|system] | messages search <query> [--limit <n>] [--role user|assistant|system] | export | clear --yes | pending [--limit <n>] | pending search <query> [--limit <n>] | pending inspect <id> | approve <id> | reject <id> | reject-all --yes");
   process.exitCode = 1;
 }
 
@@ -301,6 +312,112 @@ async function cleanupMemories(argv: string[]): Promise<void> {
 
   printCleanupPlan(plan, true);
   console.log(`${badge("DELETED", "green")} Deleted ${applied.deletedIds.length} planned memory/memories.${applied.missingIds.length > 0 ? ` Missing: ${applied.missingIds.map((id) => `#${id}`).join(", ")}.` : ""}`);
+}
+
+async function runMemoryMaintenanceCommand(argv: string[]): Promise<void> {
+  const action = argv[4] ?? "status";
+
+  if (action === "install") {
+    await installMemoryMaintenance(argv);
+    return;
+  }
+
+  if (action === "status") {
+    await showMemoryMaintenanceStatus();
+    return;
+  }
+
+  if (action === "remove" || action === "uninstall") {
+    await removeMemoryMaintenance();
+    return;
+  }
+
+  console.error("Usage: bestie memory maintenance install|status|remove [--channel telegram:<id>|zalo:<id>] [--schedule <cron>]");
+  process.exitCode = 1;
+}
+
+async function installMemoryMaintenance(argv: string[]): Promise<void> {
+  const args = parseFlagArgs(argv.slice(5));
+  const scheduleValue = args["--schedule"] ?? MEMORY_MAINTENANCE_DEFAULT_SCHEDULE;
+  const channel = args["--channel"] ?? (await defaultMaintenanceChannel());
+  const scheduleError = validateSchedule("cron_expr", scheduleValue);
+
+  if (scheduleError) {
+    console.error(`Invalid maintenance schedule: ${scheduleError}`);
+    process.exitCode = 1;
+    return;
+  }
+
+  if (channel !== undefined && !isCronReportDestination(channel)) {
+    console.error("--channel must be telegram:<userId> or zalo:<userId>.");
+    process.exitCode = 1;
+    return;
+  }
+
+  const store = await SqliteMemoryStore.open();
+
+  try {
+    const existing = store.listCronSchedules().find((schedule) => schedule.name === MEMORY_MAINTENANCE_CRON_NAME);
+    if (existing) {
+      store.removeCronSchedule(existing.id);
+    }
+
+    const schedule = store.addCronSchedule({
+      name: MEMORY_MAINTENANCE_CRON_NAME,
+      scheduleType: "cron_expr",
+      scheduleValue,
+      prompt: MEMORY_MAINTENANCE_PROMPT,
+      channel,
+      nextRunAt: computeNextRun("cron_expr", scheduleValue),
+    });
+
+    console.log(`${badge("OK", "green")} Memory maintenance report installed: #${schedule.id}`);
+    console.log(`Schedule: ${schedule.scheduleValue}`);
+    console.log(`Channel: ${schedule.channel ?? "configured owner channels"}`);
+    console.log(`Next run: ${schedule.nextRunAt}`);
+  } finally {
+    store.close();
+  }
+}
+
+async function showMemoryMaintenanceStatus(): Promise<void> {
+  const store = await SqliteMemoryStore.open();
+
+  try {
+    const schedule = store.listCronSchedules().find((item) => item.name === MEMORY_MAINTENANCE_CRON_NAME);
+    if (!schedule) {
+      console.log(`${badge("INFO", "blue")} Memory maintenance report is not installed.`);
+      console.log("Install with `bestie memory maintenance install --channel telegram:<id>` or `--channel zalo:<id>`.");
+      return;
+    }
+
+    console.log(title("Memory Maintenance Report"));
+    console.log(rule());
+    console.log(`#${schedule.id} ${schedule.enabled ? "enabled" : "disabled"}`);
+    console.log(`Schedule: ${schedule.scheduleValue}`);
+    console.log(`Channel: ${schedule.channel ?? "configured owner channels"}`);
+    console.log(`Next run: ${schedule.nextRunAt || "none"}`);
+    console.log(`Last result: ${schedule.lastResult ?? "none"}`);
+  } finally {
+    store.close();
+  }
+}
+
+async function removeMemoryMaintenance(): Promise<void> {
+  const store = await SqliteMemoryStore.open();
+
+  try {
+    const schedule = store.listCronSchedules().find((item) => item.name === MEMORY_MAINTENANCE_CRON_NAME);
+    if (!schedule) {
+      console.log(`${badge("INFO", "blue")} Memory maintenance report is not installed.`);
+      return;
+    }
+
+    store.removeCronSchedule(schedule.id);
+    console.log(`${badge("OK", "green")} Memory maintenance report removed: #${schedule.id}`);
+  } finally {
+    store.close();
+  }
 }
 
 async function addMemory(argv: string[]): Promise<void> {
@@ -787,6 +904,35 @@ async function loadMemoryDeletePolicy(): Promise<MemoryDeletePolicy> {
   } catch {
     return "ask";
   }
+}
+
+async function defaultMaintenanceChannel(): Promise<string | undefined> {
+  try {
+    const config = await loadConfig();
+    const telegramOwner = config.channels?.telegram?.enabled ? config.channels.telegram.ownerUserId.trim() : "";
+    if (telegramOwner) {
+      return `telegram:${telegramOwner}`;
+    }
+
+    const zaloOwner = config.channels?.zalo?.enabled ? config.channels.zalo.ownerUserId.trim() : "";
+    return zaloOwner ? `zalo:${zaloOwner}` : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function parseFlagArgs(args: string[]): Record<string, string> {
+  const result: Record<string, string> = {};
+
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
+    if (arg.startsWith("--") && index + 1 < args.length && !args[index + 1].startsWith("--")) {
+      result[arg] = args[index + 1];
+      index += 1;
+    }
+  }
+
+  return result;
 }
 
 function parseAnalyzeMode(argv: string[]): MemoryAnalysisMode | false | undefined {

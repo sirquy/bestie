@@ -811,6 +811,34 @@ test("handleTelegramUpdate replies to status and memory slash commands", async (
   }
 });
 
+test("handleTelegramUpdate reports memory analysis and cleanup dry-run", async () => {
+  const paths = await createTempPaths();
+  const sentMessages: Array<{ chatId: number; text: string }> = [];
+
+  try {
+    await writeRuntimeFiles(paths);
+    const store = await SqliteMemoryStore.open(paths);
+    try {
+      store.addMemory({ type: "preference", content: "Vietnamese-first replies", importance: 5 });
+      store.addMemory({ type: "preference", content: "Vietnamese-first replies", importance: 1 });
+      store.addMemory({ type: "project_context", content: "Old context", importance: 1, expiresAt: "2020-01-01T00:00:00.000Z" });
+    } finally {
+      store.close();
+    }
+
+    await handleTelegramUpdate(createTextUpdate("/memory analyze", 12345), { config, paths, client: createRecordingClient(sentMessages) });
+    await handleTelegramUpdate(createTextUpdate("/memory cleanup dry-run", 12345), { config, paths, client: createRecordingClient(sentMessages) });
+
+    assert.match(sentMessages[0].text, /Memory analysis \(3 checked\)/);
+    assert.match(sentMessages[0].text, /Duplicates: 1 group\(s\)/);
+    assert.match(sentMessages[0].text, /Stale: 1/);
+    assert.match(sentMessages[1].text, /Memory cleanup dry-run \(3 checked\)/);
+    assert.match(sentMessages[1].text, /Would delete: #2, #3/);
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
 test("handleTelegramUpdate status includes recent provider fallback health", async () => {
   const paths = await createTempPaths();
   const sentMessages: Array<{ chatId: number; text: string }> = [];

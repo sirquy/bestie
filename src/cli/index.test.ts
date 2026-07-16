@@ -118,6 +118,53 @@ test("memory cleanup apply defaults to ask without deleting", async () => {
   }
 });
 
+test("memory maintenance install creates a cron report schedule", async () => {
+  const homeDir = await mkdtemp(resolve(tmpdir(), "bestie-cli-index-test-"));
+
+  try {
+    const { stdout } = await captureMain(
+      ["node", "bestie", "memory", "maintenance", "install", "--channel", "telegram:123", "--schedule", "0 9 * * 1"],
+      { HOME: homeDir, BESTIE_NO_BANNER: "1" },
+    );
+
+    assert.match(stdout, /Memory maintenance report installed/);
+
+    const store = await SqliteMemoryStore.open(getRuntimePaths(homeDir));
+    try {
+      const [schedule] = store.listCronSchedules();
+      assert.equal(schedule.name, "Bestie memory maintenance report");
+      assert.equal(schedule.scheduleType, "cron_expr");
+      assert.equal(schedule.scheduleValue, "0 9 * * 1");
+      assert.equal(schedule.channel, "telegram:123");
+      assert.match(schedule.prompt, /internal\.analyze_memories/);
+    } finally {
+      store.close();
+    }
+  } finally {
+    await rm(homeDir, { recursive: true, force: true });
+  }
+});
+
+test("memory maintenance remove deletes the installed cron report schedule", async () => {
+  const homeDir = await mkdtemp(resolve(tmpdir(), "bestie-cli-index-test-"));
+
+  try {
+    await captureMain(["node", "bestie", "memory", "maintenance", "install", "--channel", "zalo:owner"], { HOME: homeDir, BESTIE_NO_BANNER: "1" });
+    const { stdout } = await captureMain(["node", "bestie", "memory", "maintenance", "remove"], { HOME: homeDir, BESTIE_NO_BANNER: "1" });
+
+    assert.match(stdout, /Memory maintenance report removed/);
+
+    const store = await SqliteMemoryStore.open(getRuntimePaths(homeDir));
+    try {
+      assert.equal(store.listCronSchedules().length, 0);
+    } finally {
+      store.close();
+    }
+  } finally {
+    await rm(homeDir, { recursive: true, force: true });
+  }
+});
+
 test("NO_COLOR disables ANSI color in human output", async () => {
   const { stdout } = await captureMain(["node", "bestie", "skills"], { BESTIE_NO_BANNER: "1", NO_COLOR: "1" });
 

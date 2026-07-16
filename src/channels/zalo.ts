@@ -13,9 +13,11 @@ import { appendLog, redactSecrets } from "../runtime/logger.js";
 import type { RuntimePaths } from "../runtime/paths.js";
 import { executeApprovedAction } from "../safety/approval-executor.js";
 import { handleCronChannelCommand } from "../cron/channel-commands.js";
+import { analyzeMemoriesTool } from "../tools/local-read-tools.js";
 import type { PermissionApprover, PermissionPolicy } from "../safety/permission-policy.js";
 import type { ChannelIncomingMessage, ChannelOutboundAdapter, ChannelRuntimeAdapter } from "./adapter.js";
 import { createChannelActivityController } from "./activity.js";
+import { formatMemoryAnalysisReport, formatMemoryCleanupDryRunReport } from "./memory-commands.js";
 import { ZALO_CHANNEL, formatChannelHelpCommands } from "./registry.js";
 import { createChannelResponseController } from "./response-controller.js";
 
@@ -394,6 +396,13 @@ async function handleZaloSlashCommand(text: string, chatId: string, options: Zal
     }
   }
 
+  if (memoryCommand === "analyze" || memoryCommand === "cleanup_dry_run") {
+    const analysis = await analyzeMemoriesTool({ paths: options.paths, mode: "all" });
+    const message = memoryCommand === "analyze" ? formatMemoryAnalysisReport(analysis) : formatMemoryCleanupDryRunReport(analysis);
+    await sendZaloTextChunks(options.client, chatId, message);
+    return true;
+  }
+
   if (memoryCommand === "pending") {
     const store = await SqliteMemoryStore.open(options.paths);
     try {
@@ -691,12 +700,18 @@ function parseZaloApprovalDecision(text: string): { decision: "approve" | "deny"
   return match ? { decision: match[1] as "approve" | "deny", id: Number(match[2]) } : undefined;
 }
 
-function parseZaloMemoryCommand(text: string): "list" | "pending" | "pause" | "resume" | undefined {
+function parseZaloMemoryCommand(text: string): "list" | "pending" | "pause" | "resume" | "analyze" | "cleanup_dry_run" | undefined {
   if (text === "/memory" || text === "/memory list" || text === "/memory status") {
     return "list";
   }
   if (text === "/memory pending") {
     return "pending";
+  }
+  if (text === "/memory analyze") {
+    return "analyze";
+  }
+  if (text === "/memory cleanup dry-run" || text === "/memory cleanup --dry-run") {
+    return "cleanup_dry_run";
   }
   if (text === "/memory pause" || text === "/pause_memory" || text === "/pause-memory") {
     return "pause";

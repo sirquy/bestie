@@ -28,11 +28,13 @@ import { runDoctor, type DoctorReport } from "../runtime/doctor.js";
 import { validateDoctorReportContract } from "../runtime/doctor-report-contract.js";
 import { executeApprovedAction } from "../safety/approval-executor.js";
 import { handleCronChannelCommand } from "../cron/channel-commands.js";
+import { analyzeMemoriesTool } from "../tools/local-read-tools.js";
 import type { ActionPermissionRequest, ActionPermissionResult, PermissionApprover, PermissionPolicy } from "../safety/permission-policy.js";
 import { buildChannelAttachmentPreview, type AttachmentContentParser } from "./attachment-preview.js";
 import { ProviderAuthError, ProviderFallbackError, ProviderNetworkError, ProviderRateLimitError, ProviderResponseError, ProviderTimeoutError } from "../llm/errors.js";
 import type { ChannelIncomingMessage, ChannelOutboundAdapter, ChannelRuntimeAdapter } from "./adapter.js";
 import { createChannelActivityController } from "./activity.js";
+import { formatMemoryAnalysisReport, formatMemoryCleanupDryRunReport } from "./memory-commands.js";
 import { buildChannelAttachmentPrompt } from "./attachment-prompt.js";
 import { processChannelAttachment } from "./attachment-pipeline.js";
 import { buildChannelVisionAttachment, type ChannelVisionAttachment } from "./attachment-vision.js";
@@ -1447,6 +1449,13 @@ async function handleTelegramSlashCommand(text: string, chatId: number, options:
     }
   }
 
+  if (memoryCommand === "analyze" || memoryCommand === "cleanup_dry_run") {
+    const analysis = await analyzeMemoriesTool({ paths: options.paths, mode: "all" });
+    const message = memoryCommand === "analyze" ? formatMemoryAnalysisReport(analysis) : formatMemoryCleanupDryRunReport(analysis);
+    await sendTelegramTextChunks(options.client, chatId, message);
+    return true;
+  }
+
   if (memoryCommand === "pending") {
     const store = await SqliteMemoryStore.open(options.paths);
 
@@ -1548,13 +1557,21 @@ function isPendingMemoryToolResult(value: unknown): value is { id: number; statu
   return typeof value === "object" && value !== null && "id" in value && "status" in value && Number.isInteger((value as { id: unknown }).id) && (value as { status: unknown }).status === "pending";
 }
 
-function parseTelegramMemoryCommand(text: string): "list" | "pending" | `pending_inspect:${number}` | "pause" | "resume" | undefined {
+function parseTelegramMemoryCommand(text: string): "list" | "pending" | `pending_inspect:${number}` | "pause" | "resume" | "analyze" | "cleanup_dry_run" | undefined {
   if (text === "/memory" || text === "/memory list" || text === "/memory status") {
     return "list";
   }
 
   if (text === "/memory pending") {
     return "pending";
+  }
+
+  if (text === "/memory analyze") {
+    return "analyze";
+  }
+
+  if (text === "/memory cleanup dry-run" || text === "/memory cleanup --dry-run") {
+    return "cleanup_dry_run";
   }
 
   const pendingInspectMatch = text.match(/^\/memory pending inspect (\d+)$/);
