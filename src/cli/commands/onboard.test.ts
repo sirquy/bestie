@@ -20,15 +20,15 @@ test("runOnboardCommand writes local files and skips provider test when requeste
       paths,
       questioner: {
         ask: async (question) => {
-          if (question.includes("What should your bestie")) return "Miu";
-          if (question.includes("What should it call")) return "Boss";
-          if (question.includes("Default language tag")) return "Japanese";
-          if (question.includes("IANA time zone")) return "Asia/Tokyo";
-          if (question.includes("Tone intensity")) return "7";
-          if (question.includes("Memory write policy")) return "ask";
-          if (question.includes("Provider label")) return "openai-compatible";
-          if (question.includes("OpenAI-compatible base URL")) return "http://127.0.0.1:9/v1/";
-          if (question.includes("Model name")) return "test-model";
+          if (question.includes("Bạn muốn gọi bestie")) return "Miu";
+          if (question.includes("Bestie nên gọi bạn")) return "Boss";
+          if (question.includes("Tag hoặc tên ngôn ngữ")) return "Japanese";
+          if (question.includes("Múi giờ IANA")) return "Asia/Tokyo";
+          if (question.includes("Mức độ sắc thái")) return "7";
+          if (question.includes("Chính sách ghi nhớ")) return "ask";
+          if (question.includes("Nhãn nhà cung cấp")) return "openai-compatible";
+          if (question.includes("Base URL tương thích OpenAI")) return "http://127.0.0.1:9/v1/";
+          if (question.includes("Tên model")) return "test-model";
           throw new Error(`Unexpected question: ${question}`);
         },
         askHidden: async () => "test-key",
@@ -56,10 +56,10 @@ test("runOnboardCommand writes local files and skips provider test when requeste
     assert.match(envText, /OPENAI_API_KEY="test-key"/);
     assert.match(logText, /provider_test_skipped/);
     assert.ok(output.some((line) => line.includes("Runtime")));
-    assert.ok(output.some((line) => line.includes("Profile -> Generate -> Files")));
-    assert.ok(output.some((line) => line.includes("OK") && line.includes("Local runtime files written")));
-    assert.ok(output.every((line) => !line.includes("Provider test Sending")));
-    assert.ok(output.some((line) => line.includes("INFO") && line.includes("Provider test skipped")));
+    assert.ok(output.some((line) => line.includes("Hồ sơ -> Tạo cấu hình -> File đã lưu")));
+    assert.ok(output.some((line) => line.includes("OK") && line.includes("Đã ghi các file runtime cục bộ")));
+    assert.ok(output.every((line) => !line.includes("Kiểm tra nhà cung cấp") || !line.includes("Gửi một completion")));
+    assert.ok(output.some((line) => line.includes("INFO") && line.includes("Đã bỏ qua kiểm tra nhà cung cấp")));
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
   }
@@ -79,16 +79,16 @@ test("runOnboardCommand runs provider test when not skipped", async () => {
       providerTest: async (config, apiKey, _paths, writeLine) => {
         providerTestConfig = config;
         providerTestApiKey = apiKey;
-        writeLine("Provider test failed: mocked provider unavailable.");
+        writeLine("Kiểm tra nhà cung cấp thất bại: mocked provider unavailable.");
       },
       writeLine: (message) => output.push(message),
     });
 
     assert.equal(providerTestConfig?.llm.model, "test-model");
     assert.equal(providerTestApiKey, "test-key");
-    assert.ok(output.some((line) => line.includes("Provider test")));
+    assert.ok(output.some((line) => line.includes("Kiểm tra nhà cung cấp")));
     assert.ok(output.some((line) => line.includes("mocked provider unavailable")));
-    assert.ok(output.some((line) => line.includes("DONE") && line.includes("Onboarding complete")));
+    assert.ok(output.some((line) => line.includes("DONE") && line.includes("Thiết lập ban đầu đã hoàn tất")));
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
   }
@@ -104,13 +104,13 @@ test("runOnboardCommand highlights provider test failures", async () => {
       paths,
       questioner: createQuestioner(),
       providerTest: async (_config, _apiKey, _paths, writeLine) => {
-        writeLine("FAIL Provider test failed.");
+        writeLine("FAIL Kiểm tra nhà cung cấp thất bại.");
         writeLine("     Provider returned an unusable response: 500 Internal Server Error");
       },
       writeLine: (message) => output.push(message),
     });
 
-    assert.ok(output.some((line) => line.includes("FAIL") && line.includes("Provider test failed")));
+    assert.ok(output.some((line) => line.includes("FAIL") && line.includes("Kiểm tra nhà cung cấp thất bại")));
     assert.ok(output.some((line) => line.includes("500 Internal Server Error")));
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
@@ -120,15 +120,15 @@ test("runOnboardCommand highlights provider test failures", async () => {
 function createQuestioner(): { ask: (question: string) => Promise<string>; askHidden: () => Promise<string>; close: () => void } {
   return {
     ask: async (question) => {
-      if (question.includes("What should your bestie")) return "Miu";
-      if (question.includes("What should it call")) return "Boss";
-      if (question.includes("Default language tag")) return "vi";
-      if (question.includes("IANA time zone")) return "UTC";
-      if (question.includes("Tone intensity")) return "7";
-      if (question.includes("Memory write policy")) return "ask";
-      if (question.includes("Provider label")) return "openai-compatible";
-      if (question.includes("OpenAI-compatible base URL")) return "http://127.0.0.1:9/v1/";
-      if (question.includes("Model name")) return "test-model";
+      if (question.includes("Bạn muốn gọi bestie")) return "Miu";
+      if (question.includes("Bestie nên gọi bạn")) return "Boss";
+      if (question.includes("Tag hoặc tên ngôn ngữ")) return "vi";
+      if (question.includes("Múi giờ IANA")) return "UTC";
+      if (question.includes("Mức độ sắc thái")) return "7";
+      if (question.includes("Chính sách ghi nhớ")) return "ask";
+      if (question.includes("Nhãn nhà cung cấp")) return "openai-compatible";
+      if (question.includes("Base URL tương thích OpenAI")) return "http://127.0.0.1:9/v1/";
+      if (question.includes("Tên model")) return "test-model";
       throw new Error(`Unexpected question: ${question}`);
     },
     askHidden: async () => "test-key",

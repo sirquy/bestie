@@ -15,145 +15,145 @@ import { runVoiceCommand } from "./commands/voice.js";
 import type { CliCommandSpec } from "./command-router.js";
 
 export const cliHelpDetails = `
-Onboard options:
-  --skip-provider-test  Save local files without calling the configured provider
+Tùy chọn onboard:
+  --skip-provider-test  Lưu file local mà không gọi provider đã cấu hình
 
-Doctor options:
-  --json  Print machine-readable diagnostic output
-  --fix  Repair safe local filesystem, permission, and SQLite issues
-  --telegram-connect  Verify enabled Telegram bot identity with a network call
-  --zalo-connect  Verify enabled Zalo bot identity with a network call
-  --telegram-speech-test  Generate and convert a local Telegram voice sample
+Tùy chọn doctor:
+  --json  In chẩn đoán dạng máy đọc được
+  --fix  Sửa các vấn đề an toàn về filesystem, quyền, và SQLite local
+  --telegram-connect  Kiểm tra danh tính bot Telegram đã bật bằng network call
+  --zalo-connect  Kiểm tra danh tính bot Zalo đã bật bằng network call
+  --telegram-speech-test  Tạo và chuyển đổi một mẫu voice Telegram local
 
-MCP options:
-  Run bestie mcp --help for MCP server commands.
+Tùy chọn MCP:
+  Chạy bestie mcp --help để xem lệnh MCP server.
 
-Channels options:
-  Run bestie channels --help for channel adapters and diagnostics.
+Tùy chọn kênh:
+  Chạy bestie channels --help để xem channel adapter và chẩn đoán.
 
-Daemon options:
-  start [--channel telegram|zalo|cron|all]    Start runtime daemon(s) in the background
-  stop [--channel telegram|zalo|cron|all]     Stop runtime daemon(s)
-  restart [--channel telegram|zalo|cron|all]  Stop and start runtime daemon(s)
-  status [--channel telegram|zalo|cron|all]   Show runtime daemon status
-  install                                    Install and start user systemd service(s)
-  uninstall                                  Stop and remove user systemd service(s)
+Tùy chọn daemon:
+  start [--channel telegram|zalo|cron|all]    Khởi động runtime daemon trong nền
+  stop [--channel telegram|zalo|cron|all]     Dừng runtime daemon
+  restart [--channel telegram|zalo|cron|all]  Dừng rồi khởi động lại runtime daemon
+  status [--channel telegram|zalo|cron|all]   Xem trạng thái runtime daemon
+  install                                    Cài và khởi động user systemd service
+  uninstall                                  Dừng và gỡ user systemd service
 
-Tools options:
-  logs --lines N  Read recent redacted app logs through the permission gate
-  memories --limit N  Read active local memories through the permission gate
+Tùy chọn tools:
+  logs --lines N  Đọc log app đã redact gần đây qua permission gate
+  memories --limit N  Đọc memory local đang active qua permission gate
   attachments cleanup --older-than 7d --kinds voice,audio --confirm
-    Delete old Telegram attachment files; omit --confirm for a dry run
+    Xóa file attachment Telegram cũ; bỏ --confirm để chạy thử
 
-Update options:
-  --apply  Run npm install -g bestie-agent@latest after a newer version is found
+Tùy chọn update:
+  --apply  Chạy npm install -g bestie-agent@latest sau khi tìm thấy bản mới
 
-Cron options:
-  list           List all cron schedules
-  add            Create a new cron schedule (interactive or with --name --type --schedule --prompt)
-  remove <id>    Remove a cron schedule by ID
-  toggle <id>    Toggle a cron schedule on/off
-  logs [id]      Show recent cron execution logs
-  run            Run the cron scheduler until stopped
+Tùy chọn cron:
+  list           Liệt kê toàn bộ lịch cron
+  add            Tạo lịch cron mới (interactive hoặc dùng --name --type --schedule --prompt)
+  remove <id>    Xóa lịch cron theo ID
+  toggle <id>    Bật/tắt một lịch cron
+  logs [id]      Xem log chạy cron gần đây
+  run            Chạy scheduler cron cho tới khi bị dừng
 
-Voice options:
-  setup-local       Configure local whisper.cpp transcription
-  setup-elevenlabs  Configure ElevenLabs speech and transcription
-  models            List local whisper.cpp models
-  download-model    Download a local whisper.cpp model
+Tùy chọn voice:
+  setup-local       Cấu hình transcription local bằng whisper.cpp
+  setup-elevenlabs  Cấu hình speech và transcription bằng ElevenLabs
+  models            Liệt kê model whisper.cpp local
+  download-model    Tải một model whisper.cpp local
 `;
 
 export const cliCommandSpecs: CliCommandSpec[] = [
-  { name: "onboard", description: "Create local .bestie config and character files", handler: runOnboardCommand },
-  { name: "chat", description: "Start terminal chat after onboarding", handler: runChatCommand },
-  { name: "status", description: "Show local setup status", handler: runStatusCommand },
+  { name: "onboard", description: "Tạo cấu hình .bestie và file tính cách local", handler: runOnboardCommand },
+  { name: "chat", description: "Bắt đầu chat terminal sau khi onboard", handler: runChatCommand },
+  { name: "status", description: "Xem trạng thái thiết lập local", handler: runStatusCommand },
   {
     name: "daemon",
-    description: "Start, stop, inspect, or install the local background daemon",
+    description: "Khởi động, dừng, kiểm tra, hoặc cài daemon nền local",
     handler: runDaemonCommand,
     children: [
-      { name: "start", description: "Start runtime daemon(s)", handler: runDaemonCommand },
-      { name: "stop", description: "Stop runtime daemon(s)", handler: runDaemonCommand },
-      { name: "restart", description: "Restart runtime daemon(s)", handler: runDaemonCommand },
-      { name: "status", description: "Show runtime daemon status", handler: runDaemonCommand },
-      { name: "install", description: "Install and start user systemd service(s)", handler: runDaemonCommand },
-      { name: "uninstall", description: "Stop and remove user systemd service(s)", handler: runDaemonCommand },
-      { name: "install-service", description: "Alias for install", handler: runDaemonCommand, hidden: true },
-      { name: "uninstall-service", description: "Alias for uninstall", handler: runDaemonCommand, hidden: true },
+      { name: "start", description: "Khởi động runtime daemon", handler: runDaemonCommand },
+      { name: "stop", description: "Dừng runtime daemon", handler: runDaemonCommand },
+      { name: "restart", description: "Khởi động lại runtime daemon", handler: runDaemonCommand },
+      { name: "status", description: "Xem trạng thái runtime daemon", handler: runDaemonCommand },
+      { name: "install", description: "Cài và khởi động user systemd service", handler: runDaemonCommand },
+      { name: "uninstall", description: "Dừng và gỡ user systemd service", handler: runDaemonCommand },
+      { name: "install-service", description: "Alias của install", handler: runDaemonCommand, hidden: true },
+      { name: "uninstall-service", description: "Alias của uninstall", handler: runDaemonCommand, hidden: true },
     ],
   },
-  { name: "logs", description: "Show recent redacted operational logs", handler: runLogsCommand },
-  { name: "doctor", description: "Diagnose local setup problems", handler: runDoctorCommand },
-  { name: "memory", description: "Inspect or manually add local memories", handler: runMemoryCommand },
+  { name: "logs", description: "Xem log vận hành gần đây đã redact", handler: runLogsCommand },
+  { name: "doctor", description: "Chẩn đoán vấn đề thiết lập local", handler: runDoctorCommand },
+  { name: "memory", description: "Xem hoặc thêm memory local thủ công", handler: runMemoryCommand },
   {
     name: "mcp",
-    description: "List, inspect, classify, or call configured MCP servers",
+    description: "Liệt kê, xem, phân loại, hoặc gọi MCP server đã cấu hình",
     handler: runMcpCommand,
     children: [
-      { name: "list", description: "List configured MCP servers without starting them", handler: runMcpCommand },
-      { name: "show <name>", description: "Show one MCP server without env values", handler: runMcpCommand },
-      { name: "test <name>", description: "Run config-only checks, or add --connect to start briefly", handler: runMcpCommand },
-      { name: "tools <name>", description: "List tool metadata; add --connect to start the server", handler: runMcpCommand },
-      { name: "classify <server> <tool>", description: "Update local MCP tool classification", handler: runMcpCommand },
-      { name: "call <server> <tool>", description: "Run a read-only MCP tool through the permission gate", handler: runMcpCommand },
+      { name: "list", description: "Liệt kê MCP server đã cấu hình mà không khởi động", handler: runMcpCommand },
+      { name: "show <name>", description: "Xem một MCP server, không in giá trị env", handler: runMcpCommand },
+      { name: "test <name>", description: "Kiểm tra cấu hình, hoặc thêm --connect để khởi động ngắn", handler: runMcpCommand },
+      { name: "tools <name>", description: "Liệt kê metadata tool; thêm --connect để khởi động server", handler: runMcpCommand },
+      { name: "classify <server> <tool>", description: "Cập nhật phân loại tool MCP local", handler: runMcpCommand },
+      { name: "call <server> <tool>", description: "Gọi tool MCP read-only qua permission gate", handler: runMcpCommand },
     ],
   },
   createChannelsCommandSpec("channels", false),
   createChannelsCommandSpec("channel", true),
-  { name: "skills", description: "List installed skills from .bestie/skills", handler: runSkillsCommand },
-  { name: "tools", description: "Run permission-gated local tools", handler: runToolsCommand },
+  { name: "skills", description: "Liệt kê skill đã cài từ .bestie/skills", handler: runSkillsCommand },
+  { name: "tools", description: "Chạy tool local qua permission gate", handler: runToolsCommand },
   {
     name: "voice",
-    description: "Configure shared voice input and speech output",
+    description: "Cấu hình voice input và speech output dùng chung",
     handler: runVoiceCommand,
     children: [
-      { name: "setup-local", description: "Configure local whisper.cpp transcription", handler: runVoiceCommand },
-      { name: "setup-elevenlabs", description: "Configure ElevenLabs voice support", handler: runVoiceCommand },
-      { name: "models", description: "List local whisper.cpp models", handler: runVoiceCommand },
-      { name: "download-model <model>", description: "Download a local whisper.cpp model", handler: runVoiceCommand },
+      { name: "setup-local", description: "Cấu hình transcription local bằng whisper.cpp", handler: runVoiceCommand },
+      { name: "setup-elevenlabs", description: "Cấu hình hỗ trợ voice bằng ElevenLabs", handler: runVoiceCommand },
+      { name: "models", description: "Liệt kê model whisper.cpp local", handler: runVoiceCommand },
+      { name: "download-model <model>", description: "Tải model whisper.cpp local", handler: runVoiceCommand },
     ],
   },
   {
     name: "cron",
-    description: "Manage scheduled cron jobs for the agent",
+    description: "Quản lý cron job đã lên lịch cho agent",
     handler: runCronCommand,
     children: [
-      { name: "list", description: "List all cron schedules", handler: runCronCommand },
-      { name: "add", description: "Create a cron schedule", handler: runCronCommand },
-      { name: "remove <id>", description: "Remove a cron schedule", handler: runCronCommand },
-      { name: "toggle <id>", description: "Toggle a cron schedule", handler: runCronCommand },
-      { name: "logs [id]", description: "Show cron execution logs", handler: runCronCommand },
-      { name: "run", description: "Run the cron scheduler until stopped", handler: runCronCommand },
+      { name: "list", description: "Liệt kê toàn bộ lịch cron", handler: runCronCommand },
+      { name: "add", description: "Tạo lịch cron", handler: runCronCommand },
+      { name: "remove <id>", description: "Xóa lịch cron", handler: runCronCommand },
+      { name: "toggle <id>", description: "Bật/tắt lịch cron", handler: runCronCommand },
+      { name: "logs [id]", description: "Xem log chạy cron", handler: runCronCommand },
+      { name: "run", description: "Chạy scheduler cron cho tới khi bị dừng", handler: runCronCommand },
     ],
   },
-  { name: "update", description: "Check npm for a newer Bestie version, or install it with --apply", handler: runUpdateCommand },
+  { name: "update", description: "Kiểm tra bản Bestie mới trên npm, hoặc cài bằng --apply", handler: runUpdateCommand },
 ];
 
 function createChannelsCommandSpec(name: "channel" | "channels", hidden: boolean): CliCommandSpec {
   return {
     name,
-    description: hidden ? "Alias for channels" : "Start, configure, or inspect channel adapters",
+    description: hidden ? "Alias của channels" : "Khởi động, cấu hình, hoặc kiểm tra channel adapter",
     handler: runChannelsCommand,
     hidden,
     children: [
-      { name: "list", description: "Show configured channels and daemon state", handler: runChannelsCommand },
-      { name: "status", description: "Alias for list", handler: runChannelsCommand },
-      { name: "doctor", description: "Run channel-focused diagnostics", handler: runChannelsCommand },
+      { name: "list", description: "Xem kênh đã cấu hình và trạng thái daemon", handler: runChannelsCommand },
+      { name: "status", description: "Alias của list", handler: runChannelsCommand },
+      { name: "doctor", description: "Chạy chẩn đoán tập trung vào kênh", handler: runChannelsCommand },
       {
         name: "telegram",
-        description: "Start or configure the Telegram channel adapter",
+        description: "Khởi động hoặc cấu hình channel adapter Telegram",
         handler: runChannelsCommand,
         children: [
-          { name: "setup", description: "Configure Telegram owner id/username and bot token", handler: runChannelsCommand },
-          { name: "whoami", description: "Show the id and username from the most recent Telegram bot message", handler: runChannelsCommand },
-          { name: "voice", description: "Alias for shared voice commands", handler: runChannelsCommand },
+          { name: "setup", description: "Cấu hình Telegram owner id/username và bot token", handler: runChannelsCommand },
+          { name: "whoami", description: "Xem id và username từ tin nhắn Telegram bot gần nhất", handler: runChannelsCommand },
+          { name: "voice", description: "Alias cho lệnh voice dùng chung", handler: runChannelsCommand },
         ],
       },
       {
         name: "zalo",
-        description: "Start or configure the Zalo channel adapter",
+        description: "Khởi động hoặc cấu hình channel adapter Zalo",
         handler: runChannelsCommand,
-        children: [{ name: "setup", description: "Configure Zalo owner id and bot token", handler: runChannelsCommand }],
+        children: [{ name: "setup", description: "Cấu hình Zalo owner id và bot token", handler: runChannelsCommand }],
       },
     ],
   };

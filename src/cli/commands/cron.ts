@@ -59,7 +59,7 @@ export async function runCronCommand(optionsOrArgv: string[] | CronCommandOption
     return;
   }
 
-  writeLine(`Unknown cron subcommand: ${subcommand}`);
+  writeLine(`Lệnh cron không xác định: ${subcommand}`);
   printCronHelp(writeLine);
   process.exitCode = 1;
 }
@@ -68,17 +68,17 @@ function printCronHelp(writeLine: (message: string) => void): void {
   writeLine(`Bestie Cron
 
 Usage:
-  bestie cron list           List all cron schedules
-  bestie cron add            Create a new cron schedule (interactive)
-  bestie cron remove <id>    Remove a cron schedule by ID
-  bestie cron toggle <id>    Toggle a cron schedule on/off
-  bestie cron logs [id]      Show recent cron execution logs
-  bestie cron run            Run the cron scheduler until stopped
+  bestie cron list           Liệt kê toàn bộ lịch cron
+  bestie cron add            Tạo lịch cron mới (interactive)
+  bestie cron remove <id>    Xóa lịch cron theo ID
+  bestie cron toggle <id>    Bật/tắt một lịch cron
+  bestie cron logs [id]      Xem log chạy cron gần đây
+  bestie cron run            Chạy scheduler cron cho tới khi bị dừng
 
-Schedule types:
-  interval    Repeating interval, e.g. "30m", "1h", "2d"
-  cron_expr   5-field cron expression, e.g. "0 8 * * *"
-  once        One-shot at ISO timestamp, e.g. "2026-12-25T08:00:00Z"`);
+Kiểu lịch:
+  interval    Lặp theo khoảng thời gian, ví dụ "30m", "1h", "2d"
+  cron_expr   Biểu thức cron 5 trường, ví dụ "0 8 * * *"
+  once        Chạy một lần tại timestamp ISO, ví dụ "2026-12-25T08:00:00Z"`);
 }
 
 async function runCronDaemon(paths: RuntimePaths, writeLine: (message: string) => void): Promise<void> {
@@ -94,7 +94,7 @@ async function runCronDaemon(paths: RuntimePaths, writeLine: (message: string) =
   process.once("SIGINT", onSignal);
   process.once("SIGTERM", onSignal);
   executor.start();
-  writeLine("Cron scheduler started. Press Ctrl+C to stop.");
+  writeLine("Scheduler cron đã bắt đầu. Nhấn Ctrl+C để dừng.");
 
   try {
     await stopped;
@@ -112,15 +112,15 @@ async function runCronList(paths: RuntimePaths, writeLine: (message: string) => 
   try {
     const schedules = store.listCronSchedules();
 
-    writeLine(title("Bestie Cron Schedules"));
+    writeLine(title("Lịch cron Bestie"));
 
     if (schedules.length === 0) {
-      writeLine(dim("No cron schedules configured. Use `bestie cron add` to create one."));
+      writeLine(dim("Chưa có lịch cron nào. Dùng `bestie cron add` để tạo lịch mới."));
       return;
     }
 
     writeLine("");
-    writeLine(`${bold("ID")}  ${bold("Name")}            ${bold("Schedule")}       ${bold("Channel")}   ${bold("Next Run")}              ${bold("Status")}`);
+    writeLine(`${bold("ID")}  ${bold("Tên")}             ${bold("Lịch")}           ${bold("Kênh")}      ${bold("Lần chạy tới")}           ${bold("Trạng thái")}`);
     writeLine(dim("─".repeat(90)));
 
     for (const s of schedules) {
@@ -128,7 +128,7 @@ async function runCronList(paths: RuntimePaths, writeLine: (message: string) => 
       const name = s.name.length > 14 ? s.name.slice(0, 11) + "..." : s.name.padEnd(14);
       const schedule = `${s.scheduleType}:${s.scheduleValue}`.slice(0, 14).padEnd(14);
       const channel = (s.channel ?? "—").padEnd(8);
-      const nextRun = s.nextRunAt ? formatLocalTime(s.nextRunAt, config.agent.timeZone) : "(one-shot done)";
+      const nextRun = s.nextRunAt ? formatLocalTime(s.nextRunAt, config.agent.timeZone) : "(đã chạy một lần)";
       const status = s.enabled
         ? badge(s.lastResult === "error" ? "ERR" : s.runCount > 0 ? "OK" : "NEW", s.lastResult === "error" ? "yellow" : "green")
         : badge("OFF", "red");
@@ -136,7 +136,7 @@ async function runCronList(paths: RuntimePaths, writeLine: (message: string) => 
       writeLine(`${id}  ${name}  ${schedule}  ${channel}  ${nextRun.padEnd(22)}  ${status}`);
     }
 
-    writeLine(dim(`\n${schedules.length} schedule(s). Use \`bestie cron logs <id>\` to check execution history.`));
+    writeLine(dim(`\n${schedules.length} lịch. Dùng \`bestie cron logs <id>\` để xem lịch sử chạy.`));
   } finally {
     store.close();
   }
@@ -146,33 +146,33 @@ async function runCronAdd(argv: string[], paths: RuntimePaths, writeLine: (messa
   const config = await loadConfig(paths);
   const args = parseArgs(argv.slice(4));
 
-  const name = args["--name"] ?? (await askCli("Cron job name?", "My cron job"));
-  const scheduleType = args["--type"] ?? (await askCli("Schedule type (interval, cron_expr, once)?", "interval"));
-  const scheduleValue = args["--schedule"] ?? (await askCli("Schedule value (e.g. 30m, 0 8 * * *)?", "30m"));
-  const prompt = args["--prompt"] ?? (await askCli("What should the agent do?", ""));
+  const name = args["--name"] ?? (await askCli("Tên cron job?", "Cron job của tôi"));
+  const scheduleType = args["--type"] ?? (await askCli("Kiểu lịch (interval, cron_expr, once)?", "interval"));
+  const scheduleValue = args["--schedule"] ?? (await askCli("Giá trị lịch (ví dụ 30m, 0 8 * * *)?", "30m"));
+  const prompt = args["--prompt"] ?? (await askCli("Agent cần làm gì?", ""));
   const channel = args["--channel"];
 
   if (!VALID_SCHEDULE_TYPES.includes(scheduleType)) {
-    writeLine(`${badge("FAIL", "red")} Invalid schedule type: ${scheduleType}. Use interval, cron_expr, or once.`);
+    writeLine(`${badge("FAIL", "red")} Kiểu lịch không hợp lệ: ${scheduleType}. Dùng interval, cron_expr, hoặc once.`);
     process.exitCode = 1;
     return;
   }
 
   if (!prompt) {
-    writeLine(`${badge("FAIL", "red")} Prompt is required. Use --prompt "your instruction".`);
+    writeLine(`${badge("FAIL", "red")} Bắt buộc phải có prompt. Dùng --prompt "hướng dẫn của bạn".`);
     process.exitCode = 1;
     return;
   }
 
   if (channel !== undefined && !isCronReportDestination(channel)) {
-    writeLine(`${badge("FAIL", "red")} Invalid channel destination. Use telegram:<userId> or zalo:<userId>.`);
+    writeLine(`${badge("FAIL", "red")} Đích gửi báo cáo không hợp lệ. Dùng telegram:<userId> hoặc zalo:<userId>.`);
     process.exitCode = 1;
     return;
   }
 
   const validationError = validateSchedule(scheduleType, scheduleValue);
   if (validationError) {
-    writeLine(`${badge("FAIL", "red")} Invalid schedule: ${validationError}`);
+    writeLine(`${badge("FAIL", "red")} Lịch không hợp lệ: ${validationError}`);
     process.exitCode = 1;
     return;
   }
@@ -190,12 +190,12 @@ async function runCronAdd(argv: string[], paths: RuntimePaths, writeLine: (messa
       nextRunAt,
     });
 
-    writeLine(`${badge("OK", "green")} Cron schedule created: ${name} (ID: ${schedule.id})`);
-    writeLine(`  Schedule: ${scheduleType} ${scheduleValue}`);
+    writeLine(`${badge("OK", "green")} Đã tạo lịch cron: ${name} (ID: ${schedule.id})`);
+    writeLine(`  Lịch: ${scheduleType} ${scheduleValue}`);
     if (channel) {
-      writeLine(`  Channel: ${channel}`);
+      writeLine(`  Kênh: ${channel}`);
     }
-    writeLine(`  Next run: ${formatLocalTime(nextRunAt, config.agent.timeZone)}`);
+    writeLine(`  Lần chạy tới: ${formatLocalTime(nextRunAt, config.agent.timeZone)}`);
     writeLine(`  Prompt: ${prompt}`);
   } finally {
     store.close();
@@ -206,7 +206,7 @@ async function runCronRemove(argv: string[], paths: RuntimePaths, writeLine: (me
   const id = Number(argv[4]);
 
   if (!Number.isFinite(id) || id <= 0) {
-    writeLine(`${badge("FAIL", "red")} Usage: bestie cron remove <id>`);
+    writeLine(`${badge("FAIL", "red")} Cách dùng: bestie cron remove <id>`);
     process.exitCode = 1;
     return;
   }
@@ -217,9 +217,9 @@ async function runCronRemove(argv: string[], paths: RuntimePaths, writeLine: (me
     const removed = store.removeCronSchedule(id);
 
     if (removed) {
-      writeLine(`${badge("OK", "green")} Cron schedule ${id} removed.`);
+      writeLine(`${badge("OK", "green")} Đã xóa lịch cron ${id}.`);
     } else {
-      writeLine(`${badge("FAIL", "red")} Cron schedule ${id} not found.`);
+      writeLine(`${badge("FAIL", "red")} Không tìm thấy lịch cron ${id}.`);
       process.exitCode = 1;
     }
   } finally {
@@ -231,7 +231,7 @@ async function runCronToggle(argv: string[], paths: RuntimePaths, writeLine: (me
   const id = Number(argv[4]);
 
   if (!Number.isFinite(id) || id <= 0) {
-    writeLine(`${badge("FAIL", "red")} Usage: bestie cron toggle <id>`);
+    writeLine(`${badge("FAIL", "red")} Cách dùng: bestie cron toggle <id>`);
     process.exitCode = 1;
     return;
   }
@@ -241,9 +241,9 @@ async function runCronToggle(argv: string[], paths: RuntimePaths, writeLine: (me
   try {
     const schedule = store.getCronSchedule(id);
     const updated = store.toggleCronSchedule(id, !schedule.enabled);
-    writeLine(`${badge("OK", "green")} Cron schedule ${id} ${updated.enabled ? "enabled" : "disabled"}.`);
+    writeLine(`${badge("OK", "green")} Lịch cron ${id} đã ${updated.enabled ? "bật" : "tắt"}.`);
   } catch {
-    writeLine(`${badge("FAIL", "red")} Cron schedule ${id} not found.`);
+    writeLine(`${badge("FAIL", "red")} Không tìm thấy lịch cron ${id}.`);
     process.exitCode = 1;
   } finally {
     store.close();
@@ -257,10 +257,10 @@ async function runCronLogs(argv: string[], paths: RuntimePaths, writeLine: (mess
   try {
     const logs = store.listCronLogs(scheduleId);
 
-    writeLine(title("Bestie Cron Logs"));
+    writeLine(title("Log cron Bestie"));
 
     if (logs.length === 0) {
-      writeLine(dim(scheduleId ? `No logs for schedule ${scheduleId}.` : "No cron logs yet."));
+      writeLine(dim(scheduleId ? `Chưa có log cho lịch ${scheduleId}.` : "Chưa có log cron."));
       return;
     }
 

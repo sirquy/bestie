@@ -91,11 +91,11 @@ export async function runOnboardCommand(optionsOrArgv: string[] | OnboardCommand
   const questioner = options.questioner ?? (await createQuestioner());
 
   try {
-    ui.section("Profile", "Choose the name, language, tone, and memory policy.");
+    ui.section("Hồ sơ", "Chọn tên, ngôn ngữ, sắc thái và chính sách ghi nhớ.");
     const answers = await collectAnswers(questioner);
-    ui.success("Profile and provider details collected.");
+    ui.success("Đã thu thập hồ sơ và thông tin nhà cung cấp.");
 
-    ui.section("Generate", "Building local character files and provider config.");
+    ui.section("Tạo cấu hình", "Đang tạo file tính cách cục bộ và cấu hình nhà cung cấp.");
     const config = buildConfig(answers);
     const character = generateCharacterConfig({
       name: answers.agentName,
@@ -109,19 +109,19 @@ export async function runOnboardCommand(optionsOrArgv: string[] | OnboardCommand
     await writeConfig(config, paths);
     await writeEnvFile({ [DEFAULT_API_KEY_ENV]: answers.apiKey }, paths);
     await writeCharacterFiles(character, systemPrompt, paths);
-    ui.success("Local runtime files written.");
+    ui.success("Đã ghi các file runtime cục bộ.");
 
-    ui.section("Files", "Everything is stored under your home runtime.");
-    ui.savedPath("Config", paths.configPath);
-    ui.savedPath("Secrets", paths.envPath);
-    ui.savedPath("Character", paths.characterPath);
-    ui.savedPath("System prompt", paths.systemPromptPath);
+    ui.section("File đã lưu", "Mọi thứ được lưu trong runtime cục bộ của bạn.");
+    ui.savedPath("Cấu hình", paths.configPath);
+    ui.savedPath("Bí mật", paths.envPath);
+    ui.savedPath("Tính cách", paths.characterPath);
+    ui.savedPath("Prompt hệ thống", paths.systemPromptPath);
 
     if (shouldSkipProviderTest) {
       await appendLog({ event: "provider_test_skipped", detail: { reason: "skip_provider_test_flag" } }, { paths });
-      ui.info("Provider test skipped. Run `bestie doctor` and try chat when your provider is ready.");
+      ui.info("Đã bỏ qua kiểm tra nhà cung cấp. Chạy `bestie doctor` và thử chat khi nhà cung cấp đã sẵn sàng.");
     } else {
-      ui.section("Provider test", "Sending one tiny completion to check your setup.");
+      ui.section("Kiểm tra nhà cung cấp", "Gửi một completion nhỏ để kiểm tra cấu hình.");
       await providerTest(config, answers.apiKey, paths, writeLine);
     }
     ui.final();
@@ -136,16 +136,16 @@ async function createQuestioner(): Promise<Questioner> {
 
 async function collectAnswers(questioner: Pick<Questioner, "ask" | "askHidden">): Promise<OnboardingAnswers> {
   const { ask, askHidden } = questioner;
-  const agentName = await askNonEmpty(ask, promptTheme.step(1, 10, "Bestie name", "What should your bestie be called?"), "Bestie");
-  const ownerName = await askNonEmpty(ask, promptTheme.step(2, 10, "Your name", "What should it call you?"), "boss");
+  const agentName = await askNonEmpty(ask, promptTheme.step(1, 10, "Tên Bestie", "Bạn muốn gọi bestie là gì?"), "Bestie");
+  const ownerName = await askNonEmpty(ask, promptTheme.step(2, 10, "Tên của bạn", "Bestie nên gọi bạn là gì?"), "boss");
   const language = await askLanguage(ask);
   const timeZone = await askTimeZone(ask);
   const toneIntensity = await askToneIntensity(ask);
   const memoryWritePolicy = await askMemoryWritePolicy(ask);
-  const provider = await askNonEmpty(ask, promptTheme.step(7, 10, "Provider", "Provider label?"), "openai-compatible");
-  const baseUrl = await askNonEmpty(ask, promptTheme.step(8, 10, "Base URL", "OpenAI-compatible base URL?"), "https://api.openai.com/v1");
-  const model = await askNonEmpty(ask, promptTheme.step(9, 10, "Model", "Model name?"), "gpt-4o-mini");
-  const apiKey = await askNonEmpty(askHidden, promptTheme.step(10, 10, "API key", `Paste your provider API key. It will be saved as ${DEFAULT_API_KEY_ENV} and hidden while typing.`));
+  const provider = await askNonEmpty(ask, promptTheme.step(7, 10, "Nhà cung cấp", "Nhãn nhà cung cấp?"), "openai-compatible");
+  const baseUrl = await askNonEmpty(ask, promptTheme.step(8, 10, "Base URL", "Base URL tương thích OpenAI?"), "https://api.openai.com/v1");
+  const model = await askNonEmpty(ask, promptTheme.step(9, 10, "Model", "Tên model?"), "gpt-4o-mini");
+  const apiKey = await askNonEmpty(askHidden, promptTheme.step(10, 10, "API key", `Dán API key của nhà cung cấp. Key sẽ được lưu dưới tên ${DEFAULT_API_KEY_ENV} và được ẩn khi nhập.`));
 
   return { agentName, ownerName, language, timeZone, toneIntensity, memoryWritePolicy, provider, baseUrl, model, apiKey };
 }
@@ -164,12 +164,12 @@ async function askNonEmpty(
       return value;
     }
 
-    promptWarningWriter(promptTheme.warning("Please enter a value."));
+    promptWarningWriter(promptTheme.warning("Vui lòng nhập một giá trị."));
   }
 }
 
 async function askLanguage(ask: AskLine): Promise<LanguageMode> {
-  const answer = await ask(`${promptTheme.step(3, 10, "Language", "Default language tag or name? Examples: vi, English, ja, pt-BR, auto.")}${promptTheme.defaultValue("vi")} `);
+  const answer = await ask(`${promptTheme.step(3, 10, "Ngôn ngữ", "Tag hoặc tên ngôn ngữ mặc định? Ví dụ: vi, English, ja, pt-BR, auto.")}${promptTheme.defaultValue("vi")} `);
   return normalizeLanguageInput(answer, "vi");
 }
 
@@ -177,33 +177,33 @@ async function askTimeZone(ask: AskLine): Promise<string> {
   const defaultTimeZone = getLocalTimeZone();
 
   while (true) {
-    const answer = await ask(`${promptTheme.step(4, 10, "Time zone", "IANA time zone for local dates and schedules?")}${promptTheme.defaultValue(defaultTimeZone)} `);
+    const answer = await ask(`${promptTheme.step(4, 10, "Múi giờ", "Múi giờ IANA cho ngày giờ và lịch chạy cục bộ?")}${promptTheme.defaultValue(defaultTimeZone)} `);
     const timeZone = normalizeTimeZoneInput(answer, defaultTimeZone);
 
     if (isValidTimeZone(timeZone)) {
       return timeZone;
     }
 
-    promptWarningWriter(promptTheme.warning("Use a valid IANA time zone, for example Asia/Ho_Chi_Minh or America/New_York."));
+    promptWarningWriter(promptTheme.warning("Hãy dùng múi giờ IANA hợp lệ, ví dụ Asia/Ho_Chi_Minh hoặc America/New_York."));
   }
 }
 
 async function askToneIntensity(ask: AskLine): Promise<number> {
   while (true) {
-    const answer = (await ask(`${promptTheme.step(5, 10, "Tone", "Tone intensity from 1 to 10?")}${promptTheme.defaultValue("7")} `)).trim();
+    const answer = (await ask(`${promptTheme.step(5, 10, "Sắc thái", "Mức độ sắc thái từ 1 đến 10?")}${promptTheme.defaultValue("7")} `)).trim();
     const value = Number(answer || "7");
 
     if (Number.isInteger(value) && value >= 1 && value <= 10) {
       return value;
     }
 
-    promptWarningWriter(promptTheme.warning("Choose a whole number from 1 to 10."));
+    promptWarningWriter(promptTheme.warning("Hãy chọn một số nguyên từ 1 đến 10."));
   }
 }
 
 async function askMemoryWritePolicy(ask: AskLine): Promise<MemoryWritePolicy> {
   while (true) {
-    const answer = (await ask(`${promptTheme.step(6, 10, "Memory", "Memory write policy: ask, allow, or deny?")}${promptTheme.defaultValue("allow")} `)).trim().toLowerCase();
+    const answer = (await ask(`${promptTheme.step(6, 10, "Bộ nhớ", "Chính sách ghi nhớ: ask, allow, hoặc deny?")}${promptTheme.defaultValue("allow")} `)).trim().toLowerCase();
 
     if (!answer || answer === "allow") {
       return "allow";
@@ -213,7 +213,7 @@ async function askMemoryWritePolicy(ask: AskLine): Promise<MemoryWritePolicy> {
       return answer;
     }
 
-    promptWarningWriter(promptTheme.warning("Choose ask, allow, or deny."));
+    promptWarningWriter(promptTheme.warning("Hãy chọn ask, allow, hoặc deny."));
   }
 }
 
@@ -222,11 +222,11 @@ function createOnboardUi(writeLine: (message: string) => void, useColor: boolean
 
   return {
     intro: (paths, shouldSkipProviderTest) => {
-      writeLine(render(() => title("Bestie Onboarding")));
-      writeLine(render(() => dim("A local-first setup wizard for your companion runtime.")));
+      writeLine(render(() => title("Thiết lập Bestie")));
+      writeLine(render(() => dim("Trình thiết lập local-first cho runtime Bestie của bạn.")));
       writeLine(`${render(() => color("cyan", "Runtime"))} ${paths.appDir}`);
-      writeLine(`${render(() => color("cyan", "Privacy"))} Secrets stay local in .bestie/.env and are hidden while typing.`);
-      writeLine(render(() => shouldSkipProviderTest ? `${dim("Plan")} Profile -> Generate -> Files\n` : `${dim("Plan")} Profile -> Generate -> Files -> Provider test\n`));
+      writeLine(`${render(() => color("cyan", "Riêng tư"))} Secret được lưu cục bộ trong .bestie/.env và được ẩn khi nhập.`);
+      writeLine(render(() => shouldSkipProviderTest ? `${dim("Các bước")} Hồ sơ -> Tạo cấu hình -> File đã lưu\n` : `${dim("Các bước")} Hồ sơ -> Tạo cấu hình -> File đã lưu -> Kiểm tra nhà cung cấp\n`));
     },
     section: (sectionTitle, detail) => {
       writeLine(render(() => `${color("cyan", "\n>")} ${bold(sectionTitle)}${detail ? ` ${dim(detail)}` : ""}`));
@@ -235,8 +235,8 @@ function createOnboardUi(writeLine: (message: string) => void, useColor: boolean
     info: (message) => writeLine(`${render(() => badge("INFO", "yellow"))} ${message}`),
     savedPath: (label, path) => writeLine(`  ${render(() => color("cyan", label.padEnd(13)))} ${path}`),
     final: () => {
-      writeLine(`${render(() => badge("DONE", "green"))} Onboarding complete.`);
-      writeLine(`${render(() => dim("Next"))} Run \`bestie status\` or \`bestie chat\` to start chatting.`);
+      writeLine(`${render(() => badge("DONE", "green"))} Thiết lập ban đầu đã hoàn tất.`);
+      writeLine(`${render(() => dim("Tiếp theo"))} Chạy \`bestie status\` hoặc \`bestie chat\` để bắt đầu trò chuyện.`);
     },
   };
 }
@@ -293,23 +293,23 @@ function buildConfig(answers: OnboardingAnswers): AppConfig {
 
 async function runProviderTest(config: AppConfig, apiKey: string, paths: RuntimePaths, writeLine: (message: string) => void = console.log): Promise<void> {
   const reporter = providerTestReporter ?? createProviderTestReporter(writeLine, output.isTTY);
-  reporter.pending("Testing provider with a tiny completion...");
+  reporter.pending("Đang kiểm tra nhà cung cấp bằng một completion nhỏ...");
 
   const result = await testOpenAICompatibleProvider(config, apiKey);
 
   if (result.ok) {
     await appendLog({ event: "provider_test_success", detail: { provider: config.llm.provider, model: config.llm.model } }, { paths });
-    reporter.success("Provider test succeeded.");
+    reporter.success("Kiểm tra nhà cung cấp thành công.");
     return;
   }
 
   await appendLog({ event: "provider_test_failure", detail: { ...result } }, { paths, knownSecrets: [apiKey] });
 
   if (result.status) {
-    reporter.failure(`Provider test failed (${result.status} ${result.statusText ?? ""}).`, "Check the base URL, model, API key, or account access.");
+    reporter.failure(`Kiểm tra nhà cung cấp thất bại (${result.status} ${result.statusText ?? ""}).`, "Kiểm tra base URL, model, API key hoặc quyền truy cập tài khoản.");
     return;
   }
 
-  reporter.failure("Provider test failed.", result.message ?? "Unknown provider test error.");
+  reporter.failure("Kiểm tra nhà cung cấp thất bại.", result.message ?? "Lỗi kiểm tra nhà cung cấp không xác định.");
 }
 

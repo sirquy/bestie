@@ -11,11 +11,11 @@ export async function runStatusCommand(): Promise<void> {
   const paths = getRuntimePaths();
   const hasConfig = await configExists(paths);
 
-  console.log(title("Bestie Status"));
+  console.log(title("Trạng thái Bestie"));
   console.log(rule());
 
   await printVersionStatus();
-  console.log(keyValue("Config", `${hasConfig ? badge("FOUND", "green") : badge("MISS", "red")} ${paths.configPath}`));
+  console.log(keyValue("Cấu hình", `${hasConfig ? badge("FOUND", "green") : badge("MISS", "red")} ${paths.configPath}`));
 
   if (!hasConfig) {
     console.log(new MissingConfigError(paths.configPath).message);
@@ -27,18 +27,18 @@ export async function runStatusCommand(): Promise<void> {
     const envValues = await loadEnvFile(paths);
     const hasSecret = Boolean(process.env[config.llm.apiKeyEnv] ?? envValues[config.llm.apiKeyEnv]);
 
-    console.log(keyValue("Provider", config.llm.provider));
+    console.log(keyValue("Nhà cung cấp", config.llm.provider));
     console.log(keyValue("Base URL", config.llm.baseUrl));
     console.log(keyValue("Model", bold(config.llm.model)));
     console.log(keyValue("API key env", `${config.llm.apiKeyEnv} ${hasSecret ? badge("PRESENT", "green") : badge("MISSING", "red")}`));
     console.log(keyValue("Timeout", `${config.llm.timeoutMs ?? DEFAULT_LLM_TIMEOUT_MS}ms`));
     const hasCharacter = await fileExists(paths.characterPath);
     const hasPrompt = await fileExists(paths.systemPromptPath);
-    console.log(keyValue("Character", hasCharacter ? badge("FOUND", "green") : badge("MISSING", "red")));
+    console.log(keyValue("Tính cách", hasCharacter ? badge("FOUND", "green") : badge("MISSING", "red")));
     console.log(keyValue("Prompt", hasPrompt ? badge("FOUND", "green") : badge("MISSING", "red")));
   } catch (error) {
     if (error instanceof InvalidConfigError) {
-      console.log(keyValue("Config parse", error.message));
+      console.log(keyValue("Đọc cấu hình", error.message));
       return;
     }
 
@@ -49,17 +49,17 @@ export async function runStatusCommand(): Promise<void> {
 async function printVersionStatus(): Promise<void> {
   try {
     const update = await checkForPackageUpdate();
-    console.log(keyValue("Version", update.currentVersion));
+    console.log(keyValue("Phiên bản", update.currentVersion));
 
     if (update.updateAvailable) {
-      console.log(keyValue("Update", `${badge("NEW", "yellow")} ${update.latestVersion} available (run \`bestie update\`)`));
+      console.log(keyValue("Cập nhật", `${badge("NEW", "yellow")} có bản ${update.latestVersion} (chạy \`bestie update\`)`));
     } else {
-      console.log(keyValue("Update", `${badge("OK", "green")} up to date`));
+      console.log(keyValue("Cập nhật", `${badge("OK", "green")} đang là bản mới nhất`));
     }
   } catch {
     const packageInfo = await loadPackageVersionInfo();
-    console.log(keyValue("Version", packageInfo.version));
-    console.log(keyValue("Update", `${badge("WARN", "yellow")} unable to check npm right now`));
+    console.log(keyValue("Phiên bản", packageInfo.version));
+    console.log(keyValue("Cập nhật", `${badge("WARN", "yellow")} hiện chưa kiểm tra được npm`));
   }
 }
 

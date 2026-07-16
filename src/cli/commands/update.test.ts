@@ -20,7 +20,7 @@ test("runUpdateCommand reports an available update without applying it", async (
       versionCheckOptions: { fetchImpl: fakeLatestVersionFetch("99.0.0") },
     });
 
-    assert.match(lines.join("\n"), /Update available: .* -> 99\.0\.0/);
+    assert.match(lines.join("\n"), /Trạng thái\s+\[NEW\] .* -> 99\.0\.0/);
     assert.match(lines.join("\n"), /npm install -g bestie-agent@latest/);
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
@@ -46,7 +46,7 @@ test("runUpdateCommand can apply an available update", async () => {
     });
 
     assert.deepEqual(installedPackages, ["bestie-agent"]);
-    assert.match(lines.join("\n"), /Bestie update command finished/);
+    assert.match(lines.join("\n"), /Lệnh cập nhật Bestie đã chạy xong/);
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
   }

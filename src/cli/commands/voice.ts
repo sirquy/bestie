@@ -28,25 +28,25 @@ const WHISPER_MODEL_CATALOG: Record<string, { fileName: string; url: string; est
     fileName: "ggml-tiny.bin",
     url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.bin",
     estimatedBytes: 78 * 1024 * 1024,
-    hint: "fast, low quality for Vietnamese",
+    hint: "nhanh, chất lượng thấp với tiếng Việt",
   },
   small: {
     fileName: "ggml-small.bin",
     url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin",
     estimatedBytes: 488 * 1024 * 1024,
-    hint: "recommended baseline for Vietnamese",
+    hint: "mốc khuyến nghị cho tiếng Việt",
   },
   medium: {
     fileName: "ggml-medium.bin",
     url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-medium.bin",
     estimatedBytes: 1_533 * 1024 * 1024,
-    hint: "higher quality, slower and larger",
+    hint: "chất lượng cao hơn, chậm hơn và lớn hơn",
   },
   "large-v3-turbo": {
     fileName: "ggml-large-v3-turbo.bin",
     url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo.bin",
     estimatedBytes: 1_620 * 1024 * 1024,
-    hint: "best local quality class, slow and large",
+    hint: "nhóm chất lượng local tốt nhất, chậm và lớn",
   },
 };
 const LOCAL_VOICE_WRAPPER = `#!/usr/bin/env bash
@@ -119,7 +119,7 @@ export async function runVoiceCommand(optionsOrArgv: string[] | VoiceCommandOpti
     return;
   }
 
-  throw new UserFacingError("Usage: bestie voice setup-local|setup-elevenlabs|models|download-model", "VoiceUsageError");
+  throw new UserFacingError("Cách dùng: bestie voice setup-local|setup-elevenlabs|models|download-model", "VoiceUsageError");
 }
 
 function getVoiceArgStart(argv: string[]): number {
@@ -135,38 +135,38 @@ async function runVoiceModels(options: { paths: RuntimePaths; writeLine: (messag
   const models = await listLocalWhisperModels(modelsDir);
   const render = withColorMode(options.useColor);
 
-  options.writeLine(render(() => title("Bestie Voice Models")));
-  options.writeLine(render(() => keyValue("Models dir", modelsDir)));
+  options.writeLine(render(() => title("Model giọng nói Bestie")));
+  options.writeLine(render(() => keyValue("Thư mục model", modelsDir)));
   if (models.length === 0) {
-    options.writeLine(render(() => `${badge("INFO")} No local whisper.cpp .bin models found.`));
-    options.writeLine(render(() => keyValue("Expected", ".bestie/models/ggml-small.bin")));
+    options.writeLine(render(() => `${badge("INFO")} Chưa tìm thấy model whisper.cpp .bin cục bộ.`));
+    options.writeLine(render(() => keyValue("Dự kiến", ".bestie/models/ggml-small.bin")));
     return;
   }
 
   options.writeLine("");
   for (const line of render(() => table(
-    ["Use", "Model", "Size", "Quality"],
+    ["Dùng", "Model", "Dung lượng", "Chất lượng"],
     models.map((model) => [configuredModelPath === model.path ? "*" : "", model.name, formatBytes(model.bytes), describeLocalWhisperModel(model.name, config.agent.language)]),
   ))) {
     options.writeLine(line);
   }
 
   if (configuredModelPath) {
-    options.writeLine(render(() => keyValue("Configured", configuredModelPath)));
+    options.writeLine(render(() => keyValue("Đã cấu hình", configuredModelPath)));
   } else {
-    options.writeLine(render(() => keyValue("Configured", "none; transcription.provider is not local-whisper.")));
+    options.writeLine(render(() => keyValue("Đã cấu hình", "chưa có; transcription.provider không phải local-whisper.")));
   }
 }
 
 async function runVoiceDownloadModel(options: { argv: string[]; modelKeyIndex: number; paths: RuntimePaths; writeLine: (message: string) => void; useColor: boolean; fetchImpl: typeof fetch }): Promise<void> {
   const modelKey = options.argv[options.modelKeyIndex]?.trim();
   if (!modelKey || modelKey.startsWith("--")) {
-    throw new UserFacingError(`Usage: bestie voice download-model <${Object.keys(WHISPER_MODEL_CATALOG).join("|")}> [--confirm] [--use] [--force]`, "VoiceDownloadModelUsageError");
+    throw new UserFacingError(`Cách dùng: bestie voice download-model <${Object.keys(WHISPER_MODEL_CATALOG).join("|")}> [--confirm] [--use] [--force]`, "VoiceDownloadModelUsageError");
   }
 
   const model = WHISPER_MODEL_CATALOG[modelKey];
   if (!model) {
-    throw new UserFacingError(`Unknown local voice model: ${modelKey}. Available: ${Object.keys(WHISPER_MODEL_CATALOG).join(", ")}.`, "VoiceDownloadModelUnknownError");
+    throw new UserFacingError(`Model giọng nói local không xác định: ${modelKey}. Hiện có: ${Object.keys(WHISPER_MODEL_CATALOG).join(", ")}.`, "VoiceDownloadModelUnknownError");
   }
 
   const confirm = options.argv.includes("--confirm");
@@ -177,23 +177,23 @@ async function runVoiceDownloadModel(options: { argv: string[]; modelKeyIndex: n
   const existingBytes = await getFileSize(modelPath);
   const render = withColorMode(options.useColor);
 
-  options.writeLine(render(() => title("Bestie Voice Model")));
+  options.writeLine(render(() => title("Model giọng nói Bestie")));
   options.writeLine(render(() => keyValue("Model", modelKey)));
   options.writeLine(render(() => keyValue("File", modelConfigPath)));
-  options.writeLine(render(() => keyValue("Est. size", formatBytes(model.estimatedBytes))));
-  options.writeLine(render(() => keyValue("Quality", model.hint)));
-  options.writeLine(render(() => keyValue("Source", model.url)));
+  options.writeLine(render(() => keyValue("Dung lượng ước tính", formatBytes(model.estimatedBytes))));
+  options.writeLine(render(() => keyValue("Chất lượng", model.hint)));
+  options.writeLine(render(() => keyValue("Nguồn", model.url)));
 
   if (!confirm) {
     if (existingBytes !== undefined) {
-      options.writeLine(render(() => `${badge("WARN", "yellow")} Existing file: ${formatBytes(existingBytes)}; add --force with --confirm to overwrite.`));
+      options.writeLine(render(() => `${badge("WARN", "yellow")} File đã tồn tại: ${formatBytes(existingBytes)}; thêm --force cùng --confirm để ghi đè.`));
     }
-    options.writeLine(render(() => `${badge("INFO")} Dry run only. Add --confirm to download, and optionally --use to update .bestie/config.json.`));
+    options.writeLine(render(() => `${badge("INFO")} Chỉ chạy thử. Thêm --confirm để tải xuống, và có thể thêm --use để cập nhật .bestie/config.json.`));
     return;
   }
 
   if (existingBytes !== undefined && !force) {
-    throw new UserFacingError(`Model already exists at ${modelConfigPath} (${formatBytes(existingBytes)}). Use --force to overwrite.`, "VoiceDownloadModelExistsError");
+    throw new UserFacingError(`Model đã tồn tại tại ${modelConfigPath} (${formatBytes(existingBytes)}). Dùng --force để ghi đè.`, "VoiceDownloadModelExistsError");
   }
 
   await mkdir(dirname(modelPath), { recursive: true });
@@ -202,30 +202,30 @@ async function runVoiceDownloadModel(options: { argv: string[]; modelKeyIndex: n
 
   const response = await options.fetchImpl(model.url);
   if (!response.ok || !response.body) {
-    throw new UserFacingError(`Model download failed with HTTP ${response.status}.`, "VoiceDownloadModelHttpError");
+    throw new UserFacingError(`Tải model thất bại với HTTP ${response.status}.`, "VoiceDownloadModelHttpError");
   }
 
   await pipeline(Readable.fromWeb(response.body as unknown as Parameters<typeof Readable.fromWeb>[0]), createWriteStream(tempPath, { mode: 0o600 }));
   const downloadedBytes = await getRequiredFileSize(tempPath);
   if (downloadedBytes <= 0) {
     await rm(tempPath, { force: true });
-    throw new UserFacingError("Model download produced an empty file.", "VoiceDownloadModelEmptyError");
+    throw new UserFacingError("Tải model tạo ra file rỗng.", "VoiceDownloadModelEmptyError");
   }
 
   const contentLength = Number(response.headers.get("content-length") ?? "");
   if (Number.isFinite(contentLength) && contentLength > 0 && downloadedBytes !== contentLength) {
     await rm(tempPath, { force: true });
-    throw new UserFacingError(`Model download size mismatch: expected ${formatBytes(contentLength)}, got ${formatBytes(downloadedBytes)}.`, "VoiceDownloadModelSizeMismatchError");
+    throw new UserFacingError(`Dung lượng model tải về không khớp: dự kiến ${formatBytes(contentLength)}, nhận ${formatBytes(downloadedBytes)}.`, "VoiceDownloadModelSizeMismatchError");
   }
 
   await rename(tempPath, modelPath);
-  options.writeLine(render(() => `${badge("DONE", "green")} Downloaded: ${modelConfigPath} (${formatBytes(downloadedBytes)})`));
+  options.writeLine(render(() => `${badge("DONE", "green")} Đã tải: ${modelConfigPath} (${formatBytes(downloadedBytes)})`));
 
   if (useAfterDownload) {
     const config = await loadConfig(options.paths);
     await writeConfig(enableVoiceLocalConfig(config, modelConfigPath), options.paths);
-    options.writeLine(render(() => keyValue("Configured", modelConfigPath)));
-    options.writeLine(render(() => keyValue("Language", getLocalWhisperLanguage(config.agent.language))));
+    options.writeLine(render(() => keyValue("Đã cấu hình", modelConfigPath)));
+    options.writeLine(render(() => keyValue("Ngôn ngữ", getLocalWhisperLanguage(config.agent.language))));
   }
 }
 
@@ -234,10 +234,10 @@ async function runVoiceLocalSetup(options: { paths: RuntimePaths; writeLine: (me
   const modelPath = resolve(options.paths.rootDir, LOCAL_WHISPER_MODEL_PATH);
   const wrapperPath = resolve(options.paths.rootDir, LOCAL_VOICE_WRAPPER_PATH);
 
-  await requireExecutableFile(whisperCommandPath, `Local whisper binary is missing or not executable at ${LOCAL_WHISPER_COMMAND_PATH}.`);
-  await requireReadableFile(modelPath, `Local whisper model is missing or unreadable at ${LOCAL_WHISPER_MODEL_PATH}.`);
+  await requireExecutableFile(whisperCommandPath, `Thiếu binary whisper local hoặc file không executable tại ${LOCAL_WHISPER_COMMAND_PATH}.`);
+  await requireReadableFile(modelPath, `Thiếu model whisper local hoặc không đọc được tại ${LOCAL_WHISPER_MODEL_PATH}.`);
   if (!(await commandExists("ffmpeg"))) {
-    throw new UserFacingError("ffmpeg is required for voice conversion but was not found on PATH.", "VoiceLocalMissingFfmpegError");
+    throw new UserFacingError("Cần ffmpeg để chuyển đổi voice nhưng không tìm thấy trong PATH.", "VoiceLocalMissingFfmpegError");
   }
 
   const config = await loadConfig(options.paths);
@@ -248,14 +248,14 @@ async function runVoiceLocalSetup(options: { paths: RuntimePaths; writeLine: (me
   const transcriptionLanguage = getLocalWhisperLanguage(config.agent.language);
   const render = withColorMode(options.useColor);
 
-  options.writeLine(render(() => title("Bestie Local Voice")));
-  options.writeLine(render(() => `${badge("DONE", "green")} Local voice setup saved.`));
+  options.writeLine(render(() => title("Giọng nói local Bestie")));
+  options.writeLine(render(() => `${badge("DONE", "green")} Đã lưu cấu hình giọng nói local.`));
   options.writeLine(render(() => keyValue("Wrapper", LOCAL_VOICE_WRAPPER_PATH)));
   options.writeLine(render(() => keyValue("Whisper", LOCAL_WHISPER_COMMAND_PATH)));
   options.writeLine(render(() => keyValue("Model", LOCAL_WHISPER_MODEL_PATH)));
-  options.writeLine(render(() => keyValue("Language", transcriptionLanguage)));
-  options.writeLine(render(() => keyValue("Retention", "voice/audio files are deleted after processing.")));
-  options.writeLine(render(() => `${badge("NEXT")} run \`bestie doctor\`, then send a short voice message.`));
+  options.writeLine(render(() => keyValue("Ngôn ngữ", transcriptionLanguage)));
+  options.writeLine(render(() => keyValue("Lưu giữ", "file voice/audio sẽ bị xóa sau khi xử lý.")));
+  options.writeLine(render(() => `${badge("NEXT")} chạy \`bestie doctor\`, rồi gửi một voice message ngắn.`));
 }
 
 async function runVoiceElevenLabsSetup(options: { paths: RuntimePaths; questioner?: VoiceQuestioner; writeLine: (message: string) => void; useColor: boolean }): Promise<void> {
@@ -271,7 +271,7 @@ async function runVoiceElevenLabsSetup(options: { paths: RuntimePaths; questione
     const outputFormat = await askWithDefault(questioner.ask, "ElevenLabs output format", DEFAULT_ELEVENLABS_OUTPUT_FORMAT);
 
     if (!apiKey.trim()) {
-      throw new UserFacingError("ElevenLabs API key is required.", "VoiceElevenLabsMissingApiKeyError");
+      throw new UserFacingError("Bắt buộc phải có ElevenLabs API key.", "VoiceElevenLabsMissingApiKeyError");
     }
 
     await mkdir(options.paths.appDir, { recursive: true });
@@ -286,16 +286,16 @@ async function runVoiceElevenLabsSetup(options: { paths: RuntimePaths; questione
     );
     await writeEnvFile({ ...(await loadEnvFile(options.paths)), [DEFAULT_ELEVENLABS_API_KEY_ENV]: apiKey.trim() }, options.paths);
 
-    options.writeLine(render(() => title("Bestie ElevenLabs Voice")));
-    options.writeLine(render(() => `${badge("DONE", "green")} ElevenLabs voice setup saved.`));
-    options.writeLine(render(() => keyValue("Provider", "elevenlabs")));
+    options.writeLine(render(() => title("Giọng nói ElevenLabs cho Bestie")));
+    options.writeLine(render(() => `${badge("DONE", "green")} Đã lưu cấu hình giọng nói ElevenLabs.`));
+    options.writeLine(render(() => keyValue("Nhà cung cấp", "elevenlabs")));
     options.writeLine(render(() => keyValue("API key env", `${DEFAULT_ELEVENLABS_API_KEY_ENV} in ${options.paths.envPath}`)));
     options.writeLine(render(() => keyValue("Voice id", voiceId)));
     options.writeLine(render(() => keyValue("TTS model", modelId)));
     options.writeLine(render(() => keyValue("STT model", transcriptionModelId)));
-    options.writeLine(render(() => keyValue("Language", `agent.language (${config.agent.language})`)));
-    options.writeLine(render(() => keyValue("Output", outputFormat)));
-    options.writeLine(render(() => `${badge("NEXT")} run \`bestie doctor --telegram-speech-test\`, then send a short voice message.`));
+    options.writeLine(render(() => keyValue("Ngôn ngữ", `agent.language (${config.agent.language})`)));
+    options.writeLine(render(() => keyValue("Đầu ra", outputFormat)));
+    options.writeLine(render(() => `${badge("NEXT")} chạy \`bestie doctor --telegram-speech-test\`, rồi gửi một voice message ngắn.`));
   } finally {
     questioner.close();
   }
@@ -400,18 +400,18 @@ async function listLocalWhisperModels(modelsDir: string): Promise<Array<{ name: 
 function describeLocalWhisperModel(name: string, language: AppConfig["agent"]["language"]): string {
   const normalized = name.toLowerCase();
   if (normalized.includes("tiny")) {
-    return language === "vi" || language === "mixed" ? "fast, low quality for Vietnamese" : "fast, low quality";
+    return language === "vi" || language === "mixed" ? "nhanh, chất lượng thấp với tiếng Việt" : "nhanh, chất lượng thấp";
   }
   if (normalized.includes("small")) {
-    return language === "vi" || language === "mixed" ? "recommended baseline for Vietnamese" : "balanced baseline";
+    return language === "vi" || language === "mixed" ? "mốc khuyến nghị cho tiếng Việt" : "mốc cân bằng";
   }
   if (normalized.includes("medium")) {
-    return "higher quality, slower and larger";
+    return "chất lượng cao hơn, chậm hơn và lớn hơn";
   }
   if (normalized.includes("large")) {
-    return "best quality class, slowest and largest";
+    return "nhóm chất lượng tốt nhất, chậm nhất và lớn nhất";
   }
-  return "unknown model size";
+  return "chưa rõ kích thước model";
 }
 
 async function askWithDefault(ask: AskLine, label: string, defaultValue: string): Promise<string> {

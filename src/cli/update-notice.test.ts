@@ -34,7 +34,7 @@ test("maybePrintUpdateNotice prints and caches available updates", async () => {
     });
 
     assert.equal(checks, 1);
-    assert.match(lines.join("\n"), /Bestie update available: 0\.1\.5 -> 0\.1\.6/);
+    assert.match(lines.join("\n"), /Có bản Bestie mới: 0\.1\.5 -> 0\.1\.6/);
     assert.doesNotMatch(lines.join("\n"), /0\.1\.7/);
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });

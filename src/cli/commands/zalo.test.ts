@@ -50,9 +50,9 @@ test("runZaloCommand setup writes Zalo config and token env", async () => {
     assert.equal(config.channels?.zalo?.ownerUserId, "zalo-owner-1");
     assert.match(envText, /OPENAI_API_KEY="sk-test"/);
     assert.match(envText, /BESTIE_ZALO_BOT_TOKEN="zalo-secret-token"/);
-    assert.ok(output.some((line) => line.includes("Zalo setup")));
-    assert.ok(output.some((line) => line.includes("Bot token") && line.includes("Input is hidden")));
-    assert.ok(output.some((line) => line.includes("Zalo setup saved")));
+    assert.ok(output.some((line) => line.includes("Thiết lập Zalo")));
+    assert.ok(output.some((line) => line.includes("Bot token") && line.includes("Nội dung nhập sẽ được ẩn")));
+    assert.ok(output.some((line) => line.includes("Đã lưu cấu hình Zalo")));
     assert.ok(output.every((line) => !line.includes("zalo-secret-token")));
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });

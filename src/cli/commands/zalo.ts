@@ -55,18 +55,18 @@ export async function runZaloCommand(optionsOrArgv: string[] | ZaloCommandOption
   const zalo = config.channels?.zalo;
 
   if (!zalo?.enabled) {
-    throw new UserFacingError("Zalo is not enabled. Run `bestie channels zalo setup` first.", "ZaloNotEnabledError");
+    throw new UserFacingError("Zalo chưa được bật. Hãy chạy `bestie channels zalo setup` trước.", "ZaloNotEnabledError");
   }
 
   const envValues = await loadEnvFile(paths);
   const token = process.env[zalo.botTokenEnv] ?? envValues[zalo.botTokenEnv];
 
   if (!token) {
-    throw new UserFacingError(`Zalo bot token env ${zalo.botTokenEnv} is missing. Add it to .bestie/.env.`, "ZaloMissingTokenError");
+    throw new UserFacingError(`Thiếu biến Zalo bot token ${zalo.botTokenEnv}. Hãy thêm biến này vào .bestie/.env.`, "ZaloMissingTokenError");
   }
 
   if (!zalo.ownerUserId.trim()) {
-    throw new UserFacingError("Zalo owner user id is missing. Set channels.zalo.ownerUserId in .bestie/config.json.", "ZaloMissingOwnerError");
+    throw new UserFacingError("Thiếu Zalo owner user id. Đặt channels.zalo.ownerUserId trong .bestie/config.json.", "ZaloMissingOwnerError");
   }
 
   const transcriptPath = getTranscriptPath(argv, paths);
@@ -74,11 +74,11 @@ export async function runZaloCommand(optionsOrArgv: string[] | ZaloCommandOption
   const captureShape = argv.includes("--capture-shape");
   const baseClient = options.clientFactory?.(token) ?? new ZaloHttpClient(token, fetch, captureShape && appendTranscript ? { captureGetUpdatesShape: (shape) => appendTranscript("zalo_get_updates_shape", shape) } : undefined);
   const client = appendTranscript ? createTranscriptZaloClient(baseClient, appendTranscript, zalo.ownerUserId) : baseClient;
-  writeLine(argv.includes("--once") ? "Zalo polling once." : "Zalo polling started. Press Ctrl+C to stop.");
+  writeLine(argv.includes("--once") ? "Zalo đang polling một lần." : "Zalo polling đã bắt đầu. Nhấn Ctrl+C để dừng.");
   if (transcriptPath) {
-    writeLine(`Zalo smoke transcript: ${transcriptPath}`);
+    writeLine(`Transcript smoke Zalo: ${transcriptPath}`);
     if (captureShape) {
-      writeLine("Zalo getUpdates shape capture enabled.");
+      writeLine("Đã bật ghi nhận shape của Zalo getUpdates.");
     }
   }
   let stopping = false;
@@ -102,31 +102,31 @@ async function runZaloSetup(options: { paths: RuntimePaths; questioner?: ZaloQue
 
   try {
     ui.intro(options.paths);
-    ui.section("Account", "Connect one Zalo bot to this local runtime.");
+    ui.section("Tài khoản", "Kết nối một bot Zalo với runtime cục bộ này.");
     const config = await loadConfig(options.paths);
-    const ownerUserId = (await questioner.ask("[1/2] Owner Zalo user id allowed to chat with Bestie: ")).trim();
-    ui.section("Bot token", "Paste the secret token. Input is hidden while typing.");
-    const token = await questioner.askHidden("[2/2] Bot token Paste the Zalo Bot Token. It is hidden while typing: ");
+    const ownerUserId = (await questioner.ask("[1/2] Zalo owner user id được phép chat với Bestie: ")).trim();
+    ui.section("Bot token", "Dán token bí mật. Nội dung nhập sẽ được ẩn.");
+    const token = await questioner.askHidden("[2/2] Bot token. Dán Zalo Bot Token; nội dung nhập sẽ được ẩn: ");
 
     if (!ownerUserId) {
-      throw new UserFacingError("Zalo owner user id is required.", "ZaloMissingOwnerError");
+      throw new UserFacingError("Bắt buộc phải có Zalo owner user id.", "ZaloMissingOwnerError");
     }
 
     if (!token.trim()) {
-      throw new UserFacingError("Zalo bot token is required.", "ZaloMissingTokenError");
+      throw new UserFacingError("Bắt buộc phải có Zalo bot token.", "ZaloMissingTokenError");
     }
 
-    ui.success("Zalo owner and bot token collected.");
-    ui.section("Save", "Updating local config and secret env file.");
+    ui.success("Đã thu thập owner Zalo và bot token.");
+    ui.section("Lưu cấu hình", "Đang cập nhật config cục bộ và file env chứa secret.");
     await mkdir(options.paths.appDir, { recursive: true });
     await writeConfig(enableZaloConfig(config, ownerUserId), options.paths);
     await writeEnvFile({ ...(await loadEnvFile(options.paths)), [DEFAULT_ZALO_TOKEN_ENV]: token.trim() }, options.paths);
 
-    ui.success("Zalo setup saved.");
-    ui.section("Files", "Secrets stay local and are not printed.");
-    ui.savedPath("Config", options.paths.configPath);
-    ui.savedPath("Token env", `${DEFAULT_ZALO_TOKEN_ENV} in ${options.paths.envPath}`);
-    ui.info("Zalo is enabled for the configured owner user id only.");
+    ui.success("Đã lưu cấu hình Zalo.");
+    ui.section("File đã lưu", "Secret được giữ cục bộ và không được in ra màn hình.");
+    ui.savedPath("Cấu hình", options.paths.configPath);
+    ui.savedPath("Token env", `${DEFAULT_ZALO_TOKEN_ENV} trong ${options.paths.envPath}`);
+    ui.info("Zalo chỉ được bật cho owner user id đã cấu hình.");
     ui.final();
   } finally {
     questioner.close();
@@ -152,19 +152,19 @@ function createZaloSetupUi(writeLine: (message: string) => void, useColor: boole
 
   return {
     intro: (paths) => {
-      writeLine(render(() => title("Zalo Setup")));
-      writeLine(render(() => dim("Connect a Zalo bot to your local Bestie runtime.")));
+      writeLine(render(() => title("Thiết lập Zalo")));
+      writeLine(render(() => dim("Kết nối bot Zalo với runtime Bestie cục bộ.")));
       writeLine(`${render(() => color("cyan", "Runtime"))} ${paths.appDir}`);
-      writeLine(`${render(() => color("cyan", "Privacy"))} Bot tokens stay local in .bestie/.env and are hidden while typing.`);
-      writeLine(render(() => `${dim("Plan")} Account -> Save -> Files\n`));
+      writeLine(`${render(() => color("cyan", "Riêng tư"))} Bot token được lưu cục bộ trong .bestie/.env và được ẩn khi nhập.`);
+      writeLine(render(() => `${dim("Các bước")} Tài khoản -> Lưu cấu hình -> File đã lưu\n`));
     },
     section: (sectionTitle, detail) => writeLine(render(() => `${color("cyan", "\n>")} ${bold(sectionTitle)}${detail ? ` ${dim(detail)}` : ""}`)),
     success: (message) => writeLine(`${render(() => badge("OK", "green"))} ${message}`),
     info: (message) => writeLine(`${render(() => badge("INFO", "yellow"))} ${message}`),
     savedPath: (label, path) => writeLine(`  ${render(() => color("cyan", label.padEnd(10)))} ${path}`),
     final: () => {
-      writeLine(`${render(() => badge("DONE", "green"))} Zalo setup complete.`);
-      writeLine(`${render(() => dim("Next"))} Run \`bestie doctor\`, then \`bestie channels zalo --once\`.`);
+      writeLine(`${render(() => badge("DONE", "green"))} Thiết lập Zalo đã hoàn tất.`);
+      writeLine(`${render(() => dim("Tiếp theo"))} Chạy \`bestie doctor\`, rồi \`bestie channels zalo --once\`.`);
     },
   };
 }
@@ -181,7 +181,7 @@ function getTranscriptPath(argv: string[], paths: RuntimePaths): string | undefi
   const value = argv[transcriptIndex + 1]?.trim();
 
   if (!value || value.startsWith("--")) {
-    throw new UserFacingError("Zalo --transcript requires a file path.", "ZaloTranscriptPathError");
+    throw new UserFacingError("Zalo --transcript cần một đường dẫn file.", "ZaloTranscriptPathError");
   }
 
   return resolve(paths.rootDir, value);

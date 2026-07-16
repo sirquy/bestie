@@ -22,8 +22,8 @@ test("main renders the static banner when BESTIE_BANNER is static", async () => 
 
   assert.match(stdout, /____/);
   assert.match(stdout, /Usage:/);
-  assert.match(stdout, /chat\s+Start terminal chat after onboarding/);
-  assert.match(stdout, /status\s+Show local setup status/);
+  assert.match(stdout, /chat\s+Bắt đầu chat terminal sau khi onboard/);
+  assert.match(stdout, /status\s+Xem trạng thái thiết lập local/);
 });
 
 test("main suppresses the banner for memory export JSON", async () => {
@@ -55,11 +55,11 @@ test("nested command help is available for channels and MCP", async () => {
   const telegramHelp = await captureMain(["node", "bestie", "channels", "telegram", "-h"], env);
 
   assert.match(channelsHelp.stdout, /Usage: bestie channels/);
-  assert.match(channelsHelp.stdout, /telegram\s+Start or configure the Telegram channel adapter/);
+  assert.match(channelsHelp.stdout, /telegram\s+Khởi động hoặc cấu hình channel adapter Telegram/);
   assert.match(mcpHelp.stdout, /Usage: bestie mcp/);
   assert.match(mcpHelp.stdout, /classify <server> <tool>/);
   assert.match(telegramHelp.stdout, /Usage: bestie channels telegram/);
-  assert.match(telegramHelp.stdout, /voice\s+Alias for shared voice commands/);
+  assert.match(telegramHelp.stdout, /voice\s+Alias cho lệnh voice dùng chung/);
 });
 
 test("linked bin entrypoint runs through npm symlinks", async () => {

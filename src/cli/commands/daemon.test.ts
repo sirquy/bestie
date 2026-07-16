@@ -38,14 +38,14 @@ test("runDaemonCommand starts, reports, and stops the daemon", async () => {
     assert.equal(state.pid, 4242);
     assert.deepEqual(state.args.slice(-2), ["channels", "telegram"]);
     assert.equal(state.logPath, resolve(paths.logsDir, "daemon-telegram.log"));
-    assert.match(output.join("\n"), /Telegram daemon started with pid 4242/);
+    assert.match(output.join("\n"), /Daemon Telegram đã khởi động với pid 4242/);
 
     await runDaemonCommand({ argv: ["node", "bestie", "daemon", "status"], paths, writeLine: (message) => output.push(message), isProcessRunning: (pid) => pid === 4242 });
-    assert.match(output.at(-2) ?? "", /Telegram daemon is running with pid 4242/);
+    assert.match(output.at(-2) ?? "", /Daemon Telegram đang chạy với pid 4242/);
 
     await runDaemonCommand({ argv: ["node", "bestie", "daemon", "stop"], paths, writeLine: (message) => output.push(message), isProcessRunning: (pid) => pid === 4242 && !killed.includes(pid), killProcess: (pid) => killed.push(pid) });
     assert.deepEqual(killed, [4242]);
-    assert.match(output.at(-1) ?? "", /Telegram daemon stopped: 4242/);
+    assert.match(output.at(-1) ?? "", /Daemon Telegram đã dừng: 4242/);
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
   }
@@ -90,15 +90,15 @@ test("runDaemonCommand can manage all runtime daemons", async () => {
     assert.equal(cron.logPath, resolve(paths.logsDir, "daemon-cron.log"));
 
     await runDaemonCommand({ argv: ["node", "bestie", "daemon", "status", "--channel", "all"], paths, writeLine: (message) => output.push(message), isProcessRunning: (pid) => runningPids.has(pid) });
-    assert.match(output.join("\n"), /Telegram daemon is running with pid 4242/);
-    assert.match(output.join("\n"), /Zalo daemon is running with pid 4343/);
-    assert.match(output.join("\n"), /Cron daemon is running with pid 4444/);
+    assert.match(output.join("\n"), /Daemon Telegram đang chạy với pid 4242/);
+    assert.match(output.join("\n"), /Daemon Zalo đang chạy với pid 4343/);
+    assert.match(output.join("\n"), /Daemon Cron đang chạy với pid 4444/);
 
     await runDaemonCommand({ argv: ["node", "bestie", "daemon", "stop", "--channel", "all"], paths, writeLine: (message) => output.push(message), isProcessRunning: (pid) => runningPids.has(pid) && !killed.includes(pid), killProcess: (pid) => killed.push(pid) });
     assert.deepEqual(killed, [4242, 4343, 4444]);
-    assert.match(output.join("\n"), /Telegram daemon stopped: 4242/);
-    assert.match(output.join("\n"), /Zalo daemon stopped: 4343/);
-    assert.match(output.join("\n"), /Cron daemon stopped: 4444/);
+    assert.match(output.join("\n"), /Daemon Telegram đã dừng: 4242/);
+    assert.match(output.join("\n"), /Daemon Zalo đã dừng: 4343/);
+    assert.match(output.join("\n"), /Daemon Cron đã dừng: 4444/);
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
   }
@@ -128,7 +128,7 @@ test("runDaemonCommand uninstall ignores missing systemd units", async () => {
       ["--user", "disable", "--now", "bestie-cron.service"],
       ["--user", "daemon-reload"],
     ]);
-    assert.match(output.join("\n"), /Uninstalled Bestie user systemd services/);
+    assert.match(output.join("\n"), /Đã gỡ systemd user services của Bestie/);
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
   }
@@ -157,7 +157,7 @@ test("runDaemonCommand stops legacy Telegram daemon state", async () => {
 
     await assert.rejects(() => readFile(resolve(paths.appDir, "daemon.json"), "utf8"), /ENOENT/);
     assert.deepEqual(killed, [4242]);
-    assert.match(output.join("\n"), /Telegram daemon stopped: 4242/);
+    assert.match(output.join("\n"), /Daemon Telegram đã dừng: 4242/);
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
   }
@@ -205,8 +205,8 @@ test("runDaemonCommand restarts the daemon", async () => {
     const state = JSON.parse(await readFile(resolve(paths.appDir, "daemon-telegram.json"), "utf8")) as { pid: number; args: string[]; logPath: string };
     assert.equal(state.pid, 4343);
     assert.deepEqual(killed, [4242]);
-    assert.match(output.join("\n"), /Telegram daemon stopped: 4242/);
-    assert.match(output.join("\n"), /Telegram daemon started with pid 4343/);
+    assert.match(output.join("\n"), /Daemon Telegram đã dừng: 4242/);
+    assert.match(output.join("\n"), /Daemon Telegram đã khởi động với pid 4343/);
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
   }
@@ -240,8 +240,8 @@ test("runDaemonCommand does not kill a reused stale daemon pid", async () => {
     const state = JSON.parse(await readFile(resolve(paths.appDir, "daemon-telegram.json"), "utf8")) as { pid: number };
     assert.equal(state.pid, 4343);
     assert.deepEqual(killed, []);
-    assert.match(output.join("\n"), /state was stale/);
-    assert.match(output.join("\n"), /Telegram daemon started with pid 4343/);
+    assert.match(output.join("\n"), /Trạng thái daemon Telegram đã cũ/);
+    assert.match(output.join("\n"), /Daemon Telegram đã khởi động với pid 4343/);
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
   }
@@ -282,8 +282,8 @@ test("runDaemonCommand restarts when the old daemon exits before SIGTERM", async
 
     const state = JSON.parse(await readFile(resolve(paths.appDir, "daemon-telegram.json"), "utf8")) as { pid: number };
     assert.equal(state.pid, 4343);
-    assert.match(output.join("\n"), /Telegram daemon stopped: 4242/);
-    assert.match(output.join("\n"), /Telegram daemon started with pid 4343/);
+    assert.match(output.join("\n"), /Daemon Telegram đã dừng: 4242/);
+    assert.match(output.join("\n"), /Daemon Telegram đã khởi động với pid 4343/);
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
   }
@@ -321,7 +321,7 @@ test("runDaemonCommand does not restart when the old daemon stays alive", async 
         killProcess: (pid) => killed.push(pid),
         stopTimeoutMs: 0,
       }),
-      /Daemon pid 4242 did not stop/
+      /Daemon pid 4242 không dừng/
     );
 
     const state = JSON.parse(await readFile(resolve(paths.appDir, "daemon-telegram.json"), "utf8")) as { pid: number };
@@ -362,7 +362,7 @@ test("runDaemonCommand installs a user systemd service", async () => {
       { file: "systemctl", args: ["--user", "daemon-reload"] },
       { file: "systemctl", args: ["--user", "enable", "--now", "bestie-telegram.service", "bestie-cron.service"] },
     ]);
-    assert.match(output.join("\n"), /Installed and started Bestie user systemd services/);
+    assert.match(output.join("\n"), /Đã cài và khởi động systemd user services của Bestie/);
   } finally {
     if (oldXdgConfigHome === undefined) {
       delete process.env.XDG_CONFIG_HOME;
@@ -404,7 +404,7 @@ test("runDaemonCommand uninstalls a user systemd service", async () => {
       { file: "systemctl", args: ["--user", "disable", "--now", "bestie-cron.service"] },
       { file: "systemctl", args: ["--user", "daemon-reload"] },
     ]);
-    assert.match(output.join("\n"), /Uninstalled Bestie user systemd services/);
+    assert.match(output.join("\n"), /Đã gỡ systemd user services của Bestie/);
   } finally {
     if (oldXdgConfigHome === undefined) {
       delete process.env.XDG_CONFIG_HOME;

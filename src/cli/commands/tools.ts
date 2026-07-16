@@ -17,12 +17,12 @@ export async function runToolsCommand(optionsOrArgv: string[] | ToolsCommandOpti
   const writeLine = options.writeLine ?? console.log;
 
   if (!subcommand || subcommand === "--help" || subcommand === "-h") {
-    writeLine("Usage: bestie tools logs [--lines N] | memories [--limit N] | git status | git diff [--staged] | git log [--limit N] | attachments cleanup [--older-than 7d] [--kinds voice,audio] [--confirm]");
+    writeLine("Cách dùng: bestie tools logs [--lines N] | memories [--limit N] | git status | git diff [--staged] | git log [--limit N] | attachments cleanup [--older-than 7d] [--kinds voice,audio] [--confirm]");
     return;
   }
 
   if (subcommand !== "logs" && subcommand !== "memories" && subcommand !== "git" && subcommand !== "attachments") {
-    throw new UserFacingError(`Unknown tools command: ${subcommand}. Try \`bestie tools logs\`, \`bestie tools memories\`, \`bestie tools git status\`, or \`bestie tools attachments cleanup\`.`, "UnknownToolsCommandError");
+    throw new UserFacingError(`Lệnh tools không xác định: ${subcommand}. Thử \`bestie tools logs\`, \`bestie tools memories\`, \`bestie tools git status\`, hoặc \`bestie tools attachments cleanup\`.`, "UnknownToolsCommandError");
   }
 
   const paths = options.paths ?? getRuntimePaths();
@@ -31,16 +31,16 @@ export async function runToolsCommand(optionsOrArgv: string[] | ToolsCommandOpti
     const result = await listActiveMemoriesTool({ paths, limit: parseLimit(argv) });
 
     if (!result.allowed) {
-      throw new UserFacingError(`Tool denied: ${result.reason}`, "ToolDeniedError");
+      throw new UserFacingError(`Tool bị từ chối: ${result.reason}`, "ToolDeniedError");
     }
 
     if (result.memories.length === 0) {
-      writeLine(`${badge("INFO", "blue")} No active memories found.`);
+      writeLine(`${badge("INFO", "blue")} Chưa có memory active.`);
       return;
     }
 
     for (const memory of result.memories) {
-      writeLine(`${badge(memory.type.toUpperCase(), "cyan")} #${memory.id} importance ${memory.importance} ${dim(memory.sensitivity)} ${memory.content}`);
+      writeLine(`${badge(memory.type.toUpperCase(), "cyan")} #${memory.id} độ quan trọng ${memory.importance} ${dim(memory.sensitivity)} ${memory.content}`);
     }
 
     return;
@@ -60,11 +60,11 @@ export async function runToolsCommand(optionsOrArgv: string[] | ToolsCommandOpti
   const result = await readRecentAppLogsTool({ paths, lineCount });
 
   if (!result.allowed) {
-    throw new UserFacingError(`Tool denied: ${result.reason}`, "ToolDeniedError");
+    throw new UserFacingError(`Tool bị từ chối: ${result.reason}`, "ToolDeniedError");
   }
 
   if (result.lines.length === 0) {
-    writeLine(`No logs found yet. Logs will be written to ${paths.appLogPath}.`);
+    writeLine(`Chưa có log. Log sẽ được ghi vào ${paths.appLogPath}.`);
     return;
   }
 
@@ -76,12 +76,12 @@ export async function runToolsCommand(optionsOrArgv: string[] | ToolsCommandOpti
 async function runAttachmentToolsCommand(options: { argv: string[]; paths: RuntimePaths; writeLine: (message: string) => void }): Promise<void> {
   const attachmentCommand = options.argv[4];
   if (!attachmentCommand || attachmentCommand === "--help" || attachmentCommand === "-h") {
-    options.writeLine("Usage: bestie tools attachments cleanup [--older-than 7d] [--kinds voice,audio] [--confirm]");
+    options.writeLine("Cách dùng: bestie tools attachments cleanup [--older-than 7d] [--kinds voice,audio] [--confirm]");
     return;
   }
 
   if (attachmentCommand !== "cleanup") {
-    throw new UserFacingError(`Unknown attachments tools command: ${attachmentCommand}. Try \`bestie tools attachments cleanup\`.`, "UnknownAttachmentToolsCommandError");
+    throw new UserFacingError(`Lệnh attachment tools không xác định: ${attachmentCommand}. Thử \`bestie tools attachments cleanup\`.`, "UnknownAttachmentToolsCommandError");
   }
 
   const olderThanMs = parseOlderThan(options.argv);
@@ -89,17 +89,17 @@ async function runAttachmentToolsCommand(options: { argv: string[]; paths: Runti
   const confirm = options.argv.includes("--confirm");
   const result = await cleanupTelegramAttachments({ paths: options.paths, olderThanMs, kinds, confirm });
 
-  options.writeLine(`${result.dryRun ? badge("DRY", "yellow") : badge("DONE", "green")} ${result.dryRun ? "Would delete" : "Deleted"} ${result.dryRun ? result.matchedFiles : result.deletedFiles} Telegram attachment file(s), ${formatBytes(result.dryRun ? result.bytesMatched : result.bytesDeleted)}.`);
-  options.writeLine(`${badge("SCAN", "blue")} Scanned ${result.scannedFiles} file(s) under ${result.root}.`);
+  options.writeLine(`${result.dryRun ? badge("DRY", "yellow") : badge("DONE", "green")} ${result.dryRun ? "Sẽ xóa" : "Đã xóa"} ${result.dryRun ? result.matchedFiles : result.deletedFiles} file attachment Telegram, ${formatBytes(result.dryRun ? result.bytesMatched : result.bytesDeleted)}.`);
+  options.writeLine(`${badge("SCAN", "blue")} Đã quét ${result.scannedFiles} file trong ${result.root}.`);
   if (result.dryRun && result.matchedFiles > 0) {
-    options.writeLine(`${badge("INFO", "blue")} Dry run only. Re-run with --confirm to delete.`);
+    options.writeLine(`${badge("INFO", "blue")} Chỉ chạy thử. Chạy lại với --confirm để xóa.`);
   }
 
   for (const file of result.files.slice(0, 20)) {
     options.writeLine(`${file.deleted ? badge("DEL", "red") : badge("MATCH", "yellow")} ${file.kind} ${formatBytes(file.bytes)} ${file.path}`);
   }
   if (result.files.length > 20) {
-    options.writeLine(`...and ${result.files.length - 20} more file(s).`);
+    options.writeLine(`...và ${result.files.length - 20} file khác.`);
   }
 }
 
@@ -107,34 +107,34 @@ async function runGitToolsCommand(options: { argv: string[]; paths: RuntimePaths
   const gitCommand = options.argv[4];
 
   if (!gitCommand || gitCommand === "--help" || gitCommand === "-h") {
-    options.writeLine("Usage: bestie tools git status | diff [--staged] | log [--limit N]");
+    options.writeLine("Cách dùng: bestie tools git status | diff [--staged] | log [--limit N]");
     return;
   }
 
   if (gitCommand === "status") {
     const result = await readGitStatusTool({ paths: options.paths });
-    writeToolOutput(result, options.writeLine, "No git status output.");
+    writeToolOutput(result, options.writeLine, "Không có output git status.");
     return;
   }
 
   if (gitCommand === "diff") {
     const result = await readGitDiffTool({ paths: options.paths, staged: options.argv.includes("--staged") });
-    writeToolOutput(result, options.writeLine, result.truncated ? "Git diff output was truncated." : "No git diff output.");
+    writeToolOutput(result, options.writeLine, result.truncated ? "Output git diff đã bị cắt ngắn." : "Không có output git diff.");
     return;
   }
 
   if (gitCommand === "log") {
     const result = await readGitLogTool({ paths: options.paths, limit: parseLimit(options.argv) });
-    writeToolOutput(result, options.writeLine, "No git log output.");
+    writeToolOutput(result, options.writeLine, "Không có output git log.");
     return;
   }
 
-  throw new UserFacingError(`Unknown git tools command: ${gitCommand}. Try \`bestie tools git status\`, \`bestie tools git diff\`, or \`bestie tools git log\`.`, "UnknownGitToolsCommandError");
+  throw new UserFacingError(`Lệnh git tools không xác định: ${gitCommand}. Thử \`bestie tools git status\`, \`bestie tools git diff\`, hoặc \`bestie tools git log\`.`, "UnknownGitToolsCommandError");
 }
 
 function writeToolOutput(result: { allowed: boolean; reason: string; output: string }, writeLine: (message: string) => void, emptyMessage: string): void {
   if (!result.allowed) {
-    throw new UserFacingError(`Tool denied: ${result.reason}`, "ToolDeniedError");
+    throw new UserFacingError(`Tool bị từ chối: ${result.reason}`, "ToolDeniedError");
   }
 
   if (!result.output.trim()) {
@@ -156,7 +156,7 @@ function parseLineCount(argv: string[]): number {
   const value = Number(rawValue);
 
   if (!rawValue || !Number.isInteger(value) || value <= 0 || value > 200) {
-    throw new UserFacingError("--lines must be an integer from 1 to 200.", "InvalidToolsLinesError");
+    throw new UserFacingError("--lines phải là số nguyên từ 1 đến 200.", "InvalidToolsLinesError");
   }
 
   return value;
@@ -173,7 +173,7 @@ function parseLimit(argv: string[]): number {
   const value = Number(rawValue);
 
   if (!rawValue || !Number.isInteger(value) || value <= 0 || value > 50) {
-    throw new UserFacingError("--limit must be an integer from 1 to 50.", "InvalidToolsLimitError");
+    throw new UserFacingError("--limit phải là số nguyên từ 1 đến 50.", "InvalidToolsLimitError");
   }
 
   return value;
@@ -187,13 +187,13 @@ function parseOlderThan(argv: string[]): number {
 
   const rawValue = argv[index + 1];
   if (!rawValue || rawValue.startsWith("--")) {
-    throw new UserFacingError("--older-than must use a duration like 30m, 12h, or 7d.", "InvalidAttachmentCleanupOlderThanError");
+    throw new UserFacingError("--older-than phải dùng thời lượng như 30m, 12h, hoặc 7d.", "InvalidAttachmentCleanupOlderThanError");
   }
 
   try {
     return parseDurationMs(rawValue);
   } catch (error) {
-    throw new UserFacingError(error instanceof Error ? error.message : "Invalid --older-than value.", "InvalidAttachmentCleanupOlderThanError");
+    throw new UserFacingError(error instanceof Error ? error.message : "Giá trị --older-than không hợp lệ.", "InvalidAttachmentCleanupOlderThanError");
   }
 }
 
@@ -205,13 +205,13 @@ function parseKinds(argv: string[]): CleanupAttachmentKind[] | undefined {
 
   const rawValue = argv[index + 1];
   if (!rawValue || rawValue.startsWith("--")) {
-    throw new UserFacingError("--kinds must be a comma-separated list like voice,audio.", "InvalidAttachmentCleanupKindsError");
+    throw new UserFacingError("--kinds phải là danh sách phân tách bằng dấu phẩy như voice,audio.", "InvalidAttachmentCleanupKindsError");
   }
 
   try {
     return parseCleanupAttachmentKinds(rawValue);
   } catch (error) {
-    throw new UserFacingError(error instanceof Error ? error.message : "Invalid --kinds value.", "InvalidAttachmentCleanupKindsError");
+    throw new UserFacingError(error instanceof Error ? error.message : "Giá trị --kinds không hợp lệ.", "InvalidAttachmentCleanupKindsError");
   }
 }
 

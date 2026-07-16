@@ -14,7 +14,7 @@ export async function runDoctorCommand(argv: string[] = process.argv): Promise<v
   console.log(rule());
 
   if (report.fixes.length > 0) {
-    console.log("\nFixes\n");
+    console.log("\nCác sửa chữa\n");
 
     for (const fix of report.fixes) {
       const marker = fix.status === "fixed" ? statusBadge("pass") : fix.status === "skipped" ? statusBadge("warn") : statusBadge("fail");
@@ -29,11 +29,11 @@ export async function runDoctorCommand(argv: string[] = process.argv): Promise<v
     console.log(`${marker} ${check.name}: ${check.message}`);
 
     if (check.fix) {
-      console.log(`  Fix: ${check.fix}`);
+      console.log(`  Cách sửa: ${check.fix}`);
     }
   }
 
-  console.log(`\n${statusBadge(report.issueCount === 0 ? "pass" : "fail")} Summary: ${report.issueCount} ${report.issueCount === 1 ? "issue" : "issues"} found.`);
+  console.log(`\n${statusBadge(report.issueCount === 0 ? "pass" : "fail")} Tóm tắt: tìm thấy ${report.issueCount} vấn đề.`);
   setDoctorExitCode(report.issueCount);
 }
 

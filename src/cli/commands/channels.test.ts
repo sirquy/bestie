@@ -23,8 +23,8 @@ test("runChannelsCommand rejects unknown channels", async () => {
     await runChannelsCommand(["node", "bestie", "channels", "unknown"]);
 
     assert.equal(process.exitCode, 1);
-    assert.match(lines.join("\n"), /Unknown channel: unknown/);
-    assert.match(lines.join("\n"), /Available channels: telegram, zalo/);
+    assert.match(lines.join("\n"), /Kênh không xác định: unknown/);
+    assert.match(lines.join("\n"), /Các kênh hiện có: telegram, zalo/);
   } finally {
     console.error = originalError;
     process.exitCode = originalExitCode;
@@ -62,7 +62,7 @@ test("runChannelsCommand lists channel config and daemon state", async () => {
 
     await runChannelsCommand({ argv: ["node", "bestie", "channels", "list"], paths, writeLine: (message) => lines.push(message), isProcessRunning: (pid) => pid === 4242 });
 
-    assert.match(lines.join("\n"), /Bestie Channels/);
+    assert.match(lines.join("\n"), /Kênh Bestie/);
     assert.match(lines.join("\n"), /Telegram\s+\[ON\]\s+\[OWNER\]\s+BESTIE_TELEGRAM_BOT_TOKEN\s+\[RUN\] pid 4242/);
     assert.match(lines.join("\n"), /Zalo\s+\[OFF\]\s+\[OWNER\?\]\s+BESTIE_ZALO_BOT_TOKEN\s+\[STALE\] pid 4343/);
   } finally {
@@ -94,7 +94,7 @@ test("runChannelsCommand runs channel-focused doctor checks", async () => {
 
     await runChannelsCommand({ argv: ["node", "bestie", "channels", "doctor", "--channel", "zalo"], paths, writeLine: (message) => lines.push(message) });
 
-    assert.match(lines.join("\n"), /Bestie Channels Doctor/);
+    assert.match(lines.join("\n"), /Doctor kênh Bestie/);
     assert.match(lines.join("\n"), /\[FAIL\] Zalo channel:/);
     assert.doesNotMatch(lines.join("\n"), /Telegram config/);
     assert.equal(process.exitCode, 1);

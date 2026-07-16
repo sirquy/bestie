@@ -99,7 +99,7 @@ export async function runDaemonCommand(optionsOrArgv: string[] | DaemonCommandOp
     return;
   }
 
-  throw new UserFacingError("Usage: bestie daemon start|stop|restart|status [--channel telegram|zalo|cron|all] | install | uninstall", "DaemonUsageError");
+  throw new UserFacingError("Cách dùng: bestie daemon start|stop|restart|status [--channel telegram|zalo|cron|all] | install | uninstall", "DaemonUsageError");
 }
 
 async function installSystemdUserService(options: Required<Pick<DaemonCommandOptions, "paths" | "writeLine">> & DaemonCommandOptions): Promise<void> {
@@ -117,9 +117,9 @@ async function installSystemdUserService(options: Required<Pick<DaemonCommandOpt
   await run("systemctl", ["--user", "daemon-reload"]);
   await run("systemctl", ["--user", "enable", "--now", ...channels.map(getSystemdServiceName)]);
 
-  options.writeLine(`${badge("RUN", "green")} Installed and started Bestie user systemd services.`);
+  options.writeLine(`${badge("RUN", "green")} Đã cài và khởi động systemd user services của Bestie.`);
   options.writeLine(`Services: ${channels.map(getSystemdServiceName).join(", ")}`);
-  options.writeLine(`Status: systemctl --user status ${channels.map(getSystemdServiceName).join(" ")}`);
+  options.writeLine(`Trạng thái: systemctl --user status ${channels.map(getSystemdServiceName).join(" ")}`);
 }
 
 async function uninstallSystemdUserService(options: Required<Pick<DaemonCommandOptions, "paths" | "writeLine">> & DaemonCommandOptions): Promise<void> {
@@ -140,7 +140,7 @@ async function uninstallSystemdUserService(options: Required<Pick<DaemonCommandO
   }
   await run("systemctl", ["--user", "daemon-reload"]);
 
-  options.writeLine(`${badge("STOP", "gray")} Uninstalled Bestie user systemd services.`);
+  options.writeLine(`${badge("STOP", "gray")} Đã gỡ systemd user services của Bestie.`);
 }
 
 function isMissingSystemdUnitError(error: unknown): boolean {
@@ -179,7 +179,7 @@ async function startDaemon(options: Required<Pick<DaemonCommandOptions, "paths" 
   const state = await readDaemonState(options.paths, channel);
   const isRunning = options.isProcessRunning ?? defaultIsProcessRunning;
   if (state && isRunning(state.pid)) {
-    options.writeLine(`${badge("RUN", "green")} ${formatDaemonChannel(channel)} daemon already running with pid ${state.pid}.`);
+    options.writeLine(`${badge("RUN", "green")} Daemon ${formatDaemonChannel(channel)} đang chạy sẵn với pid ${state.pid}.`);
     return;
   }
   if (state) {
@@ -205,19 +205,19 @@ async function startDaemon(options: Required<Pick<DaemonCommandOptions, "paths" 
   }
 
   if (!child.pid) {
-    throw new UserFacingError("Daemon process did not start.", "DaemonStartError");
+    throw new UserFacingError("Tiến trình daemon không khởi động được.", "DaemonStartError");
   }
 
   child.unref();
   await writeDaemonState(options.paths, channel, { channel, pid: child.pid, command, args, startedAt: new Date().toISOString(), logPath });
-  options.writeLine(`${badge("RUN", "green")} ${formatDaemonChannel(channel)} daemon started with pid ${child.pid}.`);
-  options.writeLine(`Logs: ${logPath}`);
+  options.writeLine(`${badge("RUN", "green")} Daemon ${formatDaemonChannel(channel)} đã khởi động với pid ${child.pid}.`);
+  options.writeLine(`Log: ${logPath}`);
 }
 
 async function stopDaemon(options: Required<Pick<DaemonCommandOptions, "paths" | "writeLine">> & DaemonCommandOptions, channel: DaemonChannel): Promise<void> {
   const state = await readDaemonState(options.paths, channel);
   if (!state) {
-    options.writeLine(`${badge("STOP", "gray")} ${formatDaemonChannel(channel)} daemon is not running.`);
+    options.writeLine(`${badge("STOP", "gray")} Daemon ${formatDaemonChannel(channel)} hiện không chạy.`);
     return;
   }
 
@@ -228,7 +228,7 @@ async function stopDaemon(options: Required<Pick<DaemonCommandOptions, "paths" |
       const commandLine = getProcessCommandLine(state.pid);
       if (!commandLine || !isRecordedDaemonProcess(state, commandLine)) {
         await removeDaemonState(options.paths, channel);
-        options.writeLine(`${badge("STALE", "yellow")} ${formatDaemonChannel(channel)} daemon state was stale; pid ${state.pid} belongs to a different process.`);
+        options.writeLine(`${badge("STALE", "yellow")} Trạng thái daemon ${formatDaemonChannel(channel)} đã cũ; pid ${state.pid} thuộc tiến trình khác.`);
         return;
       }
     }
@@ -244,7 +244,7 @@ async function stopDaemon(options: Required<Pick<DaemonCommandOptions, "paths" |
   }
 
   await removeDaemonState(options.paths, channel);
-  options.writeLine(`${badge("STOP", "gray")} ${formatDaemonChannel(channel)} daemon stopped: ${state.pid}.`);
+  options.writeLine(`${badge("STOP", "gray")} Daemon ${formatDaemonChannel(channel)} đã dừng: ${state.pid}.`);
 }
 
 async function restartDaemon(options: Required<Pick<DaemonCommandOptions, "paths" | "writeLine">> & DaemonCommandOptions, channel: DaemonChannel): Promise<void> {
@@ -255,12 +255,12 @@ async function restartDaemon(options: Required<Pick<DaemonCommandOptions, "paths
 async function showDaemonStatus(options: Required<Pick<DaemonCommandOptions, "paths" | "writeLine">> & DaemonCommandOptions, channel: DaemonChannel): Promise<void> {
   const status = await getDaemonChannelStatus(options.paths, channel, options.isProcessRunning ?? defaultIsProcessRunning);
   if (status.state === "stopped") {
-    options.writeLine(`${badge("STOP", "gray")} ${formatDaemonChannel(channel)} daemon is stopped.`);
+    options.writeLine(`${badge("STOP", "gray")} Daemon ${formatDaemonChannel(channel)} đang dừng.`);
     return;
   }
 
-  options.writeLine(status.state === "running" ? `${badge("RUN", "green")} ${formatDaemonChannel(channel)} daemon is running with pid ${status.pid}.` : `${badge("STALE", "yellow")} ${formatDaemonChannel(channel)} daemon pid ${status.pid} is stale.`);
-  options.writeLine(`Logs: ${status.logPath}`);
+  options.writeLine(status.state === "running" ? `${badge("RUN", "green")} Daemon ${formatDaemonChannel(channel)} đang chạy với pid ${status.pid}.` : `${badge("STALE", "yellow")} Pid daemon ${formatDaemonChannel(channel)} ${status.pid} đã cũ.`);
+  options.writeLine(`Log: ${status.logPath}`);
 }
 
 export async function getDaemonChannelStatus(paths: RuntimePaths, channel: DaemonChannel, isProcessRunning: (pid: number) => boolean = defaultIsProcessRunning): Promise<DaemonChannelStatus> {
@@ -329,7 +329,7 @@ function getDaemonChannelSelection(argv: string[]): DaemonChannelSelection {
     return value;
   }
 
-  throw new UserFacingError("Usage: bestie daemon start|stop|restart|status [--channel telegram|zalo|cron|all]", "DaemonUsageError");
+  throw new UserFacingError("Cách dùng: bestie daemon start|stop|restart|status [--channel telegram|zalo|cron|all]", "DaemonUsageError");
 }
 
 function isDaemonChannel(value: string | undefined): value is DaemonChannel {
@@ -378,7 +378,7 @@ function systemdEscape(value: string): string {
 
 function assertLinuxSystemdUserServiceSupported(): void {
   if (process.platform !== "linux") {
-    throw new UserFacingError("systemd user services are only supported on Linux. Use `bestie daemon start --channel all` on this platform.", "DaemonSystemdUnsupportedError");
+    throw new UserFacingError("systemd user service chỉ được hỗ trợ trên Linux. Trên nền tảng này, hãy dùng `bestie daemon start --channel all`.", "DaemonSystemdUnsupportedError");
   }
 }
 
@@ -387,7 +387,7 @@ async function runExecFile(file: string, args: string[]): Promise<void> {
     await execFileAsync(file, args, { windowsHide: true });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    throw new UserFacingError(`Failed to run ${file} ${args.join(" ")}: ${message}`, "DaemonSystemdCommandError");
+    throw new UserFacingError(`Không chạy được ${file} ${args.join(" ")}: ${message}`, "DaemonSystemdCommandError");
   }
 }
 
@@ -426,7 +426,7 @@ async function waitForProcessExit(pid: number, isProcessRunning: (pid: number) =
 
   while (isProcessRunning(pid)) {
     if (Date.now() >= deadline) {
-      throw new UserFacingError(`Daemon pid ${pid} did not stop within ${timeoutMs}ms.`, "DaemonStopTimeoutError");
+      throw new UserFacingError(`Daemon pid ${pid} không dừng trong ${timeoutMs}ms.`, "DaemonStopTimeoutError");
     }
 
     await sleepFn(Math.min(DAEMON_STOP_POLL_INTERVAL_MS, Math.max(0, deadline - Date.now())));

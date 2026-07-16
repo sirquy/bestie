@@ -550,8 +550,8 @@ test("runTerminalChat passes terminal permission approval to tool requests", asy
       writeLine: (message) => output.push(message),
     });
 
-    assert.ok(prompts.includes("Allow this action once?"));
-    assert.ok(output.includes("Permission required"));
+    assert.ok(prompts.includes("Cho phép hành động này một lần?"));
+    assert.ok(output.includes("Cần quyền xác nhận"));
     assert.ok(output.includes("[BOT] Bea > Done"));
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });

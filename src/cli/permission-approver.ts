@@ -23,22 +23,22 @@ export async function createCliPermissionApprover(options: { writeLine?: (messag
 }
 
 async function askPermissionApproval(request: ActionPermissionRequest, proposed: ActionPermissionResult, questioner: ApprovalQuestioner, writeLine: (message: string) => void): Promise<PermissionApproval> {
-  writeLine("Permission required");
-  writeLine(`Action: ${request.action}`);
-  writeLine(`Category: ${request.category}`);
+  writeLine("Cần quyền xác nhận");
+  writeLine(`Hành động: ${request.action}`);
+  writeLine(`Nhóm: ${request.category}`);
   if (request.target) {
-    writeLine(`Target: ${request.target}`);
+    writeLine(`Đích: ${request.target}`);
   }
-  writeLine(`Reason: ${request.reason ?? proposed.reason}`);
+  writeLine(`Lý do: ${request.reason ?? proposed.reason}`);
 
   const approved = questioner.confirm
-    ? await questioner.confirm("Allow this action once?", false)
-    : ["yes", "y"].includes((await questioner.ask("Allow this action once? Type yes to continue: ")).trim().toLowerCase());
+    ? await questioner.confirm("Cho phép hành động này một lần?", false)
+    : ["yes", "y", "co", "có"].includes((await questioner.ask("Cho phép hành động này một lần? Gõ yes hoặc có để tiếp tục: ")).trim().toLowerCase());
   if (approved) {
-    return { approved: true, reason: "Approved once from CLI prompt." };
+    return { approved: true, reason: "Đã duyệt một lần từ CLI prompt." };
   }
 
-  return { approved: false, reason: "Denied from CLI prompt." };
+  return { approved: false, reason: "Đã từ chối từ CLI prompt." };
 }
 
 async function createApprovalQuestioner(): Promise<ApprovalQuestioner> {

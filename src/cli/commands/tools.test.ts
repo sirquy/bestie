@@ -30,7 +30,7 @@ test("runToolsCommand prints recent logs through the gated local tool", async ()
 test("runToolsCommand rejects invalid line counts", async () => {
   await assert.rejects(
     runToolsCommand({ argv: ["node", "bestie", "tools", "logs", "--lines", "0"], paths: await createTempPaths() }),
-    /--lines must be an integer from 1 to 200/,
+    /--lines phải là số nguyên từ 1 đến 200/,
   );
 });
 
@@ -58,7 +58,7 @@ test("runToolsCommand prints active memories through the gated local tool", asyn
 test("runToolsCommand rejects invalid memory limits", async () => {
   await assert.rejects(
     runToolsCommand({ argv: ["node", "bestie", "tools", "memories", "--limit", "0"], paths: await createTempPaths() }),
-    /--limit must be an integer from 1 to 50/,
+    /--limit phải là số nguyên từ 1 đến 50/,
   );
 });
 
@@ -67,7 +67,7 @@ test("runToolsCommand prints usage for missing subcommand", async () => {
 
   await runToolsCommand({ argv: ["node", "bestie", "tools"], paths: await createTempPaths(), writeLine: (line) => lines.push(line) });
 
-  assert.deepEqual(lines, ["Usage: bestie tools logs [--lines N] | memories [--limit N] | git status | git diff [--staged] | git log [--limit N] | attachments cleanup [--older-than 7d] [--kinds voice,audio] [--confirm]"]);
+  assert.deepEqual(lines, ["Cách dùng: bestie tools logs [--lines N] | memories [--limit N] | git status | git diff [--staged] | git log [--limit N] | attachments cleanup [--older-than 7d] [--kinds voice,audio] [--confirm]"]);
 });
 
 test("runToolsCommand dry-runs Telegram attachment cleanup", async () => {
@@ -83,8 +83,8 @@ test("runToolsCommand dry-runs Telegram attachment cleanup", async () => {
 
     await runToolsCommand({ argv: ["node", "bestie", "tools", "attachments", "cleanup", "--older-than", "0s", "--kinds", "voice,audio"], paths, writeLine: (line) => lines.push(line) });
 
-    assert.match(lines.join("\n"), /Would delete 1 Telegram attachment file/);
-    assert.match(lines.join("\n"), /Dry run only/);
+    assert.match(lines.join("\n"), /Sẽ xóa 1 file attachment Telegram/);
+    assert.match(lines.join("\n"), /Chỉ chạy thử/);
     assert.match(lines.join("\n"), /voice/);
     await access(voicePath);
     await access(photoPath);
@@ -106,7 +106,7 @@ test("runToolsCommand deletes confirmed Telegram attachments", async () => {
 
     await runToolsCommand({ argv: ["node", "bestie", "tools", "attachments", "cleanup", "--older-than", "0s", "--kinds", "voice", "--confirm"], paths, writeLine: (line) => lines.push(line) });
 
-    assert.match(lines.join("\n"), /Deleted 1 Telegram attachment file/);
+    assert.match(lines.join("\n"), /Đã xóa 1 file attachment Telegram/);
     await assert.rejects(() => access(voicePath));
     await access(documentPath);
   } finally {

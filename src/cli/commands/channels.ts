@@ -52,9 +52,9 @@ export async function runChannelsCommand(optionsOrArgv: string[] | ChannelsComma
   const handler = channelHandlers[channelName];
 
   if (!handler) {
-    console.error(`Unknown channel: ${channelName}`);
-    console.error("Available channels: telegram, zalo");
-    console.error("Run `bestie channels --help` to see available channels.");
+    console.error(`Kênh không xác định: ${channelName}`);
+    console.error("Các kênh hiện có: telegram, zalo");
+    console.error("Chạy `bestie channels --help` để xem danh sách kênh.");
     process.exitCode = 1;
     return;
   }
@@ -76,21 +76,21 @@ async function runChannelsDoctor(options: Required<Pick<ChannelsCommandOptions, 
 
   const checks = channelsReport.channels.flatMap((channel) => channel.checks);
 
-  options.writeLine(title("Bestie Channels Doctor"));
+  options.writeLine(title("Doctor kênh Bestie"));
   options.writeLine(rule());
   for (const check of checks) {
     options.writeLine(`${statusBadge(check.status)} ${check.name}: ${check.message}`);
     if (check.fix) {
-      options.writeLine(`  Fix: ${check.fix}`);
+      options.writeLine(`  Cách sửa: ${check.fix}`);
     }
   }
 
   if (checks.length === 0) {
-    options.writeLine("No channel diagnostics matched the selected channel(s).");
+    options.writeLine("Không có chẩn đoán kênh nào khớp với lựa chọn hiện tại.");
   }
 
   options.writeLine("");
-  options.writeLine(keyValue("Summary", `${channelsReport.issueCount} ${channelsReport.issueCount === 1 ? "issue" : "issues"} found`));
+  options.writeLine(keyValue("Tóm tắt", `tìm thấy ${channelsReport.issueCount} vấn đề`));
   setExitCodeForIssues(channelsReport.issueCount);
 }
 
@@ -115,7 +115,7 @@ function getSelectedChannels(argv: string[]): DaemonChannel[] {
   if (value === "all") return ["telegram", "zalo"];
   if (value === "telegram" || value === "zalo") return [value];
 
-  throw new Error("Usage: bestie channels doctor [--channel telegram|zalo|all] [--connect] [--json]");
+  throw new Error("Cách dùng: bestie channels doctor [--channel telegram|zalo|all] [--connect] [--json]");
 }
 
 function isChannelDoctorCheck(check: DoctorCheck, selectedChannels: DaemonChannel[]): boolean {
@@ -126,7 +126,7 @@ function isChannelDoctorCheck(check: DoctorCheck, selectedChannels: DaemonChanne
 
 async function showChannelsStatus(options: Required<Pick<ChannelsCommandOptions, "paths" | "writeLine">> & Pick<ChannelsCommandOptions, "isProcessRunning">): Promise<void> {
   const config = await loadConfig(options.paths);
-  options.writeLine(title("Bestie Channels"));
+  options.writeLine(title("Kênh Bestie"));
   options.writeLine(rule());
   const rows: string[][] = [];
 
@@ -136,7 +136,7 @@ async function showChannelsStatus(options: Required<Pick<ChannelsCommandOptions,
     rows.push(formatChannelStatusRow(channel, channelConfig, daemon));
   }
 
-  for (const line of table(["Channel", "Enabled", "Owner", "Token env", "Daemon"], rows)) {
+  for (const line of table(["Kênh", "Bật", "Owner", "Token env", "Daemon"], rows)) {
     options.writeLine(line);
   }
 }

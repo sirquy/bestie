@@ -84,7 +84,7 @@ export async function runTelegramCommand(optionsOrArgv: string[] | TelegramComma
   const telegram = config.channels?.telegram;
 
   if (!telegram?.enabled) {
-    throw new UserFacingError("Telegram is not enabled. Add channels.telegram to .bestie/config.json, then set the bot token in .bestie/.env.", "TelegramNotEnabledError");
+    throw new UserFacingError("Telegram chưa được bật. Thêm channels.telegram vào .bestie/config.json, rồi đặt bot token trong .bestie/.env.", "TelegramNotEnabledError");
   }
 
   const envValues = await loadEnvFile(paths);
@@ -92,7 +92,7 @@ export async function runTelegramCommand(optionsOrArgv: string[] | TelegramComma
   const hasToken = Boolean(token);
 
   if (!hasToken) {
-    throw new UserFacingError(`Telegram bot token env ${telegram.botTokenEnv} is missing. Add it to .bestie/.env.`, "TelegramMissingTokenError");
+    throw new UserFacingError(`Thiếu biến Telegram bot token ${telegram.botTokenEnv}. Hãy thêm biến này vào .bestie/.env.`, "TelegramMissingTokenError");
   }
 
   if (argv[argStart] === "whoami") {
@@ -102,7 +102,7 @@ export async function runTelegramCommand(optionsOrArgv: string[] | TelegramComma
   }
 
   if (!telegram.ownerUserId.trim()) {
-    throw new UserFacingError("Telegram owner id or username is missing. Set channels.telegram.ownerUserId in .bestie/config.json.", "TelegramMissingOwnerError");
+    throw new UserFacingError("Thiếu Telegram owner id hoặc username. Đặt channels.telegram.ownerUserId trong .bestie/config.json.", "TelegramMissingOwnerError");
   }
 
   const transcriptPath = getTranscriptPath(argv, paths);
@@ -114,9 +114,9 @@ export async function runTelegramCommand(optionsOrArgv: string[] | TelegramComma
   const attachmentTranscriber = createTelegramAttachmentTranscriber(config, paths, options.transcriptionFetchImpl);
   const speechSynthesizer = createTelegramSpeechSynthesizer(config, paths, options.speechFetchImpl);
 
-  writeLine(argv.includes("--once") ? "Telegram polling once." : "Telegram polling started. Press Ctrl+C to stop.");
+  writeLine(argv.includes("--once") ? "Telegram đang polling một lần." : "Telegram polling đã bắt đầu. Nhấn Ctrl+C để dừng.");
   if (transcriptPath) {
-    writeLine(`Telegram smoke transcript: ${transcriptPath}`);
+    writeLine(`Transcript smoke Telegram: ${transcriptPath}`);
   }
   let stopping = false;
   const stop = () => {
@@ -148,11 +148,11 @@ async function runTelegramWhoami(options: { client: TelegramClient; writeLine: (
   const sender = await getRecentTelegramOwner(options.client);
   const render = withColorMode(options.useColor);
 
-  options.writeLine(render(() => title("Telegram Owner Lookup")));
+  options.writeLine(render(() => title("Tra cứu owner Telegram")));
 
   if (!sender) {
-    options.writeLine(render(() => `${badge("INFO", "yellow")} No recent owner message found.`));
-    options.writeLine(render(() => `${dim("Next")} Send any message to your Telegram bot, then run this command again.`));
+    options.writeLine(render(() => `${badge("INFO", "yellow")} Chưa tìm thấy tin nhắn gần đây từ owner.`));
+    options.writeLine(render(() => `${dim("Tiếp theo")} Gửi một tin nhắn bất kỳ cho bot Telegram, rồi chạy lại lệnh này.`));
     return;
   }
 
@@ -182,14 +182,14 @@ async function runTelegramSetup(options: { paths: RuntimePaths; questioner?: Tel
   try {
     ui.intro(options.paths);
 
-    ui.section("Account", "Connect one Telegram bot to this local runtime.");
+    ui.section("Tài khoản", "Kết nối một bot Telegram với runtime cục bộ này.");
     const config = await loadConfig(options.paths);
-    let ownerUserId = (await questioner.ask("[1/2] Owner Telegram id or username Numeric id, username, or @username allowed to chat with Bestie. Leave blank to detect from the latest bot message: ")).trim();
-    ui.section("Bot token", "Paste the secret token. Input is hidden while typing.");
-    const token = await questioner.askHidden("[2/2] Bot token Paste the Telegram bot token. It is hidden while typing: ");
+    let ownerUserId = (await questioner.ask("[1/2] Telegram owner id hoặc username. Dùng numeric id, username, hoặc @username được phép chat với Bestie. Để trống để tự phát hiện từ tin nhắn bot mới nhất: ")).trim();
+    ui.section("Bot token", "Dán token bí mật. Nội dung nhập sẽ được ẩn.");
+    const token = await questioner.askHidden("[2/2] Bot token. Dán Telegram bot token; nội dung nhập sẽ được ẩn: ");
 
     if (!token.trim()) {
-      throw new UserFacingError("Telegram bot token is required.", "TelegramMissingTokenError");
+      throw new UserFacingError("Bắt buộc phải có Telegram bot token.", "TelegramMissingTokenError");
     }
 
     if (!ownerUserId) {
@@ -197,21 +197,21 @@ async function runTelegramSetup(options: { paths: RuntimePaths; questioner?: Tel
     }
 
     if (!ownerUserId) {
-      throw new UserFacingError("Telegram owner id or username is required. Send any message to the bot, rerun setup, or provide the owner manually.", "TelegramMissingOwnerError");
+      throw new UserFacingError("Bắt buộc phải có Telegram owner id hoặc username. Hãy gửi một tin nhắn cho bot, chạy lại setup, hoặc nhập owner thủ công.", "TelegramMissingOwnerError");
     }
 
-    ui.success("Telegram owner and bot token collected.");
+    ui.success("Đã thu thập owner Telegram và bot token.");
 
-    ui.section("Save", "Updating local config and secret env file.");
+    ui.section("Lưu cấu hình", "Đang cập nhật config cục bộ và file env chứa secret.");
     await mkdir(options.paths.appDir, { recursive: true });
     await writeConfig(enableTelegramConfig(config, ownerUserId), options.paths);
     await writeEnvFile({ ...(await loadEnvFile(options.paths)), [DEFAULT_TELEGRAM_TOKEN_ENV]: token.trim() }, options.paths);
 
-    ui.success("Telegram setup saved.");
-    ui.section("Files", "Secrets stay local and are not printed.");
-    ui.savedPath("Config", options.paths.configPath);
-    ui.savedPath("Token env", `${DEFAULT_TELEGRAM_TOKEN_ENV} in ${options.paths.envPath}`);
-    ui.info("Telegram is enabled for the configured owner id or username only.");
+    ui.success("Đã lưu cấu hình Telegram.");
+    ui.section("File đã lưu", "Secret được giữ cục bộ và không được in ra màn hình.");
+    ui.savedPath("Cấu hình", options.paths.configPath);
+    ui.savedPath("Token env", `${DEFAULT_TELEGRAM_TOKEN_ENV} trong ${options.paths.envPath}`);
+    ui.info("Telegram chỉ được bật cho owner id hoặc username đã cấu hình.");
     ui.final();
   } finally {
     questioner.close();
@@ -219,20 +219,20 @@ async function runTelegramSetup(options: { paths: RuntimePaths; questioner?: Tel
 }
 
 async function detectTelegramOwnerFromSetup(options: { token: string; questioner: TelegramQuestioner; clientFactory?: (token: string) => TelegramClient; ui: TelegramSetupUi }): Promise<string> {
-  options.ui.section("Owner lookup", "Reading the latest message sent to this bot.");
+  options.ui.section("Tra cứu owner", "Đang đọc tin nhắn mới nhất gửi tới bot này.");
   const client = options.clientFactory?.(options.token) ?? new TelegramHttpClient(options.token);
   const owner = await getRecentTelegramOwner(client);
 
   if (!owner) {
-    options.ui.info("No recent Telegram user message found. Send any message to the bot, then rerun setup or `bestie channels telegram whoami`.");
+    options.ui.info("Chưa thấy tin nhắn Telegram gần đây từ người dùng. Hãy gửi một tin nhắn cho bot, rồi chạy lại setup hoặc `bestie channels telegram whoami`.");
     return "";
   }
 
   const suggestedOwner = owner.username ? `@${owner.username}` : String(owner.id);
-  options.ui.info(`Found recent Telegram sender ${suggestedOwner} (id ${owner.id}).`);
+  options.ui.info(`Tìm thấy người gửi Telegram gần đây: ${suggestedOwner} (id ${owner.id}).`);
   const shouldUseOwner = options.questioner.confirm
-    ? await options.questioner.confirm(`Use ${suggestedOwner} as the Telegram owner?`, true)
-    : !["n", "no"].includes((await options.questioner.ask(`Use ${suggestedOwner} as the Telegram owner? [Y/n]: `)).trim().toLowerCase());
+    ? await options.questioner.confirm(`Dùng ${suggestedOwner} làm owner Telegram?`, true)
+    : !["n", "no"].includes((await options.questioner.ask(`Dùng ${suggestedOwner} làm owner Telegram? [Y/n]: `)).trim().toLowerCase());
   return shouldUseOwner ? suggestedOwner : "";
 }
 
@@ -248,11 +248,11 @@ function createTelegramSetupUi(writeLine: (message: string) => void, useColor: b
 
   return {
     intro: (paths) => {
-      writeLine(render(() => title("Telegram Setup")));
-      writeLine(render(() => dim("Connect a Telegram bot to your local Bestie runtime.")));
+      writeLine(render(() => title("Thiết lập Telegram")));
+      writeLine(render(() => dim("Kết nối bot Telegram với runtime Bestie cục bộ.")));
       writeLine(`${render(() => color("cyan", "Runtime"))} ${paths.appDir}`);
-      writeLine(`${render(() => color("cyan", "Privacy"))} Bot tokens stay local in .bestie/.env and are hidden while typing.`);
-      writeLine(render(() => `${dim("Plan")} Account -> Save -> Files\n`));
+      writeLine(`${render(() => color("cyan", "Riêng tư"))} Bot token được lưu cục bộ trong .bestie/.env và được ẩn khi nhập.`);
+      writeLine(render(() => `${dim("Các bước")} Tài khoản -> Lưu cấu hình -> File đã lưu\n`));
     },
     section: (sectionTitle, detail) => {
       writeLine(render(() => `${color("cyan", "\n>")} ${bold(sectionTitle)}${detail ? ` ${dim(detail)}` : ""}`));
@@ -261,8 +261,8 @@ function createTelegramSetupUi(writeLine: (message: string) => void, useColor: b
     info: (message) => writeLine(`${render(() => badge("INFO", "yellow"))} ${message}`),
     savedPath: (label, path) => writeLine(`  ${render(() => color("cyan", label.padEnd(10)))} ${path}`),
     final: () => {
-      writeLine(`${render(() => badge("DONE", "green"))} Telegram setup complete.`);
-      writeLine(`${render(() => dim("Next"))} Run \`bestie doctor\`, then \`bestie channels telegram --once\`.`);
+      writeLine(`${render(() => badge("DONE", "green"))} Thiết lập Telegram đã hoàn tất.`);
+      writeLine(`${render(() => dim("Tiếp theo"))} Chạy \`bestie doctor\`, rồi \`bestie channels telegram --once\`.`);
     },
   };
 }
@@ -277,7 +277,7 @@ function getTranscriptPath(argv: string[], paths: RuntimePaths): string | undefi
   const value = argv[transcriptIndex + 1]?.trim();
 
   if (!value || value.startsWith("--")) {
-    throw new UserFacingError("Telegram --transcript requires a file path.", "TelegramTranscriptPathError");
+    throw new UserFacingError("Telegram --transcript cần một đường dẫn file.", "TelegramTranscriptPathError");
   }
 
   return resolve(paths.rootDir, value);

@@ -6,7 +6,7 @@ export async function runLogsCommand(): Promise<void> {
   const lines = await readRecentLogs(paths);
 
   if (lines.length === 0) {
-    console.log(`No logs found yet. Logs will be written to ${paths.appLogPath}.`);
+    console.log(`Chưa có log. Log sẽ được ghi vào ${paths.appLogPath}.`);
     return;
   }
 

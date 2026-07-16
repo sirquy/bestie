@@ -43,6 +43,6 @@ export async function maybePrintUpdateNotice(options: UpdateNoticeOptions): Prom
 }
 
 function printNotice(writeLine: (message: string) => void, currentVersion: string, latestVersion: string): void {
-  writeLine(`Bestie update available: ${currentVersion} -> ${latestVersion}`);
-  writeLine("Run `bestie update --apply` to install the latest npm version.");
+  writeLine(`Có bản Bestie mới: ${currentVersion} -> ${latestVersion}`);
+  writeLine("Chạy `bestie update --apply` để cài bản npm mới nhất.");
 }

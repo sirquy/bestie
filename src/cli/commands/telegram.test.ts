@@ -34,7 +34,7 @@ test("runTelegramCommand setup writes Telegram config and token env", async () =
       paths,
       questioner: {
         ask: async (question) => {
-          assert.match(question, /id or username/i);
+          assert.match(question, /owner id hoặc username/i);
           return "@boss_user";
         },
         askHidden: async () => "telegram-secret-token",
@@ -56,14 +56,14 @@ test("runTelegramCommand setup writes Telegram config and token env", async () =
     assert.equal(config.channels?.telegram?.ownerUserId, "@boss_user");
     assert.match(envText, /OPENAI_API_KEY="sk-test"/);
     assert.match(envText, /BESTIE_TELEGRAM_BOT_TOKEN="telegram-secret-token"/);
-    assert.ok(output.some((line) => line.includes("Telegram setup")));
+    assert.ok(output.some((line) => line.includes("Thiết lập Telegram")));
     assert.ok(output.some((line) => line.includes("Runtime")));
-    assert.ok(output.some((line) => line.includes("Account") && line.includes("Connect one Telegram bot")));
-    assert.ok(output.some((line) => line.includes("Bot token") && line.includes("Input is hidden")));
-    assert.ok(output.some((line) => line.includes("OK") && line.includes("Telegram owner and bot token collected")));
-    assert.ok(output.some((line) => line.includes("Telegram setup saved")));
+    assert.ok(output.some((line) => line.includes("Tài khoản") && line.includes("Kết nối một bot Telegram")));
+    assert.ok(output.some((line) => line.includes("Bot token") && line.includes("Nội dung nhập sẽ được ẩn")));
+    assert.ok(output.some((line) => line.includes("OK") && line.includes("Đã thu thập owner Telegram")));
+    assert.ok(output.some((line) => line.includes("Đã lưu cấu hình Telegram")));
     assert.ok(output.some((line) => line.includes("Token env") && line.includes("BESTIE_TELEGRAM_BOT_TOKEN")));
-    assert.ok(output.some((line) => line.includes("DONE") && line.includes("Telegram setup complete")));
+    assert.ok(output.some((line) => line.includes("DONE") && line.includes("Thiết lập Telegram đã hoàn tất")));
     assert.ok(output.every((line) => !line.includes("telegram-secret-token")));
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
@@ -120,11 +120,11 @@ test("runTelegramCommand setup can detect owner username when owner prompt is bl
       channels?: { telegram?: { ownerUserId: string } };
     };
 
-  assert.equal(askCount, 1);
-  assert.equal(confirmQuestion, "Use @boss_user as the Telegram owner?");
+    assert.equal(askCount, 1);
+    assert.equal(confirmQuestion, "Dùng @boss_user làm owner Telegram?");
     assert.equal(config.channels?.telegram?.ownerUserId, "@boss_user");
-    assert.ok(output.some((line) => line.includes("Owner lookup")));
-    assert.ok(output.some((line) => line.includes("Found recent Telegram sender @boss_user")));
+    assert.ok(output.some((line) => line.includes("Tra cứu owner")));
+    assert.ok(output.some((line) => line.includes("Tìm thấy người gửi Telegram gần đây: @boss_user")));
     assert.ok(output.every((line) => !line.includes("telegram-secret-token")));
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
@@ -167,10 +167,10 @@ test("runTelegramCommand setup explains blank owner when no recent Telegram send
         writeLine: (message) => output.push(message),
         useColor: false,
       }),
-      /Send any message to the bot/,
+      /gửi một tin nhắn cho bot/,
     );
 
-    assert.ok(output.some((line) => line.includes("No recent Telegram user message found")));
+    assert.ok(output.some((line) => line.includes("Chưa thấy tin nhắn Telegram gần đây")));
     const config = JSON.parse(await readFile(paths.configPath, "utf8")) as { channels?: { telegram?: { enabled: boolean } } };
     assert.equal(config.channels?.telegram, undefined);
     await assert.rejects(() => access(paths.envPath), /ENOENT/);
@@ -213,7 +213,7 @@ test("runTelegramCommand whoami prints recent Telegram sender id and username be
     });
 
     const text = output.join("\n");
-    assert.match(text, /Telegram Owner Lookup/);
+    assert.match(text, /Tra cứu owner Telegram/);
     assert.match(text, /ID\s+12345/);
     assert.match(text, /Username\s+@boss_user/);
     assert.match(text, /channels\.telegram\.ownerUserId/);
@@ -258,8 +258,8 @@ test("runTelegramCommand whoami explains when no recent Telegram sender exists",
     });
 
     const text = output.join("\n");
-    assert.match(text, /No recent owner message found/);
-    assert.match(text, /Send any message to your Telegram bot/);
+    assert.match(text, /Chưa tìm thấy tin nhắn gần đây từ owner/);
+    assert.match(text, /Gửi một tin nhắn bất kỳ cho bot Telegram/);
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
   }
@@ -312,9 +312,9 @@ test("runVoiceCommand setup-local writes wrapper and local transcription config"
     assert.equal(config.channels?.telegram?.attachments?.transcriptionPolicy, "allow");
     assert.deepEqual(config.channels?.telegram?.attachments?.deleteAfterProcessingKinds, ["voice", "audio"]);
     assert.deepEqual(config.channels?.telegram?.attachments?.allowedMimeTypes, ["text/*", "audio/*"]);
-    assert.ok(output.some((line) => line.includes("Bestie Local Voice")));
-    assert.ok(output.some((line) => line.includes("Local voice setup saved")));
-    assert.ok(output.some((line) => line.includes("Language") && line.includes("vi")));
+    assert.ok(output.some((line) => line.includes("Giọng nói local Bestie")));
+    assert.ok(output.some((line) => line.includes("Đã lưu cấu hình giọng nói local")));
+    assert.ok(output.some((line) => line.includes("Ngôn ngữ") && line.includes("vi")));
     assert.ok(output.every((line) => !/\x1b\[[0-9;]*m/.test(line)));
   } finally {
     process.env.PATH = oldPath;
@@ -420,8 +420,8 @@ test("runVoiceCommand setup-elevenlabs writes speech config and API key env", as
     assert.deepEqual(config.channels?.telegram?.attachments?.allowedMimeTypes, ["audio/*"]);
     assert.match(envText, /OPENAI_API_KEY="sk-test"/);
     assert.match(envText, /ELEVENLABS_API_KEY="elevenlabs-secret-token"/);
-    assert.ok(output.some((line) => line.includes("Bestie ElevenLabs Voice")));
-    assert.ok(output.some((line) => line.includes("ElevenLabs voice setup saved")));
+    assert.ok(output.some((line) => line.includes("Giọng nói ElevenLabs cho Bestie")));
+    assert.ok(output.some((line) => line.includes("Đã lưu cấu hình giọng nói ElevenLabs")));
     assert.ok(output.every((line) => !line.includes("elevenlabs-secret-token")));
     assert.ok(output.every((line) => !/\x1b\[[0-9;]*m/.test(line)));
   } finally {
@@ -487,7 +487,7 @@ test("runVoiceCommand setup-local fails before writing config when model is miss
 
     await assert.rejects(
       () => runVoiceCommand({ argv: ["node", "bestie", "voice", "setup-local"], paths, writeLine: () => undefined }),
-      /Local whisper model is missing or unreadable/,
+      /Thiếu model whisper local hoặc không đọc được/,
     );
   } finally {
     process.env.PATH = oldPath;
@@ -517,10 +517,10 @@ test("runVoiceCommand models lists local models and marks configured model", asy
     await runVoiceCommand({ argv: ["node", "bestie", "voice", "models"], paths, writeLine: (message) => output.push(message), useColor: false });
 
     const text = output.join("\n");
-    assert.match(text, /Bestie Voice Models/);
-    assert.match(text, /\*\s+ggml-small\.bin\s+2\.0 KiB\s+recommended baseline for Vietnamese/);
-    assert.match(text, /ggml-tiny\.bin\s+1\.0 KiB\s+fast, low quality for Vietnamese/);
-    assert.match(text, /Configured/);
+  assert.match(text, /Model giọng nói Bestie/);
+  assert.match(text, /\*\s+ggml-small\.bin\s+2\.0 KiB\s+mốc khuyến nghị cho tiếng Việt/);
+    assert.match(text, /ggml-tiny\.bin\s+1\.0 KiB\s+nhanh, chất lượng thấp với tiếng Việt/);
+    assert.match(text, /Đã cấu hình/);
     assert.ok(output.every((line) => !/\x1b\[[0-9;]*m/.test(line)));
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
@@ -544,7 +544,7 @@ test("runVoiceCommand models reports when no local models exist", async () => {
 
     await runVoiceCommand({ argv: ["node", "bestie", "voice", "models"], paths, writeLine: (message) => output.push(message) });
 
-    assert.match(output.join("\n"), /No local whisper\.cpp \.bin models found/);
+    assert.match(output.join("\n"), /Chưa tìm thấy model whisper\.cpp \.bin cục bộ/);
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
   }
@@ -578,8 +578,8 @@ test("runVoiceCommand download-model previews without downloading by default", a
     });
 
     assert.equal(fetchCalled, false);
-    assert.match(output.join("\n"), /Bestie Voice Model/);
-    assert.match(output.join("\n"), /Dry run only/);
+    assert.match(output.join("\n"), /Model giọng nói Bestie/);
+    assert.match(output.join("\n"), /Chỉ chạy thử/);
     assert.ok(output.every((line) => !/\x1b\[[0-9;]*m/.test(line)));
     await assert.rejects(() => access(resolve(paths.rootDir, ".bestie/models/ggml-small.bin")), /ENOENT/);
   } finally {
@@ -615,7 +615,7 @@ test("runVoiceCommand download-model downloads and can update config", async () 
     assert.equal(modelBytes, "model bytes");
     assert.equal(config.transcription?.modelPath, ".bestie/models/ggml-tiny.bin");
     assert.deepEqual(config.transcription?.args, ["{modelPath}", "{audioPath}", "-l", "en"]);
-    assert.match(output.join("\n"), /Downloaded: \.bestie\/models\/ggml-tiny\.bin/);
+    assert.match(output.join("\n"), /Đã tải: \.bestie\/models\/ggml-tiny\.bin/);
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
   }
@@ -645,7 +645,7 @@ test("runVoiceCommand download-model refuses to overwrite without force", async 
           modelDownloadFetchImpl: async () => new Response("model bytes"),
           writeLine: () => undefined,
         }),
-      /Use --force to overwrite/,
+      /Dùng --force để ghi đè/,
     );
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
@@ -709,7 +709,7 @@ test("runTelegramCommand writes a redacted Telegram smoke transcript", async () 
     assert.equal((events[2].detail.updates as Array<{ fromOwner: boolean; textLength: number }>)[0].textLength, 6);
     assert.equal(events[4].detail.kind, "reply");
     assert.doesNotMatch(transcriptText, /telegram-secret-token|\/start|Miu is online/);
-    assert.ok(output.some((line) => line.includes("Telegram smoke transcript")));
+    assert.ok(output.some((line) => line.includes("Transcript smoke Telegram")));
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
   }
@@ -1000,7 +1000,7 @@ test("runTelegramCommand wires local audio transcription for Telegram voice atta
     assert.ok(agentSawTranscript);
     const transcriptText = await readFile(resolve(paths.rootDir, ".bestie/logs/telegram-local-voice-smoke.jsonl"), "utf8");
     assert.match(transcriptText, /"hasAudioTranscript":true/);
-    assert.doesNotMatch(transcriptText, /xin chao tu local whisper|voice-secret-id|secret-voice|please transcribe locally|777|12345/);
+    assert.doesNotMatch(transcriptText, /xin chao tu local whisper|voice-secret-id|secret-voice|please transcribe locally|"chat":"777"|"from":"12345"/);
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
   }
