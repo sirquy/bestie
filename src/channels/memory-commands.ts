@@ -1,4 +1,5 @@
 import type { AnalyzeMemoriesResult } from "../tools/local-read-tools.js";
+import type { CronSchedule } from "../memory/sqlite-store.js";
 
 export function formatMemoryAnalysisReport(analysis: AnalyzeMemoriesResult): string {
   if (!analysis.allowed) {
@@ -41,6 +42,33 @@ export function formatMemoryCleanupDryRunReport(analysis: AnalyzeMemoriesResult)
   }
 
   return lines.join("\n");
+}
+
+export function formatMemoryMaintenanceInstalled(schedule: CronSchedule): string {
+  return [
+    `Memory maintenance report installed: #${schedule.id}`,
+    `Schedule: ${schedule.scheduleValue}`,
+    `Channel: ${schedule.channel ?? "configured owner channels"}`,
+    `Next run: ${schedule.nextRunAt}`,
+  ].join("\n");
+}
+
+export function formatMemoryMaintenanceStatus(schedule: CronSchedule | undefined): string {
+  if (!schedule) {
+    return "Memory maintenance report is not installed.";
+  }
+
+  return [
+    `Memory maintenance report: #${schedule.id} ${schedule.enabled ? "enabled" : "disabled"}`,
+    `Schedule: ${schedule.scheduleValue}`,
+    `Channel: ${schedule.channel ?? "configured owner channels"}`,
+    `Next run: ${schedule.nextRunAt || "none"}`,
+    `Last result: ${schedule.lastResult ?? "none"}`,
+  ].join("\n");
+}
+
+export function formatMemoryMaintenanceRemoved(schedule: CronSchedule | undefined): string {
+  return schedule ? `Memory maintenance report removed: #${schedule.id}` : "Memory maintenance report is not installed.";
 }
 
 function appendDuplicateGroups(lines: string[], groups: AnalyzeMemoriesResult["duplicateGroups"]): void {

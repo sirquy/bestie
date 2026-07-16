@@ -5,6 +5,7 @@ import { fallbackLogDetail, formatProviderFallbackDiagnostics, formatProviderFal
 import { ProviderAuthError, ProviderFallbackError, ProviderNetworkError, ProviderRateLimitError, ProviderResponseError, ProviderTimeoutError } from "../llm/errors.js";
 import { sendChatCompletionWithFallbacks } from "../llm/openai-compatible.js";
 import type { ChatCompletionOptions, ChatMessage } from "../llm/types.js";
+import { getMemoryMaintenanceReportStatus, installMemoryMaintenanceReport, removeMemoryMaintenanceReport } from "../memory/maintenance.js";
 import { runMemoryReasoningPass, type MemoryReasoningResult } from "../memory/reasoning.js";
 import { SqliteMemoryStore } from "../memory/sqlite-store.js";
 import type { AppConfig } from "../runtime/config.js";
@@ -17,7 +18,7 @@ import { analyzeMemoriesTool } from "../tools/local-read-tools.js";
 import type { PermissionApprover, PermissionPolicy } from "../safety/permission-policy.js";
 import type { ChannelIncomingMessage, ChannelOutboundAdapter, ChannelRuntimeAdapter } from "./adapter.js";
 import { createChannelActivityController } from "./activity.js";
-import { formatMemoryAnalysisReport, formatMemoryCleanupDryRunReport } from "./memory-commands.js";
+import { formatMemoryAnalysisReport, formatMemoryCleanupDryRunReport, formatMemoryMaintenanceInstalled, formatMemoryMaintenanceRemoved, formatMemoryMaintenanceStatus } from "./memory-commands.js";
 import { ZALO_CHANNEL, formatChannelHelpCommands } from "./registry.js";
 import { createChannelResponseController } from "./response-controller.js";
 
@@ -403,6 +404,27 @@ async function handleZaloSlashCommand(text: string, chatId: string, options: Zal
     return true;
   }
 
+  if (memoryCommand?.startsWith("maintenance:")) {
+    const action = memoryCommand.split(":")[1];
+    const destination = `zalo:${chatId}`;
+
+    if (action === "install") {
+      const result = await installMemoryMaintenanceReport({ paths: options.paths, channel: destination });
+      await options.client.sendMessage(chatId, result.ok ? formatMemoryMaintenanceInstalled(result.schedule) : result.reason);
+      return true;
+    }
+
+    if (action === "status") {
+      await options.client.sendMessage(chatId, formatMemoryMaintenanceStatus(await getMemoryMaintenanceReportStatus(options.paths)));
+      return true;
+    }
+
+    if (action === "remove") {
+      await options.client.sendMessage(chatId, formatMemoryMaintenanceRemoved(await removeMemoryMaintenanceReport(options.paths)));
+      return true;
+    }
+  }
+
   if (memoryCommand === "pending") {
     const store = await SqliteMemoryStore.open(options.paths);
     try {
@@ -700,7 +722,7 @@ function parseZaloApprovalDecision(text: string): { decision: "approve" | "deny"
   return match ? { decision: match[1] as "approve" | "deny", id: Number(match[2]) } : undefined;
 }
 
-function parseZaloMemoryCommand(text: string): "list" | "pending" | "pause" | "resume" | "analyze" | "cleanup_dry_run" | undefined {
+function parseZaloMemoryCommand(text: string): "list" | "pending" | "pause" | "resume" | "analyze" | "cleanup_dry_run" | "maintenance:install" | "maintenance:status" | "maintenance:remove" | undefined {
   if (text === "/memory" || text === "/memory list" || text === "/memory status") {
     return "list";
   }
@@ -712,6 +734,15 @@ function parseZaloMemoryCommand(text: string): "list" | "pending" | "pause" | "r
   }
   if (text === "/memory cleanup dry-run" || text === "/memory cleanup --dry-run") {
     return "cleanup_dry_run";
+  }
+  if (text === "/memory maintenance install") {
+    return "maintenance:install";
+  }
+  if (text === "/memory maintenance" || text === "/memory maintenance status") {
+    return "maintenance:status";
+  }
+  if (text === "/memory maintenance remove" || text === "/memory maintenance uninstall") {
+    return "maintenance:remove";
   }
   if (text === "/memory pause" || text === "/pause_memory" || text === "/pause-memory") {
     return "pause";

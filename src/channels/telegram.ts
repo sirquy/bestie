@@ -19,6 +19,7 @@ import type { ChatCompletionOptions, ChatMessage, ChatMessageContent } from "../
 import { sendChatCompletionWithFallbacks } from "../llm/openai-compatible.js";
 import { fallbackLogDetail, formatProviderFallbackDiagnostics, formatProviderFallbackHealth } from "../llm/fallbacks.js";
 import { runMemoryReasoningPass, type MemoryReasoningResult } from "../memory/reasoning.js";
+import { getMemoryMaintenanceReportStatus, installMemoryMaintenanceReport, removeMemoryMaintenanceReport } from "../memory/maintenance.js";
 import { SqliteMemoryStore } from "../memory/sqlite-store.js";
 import type { AppConfig } from "../runtime/config.js";
 import { loadRequiredSecret } from "../runtime/env.js";
@@ -34,7 +35,7 @@ import { buildChannelAttachmentPreview, type AttachmentContentParser } from "./a
 import { ProviderAuthError, ProviderFallbackError, ProviderNetworkError, ProviderRateLimitError, ProviderResponseError, ProviderTimeoutError } from "../llm/errors.js";
 import type { ChannelIncomingMessage, ChannelOutboundAdapter, ChannelRuntimeAdapter } from "./adapter.js";
 import { createChannelActivityController } from "./activity.js";
-import { formatMemoryAnalysisReport, formatMemoryCleanupDryRunReport } from "./memory-commands.js";
+import { formatMemoryAnalysisReport, formatMemoryCleanupDryRunReport, formatMemoryMaintenanceInstalled, formatMemoryMaintenanceRemoved, formatMemoryMaintenanceStatus } from "./memory-commands.js";
 import { buildChannelAttachmentPrompt } from "./attachment-prompt.js";
 import { processChannelAttachment } from "./attachment-pipeline.js";
 import { buildChannelVisionAttachment, type ChannelVisionAttachment } from "./attachment-vision.js";
@@ -1456,6 +1457,27 @@ async function handleTelegramSlashCommand(text: string, chatId: number, options:
     return true;
   }
 
+  if (memoryCommand?.startsWith("maintenance:")) {
+    const action = memoryCommand.split(":")[1];
+    const destination = `telegram:${chatId}`;
+
+    if (action === "install") {
+      const result = await installMemoryMaintenanceReport({ paths: options.paths, channel: destination });
+      await options.client.sendMessage(chatId, result.ok ? formatMemoryMaintenanceInstalled(result.schedule) : result.reason);
+      return true;
+    }
+
+    if (action === "status") {
+      await options.client.sendMessage(chatId, formatMemoryMaintenanceStatus(await getMemoryMaintenanceReportStatus(options.paths)));
+      return true;
+    }
+
+    if (action === "remove") {
+      await options.client.sendMessage(chatId, formatMemoryMaintenanceRemoved(await removeMemoryMaintenanceReport(options.paths)));
+      return true;
+    }
+  }
+
   if (memoryCommand === "pending") {
     const store = await SqliteMemoryStore.open(options.paths);
 
@@ -1557,7 +1579,7 @@ function isPendingMemoryToolResult(value: unknown): value is { id: number; statu
   return typeof value === "object" && value !== null && "id" in value && "status" in value && Number.isInteger((value as { id: unknown }).id) && (value as { status: unknown }).status === "pending";
 }
 
-function parseTelegramMemoryCommand(text: string): "list" | "pending" | `pending_inspect:${number}` | "pause" | "resume" | "analyze" | "cleanup_dry_run" | undefined {
+function parseTelegramMemoryCommand(text: string): "list" | "pending" | `pending_inspect:${number}` | "pause" | "resume" | "analyze" | "cleanup_dry_run" | "maintenance:install" | "maintenance:status" | "maintenance:remove" | undefined {
   if (text === "/memory" || text === "/memory list" || text === "/memory status") {
     return "list";
   }
@@ -1572,6 +1594,18 @@ function parseTelegramMemoryCommand(text: string): "list" | "pending" | `pending
 
   if (text === "/memory cleanup dry-run" || text === "/memory cleanup --dry-run") {
     return "cleanup_dry_run";
+  }
+
+  if (text === "/memory maintenance install") {
+    return "maintenance:install";
+  }
+
+  if (text === "/memory maintenance" || text === "/memory maintenance status") {
+    return "maintenance:status";
+  }
+
+  if (text === "/memory maintenance remove" || text === "/memory maintenance uninstall") {
+    return "maintenance:remove";
   }
 
   const pendingInspectMatch = text.match(/^\/memory pending inspect (\d+)$/);

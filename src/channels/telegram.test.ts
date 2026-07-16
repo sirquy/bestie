@@ -839,6 +839,27 @@ test("handleTelegramUpdate reports memory analysis and cleanup dry-run", async (
   }
 });
 
+test("handleTelegramUpdate manages memory maintenance reports", async () => {
+  const paths = await createTempPaths();
+  const sentMessages: Array<{ chatId: number; text: string }> = [];
+
+  try {
+    await writeRuntimeFiles(paths);
+
+    await handleTelegramUpdate(createTextUpdate("/memory maintenance install", 12345), { config, paths, client: createRecordingClient(sentMessages) });
+    await handleTelegramUpdate(createTextUpdate("/memory maintenance status", 12345), { config, paths, client: createRecordingClient(sentMessages) });
+    await handleTelegramUpdate(createTextUpdate("/memory maintenance remove", 12345), { config, paths, client: createRecordingClient(sentMessages) });
+
+    assert.match(sentMessages[0].text, /Memory maintenance report installed: #\d+/);
+    assert.match(sentMessages[0].text, /Channel: telegram:777/);
+    assert.match(sentMessages[1].text, /Memory maintenance report: #\d+ enabled/);
+    assert.match(sentMessages[1].text, /Channel: telegram:777/);
+    assert.match(sentMessages[2].text, /Memory maintenance report removed: #\d+/);
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
 test("handleTelegramUpdate status includes recent provider fallback health", async () => {
   const paths = await createTempPaths();
   const sentMessages: Array<{ chatId: number; text: string }> = [];

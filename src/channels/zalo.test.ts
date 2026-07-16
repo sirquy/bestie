@@ -185,6 +185,27 @@ test("handleZaloUpdate reports memory analysis and cleanup dry-run", async () =>
   }
 });
 
+test("handleZaloUpdate manages memory maintenance reports", async () => {
+  const paths = await createTempPaths();
+  const sent: Array<{ chatId: string; text: string }> = [];
+
+  try {
+    await writeRuntimeFiles(paths);
+
+    await handleZaloUpdate({ update_id: 1, message: { from: { id: "owner-1" }, chat: { id: "chat-1" }, text: "/memory maintenance install" } }, { config, paths, client: createRecordingClient(sent) });
+    await handleZaloUpdate({ update_id: 2, message: { from: { id: "owner-1" }, chat: { id: "chat-1" }, text: "/memory maintenance status" } }, { config, paths, client: createRecordingClient(sent) });
+    await handleZaloUpdate({ update_id: 3, message: { from: { id: "owner-1" }, chat: { id: "chat-1" }, text: "/memory maintenance remove" } }, { config, paths, client: createRecordingClient(sent) });
+
+    assert.match(sent[0].text, /Memory maintenance report installed: #\d+/);
+    assert.match(sent[0].text, /Channel: zalo:chat-1/);
+    assert.match(sent[1].text, /Memory maintenance report: #\d+ enabled/);
+    assert.match(sent[1].text, /Channel: zalo:chat-1/);
+    assert.match(sent[2].text, /Memory maintenance report removed: #\d+/);
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
 test("handleZaloUpdate replies with sanitized provider error details", async () => {
   const paths = await createTempPaths();
   const sent: Array<{ chatId: string; text: string }> = [];
