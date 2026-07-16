@@ -19,7 +19,7 @@ import { analyzeMemoriesTool } from "../tools/local-read-tools.js";
 import type { PermissionApprover, PermissionPolicy } from "../safety/permission-policy.js";
 import type { ChannelIncomingMessage, ChannelOutboundAdapter, ChannelRuntimeAdapter } from "./adapter.js";
 import { createChannelActivityController } from "./activity.js";
-import { formatMemoryAnalysisReport, formatMemoryCleanupDryRunReport, formatMemoryGovernanceStatus, formatMemoryMaintenanceInstalled, formatMemoryMaintenanceRemoved, formatMemoryMaintenanceStatus, formatMemoryRetrievalPolicyUpdated } from "./memory-commands.js";
+import { formatMemoryAnalysisReport, formatMemoryCleanupDryRunReport, formatMemoryGovernanceStatus, formatMemoryInspect, formatMemoryMaintenanceInstalled, formatMemoryMaintenanceRemoved, formatMemoryMaintenanceStatus, formatMemoryRetrievalPolicyUpdated } from "./memory-commands.js";
 import { ZALO_CHANNEL, formatChannelHelpCommands } from "./registry.js";
 import { createChannelResponseController } from "./response-controller.js";
 
@@ -410,6 +410,23 @@ async function handleZaloSlashCommand(text: string, chatId: string, options: Zal
       const memories = store.listActiveMemoriesByScope(scope);
       const header = `Active memories / ${scope} (${memories.length})`;
       await sendZaloTextChunks(options.client, chatId, memories.length === 0 ? `No active memories in ${scope} scope.` : `${header}:\n${formatMemoryList(memories)}`);
+      return true;
+    } finally {
+      store.close();
+    }
+  }
+
+  if (memoryCommand?.startsWith("inspect:")) {
+    const id = Number(memoryCommand.split(":")[1]);
+    if (!Number.isSafeInteger(id) || id <= 0) {
+      await options.client.sendMessage(chatId, "Usage: /memory inspect <id>");
+      return true;
+    }
+
+    const store = await SqliteMemoryStore.open(options.paths);
+    try {
+      const memory = store.getActiveMemory(id);
+      await sendZaloTextChunks(options.client, chatId, memory ? formatMemoryInspect(memory) : `No active memory found for id ${id}.`);
       return true;
     } finally {
       store.close();
@@ -815,7 +832,7 @@ function parseZaloApprovalDecision(text: string): { decision: "approve" | "deny"
   return match ? { decision: match[1] as "approve" | "deny", id: Number(match[2]) } : undefined;
 }
 
-function parseZaloMemoryCommand(text: string): "list" | "pending" | "pause" | "resume" | "analyze" | "cleanup_dry_run" | "governance_status" | `governance_policy:${string}` | `pin:${number}` | `unpin:${number}` | `scope:${string}` | `move:${number}:${string}` | `supersede:${number}:${number}` | "maintenance:install" | "maintenance:status" | "maintenance:remove" | undefined {
+function parseZaloMemoryCommand(text: string): "list" | "pending" | "pause" | "resume" | "analyze" | "cleanup_dry_run" | "governance_status" | `governance_policy:${string}` | `pin:${number}` | `unpin:${number}` | `scope:${string}` | `inspect:${number}` | `move:${number}:${string}` | `supersede:${number}:${number}` | "maintenance:install" | "maintenance:status" | "maintenance:remove" | undefined {
   if (text === "/memory" || text === "/memory list" || text === "/memory status") {
     return "list";
   }
@@ -842,6 +859,10 @@ function parseZaloMemoryCommand(text: string): "list" | "pending" | "pause" | "r
   const scopeMatch = text.match(/^\/memory scope (\S+)$/);
   if (scopeMatch) {
     return `scope:${scopeMatch[1]}`;
+  }
+  const inspectMatch = text.match(/^\/memory inspect (\d+)$/);
+  if (inspectMatch) {
+    return `inspect:${Number(inspectMatch[1])}`;
   }
   const moveMatch = text.match(/^\/memory move (\d+) (\S+)$/);
   if (moveMatch) {

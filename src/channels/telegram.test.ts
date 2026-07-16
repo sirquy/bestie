@@ -939,6 +939,32 @@ test("handleTelegramUpdate lists and moves memory scopes", async () => {
   }
 });
 
+test("handleTelegramUpdate inspects a memory record", async () => {
+  const paths = await createTempPaths();
+  const sentMessages: Array<{ chatId: number; text: string }> = [];
+
+  try {
+    await writeRuntimeFiles(paths);
+    const store = await SqliteMemoryStore.open(paths);
+    let id: number;
+    try {
+      id = store.addMemory({ type: "project_context", content: "Inspect from Telegram", scope: "session", pinned: true }).id;
+    } finally {
+      store.close();
+    }
+
+    await handleTelegramUpdate(createTextUpdate(`/memory inspect ${id}`, 12345), { config, paths, client: createRecordingClient(sentMessages) });
+
+    assert.match(sentMessages[0].text, new RegExp(`Memory #${id}`));
+    assert.match(sentMessages[0].text, /Type: project_context/);
+    assert.match(sentMessages[0].text, /Scope: session/);
+    assert.match(sentMessages[0].text, /Pinned: yes/);
+    assert.match(sentMessages[0].text, /Content:\nInspect from Telegram/);
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
 test("handleTelegramUpdate supersedes active memories", async () => {
   const paths = await createTempPaths();
   const sentMessages: Array<{ chatId: number; text: string }> = [];

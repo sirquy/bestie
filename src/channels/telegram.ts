@@ -36,7 +36,7 @@ import { buildChannelAttachmentPreview, type AttachmentContentParser } from "./a
 import { ProviderAuthError, ProviderFallbackError, ProviderNetworkError, ProviderRateLimitError, ProviderResponseError, ProviderTimeoutError } from "../llm/errors.js";
 import type { ChannelIncomingMessage, ChannelOutboundAdapter, ChannelRuntimeAdapter } from "./adapter.js";
 import { createChannelActivityController } from "./activity.js";
-import { formatMemoryAnalysisReport, formatMemoryCleanupDryRunReport, formatMemoryGovernanceStatus, formatMemoryMaintenanceInstalled, formatMemoryMaintenanceRemoved, formatMemoryMaintenanceStatus, formatMemoryRetrievalPolicyUpdated } from "./memory-commands.js";
+import { formatMemoryAnalysisReport, formatMemoryCleanupDryRunReport, formatMemoryGovernanceStatus, formatMemoryInspect, formatMemoryMaintenanceInstalled, formatMemoryMaintenanceRemoved, formatMemoryMaintenanceStatus, formatMemoryRetrievalPolicyUpdated } from "./memory-commands.js";
 import { buildChannelAttachmentPrompt } from "./attachment-prompt.js";
 import { processChannelAttachment } from "./attachment-pipeline.js";
 import { buildChannelVisionAttachment, type ChannelVisionAttachment } from "./attachment-vision.js";
@@ -1469,6 +1469,23 @@ async function handleTelegramSlashCommand(text: string, chatId: number, options:
     }
   }
 
+  if (memoryCommand?.startsWith("inspect:")) {
+    const id = Number(memoryCommand.split(":")[1]);
+    if (!Number.isSafeInteger(id) || id <= 0) {
+      await options.client.sendMessage(chatId, "Usage: /memory inspect <id>");
+      return true;
+    }
+
+    const store = await SqliteMemoryStore.open(options.paths);
+    try {
+      const memory = store.getActiveMemory(id);
+      await sendTelegramTextChunks(options.client, chatId, memory ? formatMemoryInspect(memory) : `No active memory found for id ${id}.`);
+      return true;
+    } finally {
+      store.close();
+    }
+  }
+
   if (memoryCommand === "analyze" || memoryCommand === "cleanup_dry_run") {
     const analysis = await analyzeMemoriesTool({ paths: options.paths, mode: "all" });
     const message = memoryCommand === "analyze" ? formatMemoryAnalysisReport(analysis) : formatMemoryCleanupDryRunReport(analysis);
@@ -1672,7 +1689,7 @@ function isPendingMemoryToolResult(value: unknown): value is { id: number; statu
   return typeof value === "object" && value !== null && "id" in value && "status" in value && Number.isInteger((value as { id: unknown }).id) && (value as { status: unknown }).status === "pending";
 }
 
-function parseTelegramMemoryCommand(text: string): "list" | "pending" | `pending_inspect:${number}` | "pause" | "resume" | "analyze" | "cleanup_dry_run" | "governance_status" | `governance_policy:${string}` | `pin:${number}` | `unpin:${number}` | `scope:${string}` | `move:${number}:${string}` | `supersede:${number}:${number}` | "maintenance:install" | "maintenance:status" | "maintenance:remove" | undefined {
+function parseTelegramMemoryCommand(text: string): "list" | "pending" | `pending_inspect:${number}` | "pause" | "resume" | "analyze" | "cleanup_dry_run" | "governance_status" | `governance_policy:${string}` | `pin:${number}` | `unpin:${number}` | `scope:${string}` | `inspect:${number}` | `move:${number}:${string}` | `supersede:${number}:${number}` | "maintenance:install" | "maintenance:status" | "maintenance:remove" | undefined {
   if (text === "/memory" || text === "/memory list" || text === "/memory status") {
     return "list";
   }
@@ -1706,6 +1723,11 @@ function parseTelegramMemoryCommand(text: string): "list" | "pending" | `pending
   const scopeMatch = text.match(/^\/memory scope (\S+)$/);
   if (scopeMatch) {
     return `scope:${scopeMatch[1]}`;
+  }
+
+  const inspectMatch = text.match(/^\/memory inspect (\d+)$/);
+  if (inspectMatch) {
+    return `inspect:${Number(inspectMatch[1])}`;
   }
 
   const moveMatch = text.match(/^\/memory move (\d+) (\S+)$/);

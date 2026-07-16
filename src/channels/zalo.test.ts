@@ -285,6 +285,32 @@ test("handleZaloUpdate lists and moves memory scopes", async () => {
   }
 });
 
+test("handleZaloUpdate inspects a memory record", async () => {
+  const paths = await createTempPaths();
+  const sent: Array<{ chatId: string; text: string }> = [];
+
+  try {
+    await writeRuntimeFiles(paths);
+    const store = await SqliteMemoryStore.open(paths);
+    let id: number;
+    try {
+      id = store.addMemory({ type: "project_context", content: "Inspect from Zalo", scope: "session", pinned: true }).id;
+    } finally {
+      store.close();
+    }
+
+    await handleZaloUpdate({ update_id: 1, message: { from: { id: "owner-1" }, chat: { id: "chat-1" }, text: `/memory inspect ${id}` } }, { config, paths, client: createRecordingClient(sent) });
+
+    assert.match(sent[0].text, new RegExp(`Memory #${id}`));
+    assert.match(sent[0].text, /Type: project_context/);
+    assert.match(sent[0].text, /Scope: session/);
+    assert.match(sent[0].text, /Pinned: yes/);
+    assert.match(sent[0].text, /Content:\nInspect from Zalo/);
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
 test("handleZaloUpdate supersedes active memories", async () => {
   const paths = await createTempPaths();
   const sent: Array<{ chatId: string; text: string }> = [];

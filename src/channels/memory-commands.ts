@@ -1,5 +1,5 @@
 import type { AnalyzeMemoriesResult } from "../tools/local-read-tools.js";
-import type { CronSchedule } from "../memory/sqlite-store.js";
+import type { CronSchedule, StoredMemory } from "../memory/sqlite-store.js";
 import type { MemoryRetrievalPolicy } from "../runtime/config.js";
 
 export function formatMemoryAnalysisReport(analysis: AnalyzeMemoriesResult): string {
@@ -92,6 +92,27 @@ export function formatMemoryGovernanceStatus(analysis: AnalyzeMemoriesResult, re
 
 export function formatMemoryRetrievalPolicyUpdated(policy: MemoryRetrievalPolicy): string {
   return `memory.retrievalPolicy set to ${policy}.`;
+}
+
+export function formatMemoryInspect(memory: StoredMemory): string {
+  return [
+    `Memory #${memory.id}`,
+    `Type: ${memory.type}`,
+    `Scope: ${memory.scope}`,
+    `Status: ${memory.status}`,
+    `Importance: ${memory.importance}`,
+    `Sensitivity: ${memory.sensitivity}`,
+    `Pinned: ${memory.pinned ? "yes" : "no"}`,
+    `Confidence: ${memory.confidence}`,
+    memory.expiresAt ? `Expires: ${memory.expiresAt}` : undefined,
+    memory.supersededBy ? `Superseded by: #${memory.supersededBy}` : undefined,
+    memory.source ? `Source: ${memory.source}` : undefined,
+    memory.policyReason ? `Policy reason: ${memory.policyReason}` : undefined,
+    `Created: ${memory.createdAt}`,
+    `Updated: ${memory.updatedAt}`,
+    "Content:",
+    memory.content,
+  ].filter(Boolean).join("\n");
 }
 
 function appendDuplicateGroups(lines: string[], groups: AnalyzeMemoriesResult["duplicateGroups"]): void {
