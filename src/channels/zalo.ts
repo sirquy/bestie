@@ -14,6 +14,7 @@ import { getMemoryMaintenanceReportStatus, installMemoryMaintenanceReport, remov
 import { runMemoryReasoningPass, type MemoryReasoningResult } from "../memory/reasoning.js";
 import { isMemoryScope, SqliteMemoryStore } from "../memory/sqlite-store.js";
 import { applyMemoryRebalancePlan, formatMemoryRebalanceApplyResult, formatMemoryRebalancePlan, planMemoryRebalance } from "../memory/rebalance.js";
+import { formatMemorySummary } from "../memory/summary.js";
 import { formatMemoryTiersReport } from "../memory/tiers.js";
 import type { AppConfig } from "../runtime/config.js";
 import { loadRequiredSecret } from "../runtime/env.js";
@@ -447,6 +448,31 @@ async function handleZaloSlashCommand(text: string, chatId: string, options: Zal
     const result = await runMemoryMaintenanceDigest({ config: options.config, paths: options.paths });
     await sendZaloTextChunks(options.client, chatId, result.ok ? result.output : `Digest failed: ${result.reason}`);
     return true;
+  }
+
+  if (memoryCommand === "summary") {
+    const store = await SqliteMemoryStore.open(options.paths);
+    try {
+      const memories = store.listActiveMemories();
+      const plan = await planMemoryHygieneTool({ paths: options.paths });
+      const rebalance = planMemoryRebalance(memories);
+      const trendResult = await readMemoryHygieneTrendTool({ paths: options.paths });
+      const trend = trendResult.latest && trendResult.baseline && trendResult.latest.id !== trendResult.baseline.id
+        ? { previousScore: trendResult.baseline.score, delta: trendResult.delta, direction: trendResult.direction }
+        : undefined;
+      await sendZaloTextChunks(options.client, chatId, formatMemorySummary({
+        memories,
+        plan,
+        rebalance,
+        trend,
+        deletePolicy: options.config.memory?.deletePolicy ?? "ask",
+        retrievalPolicy: options.config.memory?.retrievalPolicy ?? "full",
+        channelCommandPrefix: "/memory",
+      }));
+      return true;
+    } finally {
+      store.close();
+    }
   }
 
   if (memoryCommand?.startsWith("scope:")) {
@@ -914,7 +940,7 @@ function parseZaloApprovalDecision(text: string): { decision: "approve" | "deny"
   return match ? { decision: match[1] as "approve" | "deny", id: Number(match[2]) } : undefined;
 }
 
-function parseZaloMemoryCommand(text: string): "list" | "tiers" | "rebalance" | "rebalance_apply" | "rebalance_apply_confirm" | "digest" | "pending" | "pause" | "resume" | "analyze" | "cleanup_dry_run" | "hygiene" | "hygiene_status" | "hygiene_trend" | "hygiene_doctor" | "hygiene_apply" | "hygiene_apply_confirm" | "governance_status" | `governance_policy:${string}` | `pin:${number}` | `unpin:${number}` | `scope:${string}` | `inspect:${number}` | `move:${number}:${string}` | `supersede:${number}:${number}` | "maintenance:install" | "maintenance:status" | "maintenance:remove" | undefined {
+function parseZaloMemoryCommand(text: string): "list" | "tiers" | "rebalance" | "rebalance_apply" | "rebalance_apply_confirm" | "summary" | "digest" | "pending" | "pause" | "resume" | "analyze" | "cleanup_dry_run" | "hygiene" | "hygiene_status" | "hygiene_trend" | "hygiene_doctor" | "hygiene_apply" | "hygiene_apply_confirm" | "governance_status" | `governance_policy:${string}` | `pin:${number}` | `unpin:${number}` | `scope:${string}` | `inspect:${number}` | `move:${number}:${string}` | `supersede:${number}:${number}` | "maintenance:install" | "maintenance:status" | "maintenance:remove" | undefined {
   if (text === "/memory" || text === "/memory list" || text === "/memory status") {
     return "list";
   }
@@ -941,6 +967,9 @@ function parseZaloMemoryCommand(text: string): "list" | "tiers" | "rebalance" | 
   }
   if (text === "/memory digest") {
     return "digest";
+  }
+  if (text === "/memory summary") {
+    return "summary";
   }
   if (text === "/memory hygiene" || text === "/memory hygiene dry-run") {
     return "hygiene";

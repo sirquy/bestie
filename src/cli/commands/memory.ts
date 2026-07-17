@@ -7,6 +7,7 @@ import { formatMemoryHygieneStatus } from "../../memory/hygiene-status.js";
 import { formatMemoryHygieneTrendReport, recordMemoryHygieneSnapshot } from "../../memory/hygiene-trend.js";
 import { MEMORY_MAINTENANCE_DEFAULT_SCHEDULE, installMemoryMaintenanceReport, getMemoryMaintenanceReportStatus, removeMemoryMaintenanceReport, runMemoryMaintenanceDigest } from "../../memory/maintenance.js";
 import { applyMemoryRebalancePlan, formatMemoryRebalanceApplyResult, formatMemoryRebalancePlan, planMemoryRebalance } from "../../memory/rebalance.js";
+import { formatMemorySummary } from "../../memory/summary.js";
 import { formatMemoryTiersReport } from "../../memory/tiers.js";
 import { loadConfig, type MemoryDeletePolicy } from "../../runtime/config.js";
 import { getRuntimePaths } from "../../runtime/paths.js";
@@ -63,6 +64,11 @@ export async function runMemoryCommand(argv: string[] = process.argv): Promise<v
 
   if (subcommand === "rebalance") {
     await runMemoryRebalance(argv);
+    return;
+  }
+
+  if (subcommand === "summary") {
+    await showMemorySummary();
     return;
   }
 
@@ -182,7 +188,7 @@ export async function runMemoryCommand(argv: string[] = process.argv): Promise<v
   }
 
   console.error(`Unknown memory command: ${subcommand}`);
-  console.error("Usage: bestie memory status | pause | resume | list | tiers | rebalance [--dry-run|--apply] [--yes] [--json] | search <query> | analyze [--mode all|duplicates|stale|conflicts] [--json] | hygiene [status|trend|doctor|--apply] [--fix] [--yes] [--json] | digest | cleanup --dry-run|--apply [--yes] [--json] | maintenance install|status|remove [--channel telegram:<id>|zalo:<id>] [--schedule <cron>] | add <type> <content> | inspect <id> | edit <id> <content> | forget <id> | messages [--limit <n>] [--role user|assistant|system] | messages search <query> [--limit <n>] [--role user|assistant|system] | export | clear --yes | pending [--limit <n>] | pending search <query> [--limit <n>] | pending inspect <id> | approve <id> | reject <id> | reject-all --yes");
+  console.error("Usage: bestie memory status | pause | resume | list | tiers | rebalance [--dry-run|--apply] [--yes] [--json] | summary | search <query> | analyze [--mode all|duplicates|stale|conflicts] [--json] | hygiene [status|trend|doctor|--apply] [--fix] [--yes] [--json] | digest | cleanup --dry-run|--apply [--yes] [--json] | maintenance install|status|remove [--channel telegram:<id>|zalo:<id>] [--schedule <cron>] | add <type> <content> | inspect <id> | edit <id> <content> | forget <id> | messages [--limit <n>] [--role user|assistant|system] | messages search <query> [--limit <n>] [--role user|assistant|system] | export | clear --yes | pending [--limit <n>] | pending search <query> [--limit <n>] | pending inspect <id> | approve <id> | reject <id> | reject-all --yes");
   process.exitCode = 1;
 }
 
@@ -243,6 +249,33 @@ async function showMemoryTiers(): Promise<void> {
 
   try {
     console.log(formatMemoryTiersReport({ memories: store.listActiveMemories(), plan: await planMemoryHygieneTool({ paths: getRuntimePaths() }) }));
+  } finally {
+    store.close();
+  }
+}
+
+async function showMemorySummary(): Promise<void> {
+  const paths = getRuntimePaths();
+  const config = await loadConfig();
+  const store = await SqliteMemoryStore.open(paths);
+
+  try {
+    const memories = store.listActiveMemories();
+    const plan = await planMemoryHygieneTool({ paths });
+    const rebalance = planMemoryRebalance(memories);
+    const trendResult = await readMemoryHygieneTrendTool({ paths });
+    const trend = trendResult.latest && trendResult.baseline && trendResult.latest.id !== trendResult.baseline.id
+      ? { previousScore: trendResult.baseline.score, delta: trendResult.delta, direction: trendResult.direction }
+      : undefined;
+
+    console.log(formatMemorySummary({
+      memories,
+      plan,
+      rebalance,
+      trend,
+      deletePolicy: config.memory?.deletePolicy ?? "ask",
+      retrievalPolicy: config.memory?.retrievalPolicy ?? "full",
+    }));
   } finally {
     store.close();
   }

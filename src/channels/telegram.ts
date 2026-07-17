@@ -27,6 +27,7 @@ import { formatMemoryHygieneStatus } from "../memory/hygiene-status.js";
 import { formatMemoryHygieneTrendReport, recordMemoryHygieneSnapshot } from "../memory/hygiene-trend.js";
 import { isMemoryScope, SqliteMemoryStore } from "../memory/sqlite-store.js";
 import { applyMemoryRebalancePlan, formatMemoryRebalanceApplyResult, formatMemoryRebalancePlan, planMemoryRebalance } from "../memory/rebalance.js";
+import { formatMemorySummary } from "../memory/summary.js";
 import { formatMemoryTiersReport } from "../memory/tiers.js";
 import type { AppConfig } from "../runtime/config.js";
 import { loadRequiredSecret } from "../runtime/env.js";
@@ -1502,6 +1503,31 @@ async function handleTelegramSlashCommand(text: string, chatId: number, options:
     return true;
   }
 
+  if (memoryCommand === "summary") {
+    const store = await SqliteMemoryStore.open(options.paths);
+    try {
+      const memories = store.listActiveMemories();
+      const plan = await planMemoryHygieneTool({ paths: options.paths });
+      const rebalance = planMemoryRebalance(memories);
+      const trendResult = await readMemoryHygieneTrendTool({ paths: options.paths });
+      const trend = trendResult.latest && trendResult.baseline && trendResult.latest.id !== trendResult.baseline.id
+        ? { previousScore: trendResult.baseline.score, delta: trendResult.delta, direction: trendResult.direction }
+        : undefined;
+      await sendTelegramTextChunks(options.client, chatId, formatMemorySummary({
+        memories,
+        plan,
+        rebalance,
+        trend,
+        deletePolicy: options.config.memory?.deletePolicy ?? "ask",
+        retrievalPolicy: options.config.memory?.retrievalPolicy ?? "full",
+        channelCommandPrefix: "/memory",
+      }));
+      return true;
+    } finally {
+      store.close();
+    }
+  }
+
   if (memoryCommand?.startsWith("scope:")) {
     const scope = memoryCommand.split(":")[1];
     if (!isMemoryScope(scope)) {
@@ -1771,7 +1797,7 @@ function isPendingMemoryToolResult(value: unknown): value is { id: number; statu
   return typeof value === "object" && value !== null && "id" in value && "status" in value && Number.isInteger((value as { id: unknown }).id) && (value as { status: unknown }).status === "pending";
 }
 
-function parseTelegramMemoryCommand(text: string): "list" | "tiers" | "rebalance" | "rebalance_apply" | "rebalance_apply_confirm" | "digest" | "pending" | `pending_inspect:${number}` | "pause" | "resume" | "analyze" | "cleanup_dry_run" | "hygiene" | "hygiene_status" | "hygiene_trend" | "hygiene_doctor" | "hygiene_apply" | "hygiene_apply_confirm" | "governance_status" | `governance_policy:${string}` | `pin:${number}` | `unpin:${number}` | `scope:${string}` | `inspect:${number}` | `move:${number}:${string}` | `supersede:${number}:${number}` | "maintenance:install" | "maintenance:status" | "maintenance:remove" | undefined {
+function parseTelegramMemoryCommand(text: string): "list" | "tiers" | "rebalance" | "rebalance_apply" | "rebalance_apply_confirm" | "summary" | "digest" | "pending" | `pending_inspect:${number}` | "pause" | "resume" | "analyze" | "cleanup_dry_run" | "hygiene" | "hygiene_status" | "hygiene_trend" | "hygiene_doctor" | "hygiene_apply" | "hygiene_apply_confirm" | "governance_status" | `governance_policy:${string}` | `pin:${number}` | `unpin:${number}` | `scope:${string}` | `inspect:${number}` | `move:${number}:${string}` | `supersede:${number}:${number}` | "maintenance:install" | "maintenance:status" | "maintenance:remove" | undefined {
   if (text === "/memory" || text === "/memory list" || text === "/memory status") {
     return "list";
   }
@@ -1806,6 +1832,10 @@ function parseTelegramMemoryCommand(text: string): "list" | "tiers" | "rebalance
 
   if (text === "/memory digest") {
     return "digest";
+  }
+
+  if (text === "/memory summary") {
+    return "summary";
   }
 
   if (text === "/memory hygiene" || text === "/memory hygiene dry-run") {
