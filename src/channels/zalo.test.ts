@@ -329,6 +329,7 @@ test("handleZaloUpdate lists and moves memory scopes", async () => {
     await handleZaloUpdate({ update_id: 2, message: { from: { id: "owner-1" }, chat: { id: "chat-1" }, text: `/memory move ${id} session` } }, { config, paths, client: createRecordingClient(sent) });
     await handleZaloUpdate({ update_id: 3, message: { from: { id: "owner-1" }, chat: { id: "chat-1" }, text: "/memory scope session" } }, { config, paths, client: createRecordingClient(sent) });
     await handleZaloUpdate({ update_id: 4, message: { from: { id: "owner-1" }, chat: { id: "chat-1" }, text: "/memory tiers" } }, { config, paths, client: createRecordingClient(sent) });
+    await handleZaloUpdate({ update_id: 5, message: { from: { id: "owner-1" }, chat: { id: "chat-1" }, text: "/memory rebalance dry-run" } }, { config, paths, client: createRecordingClient(sent) });
 
     assert.match(sent[0].text, /Active memories \/ core \(1\)/);
     assert.match(sent[1].text, new RegExp(`Memory #${id} moved to session`));
@@ -337,6 +338,9 @@ test("handleZaloUpdate lists and moves memory scopes", async () => {
     assert.match(sent[3].text, /Memory tiers \(1 active\)/);
     assert.match(sent[3].text, /session: 1 active/);
     assert.match(sent[3].text, /Next: \/memory scope session/);
+    assert.match(sent[4].text, /Memory rebalance dry-run \(1 checked\)/);
+    assert.match(sent[4].text, new RegExp(`#${id} \\[preference\\] session -> core`));
+    assert.match(sent[4].text, /Next: \/memory move <id> core\|project\|session/);
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
   }

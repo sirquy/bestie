@@ -983,6 +983,7 @@ test("handleTelegramUpdate lists and moves memory scopes", async () => {
     await handleTelegramUpdate(createTextUpdate(`/memory move ${id} session`, 12345), { config, paths, client: createRecordingClient(sentMessages) });
     await handleTelegramUpdate(createTextUpdate("/memory scope session", 12345), { config, paths, client: createRecordingClient(sentMessages) });
     await handleTelegramUpdate(createTextUpdate("/memory tiers", 12345), { config, paths, client: createRecordingClient(sentMessages) });
+    await handleTelegramUpdate(createTextUpdate("/memory rebalance dry-run", 12345), { config, paths, client: createRecordingClient(sentMessages) });
 
     assert.match(sentMessages[0].text, /Active memories \/ core \(1\)/);
     assert.match(sentMessages[1].text, new RegExp(`Memory #${id} moved to session`));
@@ -991,6 +992,9 @@ test("handleTelegramUpdate lists and moves memory scopes", async () => {
     assert.match(sentMessages[3].text, /Memory tiers \(1 active\)/);
     assert.match(sentMessages[3].text, /session: 1 active/);
     assert.match(sentMessages[3].text, /Next: \/memory scope session/);
+    assert.match(sentMessages[4].text, /Memory rebalance dry-run \(1 checked\)/);
+    assert.match(sentMessages[4].text, new RegExp(`#${id} \\[preference\\] session -> core`));
+    assert.match(sentMessages[4].text, /Next: \/memory move <id> core\|project\|session/);
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
   }

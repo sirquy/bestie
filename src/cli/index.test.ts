@@ -420,6 +420,7 @@ test("memory list scope and move manage memory tiers", async () => {
     const moved = await captureMain(["node", "bestie", "memory", "move", String(id), "--scope", "session"], { HOME: homeDir, BESTIE_NO_BANNER: "1" });
     const sessionList = await captureMain(["node", "bestie", "memory", "list", "--scope", "session"], { HOME: homeDir, BESTIE_NO_BANNER: "1" });
     const tiers = await captureMain(["node", "bestie", "memory", "tiers"], { HOME: homeDir, BESTIE_NO_BANNER: "1" });
+    const rebalance = await captureMain(["node", "bestie", "memory", "rebalance", "--dry-run"], { HOME: homeDir, BESTIE_NO_BANNER: "1" });
 
     assert.match(coreList.stdout, /Active Memories \/ core/);
     assert.match(coreList.stdout, /Tiered memory/);
@@ -430,6 +431,9 @@ test("memory list scope and move manage memory tiers", async () => {
     assert.match(tiers.stdout, /project: 1 active/);
     assert.match(tiers.stdout, /session: 1 active/);
     assert.match(tiers.stdout, /Next: bestie memory list --scope session/);
+    assert.match(rebalance.stdout, /Memory rebalance dry-run \(2 checked\)/);
+    assert.match(rebalance.stdout, new RegExp(`#${id} \\[preference\\] session -> core`));
+    assert.match(rebalance.stdout, /Next: bestie memory move <id> core\|project\|session/);
   } finally {
     await rm(homeDir, { recursive: true, force: true });
   }

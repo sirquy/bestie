@@ -18,6 +18,7 @@ test("formatChannelHelpCommands includes aliases without registering them native
   const help = formatChannelHelpCommands(TELEGRAM_CHANNEL);
 
   assert.match(help, /\/memory pending/);
+  assert.match(help, /\/memory rebalance dry-run/);
   assert.match(help, /\/memory resume/);
   assert.match(help, /\/approve/);
   assert.doesNotMatch(
