@@ -984,6 +984,7 @@ test("handleTelegramUpdate lists and moves memory scopes", async () => {
     await handleTelegramUpdate(createTextUpdate("/memory scope session", 12345), { config, paths, client: createRecordingClient(sentMessages) });
     await handleTelegramUpdate(createTextUpdate("/memory tiers", 12345), { config, paths, client: createRecordingClient(sentMessages) });
     await handleTelegramUpdate(createTextUpdate("/memory rebalance dry-run", 12345), { config, paths, client: createRecordingClient(sentMessages) });
+    await handleTelegramUpdate(createTextUpdate("/memory rebalance apply confirm", 12345), { config: { ...config, memory: { deletePolicy: "allow" } }, paths, client: createRecordingClient(sentMessages) });
 
     assert.match(sentMessages[0].text, /Active memories \/ core \(1\)/);
     assert.match(sentMessages[1].text, new RegExp(`Memory #${id} moved to session`));
@@ -995,6 +996,15 @@ test("handleTelegramUpdate lists and moves memory scopes", async () => {
     assert.match(sentMessages[4].text, /Memory rebalance dry-run \(1 checked\)/);
     assert.match(sentMessages[4].text, new RegExp(`#${id} \\[preference\\] session -> core`));
     assert.match(sentMessages[4].text, /Next: \/memory move <id> core\|project\|session/);
+    assert.match(sentMessages[5].text, /Memory rebalance applied: 1 moved/);
+    assert.match(sentMessages[5].text, new RegExp(`#${id} session->core`));
+
+    const checkStore = await SqliteMemoryStore.open(paths);
+    try {
+      assert.equal(checkStore.getActiveMemory(id)?.scope, "core");
+    } finally {
+      checkStore.close();
+    }
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
   }

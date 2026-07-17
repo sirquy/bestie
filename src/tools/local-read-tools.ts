@@ -9,6 +9,7 @@ import type { AppConfig } from "../runtime/config.js";
 import type { RuntimePaths } from "../runtime/paths.js";
 import { formatWorkspaceRelativePath, resolveWorkspacePath } from "../runtime/workspace.js";
 import { reviewActionPermission, type PermissionApprover, type PermissionPolicy } from "../safety/permission-policy.js";
+import { planMemoryRebalance, type MemoryRebalanceRecommendation } from "../memory/rebalance.js";
 import { SqliteMemoryStore, type MemoryHygieneSnapshot, type StoredMemory } from "../memory/sqlite-store.js";
 
 export interface LocalToolOptions {
@@ -80,6 +81,15 @@ export interface MemoryHygieneTrendResult {
   baseline?: MemoryHygieneSnapshot;
   delta?: number;
   direction: "new" | "up" | "down" | "flat";
+}
+
+export interface MemoryRebalancePlanToolResult {
+  allowed: boolean;
+  reason: string;
+  checked: number;
+  recommendations: MemoryRebalanceRecommendation[];
+  reviewOnlyIds: number[];
+  nextCommand: string;
 }
 
 export interface ReadLocalFileResult {
@@ -341,6 +351,37 @@ export async function planMemoryHygieneTool(options: LocalToolOptions): Promise<
       staleMemories,
       conflictGroups,
       reviewOnlyIds,
+    };
+  } finally {
+    store.close();
+  }
+}
+
+export async function planMemoryRebalanceTool(options: LocalToolOptions): Promise<MemoryRebalancePlanToolResult> {
+  const permission = await reviewActionPermission(
+    {
+      category: "read",
+      action: "plan_memory_rebalance",
+      target: "local memory store",
+      reason: "Create a read-only memory tier rebalance plan from active memory metadata.",
+      trusted: true,
+    },
+    { paths: options.paths, approver: options.approver, policy: options.policy },
+  );
+
+  if (permission.decision !== "allow") {
+    return { allowed: false, reason: permission.reason, checked: 0, recommendations: [], reviewOnlyIds: [], nextCommand: "bestie memory rebalance --dry-run" };
+  }
+
+  const store = await SqliteMemoryStore.open(options.paths);
+
+  try {
+    const plan = planMemoryRebalance(store.listActiveMemories());
+    return {
+      allowed: true,
+      reason: permission.reason,
+      ...plan,
+      nextCommand: plan.recommendations.some((recommendation) => !recommendation.reviewOnly) ? "bestie memory rebalance --apply --yes" : "bestie memory rebalance --dry-run",
     };
   } finally {
     store.close();

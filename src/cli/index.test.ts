@@ -439,6 +439,41 @@ test("memory list scope and move manage memory tiers", async () => {
   }
 });
 
+test("memory rebalance apply moves only non-review-only recommendations", async () => {
+  const homeDir = await mkdtemp(resolve(tmpdir(), "bestie-cli-index-test-"));
+
+  try {
+    const paths = getRuntimePaths(homeDir);
+    await mkdir(paths.appDir, { recursive: true });
+    await writeFile(paths.configPath, `${JSON.stringify(Object.assign({}, createTestConfig(), { memory: { deletePolicy: "allow" } }), null, 2)}\n`, { mode: 0o600 });
+    const store = await SqliteMemoryStore.open(paths);
+    let projectId: number;
+    let pinnedId: number;
+    try {
+      projectId = store.addMemory({ type: "project_context", content: "Wrong core project", scope: "core" }).id;
+      pinnedId = store.addMemory({ type: "one_off", content: "Pinned one-off", scope: "core", pinned: true }).id;
+    } finally {
+      store.close();
+    }
+
+    const { stdout } = await captureMain(["node", "bestie", "memory", "rebalance", "--apply", "--yes"], { HOME: homeDir, BESTIE_NO_BANNER: "1" });
+
+    assert.match(stdout, /Memory rebalance applied: 1 moved/);
+    assert.match(stdout, new RegExp(`#${projectId} core->project`));
+    assert.match(stdout, new RegExp(`Review-only skipped: #${pinnedId}`));
+
+    const checkStore = await SqliteMemoryStore.open(paths);
+    try {
+      assert.equal(checkStore.getActiveMemory(projectId)?.scope, "project");
+      assert.equal(checkStore.getActiveMemory(pinnedId)?.scope, "core");
+    } finally {
+      checkStore.close();
+    }
+  } finally {
+    await rm(homeDir, { recursive: true, force: true });
+  }
+});
+
 test("memory supersede marks an active memory as replaced", async () => {
   const homeDir = await mkdtemp(resolve(tmpdir(), "bestie-cli-index-test-"));
 

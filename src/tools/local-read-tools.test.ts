@@ -8,7 +8,7 @@ import { appendLog } from "../runtime/logger.js";
 import type { AppConfig } from "../runtime/config.js";
 import type { RuntimePaths } from "../runtime/paths.js";
 import { SqliteMemoryStore } from "../memory/sqlite-store.js";
-import { analyzeMemoriesTool, listActiveMemoriesTool, listLocalFilesTool, planMemoryHygieneTool, readGitDiffTool, readGitLogTool, readGitStatusTool, readLocalFileTool, readManyLocalFilesTool, readMarkdownBundleTool, readRecentAppLogsTool, searchLocalFilesTool, searchMemoriesTool } from "./local-read-tools.js";
+import { analyzeMemoriesTool, listActiveMemoriesTool, listLocalFilesTool, planMemoryHygieneTool, planMemoryRebalanceTool, readGitDiffTool, readGitLogTool, readGitStatusTool, readLocalFileTool, readManyLocalFilesTool, readMarkdownBundleTool, readRecentAppLogsTool, searchLocalFilesTool, searchMemoriesTool } from "./local-read-tools.js";
 
 test("readRecentAppLogsTool reads recent logs through the permission gate", async () => {
   const paths = await createTempPaths();
@@ -213,6 +213,33 @@ test("planMemoryHygieneTool returns delete and review-only ids", async () => {
     assert.equal(result.duplicateGroups.length, 1);
     assert.equal(result.staleMemories.length, 1);
     assert.equal(result.conflictGroups.length, 1);
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("planMemoryRebalanceTool returns tier move recommendations", async () => {
+  const paths = await createTempPaths();
+
+  try {
+    const store = await SqliteMemoryStore.open(paths);
+    try {
+      store.addMemory({ type: "project_context", content: "Project in core", scope: "core" });
+      store.addMemory({ type: "one_off", content: "Pinned one-off", scope: "core", pinned: true });
+    } finally {
+      store.close();
+    }
+
+    const result = await planMemoryRebalanceTool({ paths });
+
+    assert.equal(result.allowed, true);
+    assert.equal(result.checked, 2);
+    assert.equal(result.nextCommand, "bestie memory rebalance --apply --yes");
+    assert.deepEqual(result.reviewOnlyIds, [2]);
+    assert.deepEqual(result.recommendations.map((recommendation) => ({ id: recommendation.id, currentScope: recommendation.currentScope, recommendedScope: recommendation.recommendedScope, reviewOnly: recommendation.reviewOnly })), [
+      { id: 1, currentScope: "core", recommendedScope: "project", reviewOnly: false },
+      { id: 2, currentScope: "core", recommendedScope: "session", reviewOnly: true },
+    ]);
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
   }

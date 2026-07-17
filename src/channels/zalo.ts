@@ -13,7 +13,7 @@ import { formatMemoryHygieneTrendReport, recordMemoryHygieneSnapshot } from "../
 import { getMemoryMaintenanceReportStatus, installMemoryMaintenanceReport, removeMemoryMaintenanceReport } from "../memory/maintenance.js";
 import { runMemoryReasoningPass, type MemoryReasoningResult } from "../memory/reasoning.js";
 import { isMemoryScope, SqliteMemoryStore } from "../memory/sqlite-store.js";
-import { formatMemoryRebalancePlan, planMemoryRebalance } from "../memory/rebalance.js";
+import { applyMemoryRebalancePlan, formatMemoryRebalanceApplyResult, formatMemoryRebalancePlan, planMemoryRebalance } from "../memory/rebalance.js";
 import { formatMemoryTiersReport } from "../memory/tiers.js";
 import type { AppConfig } from "../runtime/config.js";
 import { loadRequiredSecret } from "../runtime/env.js";
@@ -414,10 +414,28 @@ async function handleZaloSlashCommand(text: string, chatId: string, options: Zal
     }
   }
 
-  if (memoryCommand === "rebalance") {
+  if (memoryCommand === "rebalance" || memoryCommand === "rebalance_apply" || memoryCommand === "rebalance_apply_confirm") {
     const store = await SqliteMemoryStore.open(options.paths);
     try {
-      await sendZaloTextChunks(options.client, chatId, formatMemoryRebalancePlan({ plan: planMemoryRebalance(store.listActiveMemories()), channelCommandPrefix: "/memory" }));
+      const plan = planMemoryRebalance(store.listActiveMemories());
+      const deletePolicy = options.config.memory?.deletePolicy ?? "ask";
+
+      if (memoryCommand === "rebalance") {
+        await sendZaloTextChunks(options.client, chatId, formatMemoryRebalancePlan({ plan, channelCommandPrefix: "/memory" }));
+        return true;
+      }
+
+      if (deletePolicy === "deny") {
+        await options.client.sendMessage(chatId, "memory.deletePolicy is deny. No memories were moved.");
+        return true;
+      }
+
+      if (deletePolicy === "ask" && memoryCommand !== "rebalance_apply_confirm") {
+        await sendZaloTextChunks(options.client, chatId, `${formatMemoryRebalancePlan({ plan, channelCommandPrefix: "/memory" })}\nCONFIRM: reply /memory rebalance apply confirm to move non-review-only memories.`);
+        return true;
+      }
+
+      await sendZaloTextChunks(options.client, chatId, formatMemoryRebalanceApplyResult(applyMemoryRebalancePlan(store, plan)));
       return true;
     } finally {
       store.close();
@@ -889,7 +907,7 @@ function parseZaloApprovalDecision(text: string): { decision: "approve" | "deny"
   return match ? { decision: match[1] as "approve" | "deny", id: Number(match[2]) } : undefined;
 }
 
-function parseZaloMemoryCommand(text: string): "list" | "tiers" | "rebalance" | "pending" | "pause" | "resume" | "analyze" | "cleanup_dry_run" | "hygiene" | "hygiene_status" | "hygiene_trend" | "hygiene_doctor" | "hygiene_apply" | "hygiene_apply_confirm" | "governance_status" | `governance_policy:${string}` | `pin:${number}` | `unpin:${number}` | `scope:${string}` | `inspect:${number}` | `move:${number}:${string}` | `supersede:${number}:${number}` | "maintenance:install" | "maintenance:status" | "maintenance:remove" | undefined {
+function parseZaloMemoryCommand(text: string): "list" | "tiers" | "rebalance" | "rebalance_apply" | "rebalance_apply_confirm" | "pending" | "pause" | "resume" | "analyze" | "cleanup_dry_run" | "hygiene" | "hygiene_status" | "hygiene_trend" | "hygiene_doctor" | "hygiene_apply" | "hygiene_apply_confirm" | "governance_status" | `governance_policy:${string}` | `pin:${number}` | `unpin:${number}` | `scope:${string}` | `inspect:${number}` | `move:${number}:${string}` | `supersede:${number}:${number}` | "maintenance:install" | "maintenance:status" | "maintenance:remove" | undefined {
   if (text === "/memory" || text === "/memory list" || text === "/memory status") {
     return "list";
   }
@@ -901,6 +919,12 @@ function parseZaloMemoryCommand(text: string): "list" | "tiers" | "rebalance" | 
   }
   if (text === "/memory rebalance" || text === "/memory rebalance dry-run" || text === "/memory rebalance --dry-run") {
     return "rebalance";
+  }
+  if (text === "/memory rebalance apply") {
+    return "rebalance_apply";
+  }
+  if (text === "/memory rebalance apply confirm") {
+    return "rebalance_apply_confirm";
   }
   if (text === "/memory analyze") {
     return "analyze";

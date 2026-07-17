@@ -37,6 +37,8 @@ test("buildMcpToolInstructions includes global tool selection guidance", () => {
   assert.match(instructions, /internal\.mcp_list_servers/);
   assert.match(instructions, /internal\.mcp_list_tools/);
   assert.match(instructions, /internal\.analyze_memories/);
+  assert.match(instructions, /internal\.plan_memory_rebalance/);
+  assert.match(instructions, /core\/project\/session scopes need rebalancing/);
   assert.match(instructions, /Use git tools for repository state questions/);
   assert.match(instructions, /MCP server discovery/);
   assert.match(instructions, /Do not invent missing facts/);
@@ -103,6 +105,10 @@ test("parseMcpToolRequest accepts internal read tool requests", () => {
   });
   assert.deepEqual(parseMcpToolRequest('{"tool":"internal.plan_memory_hygiene","arguments":{}}'), {
     tool: "internal.plan_memory_hygiene",
+    arguments: {},
+  });
+  assert.deepEqual(parseMcpToolRequest('{"tool":"internal.plan_memory_rebalance","arguments":{}}'), {
+    tool: "internal.plan_memory_rebalance",
     arguments: {},
   });
   assert.deepEqual(parseMcpToolRequest('{"tool":"internal.memory_hygiene_trend","arguments":{"limit":8}}'), {
@@ -595,6 +601,34 @@ test("runAgentToolRequest plans memory hygiene", async () => {
     const payload = result.result as { deleteIds: number[]; reviewOnlyIds: number[] };
     assert.deepEqual(payload.deleteIds, [2, 3]);
     assert.deepEqual(payload.reviewOnlyIds, [4, 5]);
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("runAgentToolRequest plans memory rebalance", async () => {
+  const paths = await createTempPaths();
+
+  try {
+    const store = await import("../memory/sqlite-store.js").then(({ SqliteMemoryStore }) => SqliteMemoryStore.open(paths));
+    try {
+      store.addMemory({ type: "project_context", content: "Project scope drift", scope: "core" });
+      store.addMemory({ type: "preference", content: "Already core" });
+    } finally {
+      store.close();
+    }
+
+    const result = await runAgentToolRequest({
+      config: { ...createConfig(), mcp: undefined },
+      paths,
+      request: { tool: "internal.plan_memory_rebalance", arguments: {} },
+    });
+
+    assert.equal(result.ok, true);
+    const payload = result.result as { checked: number; nextCommand: string; recommendations: Array<{ id: number; currentScope: string; recommendedScope: string; reviewOnly: boolean }> };
+    assert.equal(payload.checked, 2);
+    assert.equal(payload.nextCommand, "bestie memory rebalance --apply --yes");
+    assert.deepEqual(payload.recommendations, [{ id: 1, type: "project_context", currentScope: "core", recommendedScope: "project", reason: "project_context belongs in project so it can be separated from durable owner preferences.", reviewOnly: false }]);
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
   }

@@ -6,7 +6,7 @@ import { calculateMemoryHygieneScore } from "../../memory/hygiene-score.js";
 import { formatMemoryHygieneStatus } from "../../memory/hygiene-status.js";
 import { formatMemoryHygieneTrendReport, recordMemoryHygieneSnapshot } from "../../memory/hygiene-trend.js";
 import { MEMORY_MAINTENANCE_DEFAULT_SCHEDULE, installMemoryMaintenanceReport, getMemoryMaintenanceReportStatus, removeMemoryMaintenanceReport } from "../../memory/maintenance.js";
-import { formatMemoryRebalancePlan, planMemoryRebalance } from "../../memory/rebalance.js";
+import { applyMemoryRebalancePlan, formatMemoryRebalanceApplyResult, formatMemoryRebalancePlan, planMemoryRebalance } from "../../memory/rebalance.js";
 import { formatMemoryTiersReport } from "../../memory/tiers.js";
 import { loadConfig, type MemoryDeletePolicy } from "../../runtime/config.js";
 import { getRuntimePaths } from "../../runtime/paths.js";
@@ -62,7 +62,7 @@ export async function runMemoryCommand(argv: string[] = process.argv): Promise<v
   }
 
   if (subcommand === "rebalance") {
-    await showMemoryRebalance();
+    await runMemoryRebalance(argv);
     return;
   }
 
@@ -177,7 +177,7 @@ export async function runMemoryCommand(argv: string[] = process.argv): Promise<v
   }
 
   console.error(`Unknown memory command: ${subcommand}`);
-  console.error("Usage: bestie memory status | pause | resume | list | tiers | rebalance [--dry-run] | search <query> | analyze [--mode all|duplicates|stale|conflicts] [--json] | hygiene [status|trend|doctor|--apply] [--fix] [--yes] [--json] | cleanup --dry-run|--apply [--yes] [--json] | maintenance install|status|remove [--channel telegram:<id>|zalo:<id>] [--schedule <cron>] | add <type> <content> | inspect <id> | edit <id> <content> | forget <id> | messages [--limit <n>] [--role user|assistant|system] | messages search <query> [--limit <n>] [--role user|assistant|system] | export | clear --yes | pending [--limit <n>] | pending search <query> [--limit <n>] | pending inspect <id> | approve <id> | reject <id> | reject-all --yes");
+  console.error("Usage: bestie memory status | pause | resume | list | tiers | rebalance [--dry-run|--apply] [--yes] [--json] | search <query> | analyze [--mode all|duplicates|stale|conflicts] [--json] | hygiene [status|trend|doctor|--apply] [--fix] [--yes] [--json] | cleanup --dry-run|--apply [--yes] [--json] | maintenance install|status|remove [--channel telegram:<id>|zalo:<id>] [--schedule <cron>] | add <type> <content> | inspect <id> | edit <id> <content> | forget <id> | messages [--limit <n>] [--role user|assistant|system] | messages search <query> [--limit <n>] [--role user|assistant|system] | export | clear --yes | pending [--limit <n>] | pending search <query> [--limit <n>] | pending inspect <id> | approve <id> | reject <id> | reject-all --yes");
   process.exitCode = 1;
 }
 
@@ -243,11 +243,58 @@ async function showMemoryTiers(): Promise<void> {
   }
 }
 
-async function showMemoryRebalance(): Promise<void> {
+async function runMemoryRebalance(argv: string[]): Promise<void> {
+  const dryRun = argv.includes("--dry-run") || !argv.includes("--apply");
+  const apply = argv.includes("--apply");
+  const json = argv.includes("--json");
   const store = await SqliteMemoryStore.open();
 
   try {
-    console.log(formatMemoryRebalancePlan({ plan: planMemoryRebalance(store.listActiveMemories()) }));
+    const plan = planMemoryRebalance(store.listActiveMemories());
+
+    if (dryRun) {
+      if (json) {
+        console.log(JSON.stringify({ allowed: true, applied: false, plan }, null, 2));
+      } else {
+        console.log(formatMemoryRebalancePlan({ plan }));
+      }
+      return;
+    }
+
+    if (!apply) {
+      console.error("Usage: bestie memory rebalance [--dry-run|--apply] [--yes] [--json]");
+      process.exitCode = 1;
+      return;
+    }
+
+    const deletePolicy = await loadMemoryDeletePolicy();
+    if (deletePolicy === "deny") {
+      if (json) {
+        console.log(JSON.stringify({ allowed: false, applied: false, reason: "memory.deletePolicy is deny.", plan }, null, 2));
+      } else {
+        console.log(`${badge("DENIED", "red")} memory.deletePolicy is deny. No memories were moved.`);
+      }
+      process.exitCode = 1;
+      return;
+    }
+
+    if (deletePolicy === "ask" && !argv.includes("--yes")) {
+      if (json) {
+        console.log(JSON.stringify({ allowed: false, applied: false, reason: "memory.deletePolicy is ask; re-run with --yes to confirm rebalance.", plan }, null, 2));
+      } else {
+        console.log(formatMemoryRebalancePlan({ plan }));
+        console.log(`${badge("CONFIRM", "yellow")} memory.deletePolicy is ask. Re-run with \`bestie memory rebalance --apply --yes\` to move non-review-only memories.`);
+      }
+      process.exitCode = 1;
+      return;
+    }
+
+    const result = applyMemoryRebalancePlan(store, plan);
+    if (json) {
+      console.log(JSON.stringify({ allowed: true, applied: true, result, plan }, null, 2));
+    } else {
+      console.log(formatMemoryRebalanceApplyResult(result));
+    }
   } finally {
     store.close();
   }

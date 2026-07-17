@@ -330,6 +330,7 @@ test("handleZaloUpdate lists and moves memory scopes", async () => {
     await handleZaloUpdate({ update_id: 3, message: { from: { id: "owner-1" }, chat: { id: "chat-1" }, text: "/memory scope session" } }, { config, paths, client: createRecordingClient(sent) });
     await handleZaloUpdate({ update_id: 4, message: { from: { id: "owner-1" }, chat: { id: "chat-1" }, text: "/memory tiers" } }, { config, paths, client: createRecordingClient(sent) });
     await handleZaloUpdate({ update_id: 5, message: { from: { id: "owner-1" }, chat: { id: "chat-1" }, text: "/memory rebalance dry-run" } }, { config, paths, client: createRecordingClient(sent) });
+    await handleZaloUpdate({ update_id: 6, message: { from: { id: "owner-1" }, chat: { id: "chat-1" }, text: "/memory rebalance apply confirm" } }, { config: { ...config, memory: { deletePolicy: "allow" } }, paths, client: createRecordingClient(sent) });
 
     assert.match(sent[0].text, /Active memories \/ core \(1\)/);
     assert.match(sent[1].text, new RegExp(`Memory #${id} moved to session`));
@@ -341,6 +342,15 @@ test("handleZaloUpdate lists and moves memory scopes", async () => {
     assert.match(sent[4].text, /Memory rebalance dry-run \(1 checked\)/);
     assert.match(sent[4].text, new RegExp(`#${id} \\[preference\\] session -> core`));
     assert.match(sent[4].text, /Next: \/memory move <id> core\|project\|session/);
+    assert.match(sent[5].text, /Memory rebalance applied: 1 moved/);
+    assert.match(sent[5].text, new RegExp(`#${id} session->core`));
+
+    const checkStore = await SqliteMemoryStore.open(paths);
+    try {
+      assert.equal(checkStore.getActiveMemory(id)?.scope, "core");
+    } finally {
+      checkStore.close();
+    }
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
   }
