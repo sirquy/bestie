@@ -86,6 +86,7 @@ export async function completeWithAgentTools(options: CompleteWithAgentToolsOpti
   const toolRunner = options.toolRunner ?? runAgentToolRequest;
   const maxToolCalls = options.maxToolCalls ?? DEFAULT_MAX_AGENT_TOOL_CALLS;
   const messages = [...options.messages, { role: "user" as const, content: buildAgentToolDecisionMessage() }];
+  const completedToolResults = new Map<string, { toolName: string; result: McpToolCallResult }>();
   let assistantText = await options.chatCompletion(options.config, options.apiKey, { messages });
 
   for (let toolCallCount = 0; toolCallCount < maxToolCalls; toolCallCount += 1) {
@@ -107,6 +108,12 @@ export async function completeWithAgentTools(options: CompleteWithAgentToolsOpti
     }
 
     const toolName = formatToolRequestName(decision.request);
+    const toolSignature = stableToolRequestSignature(decision.request);
+    const completedToolResult = completedToolResults.get(toolSignature);
+    if (decision.request.tool === "internal.exec" && completedToolResult?.result.ok) {
+      return buildRepeatedSuccessfulToolAnswer(completedToolResult.toolName, completedToolResult.result);
+    }
+
     const label = formatToolActivityLabel(decision.request);
     const startedAt = Date.now();
     await notifyToolActivity(options, { phase: "start", callIndex: toolCallCount + 1, toolName, label });
@@ -120,6 +127,9 @@ export async function completeWithAgentTools(options: CompleteWithAgentToolsOpti
     }
     const durationMs = Date.now() - startedAt;
     await notifyToolActivity(options, { phase: "finish", callIndex: toolCallCount + 1, toolName, label, ok: toolResult.ok, status: toolResult.status, durationMs });
+    if (toolResult.ok) {
+      completedToolResults.set(toolSignature, { toolName, result: toolResult });
+    }
     messages.push({ role: "user", content: buildAgentToolResultMessage(toolName, toolResult) });
     assistantText = await options.chatCompletion(options.config, options.apiKey, { messages, stream: options.streamFinalResponse, onToken: options.onToken });
     if (isStreamedPlainFinalResponse(options, assistantText)) {
@@ -261,7 +271,7 @@ export function buildMcpToolResultMessage(server: string, name: string, toolResu
 
 export function buildAgentToolResultMessage(toolName: string, toolResult: McpToolCallResult): string {
   const guidance = buildToolResultGuidance(toolName, toolResult);
-  return `Tool result for ${toolName}: ${JSON.stringify({ ok: toolResult.ok, status: toolResult.status, message: toolResult.message, result: toolResult.result })}\n${guidance}\nTool decision required. Reply with exactly one JSON object and no extra text: either {"answer":"final answer text"} if the original user request is complete, or the next supported tool request if work remains. Do not describe a future action; execute it with a tool request.`;
+  return `Tool result for ${toolName}: ${JSON.stringify({ ok: toolResult.ok, status: toolResult.status, message: toolResult.message, result: toolResult.result })}\n${guidance}\nTool decision required. Reply with exactly one JSON object and no extra text: either {"answer":"final answer text"} if this result satisfies the original user request, or the next supported tool request if work remains. For internal.exec, use stdout, stderr, and exitCode from this result to answer; do not rerun the same successful command. Do not repeat the same successful tool request. Do not describe a future action; execute it with a tool request.`;
 }
 
 function buildToolResultGuidance(toolName: string, toolResult: McpToolCallResult): string {
@@ -278,7 +288,44 @@ function buildToolResultGuidance(toolName: string, toolResult: McpToolCallResult
     return "This tool returned no matching data. Do not claim the data exists; answer that nothing relevant was found or try one clearly useful adjacent search/list tool.";
   }
 
-  return "Ground the next step in this tool result. If the original user request still has required files, edits, commands, or other actions remaining, call the next needed tool instead of answering as if the task is complete. Do not add facts that are not supported by the result or prior conversation.";
+  return "Ground the next step in this tool result. If the result answers the original user request, return an answer now. If the original user request still has required files, edits, commands, or other actions remaining, call the next needed tool instead of answering as if the task is complete. Do not add facts that are not supported by the result or prior conversation.";
+}
+
+function stableToolRequestSignature(request: AgentToolRequest): string {
+  return JSON.stringify(sortJsonValue(request));
+}
+
+function sortJsonValue(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map(sortJsonValue);
+  }
+
+  if (!value || typeof value !== "object") {
+    return value;
+  }
+
+  return Object.fromEntries(Object.entries(value as Record<string, unknown>).sort(([left], [right]) => left.localeCompare(right)).map(([key, entryValue]) => [key, sortJsonValue(entryValue)]));
+}
+
+function buildRepeatedSuccessfulToolAnswer(toolName: string, toolResult: McpToolCallResult): string {
+  const result = isRecord(toolResult.result) ? toolResult.result : undefined;
+  const stdout = typeof result?.stdout === "string" ? result.stdout.trim() : "";
+  const stderr = typeof result?.stderr === "string" ? result.stderr.trim() : "";
+  const exitCode = typeof result?.exitCode === "number" ? result.exitCode : undefined;
+
+  if (toolName === "internal.exec" && stdout) {
+    return stdout;
+  }
+
+  if (toolName === "internal.exec" && stderr) {
+    return stderr;
+  }
+
+  if (toolName === "internal.exec" && exitCode !== undefined) {
+    return `Command already completed successfully with exit code ${exitCode}.`;
+  }
+
+  return `Tool ${toolName} already completed successfully, but the model repeated the same request. Result: ${JSON.stringify({ message: toolResult.message, result: toolResult.result })}`;
 }
 
 function buildToolResultRecoveryHint(toolName: string, toolResult: McpToolCallResult): string | undefined {

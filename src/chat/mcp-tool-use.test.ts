@@ -1398,8 +1398,33 @@ test("completeWithAgentTools returns JSON decision answers without tool calls", 
   }
 });
 
+test("completeWithAgentTools answers from a repeated successful exec result", async () => {
+  const paths = await createTempPaths();
+  const toolRequests: unknown[] = [];
+
+  try {
+    const answer = await completeWithAgentTools({
+      config: createConfig(),
+      paths,
+      apiKey: "test-key",
+      messages: [{ role: "user", content: "kiểm tra thời gian hiện tại trên local" }],
+      chatCompletion: async () => '{"tool":"internal.exec","arguments":{"command":"date","args":[]}}',
+      toolRunner: async (options) => {
+        toolRequests.push(options.request);
+        return { ok: true, status: "pass", message: "command completed", result: { command: "date", stdout: "Sat Jul 18 09:30:00 +07 2026\n", stderr: "", exitCode: 0 } };
+      },
+    });
+
+    assert.equal(answer, "Sat Jul 18 09:30:00 +07 2026");
+    assert.deepEqual(toolRequests, [{ tool: "internal.exec", arguments: { command: "date", args: [] } }]);
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
 test("completeWithAgentTools stops after max tool calls", async () => {
   const paths = await createTempPaths();
+  let callCount = 0;
 
   try {
     const answer = await completeWithAgentTools({
@@ -1408,7 +1433,10 @@ test("completeWithAgentTools stops after max tool calls", async () => {
       apiKey: "test-key",
       messages: [{ role: "user", content: "loop" }],
       maxToolCalls: 2,
-      chatCompletion: async () => '{"tool":"internal.list_files","arguments":{"path":"."}}',
+      chatCompletion: async () => {
+        callCount += 1;
+        return `{"tool":"internal.list_files","arguments":{"path":"${callCount}"}}`;
+      },
       toolRunner: async () => ({ ok: true, status: "pass", message: "listed", result: { entries: [] } }),
     });
 
