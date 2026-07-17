@@ -20,7 +20,7 @@ import { sendChatCompletionWithFallbacks } from "../llm/openai-compatible.js";
 import { fallbackLogDetail, formatProviderFallbackDiagnostics, formatProviderFallbackHealth } from "../llm/fallbacks.js";
 import { runMemoryReasoningPass, type MemoryReasoningResult } from "../memory/reasoning.js";
 import { isMemoryRetrievalPolicy, setMemoryRetrievalPolicy } from "../memory/governance.js";
-import { getMemoryMaintenanceReportStatus, installMemoryMaintenanceReport, removeMemoryMaintenanceReport } from "../memory/maintenance.js";
+import { getMemoryMaintenanceReportStatus, installMemoryMaintenanceReport, removeMemoryMaintenanceReport, runMemoryMaintenanceDigest } from "../memory/maintenance.js";
 import { buildMemoryHygieneDoctorReport, formatMemoryHygieneDoctorReport } from "../memory/hygiene-doctor.js";
 import { calculateMemoryHygieneScore } from "../memory/hygiene-score.js";
 import { formatMemoryHygieneStatus } from "../memory/hygiene-status.js";
@@ -1495,6 +1495,13 @@ async function handleTelegramSlashCommand(text: string, chatId: number, options:
     }
   }
 
+  if (memoryCommand === "digest") {
+    await options.client.sendMessage(chatId, "Running memory maintenance digest...");
+    const result = await runMemoryMaintenanceDigest({ config: options.config, paths: options.paths });
+    await sendTelegramTextChunks(options.client, chatId, result.ok ? result.output : `Digest failed: ${result.reason}`);
+    return true;
+  }
+
   if (memoryCommand?.startsWith("scope:")) {
     const scope = memoryCommand.split(":")[1];
     if (!isMemoryScope(scope)) {
@@ -1764,7 +1771,7 @@ function isPendingMemoryToolResult(value: unknown): value is { id: number; statu
   return typeof value === "object" && value !== null && "id" in value && "status" in value && Number.isInteger((value as { id: unknown }).id) && (value as { status: unknown }).status === "pending";
 }
 
-function parseTelegramMemoryCommand(text: string): "list" | "tiers" | "rebalance" | "rebalance_apply" | "rebalance_apply_confirm" | "pending" | `pending_inspect:${number}` | "pause" | "resume" | "analyze" | "cleanup_dry_run" | "hygiene" | "hygiene_status" | "hygiene_trend" | "hygiene_doctor" | "hygiene_apply" | "hygiene_apply_confirm" | "governance_status" | `governance_policy:${string}` | `pin:${number}` | `unpin:${number}` | `scope:${string}` | `inspect:${number}` | `move:${number}:${string}` | `supersede:${number}:${number}` | "maintenance:install" | "maintenance:status" | "maintenance:remove" | undefined {
+function parseTelegramMemoryCommand(text: string): "list" | "tiers" | "rebalance" | "rebalance_apply" | "rebalance_apply_confirm" | "digest" | "pending" | `pending_inspect:${number}` | "pause" | "resume" | "analyze" | "cleanup_dry_run" | "hygiene" | "hygiene_status" | "hygiene_trend" | "hygiene_doctor" | "hygiene_apply" | "hygiene_apply_confirm" | "governance_status" | `governance_policy:${string}` | `pin:${number}` | `unpin:${number}` | `scope:${string}` | `inspect:${number}` | `move:${number}:${string}` | `supersede:${number}:${number}` | "maintenance:install" | "maintenance:status" | "maintenance:remove" | undefined {
   if (text === "/memory" || text === "/memory list" || text === "/memory status") {
     return "list";
   }
@@ -1795,6 +1802,10 @@ function parseTelegramMemoryCommand(text: string): "list" | "tiers" | "rebalance
 
   if (text === "/memory cleanup dry-run" || text === "/memory cleanup --dry-run") {
     return "cleanup_dry_run";
+  }
+
+  if (text === "/memory digest") {
+    return "digest";
   }
 
   if (text === "/memory hygiene" || text === "/memory hygiene dry-run") {

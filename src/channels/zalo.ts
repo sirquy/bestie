@@ -10,7 +10,7 @@ import { buildMemoryHygieneDoctorReport, formatMemoryHygieneDoctorReport } from 
 import { calculateMemoryHygieneScore } from "../memory/hygiene-score.js";
 import { formatMemoryHygieneStatus } from "../memory/hygiene-status.js";
 import { formatMemoryHygieneTrendReport, recordMemoryHygieneSnapshot } from "../memory/hygiene-trend.js";
-import { getMemoryMaintenanceReportStatus, installMemoryMaintenanceReport, removeMemoryMaintenanceReport } from "../memory/maintenance.js";
+import { getMemoryMaintenanceReportStatus, installMemoryMaintenanceReport, removeMemoryMaintenanceReport, runMemoryMaintenanceDigest } from "../memory/maintenance.js";
 import { runMemoryReasoningPass, type MemoryReasoningResult } from "../memory/reasoning.js";
 import { isMemoryScope, SqliteMemoryStore } from "../memory/sqlite-store.js";
 import { applyMemoryRebalancePlan, formatMemoryRebalanceApplyResult, formatMemoryRebalancePlan, planMemoryRebalance } from "../memory/rebalance.js";
@@ -440,6 +440,13 @@ async function handleZaloSlashCommand(text: string, chatId: string, options: Zal
     } finally {
       store.close();
     }
+  }
+
+  if (memoryCommand === "digest") {
+    await options.client.sendMessage(chatId, "Running memory maintenance digest...");
+    const result = await runMemoryMaintenanceDigest({ config: options.config, paths: options.paths });
+    await sendZaloTextChunks(options.client, chatId, result.ok ? result.output : `Digest failed: ${result.reason}`);
+    return true;
   }
 
   if (memoryCommand?.startsWith("scope:")) {
@@ -907,7 +914,7 @@ function parseZaloApprovalDecision(text: string): { decision: "approve" | "deny"
   return match ? { decision: match[1] as "approve" | "deny", id: Number(match[2]) } : undefined;
 }
 
-function parseZaloMemoryCommand(text: string): "list" | "tiers" | "rebalance" | "rebalance_apply" | "rebalance_apply_confirm" | "pending" | "pause" | "resume" | "analyze" | "cleanup_dry_run" | "hygiene" | "hygiene_status" | "hygiene_trend" | "hygiene_doctor" | "hygiene_apply" | "hygiene_apply_confirm" | "governance_status" | `governance_policy:${string}` | `pin:${number}` | `unpin:${number}` | `scope:${string}` | `inspect:${number}` | `move:${number}:${string}` | `supersede:${number}:${number}` | "maintenance:install" | "maintenance:status" | "maintenance:remove" | undefined {
+function parseZaloMemoryCommand(text: string): "list" | "tiers" | "rebalance" | "rebalance_apply" | "rebalance_apply_confirm" | "digest" | "pending" | "pause" | "resume" | "analyze" | "cleanup_dry_run" | "hygiene" | "hygiene_status" | "hygiene_trend" | "hygiene_doctor" | "hygiene_apply" | "hygiene_apply_confirm" | "governance_status" | `governance_policy:${string}` | `pin:${number}` | `unpin:${number}` | `scope:${string}` | `inspect:${number}` | `move:${number}:${string}` | `supersede:${number}:${number}` | "maintenance:install" | "maintenance:status" | "maintenance:remove" | undefined {
   if (text === "/memory" || text === "/memory list" || text === "/memory status") {
     return "list";
   }
@@ -931,6 +938,9 @@ function parseZaloMemoryCommand(text: string): "list" | "tiers" | "rebalance" | 
   }
   if (text === "/memory cleanup dry-run" || text === "/memory cleanup --dry-run") {
     return "cleanup_dry_run";
+  }
+  if (text === "/memory digest") {
+    return "digest";
   }
   if (text === "/memory hygiene" || text === "/memory hygiene dry-run") {
     return "hygiene";

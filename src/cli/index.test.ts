@@ -138,8 +138,10 @@ test("memory maintenance install creates a cron report schedule", async () => {
       assert.equal(schedule.channel, "telegram:123");
       assert.match(schedule.prompt, /internal\.plan_memory_hygiene/);
       assert.match(schedule.prompt, /internal\.memory_hygiene_trend/);
+      assert.match(schedule.prompt, /internal\.plan_memory_rebalance/);
       assert.match(schedule.prompt, /deleteIds/);
       assert.match(schedule.prompt, /\/memory hygiene apply confirm/);
+      assert.match(schedule.prompt, /\/memory rebalance apply confirm/);
     } finally {
       store.close();
     }
