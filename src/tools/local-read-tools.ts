@@ -9,7 +9,7 @@ import type { AppConfig } from "../runtime/config.js";
 import type { RuntimePaths } from "../runtime/paths.js";
 import { formatWorkspaceRelativePath, resolveWorkspacePath } from "../runtime/workspace.js";
 import { reviewActionPermission, type PermissionApprover, type PermissionPolicy } from "../safety/permission-policy.js";
-import { SqliteMemoryStore, type StoredMemory } from "../memory/sqlite-store.js";
+import { SqliteMemoryStore, type MemoryHygieneSnapshot, type StoredMemory } from "../memory/sqlite-store.js";
 
 export interface LocalToolOptions {
   config?: AppConfig;
@@ -70,6 +70,16 @@ export interface MemoryHygienePlanResult {
   staleMemories: AnalyzeMemoriesResult["staleMemories"];
   conflictGroups: AnalyzeMemoriesResult["conflictGroups"];
   reviewOnlyIds: number[];
+}
+
+export interface MemoryHygieneTrendResult {
+  allowed: boolean;
+  reason: string;
+  snapshots: MemoryHygieneSnapshot[];
+  latest?: MemoryHygieneSnapshot;
+  baseline?: MemoryHygieneSnapshot;
+  delta?: number;
+  direction: "new" | "up" | "down" | "flat";
 }
 
 export interface ReadLocalFileResult {
@@ -337,8 +347,54 @@ export async function planMemoryHygieneTool(options: LocalToolOptions): Promise<
   }
 }
 
+export async function readMemoryHygieneTrendTool(options: LocalToolOptions & { limit?: number }): Promise<MemoryHygieneTrendResult> {
+  const permission = await reviewActionPermission(
+    {
+      category: "read",
+      action: "read_memory_hygiene_trend",
+      target: "local memory hygiene snapshots",
+      reason: "Inspect recent memory hygiene score snapshots for maintenance reporting.",
+      trusted: true,
+    },
+    { paths: options.paths, approver: options.approver, policy: options.policy },
+  );
+
+  if (permission.decision !== "allow") {
+    return { allowed: false, reason: permission.reason, snapshots: [], direction: "new" };
+  }
+
+  const store = await SqliteMemoryStore.open(options.paths);
+
+  try {
+    const snapshots = store.listMemoryHygieneSnapshots(normalizeMemoryTrendLimit(options.limit));
+    const latest = snapshots[0];
+    const baseline = snapshots.at(-1);
+
+    if (!latest || !baseline || latest.id === baseline.id) {
+      return { allowed: true, reason: permission.reason, snapshots, latest, baseline, direction: "new" };
+    }
+
+    const delta = latest.score - baseline.score;
+    return {
+      allowed: true,
+      reason: permission.reason,
+      snapshots,
+      latest,
+      baseline,
+      delta,
+      direction: delta > 0 ? "up" : delta < 0 ? "down" : "flat",
+    };
+  } finally {
+    store.close();
+  }
+}
+
 function normalizeOptionalMemoryLimit(limit: number | undefined): number | undefined {
   return limit === undefined ? undefined : normalizeMemoryLimit(limit);
+}
+
+function normalizeMemoryTrendLimit(limit: number | undefined): number {
+  return Math.min(Math.max(limit ?? 8, 2), 52);
 }
 
 function normalizeMemoryLimit(limit: number | undefined): number {

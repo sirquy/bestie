@@ -21,7 +21,12 @@ import { fallbackLogDetail, formatProviderFallbackDiagnostics, formatProviderFal
 import { runMemoryReasoningPass, type MemoryReasoningResult } from "../memory/reasoning.js";
 import { isMemoryRetrievalPolicy, setMemoryRetrievalPolicy } from "../memory/governance.js";
 import { getMemoryMaintenanceReportStatus, installMemoryMaintenanceReport, removeMemoryMaintenanceReport } from "../memory/maintenance.js";
+import { buildMemoryHygieneDoctorReport, formatMemoryHygieneDoctorReport } from "../memory/hygiene-doctor.js";
+import { calculateMemoryHygieneScore } from "../memory/hygiene-score.js";
+import { formatMemoryHygieneStatus } from "../memory/hygiene-status.js";
+import { formatMemoryHygieneTrendReport, recordMemoryHygieneSnapshot } from "../memory/hygiene-trend.js";
 import { isMemoryScope, SqliteMemoryStore } from "../memory/sqlite-store.js";
+import { formatMemoryTiersReport } from "../memory/tiers.js";
 import type { AppConfig } from "../runtime/config.js";
 import { loadRequiredSecret } from "../runtime/env.js";
 import { appendLog, redactSecrets } from "../runtime/logger.js";
@@ -30,13 +35,13 @@ import { runDoctor, type DoctorReport } from "../runtime/doctor.js";
 import { validateDoctorReportContract } from "../runtime/doctor-report-contract.js";
 import { executeApprovedAction } from "../safety/approval-executor.js";
 import { handleCronChannelCommand } from "../cron/channel-commands.js";
-import { analyzeMemoriesTool } from "../tools/local-read-tools.js";
+import { analyzeMemoriesTool, planMemoryHygieneTool, readMemoryHygieneTrendTool } from "../tools/local-read-tools.js";
 import type { ActionPermissionRequest, ActionPermissionResult, PermissionApprover, PermissionPolicy } from "../safety/permission-policy.js";
 import { buildChannelAttachmentPreview, type AttachmentContentParser } from "./attachment-preview.js";
 import { ProviderAuthError, ProviderFallbackError, ProviderNetworkError, ProviderRateLimitError, ProviderResponseError, ProviderTimeoutError } from "../llm/errors.js";
 import type { ChannelIncomingMessage, ChannelOutboundAdapter, ChannelRuntimeAdapter } from "./adapter.js";
 import { createChannelActivityController } from "./activity.js";
-import { formatMemoryAnalysisReport, formatMemoryCleanupDryRunReport, formatMemoryGovernanceStatus, formatMemoryInspect, formatMemoryMaintenanceInstalled, formatMemoryMaintenanceRemoved, formatMemoryMaintenanceStatus, formatMemoryRetrievalPolicyUpdated } from "./memory-commands.js";
+import { applyMemoryHygienePlanForChannel, formatMemoryAnalysisReport, formatMemoryCleanupDryRunReport, formatMemoryGovernanceStatus, formatMemoryHygieneReport, formatMemoryInspect, formatMemoryMaintenanceInstalled, formatMemoryMaintenanceRemoved, formatMemoryMaintenanceStatus, formatMemoryRetrievalPolicyUpdated } from "./memory-commands.js";
 import { buildChannelAttachmentPrompt } from "./attachment-prompt.js";
 import { processChannelAttachment } from "./attachment-pipeline.js";
 import { buildChannelVisionAttachment, type ChannelVisionAttachment } from "./attachment-vision.js";
@@ -1451,6 +1456,16 @@ async function handleTelegramSlashCommand(text: string, chatId: number, options:
     }
   }
 
+  if (memoryCommand === "tiers") {
+    const store = await SqliteMemoryStore.open(options.paths);
+    try {
+      await sendTelegramTextChunks(options.client, chatId, formatMemoryTiersReport({ memories: store.listActiveMemories(), plan: await planMemoryHygieneTool({ paths: options.paths }), channelCommandPrefix: "/memory" }));
+      return true;
+    } finally {
+      store.close();
+    }
+  }
+
   if (memoryCommand?.startsWith("scope:")) {
     const scope = memoryCommand.split(":")[1];
     if (!isMemoryScope(scope)) {
@@ -1490,6 +1505,37 @@ async function handleTelegramSlashCommand(text: string, chatId: number, options:
     const analysis = await analyzeMemoriesTool({ paths: options.paths, mode: "all" });
     const message = memoryCommand === "analyze" ? formatMemoryAnalysisReport(analysis) : formatMemoryCleanupDryRunReport(analysis);
     await sendTelegramTextChunks(options.client, chatId, message);
+    return true;
+  }
+
+  if (memoryCommand === "hygiene") {
+    await sendTelegramTextChunks(options.client, chatId, formatMemoryHygieneReport(await planMemoryHygieneTool({ paths: options.paths })));
+    return true;
+  }
+
+  if (memoryCommand === "hygiene_status") {
+    const plan = await planMemoryHygieneTool({ paths: options.paths });
+    const score = calculateMemoryHygieneScore(plan);
+    const trend = await recordMemoryHygieneSnapshot({ paths: options.paths, plan, score, source: "telegram:status" });
+    await sendTelegramTextChunks(options.client, chatId, formatMemoryHygieneStatus({ plan, deletePolicy: options.config.memory?.deletePolicy ?? "ask", retrievalPolicy: options.config.memory?.retrievalPolicy ?? "full", channelCommand: "/memory hygiene apply", trend }));
+    return true;
+  }
+
+  if (memoryCommand === "hygiene_trend") {
+    await sendTelegramTextChunks(options.client, chatId, formatMemoryHygieneTrendReport(await readMemoryHygieneTrendTool({ paths: options.paths })));
+    return true;
+  }
+
+  if (memoryCommand === "hygiene_doctor") {
+    const plan = await planMemoryHygieneTool({ paths: options.paths });
+    const report = await buildMemoryHygieneDoctorReport({ paths: options.paths, plan, deletePolicy: options.config.memory?.deletePolicy ?? "ask", retrievalPolicy: options.config.memory?.retrievalPolicy ?? "full" });
+    const trend = await recordMemoryHygieneSnapshot({ paths: options.paths, plan, score: report.score, source: "telegram:doctor" });
+    await sendTelegramTextChunks(options.client, chatId, formatMemoryHygieneDoctorReport(report, trend));
+    return true;
+  }
+
+  if (memoryCommand === "hygiene_apply" || memoryCommand === "hygiene_apply_confirm") {
+    await sendTelegramTextChunks(options.client, chatId, await applyMemoryHygienePlanForChannel({ plan: await planMemoryHygieneTool({ paths: options.paths }), paths: options.paths, deletePolicy: options.config.memory?.deletePolicy ?? "ask", confirmed: memoryCommand === "hygiene_apply_confirm" }));
     return true;
   }
 
@@ -1689,7 +1735,7 @@ function isPendingMemoryToolResult(value: unknown): value is { id: number; statu
   return typeof value === "object" && value !== null && "id" in value && "status" in value && Number.isInteger((value as { id: unknown }).id) && (value as { status: unknown }).status === "pending";
 }
 
-function parseTelegramMemoryCommand(text: string): "list" | "pending" | `pending_inspect:${number}` | "pause" | "resume" | "analyze" | "cleanup_dry_run" | "governance_status" | `governance_policy:${string}` | `pin:${number}` | `unpin:${number}` | `scope:${string}` | `inspect:${number}` | `move:${number}:${string}` | `supersede:${number}:${number}` | "maintenance:install" | "maintenance:status" | "maintenance:remove" | undefined {
+function parseTelegramMemoryCommand(text: string): "list" | "tiers" | "pending" | `pending_inspect:${number}` | "pause" | "resume" | "analyze" | "cleanup_dry_run" | "hygiene" | "hygiene_status" | "hygiene_trend" | "hygiene_doctor" | "hygiene_apply" | "hygiene_apply_confirm" | "governance_status" | `governance_policy:${string}` | `pin:${number}` | `unpin:${number}` | `scope:${string}` | `inspect:${number}` | `move:${number}:${string}` | `supersede:${number}:${number}` | "maintenance:install" | "maintenance:status" | "maintenance:remove" | undefined {
   if (text === "/memory" || text === "/memory list" || text === "/memory status") {
     return "list";
   }
@@ -1698,12 +1744,40 @@ function parseTelegramMemoryCommand(text: string): "list" | "pending" | `pending
     return "pending";
   }
 
+  if (text === "/memory tiers") {
+    return "tiers";
+  }
+
   if (text === "/memory analyze") {
     return "analyze";
   }
 
   if (text === "/memory cleanup dry-run" || text === "/memory cleanup --dry-run") {
     return "cleanup_dry_run";
+  }
+
+  if (text === "/memory hygiene" || text === "/memory hygiene dry-run") {
+    return "hygiene";
+  }
+
+  if (text === "/memory hygiene status") {
+    return "hygiene_status";
+  }
+
+  if (text === "/memory hygiene trend") {
+    return "hygiene_trend";
+  }
+
+  if (text === "/memory hygiene doctor") {
+    return "hygiene_doctor";
+  }
+
+  if (text === "/memory hygiene apply") {
+    return "hygiene_apply";
+  }
+
+  if (text === "/memory hygiene apply confirm") {
+    return "hygiene_apply_confirm";
   }
 
   if (text === "/memory governance" || text === "/memory governance status") {

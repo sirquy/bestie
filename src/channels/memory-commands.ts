@@ -1,6 +1,9 @@
-import type { AnalyzeMemoriesResult } from "../tools/local-read-tools.js";
+import type { AnalyzeMemoriesResult, MemoryHygienePlanResult } from "../tools/local-read-tools.js";
 import type { CronSchedule, StoredMemory } from "../memory/sqlite-store.js";
 import type { MemoryRetrievalPolicy } from "../runtime/config.js";
+import { SqliteMemoryStore } from "../memory/sqlite-store.js";
+import type { MemoryDeletePolicy } from "../runtime/config.js";
+import type { RuntimePaths } from "../runtime/paths.js";
 
 export function formatMemoryAnalysisReport(analysis: AnalyzeMemoriesResult): string {
   if (!analysis.allowed) {
@@ -40,6 +43,79 @@ export function formatMemoryCleanupDryRunReport(analysis: AnalyzeMemoriesResult)
   if (analysis.conflictGroups.length > 0) {
     appendConflictGroups(lines, analysis.conflictGroups);
     lines.push("Conflicts are review-only and are not auto-deleted.");
+  }
+
+  return lines.join("\n");
+}
+
+export function formatMemoryHygieneReport(plan: MemoryHygienePlanResult): string {
+  if (!plan.allowed) {
+    return `Memory hygiene denied: ${plan.reason}`;
+  }
+
+  const lines = [`Memory hygiene dry-run (${plan.checked} checked)`];
+
+  if (plan.deleteIds.length === 0) {
+    lines.push("No duplicate or stale memories planned for deletion.");
+  } else {
+    lines.push(`Would delete: ${plan.deleteIds.map((id) => `#${id}`).join(", ")}`);
+    appendDuplicateGroups(lines, plan.duplicateGroups);
+    appendStaleMemories(lines, plan.staleMemories);
+  }
+
+  if (plan.reviewOnlyIds.length > 0) {
+    lines.push(`Review only: ${plan.reviewOnlyIds.map((id) => `#${id}`).join(", ")}`);
+    appendConflictGroups(lines, plan.conflictGroups);
+    lines.push("Review-only memories are not auto-deleted.");
+  }
+
+  return lines.join("\n");
+}
+
+export async function applyMemoryHygienePlanForChannel(options: { plan: MemoryHygienePlanResult; paths: RuntimePaths; deletePolicy: MemoryDeletePolicy; confirmed: boolean }): Promise<string> {
+  const { plan, paths, deletePolicy, confirmed } = options;
+
+  if (!plan.allowed) {
+    return `Memory hygiene denied: ${plan.reason}`;
+  }
+
+  if (deletePolicy === "deny") {
+    return "Memory hygiene apply denied: memory.deletePolicy is deny.";
+  }
+
+  if (deletePolicy === "ask" && !confirmed) {
+    return [
+      formatMemoryHygieneReport(plan),
+      "Confirm cleanup with /memory hygiene apply confirm.",
+    ].join("\n");
+  }
+
+  const store = await SqliteMemoryStore.open(paths);
+  const deletedIds: number[] = [];
+  const missingIds: number[] = [];
+
+  try {
+    for (const id of plan.deleteIds) {
+      if (store.forgetMemory(id)) {
+        deletedIds.push(id);
+      } else {
+        missingIds.push(id);
+      }
+    }
+  } finally {
+    store.close();
+  }
+
+  const lines = [`Memory hygiene applied (${plan.checked} checked)`];
+  lines.push(deletedIds.length === 0 ? "No planned duplicate or stale memories were deleted." : `Deleted: ${deletedIds.map((id) => `#${id}`).join(", ")}`);
+
+  if (missingIds.length > 0) {
+    lines.push(`Missing: ${missingIds.map((id) => `#${id}`).join(", ")}`);
+  }
+
+  if (plan.reviewOnlyIds.length > 0) {
+    lines.push(`Review only: ${plan.reviewOnlyIds.map((id) => `#${id}`).join(", ")}`);
+    lines.push("Review-only memories were not auto-deleted.");
   }
 
   return lines.join("\n");

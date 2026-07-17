@@ -9,7 +9,7 @@ import { reviewActionPermission, type PermissionApprover, type PermissionPolicy 
 import { evaluateMemoryCandidate, type MemoryType } from "../memory/policy.js";
 import { SqliteMemoryStore } from "../memory/sqlite-store.js";
 import { applyPatchTool, editLocalFileTool, execLocalTool, listProcessesTool, writeLocalFileTool } from "../tools/local-action-tools.js";
-import { analyzeMemoriesTool, inspectMemoryTool, listActiveMemoriesTool, listLocalFilesTool, planMemoryHygieneTool, readGitDiffTool, readGitLogTool, readGitStatusTool, readLocalFileTool, readManyLocalFilesTool, readMarkdownBundleTool, readRecentAppLogsTool, searchLocalFilesTool, searchMemoriesTool, type MemoryAnalysisMode } from "../tools/local-read-tools.js";
+import { analyzeMemoriesTool, inspectMemoryTool, listActiveMemoriesTool, listLocalFilesTool, planMemoryHygieneTool, readGitDiffTool, readGitLogTool, readGitStatusTool, readLocalFileTool, readManyLocalFilesTool, readMarkdownBundleTool, readMemoryHygieneTrendTool, readRecentAppLogsTool, searchLocalFilesTool, searchMemoriesTool, type MemoryAnalysisMode } from "../tools/local-read-tools.js";
 import { readUrlTool } from "../tools/web-read-tools.js";
 import { addCronScheduleTool, listCronSchedulesTool, removeCronScheduleTool, toggleCronScheduleTool } from "../tools/cron-tools.js";
 
@@ -51,7 +51,7 @@ export interface McpToolRequest {
 }
 
 export interface InternalToolRequest {
-  tool: "internal.read_file" | "internal.read_many_files" | "internal.read_markdown_bundle" | "internal.list_files" | "internal.search_files" | "internal.read_logs" | "internal.read_url" | "internal.git_status" | "internal.git_diff" | "internal.git_log" | "internal.mcp_list_servers" | "internal.mcp_list_tools" | "internal.write_file" | "internal.edit_file" | "internal.apply_patch" | "internal.exec" | "internal.list_processes" | "internal.list_memories" | "internal.search_memories" | "internal.inspect_memory" | "internal.analyze_memories" | "internal.plan_memory_hygiene" | "internal.remember_memory" | "internal.delete_memory" | "internal.cleanup_memories" | "internal.supersede_memory" | "internal.add_cron_schedule" | "internal.list_cron_schedules" | "internal.remove_cron_schedule" | "internal.toggle_cron_schedule";
+  tool: "internal.read_file" | "internal.read_many_files" | "internal.read_markdown_bundle" | "internal.list_files" | "internal.search_files" | "internal.read_logs" | "internal.read_url" | "internal.git_status" | "internal.git_diff" | "internal.git_log" | "internal.mcp_list_servers" | "internal.mcp_list_tools" | "internal.write_file" | "internal.edit_file" | "internal.apply_patch" | "internal.exec" | "internal.list_processes" | "internal.list_memories" | "internal.search_memories" | "internal.inspect_memory" | "internal.analyze_memories" | "internal.plan_memory_hygiene" | "internal.memory_hygiene_trend" | "internal.remember_memory" | "internal.delete_memory" | "internal.cleanup_memories" | "internal.supersede_memory" | "internal.add_cron_schedule" | "internal.list_cron_schedules" | "internal.remove_cron_schedule" | "internal.toggle_cron_schedule";
   arguments: Record<string, unknown>;
 }
 
@@ -412,6 +412,10 @@ export function formatToolActivityLabel(request: AgentToolRequest): string {
     return "memory hygiene";
   }
 
+  if (request.tool === "internal.memory_hygiene_trend") {
+    return "memory hygiene trend";
+  }
+
   if (request.tool === "internal.search_memories") {
     return stringArg(args.query) ?? "memories";
   }
@@ -649,6 +653,11 @@ export async function runAgentToolRequest(options: RunAgentToolRequestOptions): 
     return { ok: result.allowed, status: result.allowed ? "pass" : "fail", message: result.reason, result };
   }
 
+  if (options.request.tool === "internal.memory_hygiene_trend") {
+    const result = await readMemoryHygieneTrendTool({ paths: options.paths, limit: numberArg(args.limit), approver: options.approver, policy: options.policy });
+    return { ok: result.allowed, status: result.allowed ? "pass" : "fail", message: result.reason, result };
+  }
+
   if (options.request.tool === "internal.add_cron_schedule") {
     return addCronScheduleTool(options.request.arguments, { config: options.config, paths: options.paths });
   }
@@ -669,7 +678,7 @@ export async function runAgentToolRequest(options: RunAgentToolRequestOptions): 
 }
 
 export function isInternalToolName(value: string): value is InternalToolRequest["tool"] {
-  return ["internal.read_file", "internal.read_many_files", "internal.read_markdown_bundle", "internal.list_files", "internal.search_files", "internal.read_logs", "internal.read_url", "internal.git_status", "internal.git_diff", "internal.git_log", "internal.mcp_list_servers", "internal.mcp_list_tools", "internal.write_file", "internal.edit_file", "internal.apply_patch", "internal.exec", "internal.list_processes", "internal.list_memories", "internal.search_memories", "internal.inspect_memory", "internal.analyze_memories", "internal.plan_memory_hygiene", "internal.remember_memory", "internal.delete_memory", "internal.cleanup_memories", "internal.supersede_memory", "internal.add_cron_schedule", "internal.list_cron_schedules", "internal.remove_cron_schedule", "internal.toggle_cron_schedule"].includes(value);
+  return ["internal.read_file", "internal.read_many_files", "internal.read_markdown_bundle", "internal.list_files", "internal.search_files", "internal.read_logs", "internal.read_url", "internal.git_status", "internal.git_diff", "internal.git_log", "internal.mcp_list_servers", "internal.mcp_list_tools", "internal.write_file", "internal.edit_file", "internal.apply_patch", "internal.exec", "internal.list_processes", "internal.list_memories", "internal.search_memories", "internal.inspect_memory", "internal.analyze_memories", "internal.plan_memory_hygiene", "internal.memory_hygiene_trend", "internal.remember_memory", "internal.delete_memory", "internal.cleanup_memories", "internal.supersede_memory", "internal.add_cron_schedule", "internal.list_cron_schedules", "internal.remove_cron_schedule", "internal.toggle_cron_schedule"].includes(value);
 }
 
 async function deleteMemoryTool(options: RunAgentToolRequestOptions, args: Record<string, unknown>): Promise<McpToolCallResult> {

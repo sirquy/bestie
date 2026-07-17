@@ -828,12 +828,65 @@ test("handleTelegramUpdate reports memory analysis and cleanup dry-run", async (
 
     await handleTelegramUpdate(createTextUpdate("/memory analyze", 12345), { config, paths, client: createRecordingClient(sentMessages) });
     await handleTelegramUpdate(createTextUpdate("/memory cleanup dry-run", 12345), { config, paths, client: createRecordingClient(sentMessages) });
+    await handleTelegramUpdate(createTextUpdate("/memory hygiene", 12345), { config, paths, client: createRecordingClient(sentMessages) });
+    await handleTelegramUpdate(createTextUpdate("/memory hygiene status", 12345), { config: { ...config, memory: { deletePolicy: "ask", retrievalPolicy: "governed" } }, paths, client: createRecordingClient(sentMessages) });
+    await handleTelegramUpdate(createTextUpdate("/memory hygiene doctor", 12345), { config: { ...config, memory: { deletePolicy: "allow", retrievalPolicy: "full" } }, paths, client: createRecordingClient(sentMessages) });
+    await handleTelegramUpdate(createTextUpdate("/memory hygiene trend", 12345), { config, paths, client: createRecordingClient(sentMessages) });
 
     assert.match(sentMessages[0].text, /Memory analysis \(3 checked\)/);
     assert.match(sentMessages[0].text, /Duplicates: 1 group\(s\)/);
     assert.match(sentMessages[0].text, /Stale: 1/);
     assert.match(sentMessages[1].text, /Memory cleanup dry-run \(3 checked\)/);
     assert.match(sentMessages[1].text, /Would delete: #2, #3/);
+    assert.match(sentMessages[2].text, /Memory hygiene dry-run \(3 checked\)/);
+    assert.match(sentMessages[2].text, /Would delete: #2, #3/);
+    assert.match(sentMessages[3].text, /Memory hygiene status \(3 checked\)/);
+    assert.match(sentMessages[3].text, /Memory hygiene score: \d+\/100 \((healthy|attention|needs cleanup)\)/);
+    assert.match(sentMessages[3].text, /Delete policy: ask/);
+    assert.match(sentMessages[3].text, /Next safe command: \/memory hygiene apply confirm/);
+    assert.match(sentMessages[4].text, /Memory hygiene doctor: \d+ issue\(s\)/);
+    assert.match(sentMessages[4].text, /Memory hygiene score: \d+\/100 \((healthy|attention|needs cleanup)\)/);
+    assert.match(sentMessages[4].text, /\[WARN\] Maintenance digest/);
+    assert.match(sentMessages[5].text, /Memory hygiene trend \(2 snapshot\(s\)\)/);
+    assert.match(sentMessages[5].text, /Recent snapshots:/);
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("handleTelegramUpdate applies memory hygiene when delete policy allows", async () => {
+  const paths = await createTempPaths();
+  const sentMessages: Array<{ chatId: number; text: string }> = [];
+
+  try {
+    await writeRuntimeFiles(paths);
+    const store = await SqliteMemoryStore.open(paths);
+    try {
+      store.addMemory({ type: "project_context", content: "Apply hygiene from Telegram", importance: 5 });
+      store.addMemory({ type: "project_context", content: "Apply hygiene from Telegram", importance: 1 });
+      store.addMemory({ type: "project_context", content: "Old Telegram context", importance: 1, expiresAt: "2020-01-01T00:00:00.000Z" });
+      store.addMemory({ type: "preference", content: "Use voice replies" });
+      store.addMemory({ type: "preference", content: "Do not use voice replies" });
+    } finally {
+      store.close();
+    }
+
+    await handleTelegramUpdate(createTextUpdate("/memory hygiene apply", 12345), { config: { ...config, memory: { deletePolicy: "allow" } }, paths, client: createRecordingClient(sentMessages) });
+
+    assert.match(sentMessages[0].text, /Memory hygiene applied \(5 checked\)/);
+    assert.match(sentMessages[0].text, /Deleted: #2, #3/);
+    assert.match(sentMessages[0].text, /Review only: #4, #5/);
+
+    const checkStore = await SqliteMemoryStore.open(paths);
+    try {
+      assert.equal(checkStore.getActiveMemory(1)?.content, "Apply hygiene from Telegram");
+      assert.equal(checkStore.getActiveMemory(2), undefined);
+      assert.equal(checkStore.getActiveMemory(3), undefined);
+      assert.equal(checkStore.getActiveMemory(4)?.content, "Use voice replies");
+      assert.equal(checkStore.getActiveMemory(5)?.content, "Do not use voice replies");
+    } finally {
+      checkStore.close();
+    }
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
   }
@@ -929,11 +982,15 @@ test("handleTelegramUpdate lists and moves memory scopes", async () => {
     await handleTelegramUpdate(createTextUpdate("/memory scope core", 12345), { config, paths, client: createRecordingClient(sentMessages) });
     await handleTelegramUpdate(createTextUpdate(`/memory move ${id} session`, 12345), { config, paths, client: createRecordingClient(sentMessages) });
     await handleTelegramUpdate(createTextUpdate("/memory scope session", 12345), { config, paths, client: createRecordingClient(sentMessages) });
+    await handleTelegramUpdate(createTextUpdate("/memory tiers", 12345), { config, paths, client: createRecordingClient(sentMessages) });
 
     assert.match(sentMessages[0].text, /Active memories \/ core \(1\)/);
     assert.match(sentMessages[1].text, new RegExp(`Memory #${id} moved to session`));
     assert.match(sentMessages[2].text, /Active memories \/ session \(1\)/);
     assert.match(sentMessages[2].text, /Move from Telegram/);
+    assert.match(sentMessages[3].text, /Memory tiers \(1 active\)/);
+    assert.match(sentMessages[3].text, /session: 1 active/);
+    assert.match(sentMessages[3].text, /Next: \/memory scope session/);
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
   }

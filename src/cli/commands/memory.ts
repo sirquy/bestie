@@ -1,10 +1,15 @@
 import { evaluateMemoryCandidate, type MemoryType } from "../../memory/policy.js";
 import { isMemoryScope, SqliteMemoryStore, type PendingMemory, type StoredMemory, type StoredMessageRole } from "../../memory/sqlite-store.js";
 import { isMemoryRetrievalPolicy, setMemoryRetrievalPolicy } from "../../memory/governance.js";
+import { buildMemoryHygieneDoctorReport, fixMemoryHygieneDoctorIssues, formatMemoryHygieneDoctorFixes, formatMemoryHygieneDoctorReport } from "../../memory/hygiene-doctor.js";
+import { calculateMemoryHygieneScore } from "../../memory/hygiene-score.js";
+import { formatMemoryHygieneStatus } from "../../memory/hygiene-status.js";
+import { formatMemoryHygieneTrendReport, recordMemoryHygieneSnapshot } from "../../memory/hygiene-trend.js";
 import { MEMORY_MAINTENANCE_DEFAULT_SCHEDULE, installMemoryMaintenanceReport, getMemoryMaintenanceReportStatus, removeMemoryMaintenanceReport } from "../../memory/maintenance.js";
+import { formatMemoryTiersReport } from "../../memory/tiers.js";
 import { loadConfig, type MemoryDeletePolicy } from "../../runtime/config.js";
 import { getRuntimePaths } from "../../runtime/paths.js";
-import { analyzeMemoriesTool, type AnalyzeMemoriesResult, type MemoryAnalysisMode } from "../../tools/local-read-tools.js";
+import { analyzeMemoriesTool, planMemoryHygieneTool, readMemoryHygieneTrendTool, type AnalyzeMemoriesResult, type MemoryAnalysisMode, type MemoryHygienePlanResult } from "../../tools/local-read-tools.js";
 import { badge, dim, rule, title } from "../ui.js";
 
 const allowedTypes = new Set<MemoryType>([
@@ -50,6 +55,11 @@ export async function runMemoryCommand(argv: string[] = process.argv): Promise<v
     return;
   }
 
+  if (subcommand === "tiers") {
+    await showMemoryTiers();
+    return;
+  }
+
   if (subcommand === "add") {
     await addMemory(argv);
     return;
@@ -67,6 +77,11 @@ export async function runMemoryCommand(argv: string[] = process.argv): Promise<v
 
   if (subcommand === "cleanup") {
     await cleanupMemories(argv);
+    return;
+  }
+
+  if (subcommand === "hygiene") {
+    await showMemoryHygiene(argv);
     return;
   }
 
@@ -156,7 +171,7 @@ export async function runMemoryCommand(argv: string[] = process.argv): Promise<v
   }
 
   console.error(`Unknown memory command: ${subcommand}`);
-  console.error("Usage: bestie memory status | pause | resume | list | search <query> | analyze [--mode all|duplicates|stale|conflicts] [--json] | cleanup --dry-run|--apply [--yes] [--json] | maintenance install|status|remove [--channel telegram:<id>|zalo:<id>] [--schedule <cron>] | add <type> <content> | inspect <id> | edit <id> <content> | forget <id> | messages [--limit <n>] [--role user|assistant|system] | messages search <query> [--limit <n>] [--role user|assistant|system] | export | clear --yes | pending [--limit <n>] | pending search <query> [--limit <n>] | pending inspect <id> | approve <id> | reject <id> | reject-all --yes");
+  console.error("Usage: bestie memory status | pause | resume | list | tiers | search <query> | analyze [--mode all|duplicates|stale|conflicts] [--json] | hygiene [status|trend|doctor|--apply] [--fix] [--yes] [--json] | cleanup --dry-run|--apply [--yes] [--json] | maintenance install|status|remove [--channel telegram:<id>|zalo:<id>] [--schedule <cron>] | add <type> <content> | inspect <id> | edit <id> <content> | forget <id> | messages [--limit <n>] [--role user|assistant|system] | messages search <query> [--limit <n>] [--role user|assistant|system] | export | clear --yes | pending [--limit <n>] | pending search <query> [--limit <n>] | pending inspect <id> | approve <id> | reject <id> | reject-all --yes");
   process.exitCode = 1;
 }
 
@@ -207,6 +222,16 @@ async function listMemories(argv: string[]): Promise<void> {
     for (const memory of memories) {
       console.log(formatActiveMemoryLine(memory));
     }
+  } finally {
+    store.close();
+  }
+}
+
+async function showMemoryTiers(): Promise<void> {
+  const store = await SqliteMemoryStore.open();
+
+  try {
+    console.log(formatMemoryTiersReport({ memories: store.listActiveMemories(), plan: await planMemoryHygieneTool({ paths: getRuntimePaths() }) }));
   } finally {
     store.close();
   }
@@ -336,6 +361,130 @@ async function cleanupMemories(argv: string[]): Promise<void> {
   }
 
   printCleanupPlan(plan, true);
+  console.log(`${badge("DELETED", "green")} Deleted ${applied.deletedIds.length} planned memory/memories.${applied.missingIds.length > 0 ? ` Missing: ${applied.missingIds.map((id) => `#${id}`).join(", ")}.` : ""}`);
+}
+
+async function showMemoryHygiene(argv: string[]): Promise<void> {
+  const status = argv[4] === "status";
+  const doctor = argv[4] === "doctor";
+  const trendCommand = argv[4] === "trend";
+  const apply = argv.includes("--apply");
+  const fix = argv.includes("--fix");
+  const json = argv.includes("--json");
+  const paths = getRuntimePaths();
+  if (trendCommand) {
+    const trend = await readMemoryHygieneTrendTool({ paths });
+    if (json) {
+      console.log(JSON.stringify(trend, null, 2));
+    } else {
+      console.log(formatMemoryHygieneTrendReport(trend));
+    }
+    if (!trend.allowed) {
+      process.exitCode = 1;
+    }
+    return;
+  }
+
+  const plan = await planMemoryHygieneTool({ paths });
+
+  if (status || doctor) {
+    const config = await loadConfig();
+    const deletePolicy = config.memory?.deletePolicy ?? "ask";
+    const retrievalPolicy = config.memory?.retrievalPolicy ?? "full";
+    if (doctor) {
+      const report = await buildMemoryHygieneDoctorReport({ paths, plan, deletePolicy, retrievalPolicy });
+      if (fix) {
+        const fixes = await fixMemoryHygieneDoctorIssues({ paths, report });
+        const nextPlan = await planMemoryHygieneTool({ paths });
+        const nextReport = await buildMemoryHygieneDoctorReport({ paths, plan: nextPlan, deletePolicy, retrievalPolicy });
+        const trend = await recordMemoryHygieneSnapshot({ paths, plan: nextPlan, score: nextReport.score, source: "cli:doctor:fix" });
+        if (json) {
+          console.log(JSON.stringify({ allowed: nextPlan.allowed, deletePolicy, retrievalPolicy, fixes, report: nextReport, trend }, null, 2));
+        } else {
+          console.log(formatMemoryHygieneDoctorFixes(fixes));
+          console.log(formatMemoryHygieneDoctorReport(nextReport, trend));
+        }
+        if (nextReport.issueCount > 0) {
+          process.exitCode = 1;
+        }
+        return;
+      }
+
+      const trend = await recordMemoryHygieneSnapshot({ paths, plan, score: report.score, source: "cli:doctor" });
+      if (json) {
+        console.log(JSON.stringify({ allowed: plan.allowed, deletePolicy, retrievalPolicy, report, trend }, null, 2));
+      } else {
+        console.log(formatMemoryHygieneDoctorReport(report, trend));
+      }
+      if (report.issueCount > 0) {
+        process.exitCode = 1;
+      }
+      return;
+    }
+
+    const score = calculateMemoryHygieneScore(plan);
+    const trend = await recordMemoryHygieneSnapshot({ paths, plan, score, source: "cli:status" });
+    if (json) {
+      console.log(JSON.stringify({ allowed: plan.allowed, deletePolicy, retrievalPolicy, plan, trend }, null, 2));
+    } else {
+      console.log(formatMemoryHygieneStatus({ plan, deletePolicy, retrievalPolicy, trend }));
+    }
+    if (!plan.allowed) {
+      process.exitCode = 1;
+    }
+    return;
+  }
+
+  if (json && !apply) {
+    console.log(JSON.stringify({ allowed: plan.allowed, applied: false, plan }, null, 2));
+    return;
+  }
+
+  if (!plan.allowed) {
+    if (json) {
+      console.log(JSON.stringify({ allowed: false, applied: false, reason: plan.reason, plan }, null, 2));
+    } else {
+      console.log(`${badge("DENIED", "red")} ${plan.reason}`);
+    }
+    process.exitCode = 1;
+    return;
+  }
+
+  if (!apply) {
+    printHygienePlan(plan, false);
+    return;
+  }
+
+  const deletePolicy = await loadMemoryDeletePolicy();
+  if (deletePolicy === "deny") {
+    if (json) {
+      console.log(JSON.stringify({ allowed: false, applied: false, reason: "memory.deletePolicy is deny.", plan }, null, 2));
+    } else {
+      console.log(`${badge("DENIED", "red")} memory.deletePolicy is deny. No memories were deleted.`);
+    }
+    process.exitCode = 1;
+    return;
+  }
+
+  if (deletePolicy === "ask" && !argv.includes("--yes")) {
+    if (json) {
+      console.log(JSON.stringify({ allowed: false, applied: false, reason: "memory.deletePolicy is ask; re-run with --yes to confirm hygiene cleanup.", plan }, null, 2));
+    } else {
+      printHygienePlan(plan, false);
+      console.log(`${badge("CONFIRM", "yellow")} memory.deletePolicy is ask. Re-run with \`bestie memory hygiene --apply --yes\` to delete planned duplicate and stale memories.`);
+    }
+    process.exitCode = 1;
+    return;
+  }
+
+  const applied = await applyMemoryHygienePlan(plan);
+
+  if (json) {
+    console.log(JSON.stringify({ allowed: true, applied: true, deletedIds: applied.deletedIds, missingIds: applied.missingIds, plan }, null, 2));
+    return;
+  }
+
+  printHygienePlan(plan, true);
   console.log(`${badge("DELETED", "green")} Deleted ${applied.deletedIds.length} planned memory/memories.${applied.missingIds.length > 0 ? ` Missing: ${applied.missingIds.map((id) => `#${id}`).join(", ")}.` : ""}`);
 }
 
@@ -965,7 +1114,44 @@ function printCleanupPlan(plan: MemoryCleanupPlan, applied: boolean): void {
   }
 }
 
+function printHygienePlan(plan: MemoryHygienePlanResult, applied: boolean): void {
+  console.log(title(`${applied ? "Applied" : "Planned"} Memory Hygiene (${plan.checked} checked)`));
+  console.log(rule());
+  if (plan.deleteIds.length === 0) {
+    console.log(`${badge("OK", "green")} No duplicate or stale memories planned for deletion.`);
+  } else {
+    console.log(`${badge("DELETE", "yellow")} ${plan.deleteIds.length} planned: ${plan.deleteIds.map((id) => `#${id}`).join(", ")}`);
+  }
+  printDuplicateGroups(plan.duplicateGroups);
+  printStaleMemories(plan.staleMemories);
+  if (plan.reviewOnlyIds.length > 0) {
+    printConflictGroups(plan.conflictGroups);
+    console.log(`${badge("REVIEW", "cyan")} Review-only memories: ${plan.reviewOnlyIds.map((id) => `#${id}`).join(", ")}`);
+  }
+}
+
 async function applyMemoryCleanupPlan(plan: MemoryCleanupPlan): Promise<{ deletedIds: number[]; missingIds: number[] }> {
+  const store = await SqliteMemoryStore.open();
+
+  try {
+    const deletedIds: number[] = [];
+    const missingIds: number[] = [];
+
+    for (const id of plan.deleteIds) {
+      if (store.forgetMemory(id)) {
+        deletedIds.push(id);
+      } else {
+        missingIds.push(id);
+      }
+    }
+
+    return { deletedIds, missingIds };
+  } finally {
+    store.close();
+  }
+}
+
+async function applyMemoryHygienePlan(plan: MemoryHygienePlanResult): Promise<{ deletedIds: number[]; missingIds: number[] }> {
   const store = await SqliteMemoryStore.open();
 
   try {

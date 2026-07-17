@@ -105,6 +105,10 @@ test("parseMcpToolRequest accepts internal read tool requests", () => {
     tool: "internal.plan_memory_hygiene",
     arguments: {},
   });
+  assert.deepEqual(parseMcpToolRequest('{"tool":"internal.memory_hygiene_trend","arguments":{"limit":8}}'), {
+    tool: "internal.memory_hygiene_trend",
+    arguments: { limit: 8 },
+  });
   assert.deepEqual(parseMcpToolRequest('{"tool":"internal.git_diff","arguments":{"staged":true}}'), {
     tool: "internal.git_diff",
     arguments: { staged: true },
@@ -591,6 +595,36 @@ test("runAgentToolRequest plans memory hygiene", async () => {
     const payload = result.result as { deleteIds: number[]; reviewOnlyIds: number[] };
     assert.deepEqual(payload.deleteIds, [2, 3]);
     assert.deepEqual(payload.reviewOnlyIds, [4, 5]);
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("runAgentToolRequest reads memory hygiene trend snapshots", async () => {
+  const paths = await createTempPaths();
+
+  try {
+    const store = await import("../memory/sqlite-store.js").then(({ SqliteMemoryStore }) => SqliteMemoryStore.open(paths));
+    try {
+      store.addMemoryHygieneSnapshot({ score: 73, label: "attention", checked: 9, deleteCandidates: 2, reviewOnly: 1, duplicateGroups: 1, staleMemories: 1, conflictGroups: 0, source: "test:first" });
+      store.addMemoryHygieneSnapshot({ score: 86, label: "healthy", checked: 9, deleteCandidates: 0, reviewOnly: 1, duplicateGroups: 0, staleMemories: 0, conflictGroups: 0, source: "test:latest" });
+    } finally {
+      store.close();
+    }
+
+    const result = await runAgentToolRequest({
+      config: { ...createConfig(), mcp: undefined },
+      paths,
+      request: { tool: "internal.memory_hygiene_trend", arguments: { limit: 8 } },
+    });
+
+    assert.equal(result.ok, true);
+    const payload = result.result as { direction: string; delta: number; latest: { score: number }; baseline: { score: number }; snapshots: unknown[] };
+    assert.equal(payload.direction, "up");
+    assert.equal(payload.delta, 13);
+    assert.equal(payload.latest.score, 86);
+    assert.equal(payload.baseline.score, 73);
+    assert.equal(payload.snapshots.length, 2);
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
   }

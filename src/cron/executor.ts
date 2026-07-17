@@ -12,6 +12,8 @@ import { computeNextRun } from "./scheduler.js";
 const DEFAULT_TICK_INTERVAL_MS = 30_000;
 
 const OUTPUT_TRUNCATE_MAX = 2_000;
+const MEMORY_HYGIENE_ALERT_STATE_KEY = "memory_hygiene_regression_alert_snapshot_id";
+const MEMORY_HYGIENE_SCORE_ALERT_THRESHOLD = 60;
 
 export interface CronExecutorOptions {
   config: AppConfig;
@@ -19,6 +21,7 @@ export interface CronExecutorOptions {
   apiKey?: string;
   tickIntervalMs?: number;
   notifier?: CronJobNotifier;
+  alertNotifier?: CronAlertNotifier;
 }
 
 export interface CronJobNotification {
@@ -29,6 +32,14 @@ export interface CronJobNotification {
 }
 
 export type CronJobNotifier = (notification: CronJobNotification) => Promise<void>;
+
+export interface CronAlertNotification {
+  kind: "memory_hygiene_regression";
+  message: string;
+  latestSnapshotId: number;
+}
+
+export type CronAlertNotifier = (notification: CronAlertNotification) => Promise<void>;
 
 export class CronExecutor {
   private timer?: ReturnType<typeof setInterval>;
@@ -66,6 +77,7 @@ export class CronExecutor {
     const store = await SqliteMemoryStore.open(this.options.paths);
 
     try {
+      await this.checkMemoryHygieneRegression(store);
       const now = new Date().toISOString();
       const dueJobs = store.listDueCronJobs(now);
 
@@ -147,6 +159,80 @@ export class CronExecutor {
         { paths: this.options.paths },
       );
     }
+  }
+
+  private async checkMemoryHygieneRegression(store: SqliteMemoryStore): Promise<void> {
+    const snapshots = store.listMemoryHygieneSnapshots(3);
+    const latest = snapshots[0];
+    if (!latest) {
+      return;
+    }
+
+    if (store.getMemoryStateValue(MEMORY_HYGIENE_ALERT_STATE_KEY) === String(latest.id)) {
+      return;
+    }
+
+    const previous = snapshots[1];
+    const earlier = snapshots[2];
+    const belowThreshold = latest.score < MEMORY_HYGIENE_SCORE_ALERT_THRESHOLD;
+    const consecutiveDrop = Boolean(previous && earlier && latest.score < previous.score && previous.score < earlier.score);
+    if (!belowThreshold && !consecutiveDrop) {
+      return;
+    }
+
+    const reason = belowThreshold
+      ? `score is ${latest.score}/100 (${latest.label})`
+      : `score dropped consecutively: ${earlier?.score}/100 -> ${previous?.score}/100 -> ${latest.score}/100`;
+    const message = [
+      `${this.options.config.agent.name}: Memory hygiene regression alert`,
+      reason,
+      "Run `bestie memory hygiene status` or `/memory hygiene status` to inspect the cleanup plan.",
+    ].join("\n\n");
+
+    await this.notifyAlert({ kind: "memory_hygiene_regression", message, latestSnapshotId: latest.id });
+    store.setMemoryStateValue(MEMORY_HYGIENE_ALERT_STATE_KEY, String(latest.id));
+  }
+
+  private async notifyAlert(notification: CronAlertNotification): Promise<void> {
+    const notifier = this.options.alertNotifier ?? ((alert) => notifyConfiguredAlertChannels(this.options.config, this.options.paths, alert));
+    try {
+      await notifier(notification);
+    } catch (error) {
+      appendLog(
+        { event: "cron_alert_failure", detail: { kind: notification.kind, error: error instanceof Error ? error.message : "unknown error" } },
+        { paths: this.options.paths },
+      );
+    }
+  }
+}
+
+async function notifyConfiguredAlertChannels(config: AppConfig, paths: RuntimePaths, notification: CronAlertNotification): Promise<void> {
+  const envValues = await loadEnvFile(paths);
+  const sends: Promise<void>[] = [];
+
+  const telegram = config.channels?.telegram;
+  if (telegram?.enabled && telegram.ownerUserId.trim()) {
+    const token = process.env[telegram.botTokenEnv] ?? envValues[telegram.botTokenEnv];
+    const chatId = Number(telegram.ownerUserId);
+    if (token && Number.isSafeInteger(chatId)) {
+      sends.push(new TelegramHttpClient(token).sendMessage(chatId, notification.message).then(() => undefined));
+    }
+  }
+
+  const zalo = config.channels?.zalo;
+  if (zalo?.enabled && zalo.ownerUserId.trim()) {
+    const token = process.env[zalo.botTokenEnv] ?? envValues[zalo.botTokenEnv];
+    if (token) {
+      sends.push(new ZaloHttpClient(token).sendMessage(zalo.ownerUserId, notification.message).then(() => undefined));
+    }
+  }
+
+  await Promise.all(sends);
+  if (sends.length > 0) {
+    await appendLog(
+      { event: "cron_alert_success", detail: { kind: notification.kind, latestSnapshotId: notification.latestSnapshotId } },
+      { paths },
+    );
   }
 }
 

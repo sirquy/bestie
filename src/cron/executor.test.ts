@@ -206,6 +206,64 @@ test("CronExecutor reports to schedule channel destination", async () => {
   }
 });
 
+test("CronExecutor sends memory hygiene regression alert once per snapshot", async () => {
+  const paths = await createTempPaths();
+  const alerts: Array<{ message: string; latestSnapshotId: number }> = [];
+
+  try {
+    const store = await SqliteMemoryStore.open(paths);
+    store.addMemoryHygieneSnapshot({ score: 58, label: "needs cleanup", checked: 12, deleteCandidates: 3, reviewOnly: 2, duplicateGroups: 1, staleMemories: 2, conflictGroups: 1, source: "test" });
+    store.close();
+
+    const executor = new CronExecutor({
+      config: TEST_CONFIG,
+      paths,
+      tickIntervalMs: 100,
+      alertNotifier: async (notification) => {
+        alerts.push({ message: notification.message, latestSnapshotId: notification.latestSnapshotId });
+      },
+    });
+
+    await executor.tick();
+    await executor.tick();
+
+    assert.equal(alerts.length, 1);
+    assert.match(alerts[0].message, /Memory hygiene regression alert/);
+    assert.match(alerts[0].message, /score is 58\/100/);
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("CronExecutor alerts on consecutive memory hygiene score drops", async () => {
+  const paths = await createTempPaths();
+  const alerts: string[] = [];
+
+  try {
+    const store = await SqliteMemoryStore.open(paths);
+    store.addMemoryHygieneSnapshot({ score: 92, label: "healthy", checked: 10, deleteCandidates: 0, reviewOnly: 0, duplicateGroups: 0, staleMemories: 0, conflictGroups: 0, source: "test:old" });
+    store.addMemoryHygieneSnapshot({ score: 81, label: "attention", checked: 10, deleteCandidates: 1, reviewOnly: 1, duplicateGroups: 1, staleMemories: 0, conflictGroups: 0, source: "test:mid" });
+    store.addMemoryHygieneSnapshot({ score: 72, label: "attention", checked: 10, deleteCandidates: 2, reviewOnly: 1, duplicateGroups: 1, staleMemories: 1, conflictGroups: 0, source: "test:new" });
+    store.close();
+
+    const executor = new CronExecutor({
+      config: TEST_CONFIG,
+      paths,
+      tickIntervalMs: 100,
+      alertNotifier: async (notification) => {
+        alerts.push(notification.message);
+      },
+    });
+
+    await executor.tick();
+
+    assert.equal(alerts.length, 1);
+    assert.match(alerts[0], /score dropped consecutively: 92\/100 -> 81\/100 -> 72\/100/);
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
 test("CronExecutor skips jobs already running", async () => {
   const paths = await createTempPaths();
   try {

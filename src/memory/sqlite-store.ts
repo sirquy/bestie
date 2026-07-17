@@ -124,6 +124,32 @@ export interface CronLog {
   error?: string;
 }
 
+export interface MemoryHygieneSnapshot {
+  id: number;
+  score: number;
+  label: string;
+  checked: number;
+  deleteCandidates: number;
+  reviewOnly: number;
+  duplicateGroups: number;
+  staleMemories: number;
+  conflictGroups: number;
+  source: string;
+  createdAt: string;
+}
+
+export interface NewMemoryHygieneSnapshot {
+  score: number;
+  label: string;
+  checked: number;
+  deleteCandidates: number;
+  reviewOnly: number;
+  duplicateGroups: number;
+  staleMemories: number;
+  conflictGroups: number;
+  source?: string;
+}
+
 export interface NewMemory {
   type: string;
   content: string;
@@ -176,6 +202,21 @@ export class SqliteMemoryStore {
       .run({ value: paused ? "true" : "false" });
 
     return this.getMemoryState();
+  }
+
+  getMemoryStateValue(key: string): string | undefined {
+    const row = this.db.prepare("SELECT value FROM memory_state WHERE key = ?").get(key) as { value: string } | undefined;
+    return row?.value;
+  }
+
+  setMemoryStateValue(key: string, value: string): void {
+    this.db
+      .prepare(`
+        INSERT INTO memory_state (key, value, updated_at)
+        VALUES (@key, @value, CURRENT_TIMESTAMP)
+        ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP
+      `)
+      .run({ key, value });
   }
 
   addMessage(message: NewMessage): StoredMessage {
@@ -498,6 +539,25 @@ export class SqliteMemoryStore {
     const rows = this.db.prepare("SELECT * FROM memories WHERE status = 'active' AND scope = ? ORDER BY importance DESC, updated_at DESC").all(scope) as MemoryRow[];
 
     return rows.map(mapMemoryRow);
+  }
+
+  addMemoryHygieneSnapshot(snapshot: NewMemoryHygieneSnapshot): MemoryHygieneSnapshot {
+    const result = this.db.prepare(`
+      INSERT INTO memory_hygiene_snapshots (score, label, checked, delete_candidates, review_only, duplicate_groups, stale_memories, conflict_groups, source)
+      VALUES (@score, @label, @checked, @deleteCandidates, @reviewOnly, @duplicateGroups, @staleMemories, @conflictGroups, @source)
+    `).run({ ...snapshot, source: snapshot.source ?? "manual" });
+
+    return this.getMemoryHygieneSnapshot(Number(result.lastInsertRowid))!;
+  }
+
+  getMemoryHygieneSnapshot(id: number): MemoryHygieneSnapshot | undefined {
+    const row = this.db.prepare("SELECT * FROM memory_hygiene_snapshots WHERE id = ?").get(id) as MemoryHygieneSnapshotRow | undefined;
+    return row ? mapMemoryHygieneSnapshotRow(row) : undefined;
+  }
+
+  listMemoryHygieneSnapshots(limit = 2): MemoryHygieneSnapshot[] {
+    const rows = this.db.prepare("SELECT * FROM memory_hygiene_snapshots ORDER BY id DESC LIMIT ?").all(limit) as MemoryHygieneSnapshotRow[];
+    return rows.map(mapMemoryHygieneSnapshotRow);
   }
 
   searchMemories(query: string, limit?: number): StoredMemory[] {
@@ -857,6 +917,20 @@ interface CronLogRow {
   error: string | null;
 }
 
+interface MemoryHygieneSnapshotRow {
+  id: number;
+  score: number;
+  label: string;
+  checked: number;
+  delete_candidates: number;
+  review_only: number;
+  duplicate_groups: number;
+  stale_memories: number;
+  conflict_groups: number;
+  source: string;
+  created_at: string;
+}
+
 function mapMemoryRow(row: MemoryRow): StoredMemory {
   return {
     id: row.id,
@@ -928,6 +1002,22 @@ function mapCronLogRow(row: CronLogRow): CronLog {
     result: row.result ?? undefined,
     output: row.output ?? undefined,
     error: row.error ?? undefined,
+  };
+}
+
+function mapMemoryHygieneSnapshotRow(row: MemoryHygieneSnapshotRow): MemoryHygieneSnapshot {
+  return {
+    id: row.id,
+    score: row.score,
+    label: row.label,
+    checked: row.checked,
+    deleteCandidates: row.delete_candidates,
+    reviewOnly: row.review_only,
+    duplicateGroups: row.duplicate_groups,
+    staleMemories: row.stale_memories,
+    conflictGroups: row.conflict_groups,
+    source: row.source,
+    createdAt: row.created_at,
   };
 }
 
@@ -1008,6 +1098,21 @@ function applyMemoryMigrations(db: Database.Database): void {
       FOREIGN KEY (source_memory_id) REFERENCES memories(id) ON DELETE CASCADE,
       FOREIGN KEY (target_memory_id) REFERENCES memories(id) ON DELETE CASCADE,
       UNIQUE(source_memory_id, target_memory_id, kind)
+    )
+  `);
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS memory_hygiene_snapshots (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      score INTEGER NOT NULL,
+      label TEXT NOT NULL,
+      checked INTEGER NOT NULL,
+      delete_candidates INTEGER NOT NULL,
+      review_only INTEGER NOT NULL,
+      duplicate_groups INTEGER NOT NULL,
+      stale_memories INTEGER NOT NULL,
+      conflict_groups INTEGER NOT NULL,
+      source TEXT NOT NULL DEFAULT 'manual',
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP
     )
   `);
 }

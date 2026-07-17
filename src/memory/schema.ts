@@ -101,6 +101,20 @@ CREATE TABLE IF NOT EXISTS cron_logs (
   error TEXT,
   FOREIGN KEY (schedule_id) REFERENCES cron_schedules(id) ON DELETE CASCADE
 );
+
+CREATE TABLE IF NOT EXISTS memory_hygiene_snapshots (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  score INTEGER NOT NULL,
+  label TEXT NOT NULL,
+  checked INTEGER NOT NULL,
+  delete_candidates INTEGER NOT NULL,
+  review_only INTEGER NOT NULL,
+  duplicate_groups INTEGER NOT NULL,
+  stale_memories INTEGER NOT NULL,
+  conflict_groups INTEGER NOT NULL,
+  source TEXT NOT NULL DEFAULT 'manual',
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
 `;
 
 export const MEMORY_DB_RELATIVE_PATH = ".bestie/data/memory.sqlite";

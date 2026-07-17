@@ -136,7 +136,10 @@ test("memory maintenance install creates a cron report schedule", async () => {
       assert.equal(schedule.scheduleType, "cron_expr");
       assert.equal(schedule.scheduleValue, "0 9 * * 1");
       assert.equal(schedule.channel, "telegram:123");
-      assert.match(schedule.prompt, /internal\.analyze_memories/);
+      assert.match(schedule.prompt, /internal\.plan_memory_hygiene/);
+      assert.match(schedule.prompt, /internal\.memory_hygiene_trend/);
+      assert.match(schedule.prompt, /deleteIds/);
+      assert.match(schedule.prompt, /\/memory hygiene apply confirm/);
     } finally {
       store.close();
     }
@@ -178,6 +181,194 @@ test("memory governance policy updates retrieval policy in config", async () => 
 
     assert.match(stdout, /memory\.retrievalPolicy set to governed/);
     assert.equal(updated.memory?.retrievalPolicy, "governed");
+  } finally {
+    await rm(homeDir, { recursive: true, force: true });
+  }
+});
+
+test("memory hygiene reports dry-run cleanup and review ids", async () => {
+  const homeDir = await mkdtemp(resolve(tmpdir(), "bestie-cli-index-test-"));
+
+  try {
+    const paths = getRuntimePaths(homeDir);
+    const store = await SqliteMemoryStore.open(paths);
+    try {
+      store.addMemory({ type: "project_context", content: "Duplicate hygiene CLI", importance: 5 });
+      store.addMemory({ type: "project_context", content: "Duplicate hygiene CLI", importance: 1 });
+      store.addMemory({ type: "project_context", content: "Expired hygiene CLI", expiresAt: "2020-01-01T00:00:00.000Z" });
+      store.addMemory({ type: "preference", content: "Use voice replies" });
+      store.addMemory({ type: "preference", content: "Do not use voice replies" });
+    } finally {
+      store.close();
+    }
+
+    const { stdout } = await captureMain(["node", "bestie", "memory", "hygiene"], { HOME: homeDir, BESTIE_NO_BANNER: "1" });
+
+    assert.match(stdout, /Planned Memory Hygiene \(5 checked\)/);
+    assert.match(stdout, /#2, #3/);
+    assert.match(stdout, /Review-only memories: #4, #5/);
+  } finally {
+    await rm(homeDir, { recursive: true, force: true });
+  }
+});
+
+test("memory hygiene status reports policies and next command", async () => {
+  const homeDir = await mkdtemp(resolve(tmpdir(), "bestie-cli-index-test-"));
+
+  try {
+    const paths = getRuntimePaths(homeDir);
+    await mkdir(paths.appDir, { recursive: true });
+    await writeFile(paths.configPath, `${JSON.stringify(Object.assign({}, createTestConfig(), { memory: { deletePolicy: "ask", retrievalPolicy: "governed" } }), null, 2)}\n`, { mode: 0o600 });
+    const store = await SqliteMemoryStore.open(paths);
+    try {
+      store.addMemory({ type: "project_context", content: "Status hygiene CLI", importance: 5 });
+      store.addMemory({ type: "project_context", content: "Status hygiene CLI", importance: 1 });
+      store.addMemory({ type: "project_context", content: "Expired status CLI", expiresAt: "2020-01-01T00:00:00.000Z" });
+    } finally {
+      store.close();
+    }
+
+    const { stdout } = await captureMain(["node", "bestie", "memory", "hygiene", "status"], { HOME: homeDir, BESTIE_NO_BANNER: "1" });
+
+    assert.match(stdout, /Memory hygiene status \(3 checked\)/);
+    assert.match(stdout, /Memory hygiene score: \d+\/100 \((healthy|attention|needs cleanup)\)/);
+    assert.match(stdout, /Retrieval policy: governed/);
+    assert.match(stdout, /Delete policy: ask/);
+    assert.match(stdout, /Delete candidates: 2 \(#2, #3\)/);
+    assert.match(stdout, /Next safe command: bestie memory hygiene --apply --yes/);
+  } finally {
+    await rm(homeDir, { recursive: true, force: true });
+  }
+});
+
+test("memory hygiene trend reports recent score snapshots", async () => {
+  const homeDir = await mkdtemp(resolve(tmpdir(), "bestie-cli-index-test-"));
+
+  try {
+    const paths = getRuntimePaths(homeDir);
+    await mkdir(paths.appDir, { recursive: true });
+    await writeFile(paths.configPath, `${JSON.stringify(createTestConfig(), null, 2)}\n`, { mode: 0o600 });
+    const store = await SqliteMemoryStore.open(paths);
+    try {
+      store.addMemoryHygieneSnapshot({ score: 74, label: "attention", checked: 8, deleteCandidates: 2, reviewOnly: 1, duplicateGroups: 1, staleMemories: 1, conflictGroups: 0, source: "test:first" });
+      store.addMemoryHygieneSnapshot({ score: 88, label: "healthy", checked: 8, deleteCandidates: 0, reviewOnly: 1, duplicateGroups: 0, staleMemories: 0, conflictGroups: 0, source: "test:latest" });
+    } finally {
+      store.close();
+    }
+
+    const { stdout } = await captureMain(["node", "bestie", "memory", "hygiene", "trend"], { HOME: homeDir, BESTIE_NO_BANNER: "1" });
+
+    assert.match(stdout, /Memory hygiene trend \(2 snapshot\(s\)\)/);
+    assert.match(stdout, /Latest: #2 88\/100 \(healthy\)/);
+    assert.match(stdout, /Direction: up \(\+14\) from #1/);
+    assert.match(stdout, /#1 74\/100 \(attention\)/);
+
+    const json = await captureMain(["node", "bestie", "memory", "hygiene", "trend", "--json"], { HOME: homeDir, BESTIE_NO_BANNER: "1" });
+    const parsed = JSON.parse(json.stdout) as { direction: string; delta: number; snapshots: unknown[] };
+    assert.equal(parsed.direction, "up");
+    assert.equal(parsed.delta, 14);
+    assert.equal(parsed.snapshots.length, 2);
+  } finally {
+    await rm(homeDir, { recursive: true, force: true });
+  }
+});
+
+test("memory hygiene doctor reports risky memory governance settings", async () => {
+  const homeDir = await mkdtemp(resolve(tmpdir(), "bestie-cli-index-test-"));
+
+  try {
+    const paths = getRuntimePaths(homeDir);
+    await mkdir(paths.appDir, { recursive: true });
+    await writeFile(paths.configPath, `${JSON.stringify(Object.assign({}, createTestConfig(), { memory: { deletePolicy: "allow", retrievalPolicy: "full" } }), null, 2)}\n`, { mode: 0o600 });
+    const store = await SqliteMemoryStore.open(paths);
+    try {
+      store.addMemory({ type: "preference", content: "Use voice replies" });
+      store.addMemory({ type: "preference", content: "Do not use voice replies" });
+    } finally {
+      store.close();
+    }
+
+    const { stdout } = await captureMain(["node", "bestie", "memory", "hygiene", "doctor"], { HOME: homeDir, BESTIE_NO_BANNER: "1" });
+
+    assert.match(stdout, /Memory hygiene doctor: \d+ issue\(s\)/);
+    assert.match(stdout, /Memory hygiene score: \d+\/100 \((healthy|attention|needs cleanup)\)/);
+    assert.match(stdout, /\[WARN\] Delete policy: memory\.deletePolicy is allow while 2 memory\/memories require review-only handling\./);
+    assert.match(stdout, /\[WARN\] Maintenance digest: Weekly memory hygiene digest is not installed\./);
+  } finally {
+    await rm(homeDir, { recursive: true, force: true });
+  }
+});
+
+test("memory hygiene doctor fix installs maintenance digest and skips unsafe fixes", async () => {
+  const homeDir = await mkdtemp(resolve(tmpdir(), "bestie-cli-index-test-"));
+
+  try {
+    const paths = getRuntimePaths(homeDir);
+    await mkdir(paths.appDir, { recursive: true });
+    await writeFile(paths.configPath, `${JSON.stringify(Object.assign({}, createTestConfig(), { memory: { deletePolicy: "allow", retrievalPolicy: "full" } }), null, 2)}\n`, { mode: 0o600 });
+    const store = await SqliteMemoryStore.open(paths);
+    try {
+      store.addMemory({ type: "preference", content: "Use voice replies" });
+      store.addMemory({ type: "preference", content: "Do not use voice replies" });
+    } finally {
+      store.close();
+    }
+
+    const { stdout } = await captureMain(["node", "bestie", "memory", "hygiene", "doctor", "--fix"], { HOME: homeDir, BESTIE_NO_BANNER: "1" });
+
+    assert.match(stdout, /Memory hygiene doctor fixes/);
+    assert.match(stdout, /\[FIXED\] Maintenance digest: Installed weekly memory hygiene digest: #\d+\./);
+    assert.match(stdout, /\[SKIPPED\] Delete policy:/);
+    assert.match(stdout, /\[PASS\] Maintenance digest: Weekly memory hygiene digest is installed\./);
+    assert.match(stdout, /Memory hygiene score: \d+\/100 \((healthy|attention|needs cleanup)\)/);
+
+    const checkStore = await SqliteMemoryStore.open(paths);
+    try {
+      const [schedule] = checkStore.listCronSchedules();
+      assert.equal(schedule.name, "Bestie memory maintenance report");
+      assert.match(schedule.prompt, /internal\.plan_memory_hygiene/);
+      assert.match(schedule.prompt, /internal\.memory_hygiene_trend/);
+    } finally {
+      checkStore.close();
+    }
+  } finally {
+    await rm(homeDir, { recursive: true, force: true });
+  }
+});
+
+test("memory hygiene apply deletes planned ids when policy allows", async () => {
+  const homeDir = await mkdtemp(resolve(tmpdir(), "bestie-cli-index-test-"));
+
+  try {
+    const paths = getRuntimePaths(homeDir);
+    await mkdir(paths.appDir, { recursive: true });
+    await writeFile(paths.configPath, `${JSON.stringify(Object.assign({}, createTestConfig(), { memory: { deletePolicy: "allow" } }), null, 2)}\n`, { mode: 0o600 });
+    const store = await SqliteMemoryStore.open(paths);
+    try {
+      store.addMemory({ type: "project_context", content: "Duplicate hygiene apply", importance: 5 });
+      store.addMemory({ type: "project_context", content: "Duplicate hygiene apply", importance: 1 });
+      store.addMemory({ type: "project_context", content: "Expired hygiene apply", expiresAt: "2020-01-01T00:00:00.000Z" });
+      store.addMemory({ type: "preference", content: "Use voice replies" });
+      store.addMemory({ type: "preference", content: "Do not use voice replies" });
+    } finally {
+      store.close();
+    }
+
+    const { stdout } = await captureMain(["node", "bestie", "memory", "hygiene", "--apply"], { HOME: homeDir, BESTIE_NO_BANNER: "1" });
+
+    assert.match(stdout, /Applied Memory Hygiene \(5 checked\)/);
+    assert.match(stdout, /Deleted 2 planned memory/);
+
+    const checkStore = await SqliteMemoryStore.open(paths);
+    try {
+      assert.equal(checkStore.getActiveMemory(1)?.content, "Duplicate hygiene apply");
+      assert.equal(checkStore.getActiveMemory(2), undefined);
+      assert.equal(checkStore.getActiveMemory(3), undefined);
+      assert.equal(checkStore.getActiveMemory(4)?.content, "Use voice replies");
+      assert.equal(checkStore.getActiveMemory(5)?.content, "Do not use voice replies");
+    } finally {
+      checkStore.close();
+    }
   } finally {
     await rm(homeDir, { recursive: true, force: true });
   }
@@ -228,12 +419,17 @@ test("memory list scope and move manage memory tiers", async () => {
     const coreList = await captureMain(["node", "bestie", "memory", "list", "--scope", "core"], { HOME: homeDir, BESTIE_NO_BANNER: "1" });
     const moved = await captureMain(["node", "bestie", "memory", "move", String(id), "--scope", "session"], { HOME: homeDir, BESTIE_NO_BANNER: "1" });
     const sessionList = await captureMain(["node", "bestie", "memory", "list", "--scope", "session"], { HOME: homeDir, BESTIE_NO_BANNER: "1" });
+    const tiers = await captureMain(["node", "bestie", "memory", "tiers"], { HOME: homeDir, BESTIE_NO_BANNER: "1" });
 
     assert.match(coreList.stdout, /Active Memories \/ core/);
     assert.match(coreList.stdout, /Tiered memory/);
     assert.match(moved.stdout, /moved to session/);
     assert.match(sessionList.stdout, /Active Memories \/ session/);
     assert.match(sessionList.stdout, /Tiered memory/);
+    assert.match(tiers.stdout, /Memory tiers \(2 active\)/);
+    assert.match(tiers.stdout, /project: 1 active/);
+    assert.match(tiers.stdout, /session: 1 active/);
+    assert.match(tiers.stdout, /Next: bestie memory list --scope session/);
   } finally {
     await rm(homeDir, { recursive: true, force: true });
   }

@@ -5,7 +5,14 @@ import { SqliteMemoryStore, type CronSchedule } from "./sqlite-store.js";
 
 export const MEMORY_MAINTENANCE_CRON_NAME = "Bestie memory maintenance report";
 export const MEMORY_MAINTENANCE_DEFAULT_SCHEDULE = "0 9 * * 1";
-export const MEMORY_MAINTENANCE_PROMPT = "Run a read-only memory maintenance check. Use internal.analyze_memories with mode all. Report duplicate groups, stale memories, and conflicts as a concise cleanup plan. Do not delete, edit, or save memories.";
+export const MEMORY_MAINTENANCE_PROMPT = [
+  "Run a read-only weekly memory hygiene digest.",
+  "Use internal.plan_memory_hygiene.",
+  "Use internal.memory_hygiene_trend with limit 8 to report the recent score trend and whether the latest score improved, regressed, or stayed flat.",
+  "Report deleteIds, reviewOnlyIds, duplicate groups, stale memories, and conflicts as a concise cleanup plan.",
+  "Tell the owner to run bestie memory hygiene --apply --yes from CLI, or /memory hygiene apply confirm from Telegram/Zalo, only if they want to apply the planned deletion candidates.",
+  "Do not delete, edit, save, or supersede memories during this report.",
+].join(" ");
 
 export interface MemoryMaintenanceInstallOptions {
   paths?: RuntimePaths;

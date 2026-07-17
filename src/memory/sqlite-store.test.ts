@@ -308,6 +308,24 @@ test("SqliteMemoryStore stores and lists recent messages", async () => {
   }
 });
 
+test("SqliteMemoryStore stores memory hygiene score snapshots", async () => {
+  const paths = await createTempPaths();
+  const store = await SqliteMemoryStore.open(paths);
+
+  try {
+    const first = store.addMemoryHygieneSnapshot({ score: 82, label: "attention", checked: 10, deleteCandidates: 1, reviewOnly: 2, duplicateGroups: 1, staleMemories: 1, conflictGroups: 1, source: "test" });
+    const second = store.addMemoryHygieneSnapshot({ score: 91, label: "healthy", checked: 8, deleteCandidates: 0, reviewOnly: 0, duplicateGroups: 0, staleMemories: 0, conflictGroups: 0 });
+
+    assert.equal(first.source, "test");
+    assert.equal(second.source, "manual");
+    assert.deepEqual(store.listMemoryHygieneSnapshots().map((snapshot) => snapshot.score), [91, 82]);
+    assert.equal(store.getMemoryHygieneSnapshot(first.id)?.label, "attention");
+  } finally {
+    store.close();
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
 test("SqliteMemoryStore lists recent messages for one channel user", async () => {
   const paths = await createTempPaths();
   const store = await SqliteMemoryStore.open(paths);
@@ -374,6 +392,11 @@ test("SqliteMemoryStore stores memory pause state", async () => {
     assert.deepEqual(store.setMemoryPaused(true), { paused: true });
     assert.deepEqual(store.getMemoryState(), { paused: true });
     assert.deepEqual(store.setMemoryPaused(false), { paused: false });
+    assert.equal(store.getMemoryStateValue("custom"), undefined);
+    store.setMemoryStateValue("custom", "value-1");
+    assert.equal(store.getMemoryStateValue("custom"), "value-1");
+    store.setMemoryStateValue("custom", "value-2");
+    assert.equal(store.getMemoryStateValue("custom"), "value-2");
   } finally {
     store.close();
     await rm(paths.rootDir, { recursive: true, force: true });
