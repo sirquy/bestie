@@ -39,6 +39,14 @@ test("buildMcpToolInstructions includes global tool selection guidance", () => {
   assert.match(instructions, /internal\.mcp_list_tools/);
   assert.match(instructions, /internal\.analyze_memories/);
   assert.match(instructions, /internal\.plan_memory_rebalance/);
+  assert.match(instructions, /If the user gives an MCP server link/);
+  assert.match(instructions, /do the setup yourself through tools/);
+  assert.match(instructions, /Do not tell the user to edit config\.json/);
+  assert.match(instructions, /restart\/reload Bestie/);
+  assert.match(instructions, /extract the real MCP endpoint\/client id/);
+  assert.match(instructions, /OAuth metadata authorization_endpoint or config auth\.authorizationUrl is not a clickable user auth URL/);
+  assert.match(instructions, /use only the generated login command output URL/);
+  assert.match(instructions, /code_challenge/);
   assert.match(instructions, /core\/project\/session scopes need rebalancing/);
   assert.match(instructions, /Use git tools for repository state questions/);
   assert.match(instructions, /MCP server discovery/);
@@ -645,6 +653,7 @@ test("runAgentToolRequest rejects guessed incomplete MCP auth URLs", async () =>
     assert.match(JSON.stringify(prepared.result), /"required":true/);
     assert.doesNotMatch(JSON.stringify(prepared.result), /"url":"https:\/\/kling\.ai\/mcp\/authorize"/);
     assert.match(JSON.stringify(prepared.result), /incomplete guessed \/authorize endpoint/);
+    assert.match(JSON.stringify(prepared.result), /run bestie mcp login/);
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
   }
@@ -1353,6 +1362,42 @@ test("completeWithAgentTools supports multiple internal tool calls before final 
         { phase: "finish", label: "docs/README.md" },
       ],
     );
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("completeWithAgentTools reloads config after successful tool calls", async () => {
+  const paths = await createTempPaths();
+  const baseConfig = { ...createConfig(), mcp: { servers: [] } };
+  const seenServerCounts: number[] = [];
+
+  try {
+    await mkdir(paths.appDir, { recursive: true });
+    await writeConfig(baseConfig, paths);
+
+    const answer = await completeWithAgentTools({
+      config: baseConfig,
+      paths,
+      apiKey: "test-key",
+      messages: [{ role: "user", content: "configure MCP then list it" }],
+      chatCompletion: async (_config, _apiKey, options) => {
+        if (options.messages.length === 2) return '{"tool":"internal.exec","arguments":{"command":"bestie","args":["mcp","add","kling","--url","https://kling.ai/mcp"]}}';
+        if (options.messages.length === 4) return '{"tool":"internal.mcp_list_servers","arguments":{}}';
+        return '{"answer":"config refreshed"}';
+      },
+      toolRunner: async (options) => {
+        seenServerCounts.push(options.config.mcp?.servers.length ?? 0);
+        if (options.request.tool === "internal.exec") {
+          await writeConfig({ ...baseConfig, mcp: { servers: [{ name: "kling", enabled: true, transport: "streamable-http", url: "https://kling.ai/mcp" }] } }, paths);
+          return { ok: true, status: "pass", message: "MCP server kling saved." };
+        }
+        return { ok: true, status: "pass", message: "listed", result: { servers: options.config.mcp?.servers ?? [] } };
+      },
+    });
+
+    assert.equal(answer, "config refreshed");
+    assert.deepEqual(seenServerCounts, [0, 1]);
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
   }

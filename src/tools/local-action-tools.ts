@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, relative, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { DEFAULT_INTERNAL_EXEC_TIMEOUT_MS, type AppConfig, type InternalToolPolicy } from "../runtime/config.js";
 import type { RuntimePaths } from "../runtime/paths.js";
@@ -134,7 +135,8 @@ export async function execLocalTool(options: LocalActionToolOptions & { command:
   await mkdir(cwd, { recursive: true });
   const requestedTimeoutMs = options.timeoutMs ?? options.config.internalTools?.exec?.timeoutMs ?? DEFAULT_INTERNAL_EXEC_TIMEOUT_MS;
   const timeoutMs = Math.min(Math.max(requestedTimeoutMs, 1), MAX_EXEC_TIMEOUT_MS);
-  const result = await runProcess(options.command, args, cwd, undefined, timeoutMs);
+  const command = resolveInternalExecCommand(options.command, args);
+  const result = await runProcess(command.command, command.args, cwd, undefined, timeoutMs);
   return { allowed: true, reason: permission.reason, ...result };
 }
 
@@ -259,6 +261,14 @@ function getInternalToolPolicy(config: AppConfig, toolName: string, category: Ac
 
 function resolveLocalActionPath(options: LocalActionToolOptions, inputPath: string): string {
   return resolveWorkspacePath({ config: options.config, paths: options.paths, inputPath, defaultBase: "workspace", access: "write" });
+}
+
+function resolveInternalExecCommand(command: string, args: string[]): { command: string; args: string[] } {
+  if (command !== "bestie") {
+    return { command, args };
+  }
+
+  return { command: process.execPath, args: [fileURLToPath(new URL("../cli/index.js", import.meta.url)), ...args] };
 }
 
 function isIgnoredProjectPath(relativePath: string): boolean {
