@@ -11,7 +11,7 @@ const binDir = resolve(rootDir, ".local/bin");
 
 try {
   const install = await run(resolve(projectRoot, "install.sh"), ["--skip-onboard", "--source-dir", projectRoot, "--dir", installDir, "--bin-dir", binDir], { cwd: rootDir, env: { HOME: rootDir } });
-  assert.match(install.stdout, /Bestie install complete/);
+  assert.match(install.stdout, /Cài đặt Bestie hoàn tất/);
 
   const doctor = await run(resolve(binDir, "bestie"), ["doctor"], { cwd: installDir, env: { HOME: rootDir }, allowFailure: true });
   assert.match(doctor.stdout, /Bestie Doctor/);
@@ -20,22 +20,22 @@ try {
   await run(resolve(binDir, "bestie"), ["onboard", "--skip-provider-test"], {
     cwd: installDir,
     env: { HOME: rootDir },
-    input: "Bestie\nBoss\nvi\n7\nask\nopenai-compatible\nhttp://127.0.0.1:9/v1\ntest-model\ntest-key\n",
+    input: "Bestie\nBoss\nvi\nAsia/Ho_Chi_Minh\n7\nask\nopenai-compatible\nhttp://127.0.0.1:9/v1\ntest-model\ntest-key\n",
   });
   const readyDoctor = await run(resolve(binDir, "bestie"), ["doctor"], { cwd: installDir, env: { HOME: rootDir } });
-  assert.match(readyDoctor.stdout, /Summary: 0 issues found/);
+  assert.match(readyDoctor.stdout, /Tóm tắt: tìm thấy 0 vấn đề/);
 
-  const configBefore = await readFile(resolve(installDir, ".bestie/config.json"), "utf8");
+  const configBefore = await readFile(resolve(rootDir, ".bestie/config.json"), "utf8");
   const reinstall = await run(resolve(projectRoot, "install.sh"), ["--skip-onboard", "--source-dir", projectRoot, "--dir", installDir, "--bin-dir", binDir], { cwd: rootDir, env: { HOME: rootDir } });
-  assert.match(reinstall.stdout, /Bestie install complete/);
-  assert.equal(await readFile(resolve(installDir, ".bestie/config.json"), "utf8"), configBefore);
+  assert.match(reinstall.stdout, /Cài đặt Bestie hoàn tất/);
+  assert.equal(await readFile(resolve(rootDir, ".bestie/config.json"), "utf8"), configBefore);
 
   const unknownDir = resolve(rootDir, "unknown-existing-dir");
   await mkdir(unknownDir);
   await writeFile(resolve(unknownDir, "README.md"), "not bestie\n");
   const rejected = await run(resolve(projectRoot, "install.sh"), ["--skip-onboard", "--source-dir", projectRoot, "--dir", unknownDir, "--bin-dir", binDir], { cwd: rootDir, env: { HOME: rootDir }, allowFailure: true });
   assert.notEqual(rejected.code, 0);
-  assert.match(rejected.stderr, /not a Bestie checkout/);
+  assert.match(rejected.stderr, /không phải checkout Bestie/);
 } finally {
   await rm(rootDir, { recursive: true, force: true });
 }

@@ -23,14 +23,15 @@ Repo-local development may start with:
 
 The installer should:
 
-- verify required commands: `git`, `node`, `npm`
-- require Node.js 20 or newer
+- install missing environment commands when possible: `git`, `node`, `npm`, and `rsync` when `--source-dir` is used
+- install Node.js 20 through `nvm` when Node.js is missing or older than 20
 - choose a local install directory, defaulting to `~/.local/share/bestie/source`
 - clone the repository when missing, or update only after confirming an existing install is a Bestie checkout
 - run `npm install` and `npm run build`
 - link or expose the `bestie` command in a predictable user-local bin directory
 - run `bestie doctor` after install
 - offer to run `bestie onboard` after Doctor succeeds
+- print all installer-owned user-facing copy in Vietnamese
 
 MVP flags:
 
