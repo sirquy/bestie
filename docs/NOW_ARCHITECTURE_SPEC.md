@@ -96,8 +96,9 @@ Runtime daemon rules:
 - `bestie daemon --channel all` manages independent runtime processes, currently Telegram, Zalo, and cron.
 - Channel daemons own only channel polling and channel-specific transport concerns.
 - Cron schedules run only through the cron daemon target (`bestie cron run`) so scheduler crashes or provider failures do not take down Telegram or Zalo polling.
-- `bestie service install|uninstall|restart|status` owns Linux user systemd integration and installs one directly supervised service per configured runtime (`bestie-telegram.service`, `bestie-zalo.service`, `bestie-cron.service`), not one wrapper service that forks child daemons and exits.
-- Systemd installation should skip channel services whose enabled channel config is missing required secrets, while still installing cron.
+- `bestie service install|uninstall|restart|status` owns Linux user systemd integration and installs one `bestie.service` unit for all configured service targets.
+- The systemd unit runs `bestie service run` in the foreground; that runtime starts Telegram, Zalo, cron, and future service targets together instead of creating one unit per target.
+- Systemd service runtime should skip channel targets whose enabled channel config is missing required secrets, while still running cron.
 - Shared voice input/output provider setup belongs in channel-neutral services under `src/channels/`; channel modules should keep only transport-specific attachment mapping, download, and send behavior.
 
 ### `src/runtime`

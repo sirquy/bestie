@@ -42,7 +42,7 @@ Tùy chọn service:
   install                                    Cài và khởi động user systemd service
   uninstall                                  Dừng và gỡ user systemd service
   status                                     Gợi ý lệnh xem trạng thái systemd service
-  restart                                    Restart user systemd services
+  restart                                    Restart user systemd service
 
 Tùy chọn tools:
   logs --lines N  Đọc log app đã redact gần đây qua permission gate
@@ -91,7 +91,8 @@ export const cliCommandSpecs: CliCommandSpec[] = [
       { name: "install", description: "Cài và khởi động user systemd service", handler: runServiceCommand },
       { name: "uninstall", description: "Dừng và gỡ user systemd service", handler: runServiceCommand },
       { name: "status", description: "Gợi ý lệnh xem trạng thái systemd service", handler: runServiceCommand },
-      { name: "restart", description: "Restart user systemd services", handler: runServiceCommand },
+      { name: "restart", description: "Restart user systemd service", handler: runServiceCommand },
+      { name: "run", description: "Chạy runtime service foreground", handler: runServiceCommand, hidden: true },
     ],
   },
   { name: "logs", description: "Xem log vận hành gần đây đã redact", handler: runLogsCommand },

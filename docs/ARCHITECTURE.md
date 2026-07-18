@@ -101,7 +101,7 @@ Current real channels:
 - Telegram long polling with owner allowlist, slash commands, typing, edited tool-progress messages, transcript smoke, shared attachment pipeline, and shared runtime behavior
 - Zalo polling with owner allowlist, text replies, memory approval prompts, and friendly tool progress labels
 - daemon start/stop/restart/status for `telegram`, `zalo`, or `all`
-- service install/uninstall/restart/status for Linux user systemd units
+- service install/uninstall/restart/status for one Linux user systemd unit, `bestie.service`, which runs configured Telegram, Zalo, cron, and future service targets together
 
 Later:
 

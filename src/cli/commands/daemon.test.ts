@@ -123,12 +123,13 @@ test("runServiceCommand uninstall ignores missing systemd units", async () => {
     });
 
     assert.deepEqual(calls, [
+      ["--user", "disable", "--now", "bestie.service"],
       ["--user", "disable", "--now", "bestie-telegram.service"],
       ["--user", "disable", "--now", "bestie-zalo.service"],
       ["--user", "disable", "--now", "bestie-cron.service"],
       ["--user", "daemon-reload"],
     ]);
-    assert.match(output.join("\n"), /Đã gỡ systemd user services của Bestie/);
+    assert.match(output.join("\n"), /Đã gỡ systemd user service của Bestie/);
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
   }
@@ -352,17 +353,19 @@ test("runServiceCommand installs a user systemd service", async () => {
       },
     });
 
-    const telegramService = await readFile(resolve(paths.rootDir, "xdg-config/systemd/user/bestie-telegram.service"), "utf8");
-    const cronService = await readFile(resolve(paths.rootDir, "xdg-config/systemd/user/bestie-cron.service"), "utf8");
-    assert.match(telegramService, /ExecStart=.* channels telegram/);
-    assert.match(cronService, /ExecStart=.* cron run/);
-    assert.match(cronService, /Restart=on-failure/);
+    const service = await readFile(resolve(paths.rootDir, "xdg-config/systemd/user/bestie.service"), "utf8");
+    assert.match(service, /Description=Bestie service runtime/);
+    assert.match(service, /ExecStart=.* service run/);
+    assert.match(service, /Restart=on-failure/);
+    await assert.rejects(() => readFile(resolve(paths.rootDir, "xdg-config/systemd/user/bestie-telegram.service"), "utf8"), /ENOENT/);
     await assert.rejects(() => readFile(resolve(paths.rootDir, "xdg-config/systemd/user/bestie-zalo.service"), "utf8"), /ENOENT/);
+    await assert.rejects(() => readFile(resolve(paths.rootDir, "xdg-config/systemd/user/bestie-cron.service"), "utf8"), /ENOENT/);
     assert.deepEqual(calls, [
       { file: "systemctl", args: ["--user", "daemon-reload"] },
-      { file: "systemctl", args: ["--user", "enable", "--now", "bestie-telegram.service", "bestie-cron.service"] },
+      { file: "systemctl", args: ["--user", "enable", "--now", "bestie.service"] },
     ]);
-    assert.match(output.join("\n"), /Đã cài và khởi động systemd user services của Bestie/);
+    assert.match(output.join("\n"), /Đã cài và khởi động systemd user service của Bestie/);
+    assert.match(output.join("\n"), /Targets: Telegram, Cron/);
   } finally {
     if (oldXdgConfigHome === undefined) {
       delete process.env.XDG_CONFIG_HOME;
@@ -382,6 +385,7 @@ test("runServiceCommand uninstalls a user systemd service", async () => {
   try {
     process.env.XDG_CONFIG_HOME = resolve(paths.rootDir, "xdg-config");
     await mkdir(resolve(paths.rootDir, "xdg-config/systemd/user"), { recursive: true });
+    await writeFile(resolve(paths.rootDir, "xdg-config/systemd/user/bestie.service"), "service", { mode: 0o600 });
     await writeFile(resolve(paths.rootDir, "xdg-config/systemd/user/bestie-telegram.service"), "service", { mode: 0o600 });
     await writeFile(resolve(paths.rootDir, "xdg-config/systemd/user/bestie-zalo.service"), "service", { mode: 0o600 });
     await writeFile(resolve(paths.rootDir, "xdg-config/systemd/user/bestie-cron.service"), "service", { mode: 0o600 });
@@ -395,22 +399,71 @@ test("runServiceCommand uninstalls a user systemd service", async () => {
       },
     });
 
+    await assert.rejects(() => readFile(resolve(paths.rootDir, "xdg-config/systemd/user/bestie.service"), "utf8"), /ENOENT/);
     await assert.rejects(() => readFile(resolve(paths.rootDir, "xdg-config/systemd/user/bestie-telegram.service"), "utf8"), /ENOENT/);
     await assert.rejects(() => readFile(resolve(paths.rootDir, "xdg-config/systemd/user/bestie-zalo.service"), "utf8"), /ENOENT/);
     await assert.rejects(() => readFile(resolve(paths.rootDir, "xdg-config/systemd/user/bestie-cron.service"), "utf8"), /ENOENT/);
     assert.deepEqual(calls, [
+      { file: "systemctl", args: ["--user", "disable", "--now", "bestie.service"] },
       { file: "systemctl", args: ["--user", "disable", "--now", "bestie-telegram.service"] },
       { file: "systemctl", args: ["--user", "disable", "--now", "bestie-zalo.service"] },
       { file: "systemctl", args: ["--user", "disable", "--now", "bestie-cron.service"] },
       { file: "systemctl", args: ["--user", "daemon-reload"] },
     ]);
-    assert.match(output.join("\n"), /Đã gỡ systemd user services của Bestie/);
+    assert.match(output.join("\n"), /Đã gỡ systemd user service của Bestie/);
   } finally {
     if (oldXdgConfigHome === undefined) {
       delete process.env.XDG_CONFIG_HOME;
     } else {
       process.env.XDG_CONFIG_HOME = oldXdgConfigHome;
     }
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("runServiceCommand runs configured service targets in one runtime", async () => {
+  const paths = await createTempPaths();
+  const output: string[] = [];
+  const channels: string[] = [];
+
+  try {
+    await writeTestConfig(paths, TEST_CONFIG);
+    await writeFile(paths.envPath, "BESTIE_TELEGRAM_BOT_TOKEN=telegram\nBESTIE_ZALO_BOT_TOKEN=zalo\n", { mode: 0o600 });
+
+    await runServiceCommand({
+      argv: ["node", "bestie", "service", "run"],
+      paths,
+      writeLine: (message) => output.push(message),
+      serviceRunner: async (channel) => {
+        channels.push(channel);
+      },
+    });
+
+    assert.deepEqual(channels, ["telegram", "zalo", "cron"]);
+    assert.match(output.join("\n"), /Bestie service runtime đang chạy: Telegram, Zalo, Cron/);
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("runServiceCommand restarts one systemd service", async () => {
+  const paths = await createTempPaths();
+  const calls: Array<{ file: string; args: string[] }> = [];
+  const output: string[] = [];
+
+  try {
+    await runServiceCommand({
+      argv: ["node", "bestie", "service", "restart"],
+      paths,
+      writeLine: (message) => output.push(message),
+      execFile: async (file, args) => {
+        calls.push({ file, args });
+      },
+    });
+
+    assert.deepEqual(calls, [{ file: "systemctl", args: ["--user", "restart", "bestie.service"] }]);
+    assert.match(output.join("\n"), /Đã restart systemd user service của Bestie/);
+  } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
   }
 });

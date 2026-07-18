@@ -11,6 +11,9 @@ import { loadEnvFile } from "../../runtime/env.js";
 import { getRuntimePaths, type RuntimePaths } from "../../runtime/paths.js";
 import { maybePrintUpdateNotice } from "../update-notice.js";
 import { badge } from "../ui.js";
+import { runCronCommand } from "./cron.js";
+import { runTelegramCommand } from "./telegram.js";
+import { runZaloCommand } from "./zalo.js";
 
 const DAEMON_STOP_TIMEOUT_MS = 30_000;
 const DAEMON_STOP_POLL_INTERVAL_MS = 1000;
@@ -31,6 +34,7 @@ interface DaemonCommandOptions {
   killProcess?: (pid: number) => void;
   getProcessCommandLine?: (pid: number) => string[] | undefined;
   execFile?: (file: string, args: string[]) => Promise<void>;
+  serviceRunner?: (channel: DaemonChannel, options: { paths: RuntimePaths; writeLine: (message: string) => void }) => Promise<void>;
   stopTimeoutMs?: number;
   sleep?: (milliseconds: number) => Promise<void>;
 }
@@ -112,15 +116,20 @@ export async function runServiceCommand(optionsOrArgv: string[] | ServiceCommand
   }
 
   if (subcommand === "status") {
-    writeLine(`Trạng thái: systemctl --user status ${DAEMON_CHANNELS.map(getSystemdServiceName).join(" ")}`);
+    writeLine(`Trạng thái: systemctl --user status ${getSystemdServiceName()}`);
     return;
   }
 
   if (subcommand === "restart") {
     assertLinuxSystemdUserServiceSupported();
     const run = options.execFile ?? runExecFile;
-    await run("systemctl", ["--user", "restart", ...DAEMON_CHANNELS.map(getSystemdServiceName)]);
-    writeLine(`${badge("RUN", "green")} Đã restart systemd user services của Bestie.`);
+    await run("systemctl", ["--user", "restart", getSystemdServiceName()]);
+    writeLine(`${badge("RUN", "green")} Đã restart systemd user service của Bestie.`);
+    return;
+  }
+
+  if (subcommand === "run") {
+    await runServiceRuntime({ ...options, paths, writeLine });
     return;
   }
 
@@ -131,27 +140,29 @@ async function installSystemdUserService(options: Required<Pick<DaemonCommandOpt
   assertLinuxSystemdUserServiceSupported();
   const cliEntry = process.argv[1] ? resolve(process.argv[1]) : resolve(options.paths.rootDir, "dist/cli/index.js");
   const run = options.execFile ?? runExecFile;
-  const channels = await getInstallableSystemdChannels(options.paths);
+  const channels = await getInstallableServiceChannels(options.paths);
+  const serviceName = getSystemdServiceName();
+  const servicePath = getSystemdUserServicePath(serviceName);
 
-  for (const channel of channels) {
-    const servicePath = getSystemdUserServicePath(getSystemdServiceName(channel));
-    await mkdir(dirname(servicePath), { recursive: true });
-    await writeFile(servicePath, buildSystemdUserService({ nodePath: process.execPath, cliEntry, rootDir: options.paths.rootDir, channel }), { mode: 0o600 });
-  }
+  await mkdir(dirname(servicePath), { recursive: true });
+  await writeFile(servicePath, buildSystemdUserService({ nodePath: process.execPath, cliEntry, rootDir: options.paths.rootDir }), { mode: 0o600 });
+  await removeLegacySystemdUserServices();
 
   await run("systemctl", ["--user", "daemon-reload"]);
-  await run("systemctl", ["--user", "enable", "--now", ...channels.map(getSystemdServiceName)]);
+  await run("systemctl", ["--user", "enable", "--now", serviceName]);
 
-  options.writeLine(`${badge("RUN", "green")} Đã cài và khởi động systemd user services của Bestie.`);
-  options.writeLine(`Services: ${channels.map(getSystemdServiceName).join(", ")}`);
-  options.writeLine(`Trạng thái: systemctl --user status ${channels.map(getSystemdServiceName).join(" ")}`);
+  options.writeLine(`${badge("RUN", "green")} Đã cài và khởi động systemd user service của Bestie.`);
+  options.writeLine(`Service: ${serviceName}`);
+  options.writeLine(`Targets: ${channels.map(formatDaemonChannel).join(", ")}`);
+  options.writeLine(`Trạng thái: systemctl --user status ${serviceName}`);
 }
 
 async function uninstallSystemdUserService(options: Required<Pick<DaemonCommandOptions, "paths" | "writeLine">> & DaemonCommandOptions): Promise<void> {
   assertLinuxSystemdUserServiceSupported();
   const run = options.execFile ?? runExecFile;
+  const serviceNames = [getSystemdServiceName(), ...DAEMON_CHANNELS.map(getLegacySystemdServiceName)];
 
-  for (const serviceName of DAEMON_CHANNELS.map(getSystemdServiceName)) {
+  for (const serviceName of serviceNames) {
     try {
       await run("systemctl", ["--user", "disable", "--now", serviceName]);
     } catch (error) {
@@ -160,22 +171,42 @@ async function uninstallSystemdUserService(options: Required<Pick<DaemonCommandO
       }
     }
   }
-  for (const channel of DAEMON_CHANNELS) {
-    await rm(getSystemdUserServicePath(getSystemdServiceName(channel)), { force: true });
+  for (const serviceName of serviceNames) {
+    await rm(getSystemdUserServicePath(serviceName), { force: true });
   }
   await run("systemctl", ["--user", "daemon-reload"]);
 
-  options.writeLine(`${badge("STOP", "gray")} Đã gỡ systemd user services của Bestie.`);
+  options.writeLine(`${badge("STOP", "gray")} Đã gỡ systemd user service của Bestie.`);
 }
 
 function isMissingSystemdUnitError(error: unknown): boolean {
   return error instanceof Error && /Unit file .* does not exist|not loaded|not found/i.test(error.message);
 }
 
-async function getInstallableSystemdChannels(paths: RuntimePaths): Promise<DaemonChannel[]> {
+async function getInstallableServiceChannels(paths: RuntimePaths): Promise<DaemonChannel[]> {
   const config = await loadConfig(paths);
   const envValues = await loadEnvFile(paths);
   return DAEMON_CHANNELS.filter((channel) => channel === "cron" || isChannelServiceConfigured(channel, config, envValues));
+}
+
+async function runServiceRuntime(options: Required<Pick<DaemonCommandOptions, "paths" | "writeLine">> & DaemonCommandOptions): Promise<void> {
+  const channels = await getInstallableServiceChannels(options.paths);
+  options.writeLine(`${badge("RUN", "green")} Bestie service runtime đang chạy: ${channels.map(formatDaemonChannel).join(", ")}.`);
+  await Promise.all(channels.map((channel) => (options.serviceRunner ?? runServiceChannel)(channel, options)));
+}
+
+async function runServiceChannel(channel: DaemonChannel, options: { paths: RuntimePaths; writeLine: (message: string) => void }): Promise<void> {
+  if (channel === "cron") {
+    await runCronCommand({ argv: ["node", "bestie", "cron", "run"], paths: options.paths, writeLine: options.writeLine });
+    return;
+  }
+
+  if (channel === "telegram") {
+    await runTelegramCommand({ argv: ["node", "bestie", "channels", "telegram"], paths: options.paths, writeLine: options.writeLine });
+    return;
+  }
+
+  await runZaloCommand({ argv: ["node", "bestie", "channels", "zalo"], paths: options.paths, writeLine: options.writeLine });
 }
 
 function isChannelServiceConfigured(channel: DaemonChannel, config: AppConfig, envValues: Record<string, string>): boolean {
@@ -374,10 +405,10 @@ function getSystemdUserServicePath(serviceName: string): string {
   return resolve(process.env.XDG_CONFIG_HOME ?? resolve(homedir(), ".config"), "systemd/user", serviceName);
 }
 
-function buildSystemdUserService(options: { nodePath: string; cliEntry: string; rootDir: string; channel: DaemonChannel }): string {
-  const args = getDaemonArgs(options.cliEntry, options.channel);
+function buildSystemdUserService(options: { nodePath: string; cliEntry: string; rootDir: string }): string {
+  const args = [options.cliEntry, "service", "run"];
   return `[Unit]
-Description=Bestie ${formatDaemonChannel(options.channel)} daemon
+Description=Bestie service runtime
 After=network-online.target
 
 [Service]
@@ -393,8 +424,16 @@ WantedBy=default.target
 `;
 }
 
-function getSystemdServiceName(channel: DaemonChannel): string {
+function getSystemdServiceName(): string {
+  return "bestie.service";
+}
+
+function getLegacySystemdServiceName(channel: DaemonChannel): string {
   return `bestie-${channel}.service`;
+}
+
+async function removeLegacySystemdUserServices(): Promise<void> {
+  await Promise.all(DAEMON_CHANNELS.map((channel) => rm(getSystemdUserServicePath(getLegacySystemdServiceName(channel)), { force: true })));
 }
 
 function systemdEscape(value: string): string {
