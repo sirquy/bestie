@@ -14,6 +14,11 @@ try {
 
   const install = await run(resolve(projectRoot, "install.sh"), ["--skip-onboard", "--package", packagePath, "--bin-dir", binDir], { cwd: rootDir, env: { HOME: rootDir } });
   assert.match(install.stdout, /Cài đặt Bestie hoàn tất/);
+  assert.match(install.stdout, /Lệnh bestie đã sẵn sàng/);
+  assert(!install.stdout.includes("==> Chạy Doctor"), "skip-onboard install should not run doctor before onboard");
+
+  const pathCheck = await run("bestie", ["--help"], { cwd: rootDir, env: { HOME: rootDir, PATH: `${binDir}:${process.env.PATH ?? ""}` } });
+  assert.match(pathCheck.stdout, /Usage: bestie/);
 
   const doctor = await run(resolve(binDir, "bestie"), ["doctor"], { cwd: rootDir, env: { HOME: rootDir }, allowFailure: true });
   assert.match(doctor.stdout, /Bestie Doctor/);

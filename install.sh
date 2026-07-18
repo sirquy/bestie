@@ -182,12 +182,24 @@ ensure_node_runtime() {
 install_bestie_package() {
   mkdir -p "$NPM_PREFIX" "$BIN_DIR"
   run_step "Cài Bestie từ npm package: $PACKAGE_NAME" npm install -g --prefix "$NPM_PREFIX" "$PACKAGE_NAME"
-  has_command "$BIN_DIR/bestie" || [[ -x "$BIN_DIR/bestie" ]] || fail "Không tìm thấy lệnh bestie sau khi cài" "Kiểm tra npm global prefix $NPM_PREFIX hoặc chạy npm install -g --prefix $NPM_PREFIX $PACKAGE_NAME." "Dữ liệu .bestie hiện có đã được giữ nguyên."
+  [[ -x "$BIN_DIR/bestie" ]] || fail "Không tìm thấy lệnh bestie sau khi cài" "Kiểm tra npm global prefix $NPM_PREFIX hoặc chạy npm install -g --prefix $NPM_PREFIX $PACKAGE_NAME." "Dữ liệu .bestie hiện có đã được giữ nguyên."
   printf 'Đã cài lệnh bestie tại %s\n' "$BIN_DIR/bestie"
+}
+
+ensure_bestie_command() {
   case ":$PATH:" in
     *":$BIN_DIR:"*) ;;
-    *) printf 'Ghi chú: thêm %s vào PATH nếu shell chưa tìm thấy lệnh bestie.\n' "$BIN_DIR" ;;
+    *) export PATH="$BIN_DIR:$PATH" ;;
   esac
+  hash -r 2>/dev/null || true
+  if ! has_command bestie; then
+    fail "Shell hiện tại chưa chạy được lệnh bestie" "Thêm $BIN_DIR vào PATH rồi chạy lại: export PATH=\"$BIN_DIR:\$PATH\"." "Dữ liệu .bestie hiện có đã được giữ nguyên."
+  fi
+  if [[ -f "$HOME/.bashrc" ]] && ! grep -Fqs "$BIN_DIR" "$HOME/.bashrc"; then
+    printf '\n# Bestie CLI\nexport PATH="%s:$PATH"\n' "$BIN_DIR" >> "$HOME/.bashrc"
+    reload_bashrc
+  fi
+  printf 'Lệnh bestie đã sẵn sàng: %s\n' "$(command -v bestie)"
 }
 
 run_doctor_preview() {
@@ -200,19 +212,25 @@ run_doctor_preview() {
 
 maybe_run_onboard() {
   if [[ "$SKIP_ONBOARD" -eq 1 ]]; then
-    return 0
+    return 1
   fi
   if [[ ! -t 0 ]]; then
     printf 'Bỏ qua onboarding vì stdin không tương tác. Chạy bestie onboard khi sẵn sàng.\n'
-    return 0
+    return 1
   fi
   printf '\nChạy bestie onboard ngay bây giờ? [y/N] '
   local answer
   read -r answer || true
   case "${answer,,}" in
-    y|yes) "$BIN_DIR/bestie" onboard ;;
-    *) printf 'Bỏ qua onboarding. Chạy bestie onboard khi sẵn sàng.\n' ;;
+    y|yes) bestie onboard ;;
+    *) printf 'Bỏ qua onboarding. Chạy bestie onboard khi sẵn sàng.\n'; return 1 ;;
   esac
+}
+
+run_onboard_first() {
+  if maybe_run_onboard; then
+    run_doctor_preview
+  fi
 }
 
 main() {
@@ -220,8 +238,8 @@ main() {
   ensure_node_runtime
   reload_bashrc
   install_bestie_package
-  run_doctor_preview
-  maybe_run_onboard
+  ensure_bestie_command
+  run_onboard_first
 
   printf '\nCài đặt Bestie hoàn tất. Thử chạy: bestie chat\n'
 }
