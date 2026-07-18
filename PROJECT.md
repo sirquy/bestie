@@ -699,9 +699,9 @@ Installer responsibilities:
 3. Install Node if missing, or print friendly instructions.
 4. Install Node.js 24 through nvm when needed, then source `~/.bashrc` so the current shell sees the environment.
 5. Install Bestie from the npm package `bestie-agent` instead of cloning or copying source.
-6. Expose the `bestie` command through a predictable user-local bin directory.
-7. Run Doctor after install.
-8. Offer to run onboarding, which writes `.env`, config, character files, and initializes local runtime state.
+6. Expose the `bestie` command through a predictable user-local bin directory and ensure the current shell can execute `bestie`.
+7. Offer to run onboarding first, which writes `.env`, config, character files, and initializes local runtime state.
+8. Run Doctor only after onboarding has actually run.
 9. Leave long-running runtime management to `bestie daemon ...` or `bestie service install`; the installer should not auto-start Telegram/Zalo/cron or install systemd services.
 
 Install path:

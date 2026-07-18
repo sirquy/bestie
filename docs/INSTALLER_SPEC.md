@@ -2,7 +2,7 @@
 
 ## Goal
 
-Make Bestie installable by a technical-but-not-project-local user with one command, then hand off into the existing onboarding and Doctor flow.
+Make Bestie installable by a technical-but-not-project-local user with one command, then hand off into the existing onboarding-first flow.
 
 The installer should not add new product scope. It should only make the current local CLI, onboarding, Doctor, Telegram/Zalo, cron, memory, service command, skills, update, MCP, and permission-gated tool foundation easier to bootstrap.
 
@@ -28,8 +28,9 @@ The installer should:
 - source `~/.bashrc` after environment installation so the current shell sees the updated runtime
 - install Bestie through the npm package `bestie-agent`, not by cloning or copying a source checkout
 - expose the `bestie` command in a predictable user-local bin directory
-- run `bestie doctor` after install
-- offer to run `bestie onboard` after Doctor succeeds
+- ensure the current shell can run `bestie` before any Bestie command is invoked
+- offer to run `bestie onboard` as the first Bestie command
+- run `bestie doctor` only after onboarding actually runs
 - print all installer-owned user-facing copy in Vietnamese
 
 MVP flags:
@@ -52,7 +53,7 @@ The installer does not own source checkouts anymore. Existing source directories
 
 The installer must never print or collect API keys, Telegram tokens, or raw `.env` contents.
 
-It should not run network checks beyond dependency installation and npm package installation unless the user explicitly chooses onboarding or Doctor checks that already require them.
+It should not run network checks beyond dependency installation and npm package installation unless the user explicitly chooses onboarding or later Doctor checks that already require them.
 
 ## Recovery Output
 
