@@ -291,7 +291,7 @@ function countOccurrences(value: string, search: string): number {
 
 function runProcess(command: string, args: string[], cwd: string, input: string | undefined, timeoutMs: number): Promise<Omit<LocalExecResult, "allowed" | "reason">> {
   return new Promise((resolvePromise) => {
-    const child = spawn(command, args, { cwd, shell: false, stdio: ["pipe", "pipe", "pipe"] });
+    const child = spawn(command, args, { cwd, env: buildInternalExecEnv(), shell: false, stdio: ["pipe", "pipe", "pipe"] });
     let stdout = "";
     let stderr = "";
     let timedOut = false;
@@ -318,6 +318,12 @@ function runProcess(command: string, args: string[], cwd: string, input: string 
     });
     child.stdin.end(input ?? "");
   });
+}
+
+function buildInternalExecEnv(): NodeJS.ProcessEnv {
+  const nodeBinDir = dirname(process.execPath);
+  const existingPath = process.env.PATH ?? "";
+  return { ...process.env, PATH: existingPath.split(":").includes(nodeBinDir) ? existingPath : `${nodeBinDir}${existingPath ? `:${existingPath}` : ""}` };
 }
 
 function appendBounded(existing: string, chunk: string): string {

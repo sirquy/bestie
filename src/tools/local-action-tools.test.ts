@@ -146,6 +146,27 @@ test("execLocalTool resolves bestie without relying on PATH", async () => {
   }
 });
 
+test("execLocalTool exposes the current Node bin directory for npm commands", async () => {
+  const paths = await createTempPaths();
+  const originalPath = process.env.PATH;
+
+  try {
+    process.env.PATH = "/usr/bin:/bin";
+    const result = await execLocalTool({ config: createConfig({ "internal.exec": "allow" }), paths, command: "npm", args: ["--version"] });
+
+    assert.equal(result.allowed, true);
+    assert.equal(result.exitCode, 0);
+    assert.match(result.stdout.trim(), /^\d+\.\d+\.\d+/);
+  } finally {
+    if (originalPath === undefined) {
+      delete process.env.PATH;
+    } else {
+      process.env.PATH = originalPath;
+    }
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
 test("local action tools use the default agent workspace for relative paths", async () => {
   const paths = await createTempPaths();
 
