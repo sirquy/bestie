@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import test from "node:test";
 
-import type { AppConfig } from "../runtime/config.js";
+import { loadConfig, writeConfig, type AppConfig } from "../runtime/config.js";
 import type { RuntimePaths } from "../runtime/paths.js";
 import { buildAgentToolDecisionMessage, buildAgentToolResultMessage, buildMcpToolInstructions, buildMcpToolResultMessage, completeWithAgentTools, parseAgentToolDecisionResult, parseMcpToolRequest, parseMcpToolRequestResult, runAgentToolRequest, runMcpToolRequest } from "./mcp-tool-use.js";
 
@@ -43,6 +43,8 @@ test("buildMcpToolInstructions includes global tool selection guidance", () => {
   assert.match(instructions, /MCP server discovery/);
   assert.match(instructions, /Do not invent missing facts/);
   assert.match(instructions, /do not merely explain the edit/);
+  assert.doesNotMatch(instructions, /kling/i);
+  assert.doesNotMatch(instructions, /KLING_/);
 });
 
 test("buildMcpToolInstructions includes runtime channel context", () => {
@@ -353,6 +355,291 @@ test("runAgentToolRequest lists configured MCP servers and configured tools", as
     });
     assert.equal(tools.ok, true);
     assert.deepEqual(tools.result, { server: "fs", transport: "stdio", tools: [{ name: "read_file", category: "read" }], discovered: false });
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("runAgentToolRequest prepares and applies MCP server config", async () => {
+  const paths = await createTempPaths();
+  const baseConfig = { ...createConfig(), mcp: undefined };
+
+  try {
+    await mkdir(paths.appDir, { recursive: true });
+    await writeConfig(baseConfig, paths);
+
+    const prepared = await runAgentToolRequest({
+      config: baseConfig,
+      paths,
+      request: {
+        tool: "internal.mcp_prepare_server_config",
+        arguments: {
+          name: "kling",
+          transport: "http",
+          url: "https://kling.ai/mcp",
+          headersEnv: { authorization: "KLING_MCP_AUTHORIZATION" },
+          tools: [{ name: "generate_video", category: "external_write" }],
+        },
+      },
+    });
+
+    assert.equal(prepared.ok, true);
+    assert.match(JSON.stringify(prepared.result), /KLING_MCP_AUTHORIZATION/);
+    assert.doesNotMatch(JSON.stringify(prepared.result), /Bearer secret/);
+
+    const applied = await runAgentToolRequest({
+      config: baseConfig,
+      paths,
+      policy: { allowLocalWrite: true },
+      request: {
+        tool: "internal.mcp_apply_server_config",
+        arguments: {
+          server: {
+            name: "kling",
+            transport: "http",
+            url: "https://kling.ai/mcp",
+            headersEnv: { authorization: "KLING_MCP_AUTHORIZATION" },
+            tools: [{ name: "generate_video", category: "external_write" }],
+          },
+          mode: "upsert",
+        },
+      },
+    });
+
+    assert.equal(applied.ok, true);
+    const updatedConfig = await loadConfig(paths);
+    assert.deepEqual(updatedConfig.mcp?.servers, [
+      {
+        name: "kling",
+        enabled: true,
+        transport: "http",
+        url: "https://kling.ai/mcp",
+        headersEnv: { authorization: "KLING_MCP_AUTHORIZATION" },
+        tools: [{ name: "generate_video", category: "external_write" }],
+      },
+    ]);
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("runAgentToolRequest prepares and applies OAuth streamable HTTP MCP server config", async () => {
+  const paths = await createTempPaths();
+  const baseConfig = { ...createConfig(), mcp: undefined };
+
+  try {
+    await mkdir(paths.appDir, { recursive: true });
+    await writeConfig(baseConfig, paths);
+
+    const prepared = await runAgentToolRequest({
+      config: baseConfig,
+      paths,
+      request: {
+        tool: "internal.mcp_prepare_server_config",
+        arguments: {
+          name: "kling",
+          transport: "streamable-http",
+          url: "https://kling.ai/mcp",
+          auth: {
+            type: "oauth",
+            authorizationUrl: "https://kling.ai/oauth/authorize",
+            clientId: "bestie-agent",
+            scopes: ["video.create"],
+            redirectUri: "http://127.0.0.1:8989/oauth/callback",
+            resource: "https://kling.ai/mcp",
+            envVar: "KLING_MCP_AUTHORIZATION",
+            headerName: "authorization",
+          },
+        },
+      },
+    });
+
+    assert.equal(prepared.ok, true);
+    assert.match(JSON.stringify(prepared.result), /streamable-http/);
+    assert.match(JSON.stringify(prepared.result), /KLING_MCP_AUTHORIZATION/);
+
+    const applied = await runAgentToolRequest({
+      config: baseConfig,
+      paths,
+      policy: { allowLocalWrite: true },
+      request: {
+        tool: "internal.mcp_apply_server_config",
+        arguments: {
+          server: {
+            name: "kling",
+            transport: "streamable-http",
+            url: "https://kling.ai/mcp",
+            auth: {
+              type: "oauth",
+              authorizationUrl: "https://kling.ai/oauth/authorize",
+              clientId: "bestie-agent",
+              scopes: ["video.create"],
+              redirectUri: "http://127.0.0.1:8989/oauth/callback",
+              resource: "https://kling.ai/mcp",
+              envVar: "KLING_MCP_AUTHORIZATION",
+              headerName: "authorization",
+            },
+          },
+          mode: "upsert",
+        },
+      },
+    });
+
+    assert.equal(applied.ok, true);
+    const updatedConfig = await loadConfig(paths);
+    assert.deepEqual(updatedConfig.mcp?.servers, [
+      {
+        name: "kling",
+        enabled: true,
+        transport: "streamable-http",
+        url: "https://kling.ai/mcp",
+        auth: {
+          type: "oauth",
+          authorizationUrl: "https://kling.ai/oauth/authorize",
+          clientId: "bestie-agent",
+          scopes: ["video.create"],
+          redirectUri: "http://127.0.0.1:8989/oauth/callback",
+          resource: "https://kling.ai/mcp",
+          envVar: "KLING_MCP_AUTHORIZATION",
+          headerName: "authorization",
+        },
+      },
+    ]);
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("runAgentToolRequest exposes MCP auth URL then applies returned auth result", async () => {
+  const paths = await createTempPaths();
+  const baseConfig = { ...createConfig(), mcp: undefined };
+
+  try {
+    await mkdir(paths.appDir, { recursive: true });
+    await writeConfig(baseConfig, paths);
+
+    const prepared = await runAgentToolRequest({
+      config: baseConfig,
+      paths,
+      request: {
+        tool: "internal.mcp_prepare_server_config",
+        arguments: {
+          name: "kling",
+          transport: "http",
+          url: "https://kling.ai/mcp",
+          authUrl: "https://kling.ai/mcp/authorize?client=bestie&redirect=urn%3Aietf%3Awg%3Aoauth%3A2.0%3Aoob",
+          authResultEnvVar: "KLING_MCP_AUTHORIZATION",
+          authHeaderName: "authorization",
+        },
+      },
+    });
+
+    assert.equal(prepared.ok, true);
+    assert.match(JSON.stringify(prepared.result), /"required":true/);
+    assert.match(JSON.stringify(prepared.result), /https:\/\/kling\.ai\/mcp\/authorize\?client=bestie/);
+
+    const applied = await runAgentToolRequest({
+      config: baseConfig,
+      paths,
+      policy: { allowLocalWrite: true },
+      request: {
+        tool: "internal.mcp_apply_server_config",
+        arguments: {
+          server: { name: "kling", transport: "http", url: "https://kling.ai/mcp" },
+          authResult: { envVarName: "KLING_MCP_AUTHORIZATION", headerName: "authorization", value: "Bearer secret-token" },
+          mode: "upsert",
+        },
+      },
+    });
+
+    assert.equal(applied.ok, true);
+    assert.doesNotMatch(JSON.stringify(applied.result), /secret-token/);
+    const updatedConfig = await loadConfig(paths);
+    assert.deepEqual(updatedConfig.mcp?.servers, [
+      {
+        name: "kling",
+        enabled: true,
+        transport: "http",
+        url: "https://kling.ai/mcp",
+        headersEnv: { authorization: "KLING_MCP_AUTHORIZATION" },
+      },
+    ]);
+    assert.doesNotMatch(JSON.stringify(updatedConfig), /secret-token/);
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("runAgentToolRequest rejects guessed incomplete MCP auth URLs", async () => {
+  const paths = await createTempPaths();
+  const baseConfig = { ...createConfig(), mcp: undefined };
+
+  try {
+    await mkdir(paths.appDir, { recursive: true });
+    await writeConfig(baseConfig, paths);
+
+    const prepared = await runAgentToolRequest({
+      config: baseConfig,
+      paths,
+      request: {
+        tool: "internal.mcp_prepare_server_config",
+        arguments: {
+          name: "kling",
+          transport: "http",
+          url: "https://kling.ai/mcp",
+          authUrl: "https://kling.ai/mcp/authorize",
+          authResultEnvVar: "KLING_MCP_AUTHORIZATION",
+          authHeaderName: "authorization",
+        },
+      },
+    });
+
+    assert.equal(prepared.ok, true);
+    assert.match(JSON.stringify(prepared.result), /"required":true/);
+    assert.doesNotMatch(JSON.stringify(prepared.result), /"url":"https:\/\/kling\.ai\/mcp\/authorize"/);
+    assert.match(JSON.stringify(prepared.result), /incomplete guessed \/authorize endpoint/);
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("runAgentToolRequest always allows MCP config apply after validation", async () => {
+  const paths = await createTempPaths();
+  const baseConfig: AppConfig = { ...createConfig(), mcp: undefined, internalTools: { policies: { "internal.mcp_apply_server_config": "deny" } } };
+
+  try {
+    await mkdir(paths.appDir, { recursive: true });
+    await writeConfig(baseConfig, paths);
+
+    const applied = await runAgentToolRequest({
+      config: baseConfig,
+      paths,
+      policy: { allowLocalWrite: false },
+      approver: async () => {
+        throw new Error("MCP config apply should not request approval");
+      },
+      request: {
+        tool: "internal.mcp_apply_server_config",
+        arguments: {
+          server: { name: "kling", transport: "streamable-http", url: "https://kling.ai/mcp" },
+          authResult: { envVarName: "KLING_MCP_AUTHORIZATION", headerName: "authorization", value: "Bearer secret-token" },
+        },
+      },
+    });
+
+    assert.equal(applied.ok, true);
+    assert.doesNotMatch(JSON.stringify(applied.result), /secret-token/);
+    const updatedConfig = await loadConfig(paths);
+    assert.deepEqual(updatedConfig.mcp?.servers, [
+      {
+        name: "kling",
+        enabled: true,
+        transport: "streamable-http",
+        url: "https://kling.ai/mcp",
+        headersEnv: { authorization: "KLING_MCP_AUTHORIZATION" },
+      },
+    ]);
+    assert.doesNotMatch(JSON.stringify(updatedConfig), /secret-token/);
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
   }

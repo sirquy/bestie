@@ -8,7 +8,7 @@ export interface McpConfiguredToolSummary {
 export interface McpServerSummary {
   name: string;
   enabled: boolean;
-  transport: "stdio" | "http";
+  transport: "stdio" | "http" | "streamable-http";
   command?: string;
   args: string[];
   env: Record<string, string>;
@@ -16,6 +16,7 @@ export interface McpServerSummary {
   url?: string;
   headers: Record<string, string>;
   headersEnv: Record<string, string>;
+  auth?: NonNullable<NonNullable<AppConfig["mcp"]>["servers"][number]["auth"]>;
   tools: McpConfiguredToolSummary[];
 }
 
@@ -37,6 +38,7 @@ export function listMcpServers(config: AppConfig): McpServerSummary[] {
     url: server.url,
     headers: server.headers ?? {},
     headersEnv: server.headersEnv ?? {},
+    ...(server.auth ? { auth: server.auth } : {}),
     tools: server.tools ?? [],
   }));
 }

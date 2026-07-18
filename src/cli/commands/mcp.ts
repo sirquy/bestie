@@ -1,7 +1,11 @@
+import { randomBytes, createHash } from "node:crypto";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { resolve } from "node:path";
+
 import { callMcpServerTool, listMcpServerTools, testMcpServerConnection, type McpConnectionCheck, type McpToolCallResult, type McpToolListResult } from "../../mcp/connection.js";
 import { findConfiguredMcpTool, findMcpServer, listMcpServers, testMcpServerConfig } from "../../mcp/servers.js";
 import { loadConfig, writeConfig, type AppConfig, type McpToolCategory } from "../../runtime/config.js";
-import { loadEnvFile } from "../../runtime/env.js";
+import { loadEnvFile, writeEnvFile } from "../../runtime/env.js";
 import { UserFacingError } from "../../runtime/errors.js";
 import { getRuntimePaths, type RuntimePaths } from "../../runtime/paths.js";
 import { reviewActionPermission, type PermissionApprover, type PermissionPolicy } from "../../safety/permission-policy.js";
@@ -25,7 +29,7 @@ export async function runMcpCommand(optionsOrArgv: string[] | McpCommandOptions 
   const subcommand = argv[3] ?? "list";
   const writeLine = options.writeLine ?? console.log;
 
-  if (subcommand !== "list" && subcommand !== "show" && subcommand !== "test" && subcommand !== "tools" && subcommand !== "classify" && subcommand !== "call") {
+  if (subcommand !== "list" && subcommand !== "show" && subcommand !== "test" && subcommand !== "tools" && subcommand !== "classify" && subcommand !== "call" && subcommand !== "login") {
     throw new UserFacingError(`Unknown MCP command: ${subcommand}. Try \`bestie mcp list\`.`, "UnknownMcpCommandError");
   }
 
@@ -81,6 +85,14 @@ export async function runMcpCommand(optionsOrArgv: string[] | McpCommandOptions 
     writeLine(`${result.status.toUpperCase()}: ${result.message}`);
     if (result.result !== undefined) {
       writeLine(JSON.stringify(result.result, null, 2));
+    }
+    return;
+  }
+
+  if (subcommand === "login") {
+    const result = await loginConfiguredMcpServer(config, argv, paths);
+    for (const line of result) {
+      writeLine(line);
     }
     return;
   }
@@ -257,6 +269,75 @@ async function listConfiguredMcpServerTools(config: Awaited<ReturnType<typeof lo
   }
 
   return listTools(server, { env: await loadEnvFile(paths) });
+}
+
+async function loginConfiguredMcpServer(config: Awaited<ReturnType<typeof loadConfig>>, argv: string[], paths: RuntimePaths): Promise<string[]> {
+  const name = requireServerName(argv);
+  const server = findMcpServer(config, name);
+  if (!server) {
+    throw new UserFacingError(`MCP server not found: ${name}`, "McpServerNotFoundError");
+  }
+  if (!server.auth || server.auth.type !== "oauth") {
+    throw new UserFacingError(`MCP server ${name} does not have oauth auth configured.`, "McpServerMissingOauthError");
+  }
+
+  const codeIndex = argv.indexOf("--code");
+  const code = codeIndex === -1 ? undefined : argv[codeIndex + 1]?.trim();
+  if (codeIndex !== -1) {
+    if (!code) {
+      throw new UserFacingError("--code requires an authorization code value.", "McpMissingOauthCodeError");
+    }
+    return completeMcpOauthLogin(server.name, server.auth.envVar, code, paths);
+  }
+
+  return startMcpOauthLogin(server, paths);
+}
+
+async function startMcpOauthLogin(server: NonNullable<ReturnType<typeof findMcpServer>>, paths: RuntimePaths): Promise<string[]> {
+  if (!server.auth) {
+    throw new UserFacingError(`MCP server ${server.name} does not have oauth auth configured.`, "McpServerMissingOauthError");
+  }
+
+  const verifier = base64Url(randomBytes(32));
+  const challenge = base64Url(createHash("sha256").update(verifier).digest());
+  const state = cryptoRandomUuid();
+  const authUrl = new URL(server.auth.authorizationUrl);
+  authUrl.searchParams.set("response_type", "code");
+  authUrl.searchParams.set("client_id", server.auth.clientId);
+  authUrl.searchParams.set("code_challenge", challenge);
+  authUrl.searchParams.set("code_challenge_method", "S256");
+  authUrl.searchParams.set("state", state);
+  if (server.auth.redirectUri) authUrl.searchParams.set("redirect_uri", server.auth.redirectUri);
+  if (server.auth.scopes && server.auth.scopes.length > 0) authUrl.searchParams.set("scope", server.auth.scopes.join(" "));
+  if (server.auth.resource) authUrl.searchParams.set("resource", server.auth.resource);
+
+  await mkdir(paths.dataDir, { recursive: true });
+  await writeFile(oauthSessionPath(paths, server.name), JSON.stringify({ server: server.name, state, verifier, envVar: server.auth.envVar, createdAt: new Date().toISOString() }, null, 2), { mode: 0o600 });
+
+  return [
+    `${badge("AUTH", "blue")} Open this URL to authorize MCP server ${server.name}:`,
+    authUrl.toString(),
+    `After approval, run: bestie mcp login ${server.name} --code <code>`,
+  ];
+}
+
+async function completeMcpOauthLogin(serverName: string, envVar: string, code: string, paths: RuntimePaths): Promise<string[]> {
+  await readFile(oauthSessionPath(paths, serverName), "utf8").catch(() => undefined);
+  const env = await loadEnvFile(paths);
+  await writeEnvFile({ ...env, [envVar]: `oauth-code:${code}` }, paths);
+  return [`${badge("AUTH", "green")} Stored OAuth result for MCP server ${serverName} in ${envVar}.`, `Run \`bestie mcp tools ${serverName} --connect\` to verify discovery.`];
+}
+
+function oauthSessionPath(paths: RuntimePaths, serverName: string): string {
+  return resolve(paths.dataDir, `mcp-oauth-${serverName.replace(/[^a-z0-9._-]+/gi, "_")}.json`);
+}
+
+function base64Url(buffer: Buffer): string {
+  return buffer.toString("base64").replace(/=/g, "").replace(/\+/g, "-").replace(/\//g, "_");
+}
+
+function cryptoRandomUuid(): string {
+  return `${base64Url(randomBytes(4))}-${base64Url(randomBytes(2))}-${base64Url(randomBytes(2))}-${base64Url(randomBytes(2))}-${base64Url(randomBytes(6))}`;
 }
 
 async function testConfiguredMcpServerConnection(config: Awaited<ReturnType<typeof loadConfig>>, name: string, paths: RuntimePaths, testConnection: typeof testMcpServerConnection): Promise<McpConnectionCheck> {

@@ -127,13 +127,24 @@ export interface AppConfig {
     servers: Array<{
       name: string;
       enabled: boolean;
-      transport?: "stdio" | "http";
+      transport?: "stdio" | "http" | "streamable-http";
       command?: string;
       args?: string[];
       env?: Record<string, string>;
       url?: string;
       headers?: Record<string, string>;
       headersEnv?: Record<string, string>;
+      auth?: {
+        type: "oauth";
+        authorizationUrl: string;
+        tokenUrl?: string;
+        clientId: string;
+        scopes?: string[];
+        redirectUri?: string;
+        resource?: string;
+        envVar: string;
+        headerName?: string;
+      };
       tools?: Array<{
         name: string;
         category: McpToolCategory;
@@ -525,10 +536,11 @@ function validateMcpServer(value: unknown, index: number): NonNullable<AppConfig
   const transport = server.transport === undefined ? "stdio" : requireString(server.transport, `${fieldName}.transport`);
   const headers = server.headers;
   const headersEnv = server.headersEnv;
+  const auth = server.auth;
   const tools = server.tools;
 
-  if (transport !== "stdio" && transport !== "http") {
-    throw new InvalidConfigError(`${fieldName}.transport must be stdio or http.`);
+  if (transport !== "stdio" && transport !== "http" && transport !== "streamable-http") {
+    throw new InvalidConfigError(`${fieldName}.transport must be stdio, http, or streamable-http.`);
   }
 
   if (args !== undefined && (!Array.isArray(args) || args.some((arg) => typeof arg !== "string"))) {
@@ -551,7 +563,7 @@ function validateMcpServer(value: unknown, index: number): NonNullable<AppConfig
     throw new InvalidConfigError(`${fieldName}.command must be a non-empty string for stdio MCP servers.`);
   }
 
-  if (transport === "http") {
+  if (transport === "http" || transport === "streamable-http") {
     const url = requireString(server.url, `${fieldName}.url`);
     if (!isHttpUrl(url)) {
       throw new InvalidConfigError(`${fieldName}.url must be an HTTP(S) URL.`);
@@ -576,7 +588,38 @@ function validateMcpServer(value: unknown, index: number): NonNullable<AppConfig
     ...(env === undefined ? {} : { env: env as Record<string, string> }),
     ...(headers === undefined ? {} : { headers: headers as Record<string, string> }),
     ...(headersEnv === undefined ? {} : { headersEnv: headersEnv as Record<string, string> }),
+    ...(auth === undefined ? {} : { auth: validateMcpAuth(auth, `${fieldName}.auth`) }),
     ...(tools === undefined ? {} : { tools: tools.map((tool, toolIndex) => validateMcpTool(tool, `${fieldName}.tools[${toolIndex}]`)) }),
+  };
+}
+
+function validateMcpAuth(value: unknown, fieldName: string): NonNullable<NonNullable<AppConfig["mcp"]>["servers"][number]["auth"]> {
+  const auth = requireRecord(value, fieldName);
+  const type = requireString(auth.type, `${fieldName}.type`);
+  if (type !== "oauth") {
+    throw new InvalidConfigError(`${fieldName}.type must be oauth.`);
+  }
+
+  const authorizationUrl = requireString(auth.authorizationUrl, `${fieldName}.authorizationUrl`);
+  if (!isHttpUrl(authorizationUrl)) {
+    throw new InvalidConfigError(`${fieldName}.authorizationUrl must be an HTTP(S) URL.`);
+  }
+
+  const tokenUrl = auth.tokenUrl === undefined ? undefined : requireString(auth.tokenUrl, `${fieldName}.tokenUrl`);
+  if (tokenUrl !== undefined && !isHttpUrl(tokenUrl)) {
+    throw new InvalidConfigError(`${fieldName}.tokenUrl must be an HTTP(S) URL.`);
+  }
+
+  return {
+    type,
+    authorizationUrl,
+    ...(tokenUrl === undefined ? {} : { tokenUrl }),
+    clientId: requireString(auth.clientId, `${fieldName}.clientId`),
+    ...(auth.scopes === undefined ? {} : { scopes: optionalStringArray(auth.scopes, `${fieldName}.scopes`) ?? [] }),
+    ...(auth.redirectUri === undefined ? {} : { redirectUri: requireString(auth.redirectUri, `${fieldName}.redirectUri`) }),
+    ...(auth.resource === undefined ? {} : { resource: requireString(auth.resource, `${fieldName}.resource`) }),
+    envVar: requireString(auth.envVar, `${fieldName}.envVar`),
+    ...(auth.headerName === undefined ? {} : { headerName: requireString(auth.headerName, `${fieldName}.headerName`) }),
   };
 }
 

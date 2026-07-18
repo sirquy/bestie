@@ -1,6 +1,6 @@
 import { callMcpServerTool, listMcpServerTools, type McpToolCallResult } from "../mcp/connection.js";
 import { findConfiguredMcpTool, findMcpServer, listMcpServers } from "../mcp/servers.js";
-import type { AppConfig } from "../runtime/config.js";
+import { validateConfig, writeConfig, type AppConfig, type McpToolCategory } from "../runtime/config.js";
 import { loadEnvFile } from "../runtime/env.js";
 import { appendLog } from "../runtime/logger.js";
 import type { RuntimePaths } from "../runtime/paths.js";
@@ -51,7 +51,7 @@ export interface McpToolRequest {
 }
 
 export interface InternalToolRequest {
-  tool: "internal.read_file" | "internal.read_many_files" | "internal.read_markdown_bundle" | "internal.list_files" | "internal.search_files" | "internal.read_logs" | "internal.read_url" | "internal.git_status" | "internal.git_diff" | "internal.git_log" | "internal.mcp_list_servers" | "internal.mcp_list_tools" | "internal.write_file" | "internal.edit_file" | "internal.apply_patch" | "internal.exec" | "internal.list_processes" | "internal.list_memories" | "internal.search_memories" | "internal.inspect_memory" | "internal.analyze_memories" | "internal.plan_memory_hygiene" | "internal.plan_memory_rebalance" | "internal.memory_hygiene_trend" | "internal.remember_memory" | "internal.delete_memory" | "internal.cleanup_memories" | "internal.supersede_memory" | "internal.add_cron_schedule" | "internal.list_cron_schedules" | "internal.remove_cron_schedule" | "internal.toggle_cron_schedule";
+  tool: "internal.read_file" | "internal.read_many_files" | "internal.read_markdown_bundle" | "internal.list_files" | "internal.search_files" | "internal.read_logs" | "internal.read_url" | "internal.git_status" | "internal.git_diff" | "internal.git_log" | "internal.mcp_list_servers" | "internal.mcp_list_tools" | "internal.mcp_prepare_server_config" | "internal.mcp_apply_server_config" | "internal.write_file" | "internal.edit_file" | "internal.apply_patch" | "internal.exec" | "internal.list_processes" | "internal.list_memories" | "internal.search_memories" | "internal.inspect_memory" | "internal.analyze_memories" | "internal.plan_memory_hygiene" | "internal.plan_memory_rebalance" | "internal.memory_hygiene_trend" | "internal.remember_memory" | "internal.delete_memory" | "internal.cleanup_memories" | "internal.supersede_memory" | "internal.add_cron_schedule" | "internal.list_cron_schedules" | "internal.remove_cron_schedule" | "internal.toggle_cron_schedule";
   arguments: Record<string, unknown>;
 }
 
@@ -245,14 +245,43 @@ export function buildMcpToolInstructions(config: AppConfig, runtimeContext?: str
   const contextSection = runtimeContext?.trim() ? `\nRuntime context:\n${runtimeContext.trim()}` : "";
   const mcpSection = readTools.length === 0 ? "" : `\nAvailable read-only MCP tools:\n${readTools.map((tool) => `- ${tool}`).join("\n")}`;
 
-  return `Available internal tools:${contextSection}\n- internal.read_file {"path":"relative/or/allowed/absolute/path"}\n- internal.read_many_files {"paths":["README.md","docs/ARCHITECTURE.md"],"maxBytesPerFile":24576,"maxTotalBytes":163840}\n- internal.read_markdown_bundle {"path":".","limit":40,"maxBytesPerFile":24576,"maxTotalBytes":163840}\n- internal.list_files {"path":"optional/path","limit":50}\n- internal.search_files {"query":"*.log","path":"optional/path","limit":20}\n- internal.read_logs {"lines":40}\n- internal.read_url {"url":"https://example.com/mcp-docs","maxBytes":131072,"timeoutMs":10000}\n- internal.git_status {"path":"optional/repo/path"}\n- internal.git_diff {"path":"optional/repo/path","staged":false,"maxBytes":98304}\n- internal.git_log {"path":"optional/repo/path","limit":10}\n- internal.mcp_list_servers {}\n- internal.mcp_list_tools {"server":"server-name","connect":true}\n- internal.write_file {"path":"relative/path","content":"text","overwrite":false}\n- internal.edit_file {"path":"relative/path","oldText":"exact text","newText":"replacement","replaceAll":false}\n- internal.apply_patch {"patch":"git apply compatible patch"}\n- internal.exec {"command":"npm","args":["test"],"cwd":".","timeoutMs":30000}\n- internal.list_processes {"limit":20}\n- internal.list_memories {}\n- internal.search_memories {"query":"memory search text"}\n- internal.inspect_memory {"id":1}\n- internal.analyze_memories {"mode":"all|duplicates|stale|conflicts"}\n- internal.plan_memory_hygiene {}\n- internal.plan_memory_rebalance {}\n- internal.remember_memory {"type":"preference|communication_preference|user_fact|project_context|durable_decision|sensitive_personal","content":"durable memory to save"}
-- internal.delete_memory {"id":1,"reason":"why this memory is stale, wrong, duplicate, or no longer useful"}
-- internal.cleanup_memories {"ids":[1,2,3],"reason":"why these memories should be deleted"}
-- internal.supersede_memory {"oldId":1,"newId":2,"reason":"why the old memory is replaced by the new memory"}
-- internal.add_cron_schedule {"name":"job name","schedule_type":"interval|cron_expr|once","schedule_value":"30m | 0 8 * * * | 2026-12-25T08:00:00Z","prompt":"what to do when triggered","channel":"optional telegram:<userId>|zalo:<userId> destination for completion report"}
-- internal.list_cron_schedules {}
-- internal.remove_cron_schedule {"schedule_id":1}
-- internal.toggle_cron_schedule {"schedule_id":1,"enabled":true}${mcpSection}\n\nTool selection guide:\n- Answer directly only when the request does not depend on local files, logs, repo contents, git state, HTTP(S) links, configured MCP data, MCP server discovery, or making a requested local change.\n- Approved local memories may already be included in the conversation as system context. Use that memory context directly when it answers the user; do not call memory tools just to rediscover information already shown there.\n- Use memory tools only when the included memory context is missing or insufficient, when the user explicitly asks to search/list/inspect memories, when saving a durable memory, when cleaning stale/incorrect/duplicate memories, or when checking whether core/project/session scopes need rebalancing: search_memories for a specific query, list_memories for a complete broad recall/list request, inspect_memory before risky governance changes, plan_memory_hygiene before applying broad cleanup, plan_memory_rebalance before suggesting tier moves, remember_memory for durable writes in any language, supersede_memory when one active memory clearly replaces another, delete_memory for one known stale memory id, cleanup_memories for multiple known stale memory ids. Prefer list_memories before deleting unless the user gave exact ids so cleanup can consider every active memory.\n- Use file tools for repo/local context: read_file for a known path, list_files to inspect a directory, search_files to discover likely paths, read_many_files for a small known set, read_markdown_bundle for repo/docs summaries. If the user asks you to edit a known config or project file, read the file if needed, then use edit_file/write_file/apply_patch; do not merely explain the edit unless the tool is denied or unavailable.\n- Generic list/search requests such as "list files" or internal.list_files with path "." inspect the agent workspace, defaulting to .bestie/workspace. Use an explicit project path such as "src", "docs", or an absolute project root path when the user asks to inspect repository files.\n- Relative read_file/read_many_files/read_markdown_bundle paths resolve from the project root. Relative write/edit/exec paths resolve from the agent workspace to avoid polluting the project root.\n- Absolute paths outside the project root and agent workspace are allowed only when covered by workspace.externalPaths in config.\n- Use read_logs only for recent runtime behavior, failures, diagnostics, or debugging questions.\n- Use read_url when the user gives an HTTP(S) link whose page content is needed, such as MCP setup docs, package pages, or install instructions; it obeys internalTools.policies and may require approval.\n- Use git tools for repository state questions: git_status for changed files, git_diff for current or staged patches, git_log for recent commits.\n- Use internal.mcp_list_servers when the user asks what MCP servers are configured or available. Use internal.mcp_list_tools when the user asks what a configured MCP server can do, or before claiming a remote MCP server has no tools.\n- Use write/edit/apply_patch/exec/process tools when the user asks you to change files, update config, run validation, commit changes, or inspect running processes; these tools obey internalTools.policies and may require approval.\n- Use configured MCP read tools only for external configured data that internal local tools cannot provide. If a server has discovered tools but no configured tool categories, explain that discovery works but tool execution still needs allowlisted categories.\n\nTool-use rule:\n- When asked for a tool decision, reply with exactly one JSON object and no extra text.\n- Use {"answer":"..."} only when no tool is needed by the selection guide.\n- If a listed tool is needed, reply with that executable tool JSON immediately and nothing else. Do not put prose before or after tool JSON.\n- After any empty, denied, or failed result, either try one clearly useful adjacent tool call or answer transparently that the data was not found/available. Do not invent missing facts.\n- Internal examples: {"tool":"internal.mcp_list_servers","arguments":{}} or {"tool":"internal.mcp_list_tools","arguments":{"server":"composio","connect":true}}\n- MCP example: {"tool":"mcp.read","server":"server-name","name":"tool-name","arguments":{}}\n- Do not invent shell command JSON, cmd fields, workdir fields, bash commands, sed, cat, rg, terminal actions, or non-git patch markers. Only the tool schemas above can be executed. internal.apply_patch requires a git apply compatible diff, not *** Begin Patch format.\n- The runtime can execute multiple tool calls in sequence, then show you each result so you can continue or answer the user.`;
+  const tools = [
+    'internal.read_file {"path":"relative/or/allowed/absolute/path"}',
+    'internal.read_many_files {"paths":["README.md","docs/ARCHITECTURE.md"],"maxBytesPerFile":24576,"maxTotalBytes":163840}',
+    'internal.read_markdown_bundle {"path":".","limit":40,"maxBytesPerFile":24576,"maxTotalBytes":163840}',
+    'internal.list_files {"path":"optional/path","limit":50}',
+    'internal.search_files {"query":"*.log","path":"optional/path","limit":20}',
+    'internal.read_logs {"lines":40}',
+    'internal.read_url {"url":"https://example.com/mcp-docs","maxBytes":131072,"timeoutMs":10000}',
+    'internal.git_status {"path":"optional/repo/path"}',
+    'internal.git_diff {"path":"optional/repo/path","staged":false,"maxBytes":98304}',
+    'internal.git_log {"path":"optional/repo/path","limit":10}',
+    'internal.mcp_list_servers {}',
+    'internal.mcp_list_tools {"server":"server-name","connect":true}',
+    'internal.mcp_prepare_server_config {"name":"server-name","transport":"streamable-http","url":"https://provider.example/mcp","auth":{"type":"oauth","authorizationUrl":"https://provider.example/oauth/authorize","clientId":"discovered-client-id","scopes":["discovered.scope"],"redirectUri":"http://127.0.0.1:8989/oauth/callback","resource":"https://provider.example/mcp","envVar":"PROVIDER_MCP_AUTHORIZATION","headerName":"authorization"},"tools":[{"name":"tool_name","category":"read|local_write|external_write|public_action|destructive|money|unknown"}]}',
+    'internal.mcp_apply_server_config {"server":{"name":"server-name","enabled":true,"transport":"streamable-http","url":"https://provider.example/mcp","auth":{"type":"oauth","authorizationUrl":"https://provider.example/oauth/authorize","clientId":"discovered-client-id","envVar":"PROVIDER_MCP_AUTHORIZATION"},"tools":[]},"mode":"upsert"}',
+    'internal.write_file {"path":"relative/path","content":"text","overwrite":false}',
+    'internal.edit_file {"path":"relative/path","oldText":"exact text","newText":"replacement","replaceAll":false}',
+    'internal.apply_patch {"patch":"git apply compatible patch"}',
+    'internal.exec {"command":"npm","args":["test"],"cwd":".","timeoutMs":30000}',
+    'internal.list_processes {"limit":20}',
+    'internal.list_memories {}',
+    'internal.search_memories {"query":"memory search text"}',
+    'internal.inspect_memory {"id":1}',
+    'internal.analyze_memories {"mode":"all|duplicates|stale|conflicts"}',
+    'internal.plan_memory_hygiene {}',
+    'internal.plan_memory_rebalance {}',
+    'internal.remember_memory {"type":"preference|communication_preference|user_fact|project_context|durable_decision|sensitive_personal","content":"durable memory to save"}',
+    'internal.delete_memory {"id":1,"reason":"why this memory is stale, wrong, duplicate, or no longer useful"}',
+    'internal.cleanup_memories {"ids":[1,2,3],"reason":"why these memories should be deleted"}',
+    'internal.supersede_memory {"oldId":1,"newId":2,"reason":"why the old memory is replaced by the new memory"}',
+    'internal.add_cron_schedule {"name":"job name","schedule_type":"interval|cron_expr|once","schedule_value":"30m | 0 8 * * * | 2026-12-25T08:00:00Z","prompt":"what to do when triggered","channel":"optional telegram:<userId>|zalo:<userId> destination for completion report"}',
+    'internal.list_cron_schedules {}',
+    'internal.remove_cron_schedule {"schedule_id":1}',
+    'internal.toggle_cron_schedule {"schedule_id":1,"enabled":true}',
+  ];
+
+  return `Available internal tools:${contextSection}\n- ${tools.join("\n- ")}${mcpSection}\n\nTool selection guide:\n- Answer directly only when the request does not depend on local files, logs, repo contents, git state, HTTP(S) links, configured MCP data, MCP server discovery, or making a requested local change.\n- Approved local memories may already be included in the conversation as system context. Use that memory context directly when it answers the user; do not call memory tools just to rediscover information already shown there.\n- Use MCP tools/configuration in this order when the user asks to install, discover, login, or configure an MCP service: read service docs with read_url when needed, inspect existing config with mcp_list_servers, discover server/tool/oauth metadata, call mcp_prepare_server_config, then apply config with mcp_apply_server_config when permission allows. If the server auth is oauth, run internal.exec with command bestie and args ["mcp","login","server-name"] after config is saved; use the command output authorization URL in the final answer and ask the user to log in/approve. After the user sends the auth code, run internal.exec with command bestie and args ["mcp","login","server-name","--code","<code>"], then use mcp_list_tools with connect=true to verify discovery. Do not guess auth URLs by hand; let bestie mcp login generate PKCE/state URLs. Do not put raw secrets in config; use env var names via env, headersEnv, or auth.envVar.\n- Use memory tools only when the included memory context is missing or insufficient, when the user explicitly asks to search/list/inspect memories, when saving a durable memory, when cleaning stale/incorrect/duplicate memories, or when checking whether core/project/session scopes need rebalancing.\n- Use file tools for repo/local context: read_file for a known path, list_files to inspect a directory, search_files to discover likely paths, read_many_files for a small known set, read_markdown_bundle for repo/docs summaries. If the user asks you to edit a known config or project file, read the file if needed, then use edit_file/write_file/apply_patch; do not merely explain the edit unless the tool is denied or unavailable.\n- Generic list/search requests such as "list files" or internal.list_files with path "." inspect the agent workspace, defaulting to .bestie/workspace. Use an explicit project path such as "src", "docs", or an absolute project root path when the user asks to inspect repository files.\n- Relative read_file/read_many_files/read_markdown_bundle paths resolve from the project root. Relative write/edit/exec paths resolve from the agent workspace to avoid polluting the project root.\n- Absolute paths outside the project root and agent workspace are allowed only when covered by workspace.externalPaths in config.\n- Use read_logs only for recent runtime behavior, failures, diagnostics, or debugging questions.\n- Use read_url when the user gives an HTTP(S) link whose page content is needed, such as MCP setup docs, package pages, or install instructions; it obeys internalTools.policies and may require approval.\n- Use git tools for repository state questions: git_status for changed files, git_diff for current or staged patches, git_log for recent commits.\n- Use internal.mcp_list_servers when the user asks what MCP servers are configured or available. Use internal.mcp_list_tools when the user asks what a configured MCP server can do, or before claiming a remote MCP server has no tools.\n- Use write/edit/apply_patch/exec/process tools when the user asks you to change files, update config, run validation, commit changes, or inspect running processes; these tools obey internalTools.policies and may require approval.\n- Use configured MCP read tools only for external configured data that internal local tools cannot provide. If a server has discovered tools but no configured tool categories, explain that discovery works but tool execution still needs allowlisted categories.\n\nTool-use rule:\n- When asked for a tool decision, reply with exactly one JSON object and no extra text.\n- Use {"answer":"..."} only when no tool is needed by the selection guide.\n- If a listed tool is needed, reply with that executable tool JSON immediately and nothing else. Do not put prose before or after tool JSON.\n- After any empty, denied, or failed result, either try one clearly useful adjacent tool call or answer transparently that the data was not found/available. Do not invent missing facts.\n- Internal examples: {"tool":"internal.mcp_list_servers","arguments":{}} or {"tool":"internal.mcp_list_tools","arguments":{"server":"composio","connect":true}}\n- MCP example: {"tool":"mcp.read","server":"server-name","name":"tool-name","arguments":{}}\n- Do not invent shell command JSON, cmd fields, workdir fields, bash commands, sed, cat, rg, terminal actions, or non-git patch markers. Only the tool schemas above can be executed. internal.apply_patch requires a git apply compatible diff, not *** Begin Patch format.\n- The runtime can execute multiple tool calls in sequence, then show you each result so you can continue or answer the user.`;
 }
 
 export function buildAgentToolDecisionMessage(): string {
@@ -622,6 +651,14 @@ export async function runAgentToolRequest(options: RunAgentToolRequestOptions): 
     return { ok: result.ok, status: result.status, message: result.message, result: { server: server.name, transport: server.transport, tools: result.tools, configuredTools: server.tools, discovered: true } };
   }
 
+  if (options.request.tool === "internal.mcp_prepare_server_config") {
+    return prepareMcpServerConfigTool(options.config, args);
+  }
+
+  if (options.request.tool === "internal.mcp_apply_server_config") {
+    return applyMcpServerConfigTool(options, args);
+  }
+
   if (options.request.tool === "internal.write_file") {
     const path = stringArg(args.path);
     const content = stringArg(args.content);
@@ -734,7 +771,329 @@ export async function runAgentToolRequest(options: RunAgentToolRequestOptions): 
 }
 
 export function isInternalToolName(value: string): value is InternalToolRequest["tool"] {
-  return ["internal.read_file", "internal.read_many_files", "internal.read_markdown_bundle", "internal.list_files", "internal.search_files", "internal.read_logs", "internal.read_url", "internal.git_status", "internal.git_diff", "internal.git_log", "internal.mcp_list_servers", "internal.mcp_list_tools", "internal.write_file", "internal.edit_file", "internal.apply_patch", "internal.exec", "internal.list_processes", "internal.list_memories", "internal.search_memories", "internal.inspect_memory", "internal.analyze_memories", "internal.plan_memory_hygiene", "internal.plan_memory_rebalance", "internal.memory_hygiene_trend", "internal.remember_memory", "internal.delete_memory", "internal.cleanup_memories", "internal.supersede_memory", "internal.add_cron_schedule", "internal.list_cron_schedules", "internal.remove_cron_schedule", "internal.toggle_cron_schedule"].includes(value);
+  return ["internal.read_file", "internal.read_many_files", "internal.read_markdown_bundle", "internal.list_files", "internal.search_files", "internal.read_logs", "internal.read_url", "internal.git_status", "internal.git_diff", "internal.git_log", "internal.mcp_list_servers", "internal.mcp_list_tools", "internal.mcp_prepare_server_config", "internal.mcp_apply_server_config", "internal.write_file", "internal.edit_file", "internal.apply_patch", "internal.exec", "internal.list_processes", "internal.list_memories", "internal.search_memories", "internal.inspect_memory", "internal.analyze_memories", "internal.plan_memory_hygiene", "internal.plan_memory_rebalance", "internal.memory_hygiene_trend", "internal.remember_memory", "internal.delete_memory", "internal.cleanup_memories", "internal.supersede_memory", "internal.add_cron_schedule", "internal.list_cron_schedules", "internal.remove_cron_schedule", "internal.toggle_cron_schedule"].includes(value);
+}
+
+type McpServerConfig = NonNullable<AppConfig["mcp"]>["servers"][number];
+interface McpAuthPlan {
+  required: boolean;
+  url?: string;
+  envVarName?: string;
+  headerName?: string;
+  parameterName?: string;
+  instructions: string[];
+}
+
+function prepareMcpServerConfigTool(config: AppConfig, args: Record<string, unknown>): McpToolCallResult {
+  const server = parseMcpServerConfigArgs(args);
+  if (!server.ok) {
+    return { ok: false, status: "fail", message: server.message };
+  }
+
+  const validation = validateMcpConfigProposal(config, server.server);
+  if (!validation.ok) {
+    return validation;
+  }
+
+  const auth = parseMcpAuthPlan(args, server.server);
+  const existing = config.mcp?.servers.some((configured) => configured.name === server.server.name) ?? false;
+  return {
+    ok: true,
+    status: "pass",
+    message: `Prepared MCP server config for ${server.server.name}.`,
+    result: {
+      server: redactMcpServerConfig(server.server),
+      auth,
+      mode: existing ? "update" : "add",
+      nextSteps: auth.required
+        ? [
+            "Reply to the user with the complete auth.url and ask them to authorize the MCP service.",
+            "After the user sends the auth result, call internal.mcp_apply_server_config with authResult.",
+            "Run internal.mcp_list_tools with connect=true after apply to verify discovery.",
+          ]
+        : [
+            "Apply with internal.mcp_apply_server_config if the user asked to change config.",
+            "Set any required env vars in .env or the service environment before connecting.",
+            "Run internal.mcp_list_tools with connect=true after apply to verify discovery.",
+          ],
+    },
+  };
+}
+
+async function applyMcpServerConfigTool(options: RunAgentToolRequestOptions, args: Record<string, unknown>): Promise<McpToolCallResult> {
+  const rawServer = isRecord(args.server) ? args.server : args;
+  const parsed = parseMcpServerConfigArgs(rawServer);
+  if (!parsed.ok) {
+    return { ok: false, status: "fail", message: parsed.message };
+  }
+
+  const authResult = parseMcpAuthResult(args.authResult);
+  if (!authResult.ok) {
+    return { ok: false, status: "fail", message: authResult.message };
+  }
+
+  const server = applyMcpAuthResult(parsed.server, authResult.result);
+  const validation = validateMcpConfigProposal(options.config, server);
+  if (!validation.ok) {
+    return validation;
+  }
+
+  const mode = stringArg(args.mode) ?? "upsert";
+  if (mode !== "upsert" && mode !== "add" && mode !== "replace") {
+    return { ok: false, status: "fail", message: "internal.mcp_apply_server_config arguments.mode must be upsert, add, or replace." };
+  }
+
+  const nextServers = options.config.mcp?.servers ?? [];
+  const existingIndex = nextServers.findIndex((configuredServer) => configuredServer.name === server.name);
+  if (mode === "add" && existingIndex !== -1) {
+    return { ok: false, status: "fail", message: `MCP server ${server.name} already exists; use mode upsert or replace.` };
+  }
+  if (mode === "replace" && existingIndex === -1) {
+    return { ok: false, status: "fail", message: `MCP server ${server.name} does not exist; use mode upsert or add.` };
+  }
+
+  const config = {
+    ...options.config,
+    mcp: {
+      servers: existingIndex === -1 ? [...nextServers, server] : nextServers.map((configuredServer, index) => (index === existingIndex ? server : configuredServer)),
+    },
+  } satisfies AppConfig;
+  validateConfig(config);
+
+  await writeConfig(config, options.paths);
+  return { ok: true, status: "pass", message: `MCP server ${server.name} ${existingIndex === -1 ? "added" : "updated"}.`, result: { server: redactMcpServerConfig(server), auth: redactMcpAuthResult(authResult.result), configPath: options.paths.configPath } };
+}
+
+function validateMcpConfigProposal(config: AppConfig, server: McpServerConfig): McpToolCallResult {
+  try {
+    validateConfig({ ...config, mcp: { servers: [server] } });
+    return { ok: true, status: "pass", message: "MCP server config is valid." };
+  } catch (error) {
+    return { ok: false, status: "fail", message: error instanceof Error ? error.message : "MCP server config is invalid." };
+  }
+}
+
+function parseMcpAuthPlan(args: Record<string, unknown>, server: McpServerConfig): McpAuthPlan {
+  const authUrl = stringArg(args.authUrl)?.trim();
+  const authUrlCheck = validateMcpAuthUrl(authUrl);
+  if (!authUrlCheck.ok) {
+    return {
+      required: true,
+      envVarName: stringArg(args.authResultEnvVar)?.trim() ?? stringArg(args.authEnvVar)?.trim() ?? defaultMcpAuthEnvVarName(server.name),
+      instructions: [authUrlCheck.message, "Do not return a guessed authorization URL to the user. Continue discovery or ask the user for the exact provider auth URL/result."],
+    };
+  }
+  const envVarName = stringArg(args.authResultEnvVar)?.trim() ?? stringArg(args.authEnvVar)?.trim() ?? defaultMcpAuthEnvVarName(server.name);
+  const headerName = stringArg(args.authHeaderName)?.trim();
+  const parameterName = stringArg(args.authParameterName)?.trim();
+  const hasConfiguredAuth = Object.keys(server.env ?? {}).length > 0 || Object.keys(server.headersEnv ?? {}).length > 0 || Object.keys(server.headers ?? {}).length > 0;
+  const required = booleanArg(args.authRequired) ?? Boolean(authUrlCheck.url || !hasConfiguredAuth);
+
+  if (!required) {
+    return { required: false, instructions: ["No extra authorization handoff was requested for this MCP server."] };
+  }
+
+  return {
+    required: true,
+    ...(authUrlCheck.url ? { url: authUrlCheck.url } : {}),
+    envVarName,
+    ...(headerName ? { headerName } : {}),
+    ...(parameterName ? { parameterName } : {}),
+    instructions: [
+      authUrlCheck.url ? "Send this full URL to the user and ask them to complete authorization." : "Ask the user for the service authorization result from the provider docs.",
+      `When the user returns the result, apply config with authResult.envVarName set to ${envVarName}.`,
+      "Do not ask the user to paste secrets into normal chat when direct terminal/env entry is available; if they already provided a token, store only the env var reference in config.",
+    ],
+  };
+}
+
+function validateMcpAuthUrl(value: string | undefined): { ok: true; url?: string } | { ok: false; message: string } {
+  if (!value) {
+    return { ok: true };
+  }
+
+  if (/[<>{}\[\]]|\.\.\.|\bTODO\b|\bPLACEHOLDER\b/i.test(value)) {
+    return { ok: false, message: "MCP authUrl contains a placeholder instead of a complete provider URL." };
+  }
+
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch {
+    return { ok: false, message: "MCP authUrl must be a valid HTTP(S) URL copied from provider docs or a tool result." };
+  }
+
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    return { ok: false, message: "MCP authUrl must use http or https." };
+  }
+
+  const pathLooksLikeAuthorize = /(^|\/)authorize\/?$/i.test(parsed.pathname);
+  const hasOAuthParameters = ["client_id", "response_type", "redirect_uri", "state", "code_challenge", "scope", "client"].some((name) => parsed.searchParams.has(name));
+  if (pathLooksLikeAuthorize && !hasOAuthParameters) {
+    return { ok: false, message: "MCP authUrl looks like an incomplete guessed /authorize endpoint; use only the full authorization URL returned by provider docs/tooling." };
+  }
+
+  return { ok: true, url: parsed.toString() };
+}
+
+function parseMcpAuthResult(value: unknown): { ok: true; result?: { envVarName: string; headerName?: string; parameterName?: string; value?: string } } | { ok: false; message: string } {
+  if (value === undefined) {
+    return { ok: true };
+  }
+
+  if (!isRecord(value)) {
+    return { ok: false, message: "internal.mcp_apply_server_config authResult must be an object." };
+  }
+
+  const envVarName = stringArg(value.envVarName)?.trim();
+  if (!envVarName) {
+    return { ok: false, message: "internal.mcp_apply_server_config authResult.envVarName is required." };
+  }
+
+  const headerName = stringArg(value.headerName)?.trim();
+  const parameterName = stringArg(value.parameterName)?.trim();
+  const tokenValue = stringArg(value.value)?.trim() ?? stringArg(value.token)?.trim() ?? stringArg(value.authorization)?.trim();
+
+  return {
+    ok: true,
+    result: {
+      envVarName,
+      ...(headerName ? { headerName } : {}),
+      ...(parameterName ? { parameterName } : {}),
+      ...(tokenValue ? { value: tokenValue } : {}),
+    },
+  };
+}
+
+function applyMcpAuthResult(server: McpServerConfig, authResult: { envVarName: string; headerName?: string; parameterName?: string; value?: string } | undefined): McpServerConfig {
+  if (!authResult) {
+    return server;
+  }
+
+  if (server.transport === "http" || server.transport === "streamable-http") {
+    const headerName = authResult.headerName ?? "authorization";
+    return { ...server, headersEnv: { ...(server.headersEnv ?? {}), [headerName]: authResult.envVarName } };
+  }
+
+  const envName = authResult.parameterName ?? authResult.envVarName;
+  return { ...server, env: { ...(server.env ?? {}), [envName]: authResult.envVarName } };
+}
+
+function redactMcpAuthResult(authResult: { envVarName: string; headerName?: string; parameterName?: string; value?: string } | undefined): Record<string, string | boolean> | undefined {
+  if (!authResult) {
+    return undefined;
+  }
+
+  return {
+    envVarName: authResult.envVarName,
+    ...(authResult.headerName ? { headerName: authResult.headerName } : {}),
+    ...(authResult.parameterName ? { parameterName: authResult.parameterName } : {}),
+    valueProvided: Boolean(authResult.value),
+  };
+}
+
+function defaultMcpAuthEnvVarName(serverName: string): string {
+  const normalized = serverName.replace(/[^a-z0-9]+/gi, "_").replace(/^_+|_+$/g, "").toUpperCase();
+  return `${normalized || "MCP"}_AUTHORIZATION`;
+}
+
+function parseMcpServerConfigArgs(args: Record<string, unknown>): { ok: true; server: McpServerConfig } | { ok: false; message: string } {
+  const name = stringArg(args.name)?.trim();
+  if (!name) {
+    return { ok: false, message: "MCP server name is required." };
+  }
+
+  const transport = stringArg(args.transport) ?? (stringArg(args.url) ? "http" : "stdio");
+  const enabled = booleanArg(args.enabled) ?? true;
+  const tools = parseMcpToolConfigArray(args.tools);
+  if (!tools.ok) return tools;
+
+  if (transport === "http" || transport === "streamable-http") {
+    const url = stringArg(args.url)?.trim();
+    if (!url) return { ok: false, message: "HTTP MCP server config requires url." };
+    const headers = optionalStringRecordField(args.headers, "headers");
+    if (!headers.ok) return headers;
+    const headersEnv = optionalStringRecordField(args.headersEnv, "headersEnv");
+    if (!headersEnv.ok) return headersEnv;
+    const auth = parseMcpServerAuthConfig(args.auth);
+    if (!auth.ok) return auth;
+    return { ok: true, server: { name, enabled, transport, url, ...headers.field, ...headersEnv.field, ...auth.field, ...(tools.tools.length === 0 ? {} : { tools: tools.tools }) } };
+  }
+
+  if (transport === "stdio") {
+    const command = stringArg(args.command)?.trim();
+    if (!command) return { ok: false, message: "stdio MCP server config requires command." };
+    const env = optionalStringRecordField(args.env, "env");
+    if (!env.ok) return env;
+    return { ok: true, server: { name, enabled, transport, command, ...(arrayOfStringsArg(args.args) === undefined ? {} : { args: arrayOfStringsArg(args.args) }), ...env.field, ...(tools.tools.length === 0 ? {} : { tools: tools.tools }) } };
+  }
+
+  return { ok: false, message: "MCP server transport must be http, streamable-http, or stdio." };
+}
+
+function parseMcpServerAuthConfig(value: unknown): { ok: true; field: { auth?: McpServerConfig["auth"] } } | { ok: false; message: string } {
+  if (value === undefined) return { ok: true, field: {} };
+  if (!isRecord(value)) return { ok: false, message: "MCP server auth must be an object." };
+  if (value.type !== "oauth") return { ok: false, message: "MCP server auth.type must be oauth." };
+
+  const authorizationUrl = stringArg(value.authorizationUrl)?.trim();
+  const clientId = stringArg(value.clientId)?.trim();
+  const envVar = stringArg(value.envVar)?.trim();
+  if (!authorizationUrl || !clientId || !envVar) {
+    return { ok: false, message: "MCP oauth auth requires authorizationUrl, clientId, and envVar." };
+  }
+
+  return {
+    ok: true,
+    field: {
+      auth: {
+        type: "oauth",
+        authorizationUrl,
+        ...(stringArg(value.tokenUrl)?.trim() ? { tokenUrl: stringArg(value.tokenUrl)?.trim() } : {}),
+        clientId,
+        ...(arrayOfStringsArg(value.scopes) === undefined ? {} : { scopes: arrayOfStringsArg(value.scopes) }),
+        ...(stringArg(value.redirectUri)?.trim() ? { redirectUri: stringArg(value.redirectUri)?.trim() } : {}),
+        ...(stringArg(value.resource)?.trim() ? { resource: stringArg(value.resource)?.trim() } : {}),
+        envVar,
+        ...(stringArg(value.headerName)?.trim() ? { headerName: stringArg(value.headerName)?.trim() } : {}),
+      },
+    },
+  };
+}
+
+function parseMcpToolConfigArray(value: unknown): { ok: true; tools: Array<{ name: string; category: McpToolCategory }> } | { ok: false; message: string } {
+  if (value === undefined) return { ok: true, tools: [] };
+  if (!Array.isArray(value)) return { ok: false, message: "MCP server tools must be an array." };
+
+  const tools: Array<{ name: string; category: McpToolCategory }> = [];
+  for (const [index, item] of value.entries()) {
+    if (!isRecord(item)) return { ok: false, message: `MCP server tools[${index}] must be an object.` };
+    const name = stringArg(item.name)?.trim();
+    const category = stringArg(item.category);
+    if (!name || !isMcpToolCategory(category)) return { ok: false, message: `MCP server tools[${index}] requires name and a valid category.` };
+    tools.push({ name, category });
+  }
+  return { ok: true, tools };
+}
+
+function optionalStringRecordField(value: unknown, fieldName: "env" | "headers" | "headersEnv"): { ok: true; field: Record<string, Record<string, string>> } | { ok: false; message: string } {
+  if (value === undefined) return { ok: true, field: {} };
+  if (!isRecord(value) || Object.values(value).some((entry) => typeof entry !== "string")) {
+    return { ok: false, message: `MCP server ${fieldName} must be an object of string values.` };
+  }
+  return { ok: true, field: { [fieldName]: value as Record<string, string> } };
+}
+
+function redactMcpServerConfig(server: McpServerConfig): McpServerConfig {
+  return {
+    ...server,
+    ...(server.env === undefined ? {} : { env: Object.fromEntries(Object.keys(server.env).sort().map((key) => [key, "<redacted>"])) }),
+    ...(server.headers === undefined ? {} : { headers: Object.fromEntries(Object.keys(server.headers).sort().map((key) => [key, "<redacted>"])) }),
+  };
+}
+
+function isMcpToolCategory(value: unknown): value is McpToolCategory {
+  return typeof value === "string" && ["read", "local_write", "external_write", "public_action", "destructive", "money", "unknown"].includes(value);
 }
 
 async function deleteMemoryTool(options: RunAgentToolRequestOptions, args: Record<string, unknown>): Promise<McpToolCallResult> {

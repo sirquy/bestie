@@ -69,6 +69,7 @@
     "@elevenlabs/elevenlabs-js": "^2.57.0",
     "@grammyjs/types": "^3.28.0",
     "@inquirer/prompts": "^8.5.2",
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "better-sqlite3": "^12.11.1",
     "commander": "^14.0.3",
     "grammy": "^1.44.0",

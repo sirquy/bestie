@@ -425,6 +425,106 @@ test("runMcpCommand rejects invalid MCP tool classification categories", async (
   }
 });
 
+test("runMcpCommand starts OAuth login for configured streamable HTTP MCP servers", async () => {
+  const paths = await createTempPaths();
+  const lines: string[] = [];
+
+  try {
+    await mkdir(paths.appDir, { recursive: true });
+    await writeConfig(
+      {
+        ...config,
+        mcp: {
+          servers: [
+            {
+              name: "kling",
+              enabled: true,
+              transport: "streamable-http",
+              url: "https://kling.ai/mcp",
+              auth: {
+                type: "oauth",
+                authorizationUrl: "https://kling.ai/oauth/authorize",
+                clientId: "bestie-agent",
+                scopes: ["video.create", "assets.read"],
+                redirectUri: "http://127.0.0.1:8989/oauth/callback",
+                resource: "https://kling.ai/mcp",
+                envVar: "KLING_MCP_AUTHORIZATION",
+              },
+            },
+          ],
+        },
+      },
+      paths,
+    );
+
+    await runMcpCommand({ argv: ["node", "bestie", "mcp", "login", "kling"], paths, writeLine: (line) => lines.push(line) });
+
+    const authUrl = new URL(lines[1]);
+    assert.equal(authUrl.origin + authUrl.pathname, "https://kling.ai/oauth/authorize");
+    assert.equal(authUrl.searchParams.get("response_type"), "code");
+    assert.equal(authUrl.searchParams.get("client_id"), "bestie-agent");
+    assert.equal(authUrl.searchParams.get("code_challenge_method"), "S256");
+    assert.match(authUrl.searchParams.get("code_challenge") ?? "", /^[A-Za-z0-9_-]+$/);
+    assert.match(authUrl.searchParams.get("state") ?? "", /^[A-Za-z0-9_-]+-[A-Za-z0-9_-]+-/);
+    assert.equal(authUrl.searchParams.get("redirect_uri"), "http://127.0.0.1:8989/oauth/callback");
+    assert.equal(authUrl.searchParams.get("scope"), "video.create assets.read");
+    assert.equal(authUrl.searchParams.get("resource"), "https://kling.ai/mcp");
+
+    const session = JSON.parse(await readFile(resolve(paths.dataDir, "mcp-oauth-kling.json"), "utf8")) as { envVar?: string; verifier?: string };
+    assert.equal(session.envVar, "KLING_MCP_AUTHORIZATION");
+    assert.match(session.verifier ?? "", /^[A-Za-z0-9_-]+$/);
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("runMcpCommand completes OAuth login without printing the code", async () => {
+  const paths = await createTempPaths();
+  const lines: string[] = [];
+
+  try {
+    await mkdir(paths.appDir, { recursive: true });
+    await writeConfig(
+      {
+        ...config,
+        mcp: {
+          servers: [
+            {
+              name: "kling",
+              enabled: true,
+              transport: "streamable-http",
+              url: "https://kling.ai/mcp",
+              auth: { type: "oauth", authorizationUrl: "https://kling.ai/oauth/authorize", clientId: "bestie-agent", envVar: "KLING_MCP_AUTHORIZATION" },
+            },
+          ],
+        },
+      },
+      paths,
+    );
+
+    await runMcpCommand({ argv: ["node", "bestie", "mcp", "login", "kling", "--code", "secret-code"], paths, writeLine: (line) => lines.push(line) });
+
+    assert.match(await readFile(paths.envPath, "utf8"), /KLING_MCP_AUTHORIZATION="oauth-code:secret-code"/);
+    assert.doesNotMatch(lines.join("\n"), /secret-code/);
+    assert.match(lines.join("\n"), /Stored OAuth result/);
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("runMcpCommand rejects OAuth login for servers without oauth config", async () => {
+  const paths = await createTempPaths();
+
+  try {
+    await mkdir(paths.appDir, { recursive: true });
+    await writeConfig({ ...config, mcp: { servers: [{ name: "plain", enabled: true, transport: "http", url: "https://example.com/mcp" }] } }, paths);
+
+    await assert.rejects(runMcpCommand({ argv: ["node", "bestie", "mcp", "login", "plain"], paths, writeLine: () => undefined }), /does not have oauth auth configured/);
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
 test("runMcpCommand reports no configured servers", async () => {
   const paths = await createTempPaths();
   const lines: string[] = [];

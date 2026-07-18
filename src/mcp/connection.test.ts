@@ -52,7 +52,7 @@ process.stdin.on("data", (chunk) => {
       process.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: request.id, result: { protocolVersion: "2024-11-05", capabilities: {}, serverInfo: { name: "fake", version: "0.0.0" } } }) + "\\n");
     }
     if (request.method === "tools/list") {
-      process.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: request.id, result: { tools: [{ name: "read_file", description: "Read a local file" }, { name: "no_description" }] } }) + "\\n");
+      process.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: request.id, result: { tools: [{ name: "read_file", description: "Read a local file", inputSchema: { type: "object" } }, { name: "no_description", inputSchema: { type: "object" } }] } }) + "\\n");
     }
   }
 });
@@ -121,7 +121,7 @@ test("remote HTTP MCP servers initialize, list tools, call tools, and map secret
       return;
     }
     if (payload.method === "tools/list") {
-      response.end(JSON.stringify({ jsonrpc: "2.0", id: payload.id, result: { tools: [{ name: "lookup", description: "Lookup data" }] } }));
+      response.end(JSON.stringify({ jsonrpc: "2.0", id: payload.id, result: { tools: [{ name: "lookup", description: "Lookup data", inputSchema: { type: "object" } }] } }));
       return;
     }
     response.end(JSON.stringify({ jsonrpc: "2.0", id: payload.id, result: { content: [{ type: "text", text: `hello ${payload.params?.arguments?.name}` }] } }));
@@ -137,9 +137,10 @@ test("remote HTTP MCP servers initialize, list tools, call tools, and map secret
     assert.deepEqual(await testMcpServerConnection(remoteServer, options), { ok: true, status: "pass", message: "MCP server composio responded to initialize." });
     assert.deepEqual(await listMcpServerTools(remoteServer, options), { ok: true, status: "pass", message: "MCP server composio returned 1 tool(s).", tools: [{ name: "lookup", description: "Lookup data" }] });
     assert.deepEqual(await callMcpServerTool(remoteServer, "lookup", { name: "Miu" }, options), { ok: true, status: "pass", message: "MCP tool composio/lookup returned a result.", result: { content: [{ type: "text", text: "hello Miu" }] } });
+    assert(requests.length >= 5);
     assert.deepEqual(
       requests.map((request) => request.header),
-      ["secret-test-key", "secret-test-key", "secret-test-key", "secret-test-key", "secret-test-key"],
+      Array.from({ length: requests.length }, () => "secret-test-key"),
     );
   } finally {
     await new Promise<void>((resolve, reject) => httpServer.close((error) => (error ? reject(error) : resolve())));
