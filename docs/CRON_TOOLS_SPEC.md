@@ -1,6 +1,6 @@
 # Cron Tools Spec
 
-**Status**: Implementation plan
+**Status**: Implemented local-development foundation
 **Scope**: Agent-initiated cron job CRUD + scheduled execution with isolated chat context
 
 ---
@@ -30,7 +30,7 @@
                    │ polls for due jobs
                    ▼
 ┌─────────────────────────────────────────────────┐
-│           Cron Executor (daemon process)         │
+│           Cron Executor (runtime process)        │
 │  For each due job:                               │
 │    1. Build system prompt (isolated, no owner)   │
 │    2. Run completeWithAgentTools (background)    │
@@ -350,17 +350,19 @@ function computeNextRun(job: CronSchedule): string {
 }
 ```
 
-### 5.3 Daemon integration
+### 5.3 Runtime integration
 
-The cron executor runs inside the existing daemon process (`bestie daemon start`). When daemon starts Telegram/Zalo polling, it also starts the CronExecutor:
+The cron executor runs through `bestie cron run`. Manual daemon mode starts it as the `cron` target through `bestie daemon start --channel cron` or `bestie daemon start --channel all`:
 
 ```typescript
-// In daemon start flow
+// In cron run flow
 const executor = new CronExecutor(config, paths, apiKey);
 executor.start();
 ```
 
-For non-daemon usage (`bestie chat`), cron does NOT run — it only runs in daemon mode.
+The Linux user service does not create a separate cron unit. `bestie service install` writes one `bestie.service` unit whose hidden foreground command, `bestie service run`, starts configured Telegram, Zalo, cron, and future service targets together.
+
+For non-daemon usage (`bestie chat`), cron does NOT run; it only runs in `bestie cron run`, the cron daemon target, or the shared service runtime.
 
 ---
 

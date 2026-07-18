@@ -4,7 +4,7 @@
 
 Make Bestie installable by a technical-but-not-project-local user with one command, then hand off into the existing onboarding and Doctor flow.
 
-The installer should not add new product scope. It should only make the current local CLI, onboarding, Doctor, Telegram, memory, and read-tool foundation easier to bootstrap.
+The installer should not add new product scope. It should only make the current local CLI, onboarding, Doctor, Telegram/Zalo, cron, memory, service command, skills, update, MCP, and permission-gated tool foundation easier to bootstrap.
 
 ## MVP Command
 
@@ -98,7 +98,7 @@ The smoke must not require real provider or Telegram secrets.
 
 ## Non-Goals
 
-- system service installation
+- installing or starting systemd services; that belongs to `bestie service install|uninstall|restart|status`
 - auto-starting Telegram polling
 - Zep setup
 - hosted accounts

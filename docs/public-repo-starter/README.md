@@ -26,9 +26,11 @@ Bestie is under active development. The local CLI foundation includes:
 - Doctor diagnostics
 - Local SQLite memory foundation
 - Telegram and Zalo local polling
-- Channel daemon management, including `--channel all`
+- Cron schedules and a local scheduler runtime
+- Manual daemon management for `telegram`, `zalo`, `cron`, or `all`
+- Linux user service management through one `bestie.service` runtime for configured service targets
 - Permission-gated local read/write/action tools
-- Basic classified MCP read-tool support
+- SDK-backed MCP server config, OAuth login, tool discovery, classification, and classified read calls
 - Installed skills loaded from `~/.bestie/skills/<skill-name>/SKILL.md`
 - `bestie update` and throttled update notices for new npm versions
 - Character regression evals
@@ -76,6 +78,13 @@ Useful runtime commands:
 bestie channels telegram
 bestie channels zalo
 bestie daemon restart --channel all
+bestie daemon restart --channel cron
+bestie service install
+bestie service status
+bestie cron list
+bestie mcp list
+bestie mcp add demo --url https://mcp.example.com/mcp
+bestie mcp login demo
 bestie skills
 bestie update
 bestie update --apply

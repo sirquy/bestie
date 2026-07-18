@@ -26,19 +26,21 @@ Goal: prove the character feels alive.
 
 ## Next
 
-Status: completed for local development. Local SQLite memory, basic memory policy, status, Doctor MVP, Telegram/Zalo channel runtimes, channel daemon management, permission-gated local tools, classified read-only MCP calls, installed skills, npm update checks, and opt-in Telegram real-bot smoke are implemented and validated for local development.
+Status: completed for local development. Local SQLite memory, basic memory policy, status, Doctor MVP, Telegram/Zalo channel runtimes, cron, daemon/service management, permission-gated local tools, SDK-backed MCP setup plus classified read calls, installed skills, npm update checks, and opt-in Telegram real-bot smoke are implemented and validated for local development.
 
 Build:
 
 - Telegram channel (`docs/TELEGRAM_MVP_SPEC.md`)
 - Zalo channel runtime
-- channel daemon management for `telegram`, `zalo`, or `all`
+- cron schedule CRUD and scheduler runtime
+- daemon management for `telegram`, `zalo`, `cron`, or `all`
+- one Linux user service, `bestie.service`, for configured Telegram, Zalo, cron, and future service targets
 - local SQLite memory
 - basic memory policy
 - status command
 - MVP Doctor checks and safe local fixes
 - first permission layer and read-only local tool foundation
-- classified read-only MCP calls for trusted local workflows
+- MCP add/list/show/test/tools/classify/login/call commands, remote HTTP OAuth setup, and classified read calls for trusted local workflows
 - installed skills from `~/.bestie/skills`
 - `bestie update` for npm version checks and updates
 
@@ -67,7 +69,7 @@ Goal: make it usable by non-technical users.
 
 Build:
 
-- broader MCP after Doctor, permissions, local read tools, and real-channel behavior are stable
+- broader MCP execution categories after Doctor, permissions, local read tools, and real-channel behavior are stable
 - ACP/multi-agent
 - plugin system
 - persona templates

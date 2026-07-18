@@ -697,19 +697,21 @@ Installer responsibilities:
    - `node`
    - `npm` or `pnpm`
 3. Install Node if missing, or print friendly instructions.
-4. Clone repository into `~/.bestie` or chosen directory.
+4. Clone or copy the source checkout into `~/.local/share/bestie/source` or a chosen install directory.
 5. Install dependencies.
-6. Run onboarding wizard.
-7. Write `.env` and config files.
-8. Initialize SQLite database.
-9. Start agent.
-10. Optionally install as systemd user service.
+6. Build the TypeScript CLI.
+7. Expose the `bestie` command through a predictable user-local bin directory.
+8. Run Doctor after install.
+9. Offer to run onboarding, which writes `.env`, config, character files, and initializes local runtime state.
+10. Leave long-running runtime management to `bestie daemon ...` or `bestie service install`; the installer should not auto-start Telegram/Zalo/cron or install systemd services.
 
 Install path:
 
 ```text
-~/.bestie/
+~/.local/share/bestie/source
 ```
+
+Runtime data remains under `~/.bestie/`.
 
 User data path:
 
@@ -1211,7 +1213,7 @@ This is important because the product is intended for non-expert users. If setup
    - port conflicts
    - stale lock files
    - log files writable
-   - systemd user service installed if selected
+  - one `bestie.service` user service installed if selected
 
 8. Character files
    - character profile exists
@@ -1701,20 +1703,23 @@ ask-before-write
 
 ### MCP Onboarding UX
 
-Current local-development CLI foundation plus future onboarding commands:
+Current local-development MCP commands:
 
 ```bash
-bestie mcp add
+bestie mcp add <name> --url <url> [--oauth-client-id <id>]
 bestie mcp list
 bestie mcp show <name>
 bestie mcp test <name>
+bestie mcp test <name> --connect
 bestie mcp tools <name>
-bestie mcp enable <name>
-bestie mcp disable <name>
-bestie mcp remove <name>
+bestie mcp tools <name> --connect
+bestie mcp classify <server> <tool> --category read
+bestie mcp login <server>
+bestie mcp login <server> --code <code>
+bestie mcp call <server> <tool> --read --json '{...}'
 ```
 
-Implemented locally today: `list`, `show`, `test`, `test --connect`, `tools --connect`, `classify`, and classified read-only `call`. Add/enable/disable/remove and broader tool categories remain future onboarding/productization work.
+Implemented locally today: `add`, `list`, `show`, `test`, `test --connect`, `tools`, `tools --connect`, `classify`, `login`, and classified read-only `call`. Remote URL servers use the official MCP SDK for streamable HTTP setup, metadata discovery, OAuth login URLs, and token exchange into `.env`. Agent tool loops can prepare/apply MCP server config from docs or links, MCP config apply defaults to allow after validation, and the runtime reloads config after successful MCP config changes. Enable/disable/remove and broader tool categories remain future onboarding/productization work.
 
 Onboarding should ask:
 

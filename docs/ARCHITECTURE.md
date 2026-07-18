@@ -1,6 +1,6 @@
 # Architecture
 
-This document describes the current long-term architecture and the local-development runtime that now exists. Phase Now terminal chat/onboarding is complete; the codebase is in local MVP hardening with Telegram, Zalo, daemon management, local SQLite memory, Doctor, permission-gated tools, installed skills, npm update checks, and classified read-only MCP calls implemented for local development.
+This document describes the current long-term architecture and the local-development runtime that now exists. Phase Now terminal chat/onboarding is complete; the codebase is in local MVP hardening with Telegram, Zalo, cron, daemon/service management, local SQLite memory, Doctor, permission-gated tools, installed skills, npm update checks, and SDK-backed MCP setup plus classified read calls implemented for local development.
 
 ## Overview
 
@@ -33,6 +33,7 @@ Owns user-facing commands:
 - `doctor`
 - `memory`
 - `channels telegram|zalo`
+- `cron`
 - `daemon`
 - `service`
 - `tools`
@@ -41,7 +42,7 @@ Owns user-facing commands:
 - `update`
 - future backup/restore commands
 
-Current local development includes `onboard`, `chat`, `status`, `logs`, `doctor`, `memory`, `channels`, `daemon`, `service`, `skills`, `tools`, `mcp`, and `update` commands. Backup/restore remain later milestones.
+Current local development includes `onboard`, `chat`, `status`, `logs`, `doctor`, `memory`, `channels`, `cron`, `daemon`, `service`, `skills`, `tools`, `mcp`, and `update` commands. Backup/restore remain later milestones.
 
 CLI should call runtime services, not duplicate business logic.
 
@@ -100,7 +101,8 @@ Current real channels:
 
 - Telegram long polling with owner allowlist, slash commands, typing, edited tool-progress messages, transcript smoke, shared attachment pipeline, and shared runtime behavior
 - Zalo polling with owner allowlist, text replies, memory approval prompts, and friendly tool progress labels
-- daemon start/stop/restart/status for `telegram`, `zalo`, or `all`
+- cron schedule CRUD, logs, and scheduler runtime
+- daemon start/stop/restart/status for `telegram`, `zalo`, `cron`, or `all`
 - service install/uninstall/restart/status for one Linux user systemd unit, `bestie.service`, which runs configured Telegram, Zalo, cron, and future service targets together
 
 Later:
@@ -147,12 +149,14 @@ Current local foundation allows trusted read-only actions, asks or denies riskie
 
 Current foundation and future extension points:
 
-- classified read-only MCP calls through local config and permission review
-- future broader MCP router for arbitrary tool servers
+- MCP config/list/show/test/tools/classify/login/call commands backed by `@modelcontextprotocol/sdk`
+- streamable HTTP MCP setup with metadata discovery, OAuth login URLs, token exchange into `.env`, and classified read calls through local config and permission review
+- agent tool-loop helpers that can prepare/apply MCP server config from docs or links, then reload config without requiring a Bestie restart
+- future broader MCP execution categories beyond classified reads
 - plugin runtime for native modules
 - agent registry for specialist subagents
 
-Broader MCP, plugins, and multi-agent features must wait until Doctor, logging, permissions, and real-channel behavior are mature.
+Broader MCP execution categories, plugins, and multi-agent features must wait until Doctor, logging, permissions, and real-channel behavior are mature.
 
 ## Data Paths
 

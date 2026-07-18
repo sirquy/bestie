@@ -19,7 +19,7 @@ Status: completed for local development.
 - Telegram/Zalo reliability fixes discovered by daily local use
 - skills and update-command polish when it improves owner workflows
 
-Status: local MVP foundation complete. Terminal chat, onboarding, local SQLite memory, Doctor, Telegram/Zalo local polling, all-channel daemon management, permission-gated local tools, classified read-only MCP calls, installed skills, npm update checks, Telegram real-bot smoke, and one-command installer smoke exist for local development.
+Status: local MVP foundation complete. Terminal chat, onboarding, local SQLite memory, Doctor, Telegram/Zalo local polling, cron, daemon management for `telegram|zalo|cron|all`, one `bestie.service` systemd runtime, permission-gated local tools, SDK-backed MCP setup plus classified read calls, installed skills, npm update checks, Telegram real-bot smoke, and one-command installer smoke exist for local development.
 
 ## Later
 
@@ -32,7 +32,7 @@ Status: local MVP foundation complete. Terminal chat, onboarding, local SQLite m
 
 ## Future
 
-- broader MCP support after permission layer, local tool logging, and real-channel readiness
+- broader MCP execution categories after permission layer, local tool logging, and real-channel readiness
 - ACP/multi-agent support
 - plugin system
 - persona templates/marketplace
@@ -41,7 +41,7 @@ Status: local MVP foundation complete. Terminal chat, onboarding, local SQLite m
 
 ## Hard Rules
 
-- The original Phase Now excluded Telegram, memory, Zep, MCP/ACP, plugins, installer, UI, avatar, voice, hosted/SaaS, analytics, and telemetry. The current local MVP has since implemented Telegram, Zalo, local memory, Doctor, permission-gated tools, read-only MCP foundations, installer, skills, and update checks.
+- The original Phase Now excluded Telegram, memory, Zep, MCP/ACP, plugins, installer, UI, avatar, voice, hosted/SaaS, analytics, and telemetry. The current local MVP has since implemented Telegram, Zalo, cron, local memory, Doctor, permission-gated tools, MCP setup/read foundations, installer, skills, update checks, daemon management, and one-service systemd integration.
 - Zep after SQLite
 - MCP/ACP after Doctor + permissions
 - UI after CLI basics

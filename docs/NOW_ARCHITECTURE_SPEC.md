@@ -20,6 +20,8 @@ If these files conflict, prefer them in that order.
 
 Phase Now is a local CLI application.
 
+This boundary is historical for the original Phase Now slice. Later local MVP work has since implemented Telegram/Zalo channels, cron, SQLite memory, permission-gated tools, MCP foundations, installer/update flows, daemon management, and one-service systemd integration.
+
 Inside boundary:
 
 - CLI commands.

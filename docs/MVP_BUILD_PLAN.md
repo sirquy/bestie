@@ -123,9 +123,10 @@ Deliverables:
 - internal read tools for files, file search, logs, memories, multi-file reads, Markdown bundles, and read-only git status/diff/log context
 - bounded internal action tools for file write, exact text edit, git-compatible patch apply, local exec, and process listing, each governed by per-tool `allow`, `ask`, or `deny` config
 - bounded HTTP(S) URL reads for setup links, including MCP docs/package pages, governed by per-tool `allow`, `ask`, or `deny` config
-- terminal and Telegram multi-step tool loop for internal read tools
-- MCP config/list/show/test/tools/classify/read-call commands
-- read-only MCP calls only when locally classified as `read`
+- terminal and Telegram multi-step tool loop for internal read tools, local action tools, and classified MCP reads
+- MCP add/list/show/test/tools/classify/login/call commands backed by `@modelcontextprotocol/sdk`
+- remote HTTP MCP metadata discovery, OAuth authorization URL generation, token exchange into `.env`, and config reload after successful MCP config changes
+- MCP calls execute only when locally classified as `read` or explicitly approved by the configured permission policy
 
 Acceptance:
 

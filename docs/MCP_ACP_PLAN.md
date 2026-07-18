@@ -1,6 +1,6 @@
 # Bestie - MCP and Multi-Agent Plan
 
-This is a future architecture plan, not immediate MVP work. `PROJECT.md` remains the source of truth when scope or priority conflicts appear.
+This file tracks current MCP foundations plus future MCP/ACP architecture. `PROJECT.md` remains the source of truth when scope or priority conflicts appear.
 
 ## Required Direction
 
@@ -26,19 +26,23 @@ Default safety posture:
 - unknown tools ask first
 - all tool calls are logged
 
-Current local-development CLI foundation plus future additions:
+Current local-development MCP commands:
 
 ```bash
 bestie mcp add <name> --url <url> [--oauth-client-id <id>]
 bestie mcp list
 bestie mcp show <name>
 bestie mcp test <name>
+bestie mcp test <name> --connect
 bestie mcp tools <name>
-bestie mcp enable <name>
-bestie mcp disable <name>
+bestie mcp tools <name> --connect
+bestie mcp classify <server> <tool> --category read
+bestie mcp login <server>
+bestie mcp login <server> --code <code>
+bestie mcp call <server> <tool> --read --json '{...}'
 ```
 
-Currently implemented commands are `add`, `list`, `show`, `test`, `test --connect`, `tools --connect`, `classify`, `login`, and classified read-only `call`. Enable/disable and broader tool execution categories remain future work.
+Currently implemented commands are `add`, `list`, `show`, `test`, `test --connect`, `tools`, `tools --connect`, `classify`, `login`, and classified read-only `call`. Enable/disable/remove and broader tool execution categories remain future productization work.
 
 ## Multi-Agent Principles
 
