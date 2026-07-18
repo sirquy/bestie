@@ -52,7 +52,7 @@ process.stdin.on("data", (chunk) => {
       process.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: request.id, result: { protocolVersion: "2024-11-05", capabilities: {}, serverInfo: { name: "fake", version: "0.0.0" } } }) + "\\n");
     }
     if (request.method === "tools/list") {
-      process.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: request.id, result: { tools: [{ name: "read_file", description: "Read a local file", inputSchema: { type: "object" } }, { name: "no_description", inputSchema: { type: "object" } }] } }) + "\\n");
+      process.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: request.id, result: { tools: [{ name: "read_file", description: "Read a local file", inputSchema: { type: "object" }, annotations: { readOnlyHint: true } }, { name: "no_description", inputSchema: { type: "object" } }] } }) + "\\n");
     }
   }
 });
@@ -65,7 +65,7 @@ process.stdin.on("data", (chunk) => {
       ok: true,
       status: "pass",
       message: "MCP server fake returned 2 tool(s).",
-      tools: [{ name: "read_file", description: "Read a local file" }, { name: "no_description" }],
+      tools: [{ name: "read_file", description: "Read a local file", annotations: { readOnlyHint: true } }, { name: "no_description" }],
     });
   } finally {
     await rm(rootDir, { recursive: true, force: true });

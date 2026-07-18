@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
@@ -182,6 +183,40 @@ test("runMcpCommand passes .env values to remote MCP tool discovery", async () =
     });
 
     assert.deepEqual(lines, ["[PASS] MCP server composio returned 0 tool(s)."]);
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("runMcpCommand auto-classifies discovered MCP tools from annotations", async () => {
+  const paths = await createTempPaths();
+
+  try {
+    await mkdir(paths.appDir, { recursive: true });
+    await writeConfig({ ...config, mcp: { servers: [{ name: "remote", enabled: true, transport: "http", url: "https://example.com/mcp" }] } }, paths);
+
+    await runMcpCommand({
+      argv: ["node", "bestie", "mcp", "tools", "remote", "--connect"],
+      paths,
+      listTools: async () => ({
+        ok: true,
+        status: "pass",
+        message: "MCP server remote returned 3 tool(s).",
+        tools: [
+          { name: "lookup", annotations: { readOnlyHint: true } },
+          { name: "delete_record", annotations: { destructiveHint: true } },
+          { name: "send_message", annotations: { openWorldHint: true } },
+        ],
+      }),
+      writeLine: () => undefined,
+    });
+
+    const updated = JSON.parse(await readFile(paths.configPath, "utf8")) as AppConfig;
+    assert.deepEqual(updated.mcp?.servers[0].tools, [
+      { name: "lookup", category: "read" },
+      { name: "delete_record", category: "destructive" },
+      { name: "send_message", category: "external_write" },
+    ]);
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
   }
@@ -425,6 +460,80 @@ test("runMcpCommand rejects invalid MCP tool classification categories", async (
   }
 });
 
+test("runMcpCommand adds URL MCP servers with discovered OAuth metadata", async () => {
+  const paths = await createTempPaths();
+  const lines: string[] = [];
+  const oauthServer = createServer((request: IncomingMessage, response: ServerResponse) => {
+    response.setHeader("content-type", "application/json");
+    if (request.url === "/.well-known/oauth-protected-resource/mcp") {
+      response.end(JSON.stringify({ resource: `${origin}/mcp`, authorization_servers: [origin], scopes_supported: ["read"] }));
+      return;
+    }
+    if (request.url === "/.well-known/oauth-authorization-server") {
+      response.end(JSON.stringify({ issuer: origin, authorization_endpoint: `${origin}/authorize`, token_endpoint: `${origin}/token`, response_types_supported: ["code"], scopes_supported: ["read"] }));
+      return;
+    }
+    response.statusCode = 404;
+    response.end(JSON.stringify({ error: "not_found" }));
+  });
+
+  await new Promise<void>((resolve) => oauthServer.listen(0, "127.0.0.1", resolve));
+  const address = oauthServer.address();
+  assert(address && typeof address === "object");
+  const origin = `http://127.0.0.1:${address.port}`;
+
+  try {
+    await mkdir(paths.appDir, { recursive: true });
+    await writeConfig(config, paths);
+
+    await runMcpCommand({ argv: ["node", "bestie", "mcp", "add", "remote", "--url", `${origin}/mcp`, "--oauth-client-id", "bestie-agent"], paths, writeLine: (line) => lines.push(line) });
+
+    const updated = JSON.parse(await readFile(paths.configPath, "utf8")) as AppConfig;
+    assert.deepEqual(updated.mcp?.servers, [
+      {
+        name: "remote",
+        enabled: true,
+        transport: "streamable-http",
+        url: `${origin}/mcp`,
+        auth: {
+          type: "oauth",
+          authorizationUrl: `${origin}/authorize`,
+          tokenUrl: `${origin}/token`,
+          clientId: "bestie-agent",
+          scopes: ["read"],
+          resource: `${origin}/mcp`,
+          envVar: "REMOTE_AUTHORIZATION",
+          headerName: "authorization",
+        },
+      },
+    ]);
+    assert.match(lines.join("\n"), /MCP server remote saved/);
+    assert.match(lines.join("\n"), /OAuth metadata discovered/);
+  } finally {
+    await new Promise<void>((resolve, reject) => oauthServer.close((error) => (error ? reject(error) : resolve())));
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("runMcpCommand adds URL MCP servers without OAuth discovery", async () => {
+  const paths = await createTempPaths();
+  const lines: string[] = [];
+
+  try {
+    await mkdir(paths.appDir, { recursive: true });
+    await writeConfig(config, paths);
+
+    await runMcpCommand({ argv: ["node", "bestie", "mcp", "add", "remote", "--url", "https://example.com/mcp"], paths, writeLine: (line) => lines.push(line) });
+
+    const updated = JSON.parse(await readFile(paths.configPath, "utf8")) as AppConfig;
+    assert.deepEqual(updated.mcp?.servers, [{ name: "remote", enabled: true, transport: "streamable-http", url: "https://example.com/mcp" }]);
+    assert.match(lines.join("\n"), /MCP server remote saved/);
+    assert.doesNotMatch(lines.join("\n"), /OAuth metadata discovered/);
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
 test("runMcpCommand starts OAuth login for configured streamable HTTP MCP servers", async () => {
   const paths = await createTempPaths();
   const lines: string[] = [];
@@ -472,7 +581,7 @@ test("runMcpCommand starts OAuth login for configured streamable HTTP MCP server
 
     const session = JSON.parse(await readFile(resolve(paths.dataDir, "mcp-oauth-kling.json"), "utf8")) as { envVar?: string; verifier?: string };
     assert.equal(session.envVar, "KLING_MCP_AUTHORIZATION");
-    assert.match(session.verifier ?? "", /^[A-Za-z0-9_-]+$/);
+    assert.match(session.verifier ?? "", /^[A-Za-z0-9._~-]+$/);
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
   }
@@ -481,6 +590,59 @@ test("runMcpCommand starts OAuth login for configured streamable HTTP MCP server
 test("runMcpCommand completes OAuth login without printing the code", async () => {
   const paths = await createTempPaths();
   const lines: string[] = [];
+  const requests: Array<{ path?: string; body: string }> = [];
+  const oauthServer = createServer(async (request: IncomingMessage, response: ServerResponse) => {
+    const body = await readRequestBody(request);
+    requests.push({ path: request.url, body });
+    response.setHeader("content-type", "application/json");
+    response.end(JSON.stringify({ access_token: "access-token", token_type: "Bearer", refresh_token: "refresh-token", expires_in: 3600 }));
+  });
+
+  await new Promise<void>((resolve) => oauthServer.listen(0, "127.0.0.1", resolve));
+  const address = oauthServer.address();
+  assert(address && typeof address === "object");
+  const origin = `http://127.0.0.1:${address.port}`;
+
+  try {
+    await mkdir(paths.appDir, { recursive: true });
+    await writeConfig(
+      {
+        ...config,
+        mcp: {
+          servers: [
+            {
+              name: "kling",
+              enabled: true,
+              transport: "streamable-http",
+              url: "https://kling.ai/mcp",
+              auth: { type: "oauth", authorizationUrl: `${origin}/oauth/authorize`, tokenUrl: `${origin}/oauth/token`, clientId: "bestie-agent", redirectUri: "http://127.0.0.1:8989/oauth/callback", envVar: "KLING_MCP_AUTHORIZATION" },
+            },
+          ],
+        },
+      },
+      paths,
+    );
+
+    await runMcpCommand({ argv: ["node", "bestie", "mcp", "login", "kling"], paths, writeLine: () => undefined });
+    await runMcpCommand({ argv: ["node", "bestie", "mcp", "login", "kling", "--code", "secret-code"], paths, writeLine: (line) => lines.push(line) });
+
+    assert.match(await readFile(paths.envPath, "utf8"), /KLING_MCP_AUTHORIZATION="Bearer access-token"/);
+    assert.equal(requests.length, 1);
+    assert.equal(requests[0].path, "/oauth/token");
+    assert.match(requests[0].body, /grant_type=authorization_code/);
+    assert.match(requests[0].body, /code=secret-code/);
+    assert.match(requests[0].body, /code_verifier=/);
+    assert.doesNotMatch(lines.join("\n"), /secret-code/);
+    assert.doesNotMatch(lines.join("\n"), /access-token/);
+    assert.match(lines.join("\n"), /Stored OAuth access token/);
+  } finally {
+    await new Promise<void>((resolve, reject) => oauthServer.close((error) => (error ? reject(error) : resolve())));
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("runMcpCommand requires tokenUrl before completing OAuth login", async () => {
+  const paths = await createTempPaths();
 
   try {
     await mkdir(paths.appDir, { recursive: true });
@@ -502,11 +664,7 @@ test("runMcpCommand completes OAuth login without printing the code", async () =
       paths,
     );
 
-    await runMcpCommand({ argv: ["node", "bestie", "mcp", "login", "kling", "--code", "secret-code"], paths, writeLine: (line) => lines.push(line) });
-
-    assert.match(await readFile(paths.envPath, "utf8"), /KLING_MCP_AUTHORIZATION="oauth-code:secret-code"/);
-    assert.doesNotMatch(lines.join("\n"), /secret-code/);
-    assert.match(lines.join("\n"), /Stored OAuth result/);
+    await assert.rejects(runMcpCommand({ argv: ["node", "bestie", "mcp", "login", "kling", "--code", "secret-code"], paths, writeLine: () => undefined }), /requires tokenUrl/);
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
   }
@@ -560,4 +718,16 @@ async function createTempPaths(): Promise<RuntimePaths> {
     memoryDbPath: resolve(dataDir, "memory.sqlite"),
     workspaceDir: resolve(appDir, "workspace"),
   };
+}
+
+function readRequestBody(request: IncomingMessage): Promise<string> {
+  return new Promise((resolve, reject) => {
+    let body = "";
+    request.setEncoding("utf8");
+    request.on("data", (chunk) => {
+      body += chunk;
+    });
+    request.on("end", () => resolve(body));
+    request.on("error", reject);
+  });
 }

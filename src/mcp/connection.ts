@@ -14,6 +14,11 @@ export interface McpConnectionCheck {
 export interface McpToolSummary {
   name: string;
   description?: string;
+  annotations?: {
+    readOnlyHint?: boolean;
+    destructiveHint?: boolean;
+    openWorldHint?: boolean;
+  };
 }
 
 export interface McpToolListResult extends McpConnectionCheck {
@@ -156,8 +161,22 @@ function parseToolList(result: unknown): McpToolSummary[] {
       return [];
     }
 
-    return [{ name: tool.name, ...(typeof tool.description === "string" && tool.description.trim().length > 0 ? { description: tool.description } : {}) }];
+    return [
+      {
+        name: tool.name,
+        ...(typeof tool.description === "string" && tool.description.trim().length > 0 ? { description: tool.description } : {}),
+        ...(isRecord(tool.annotations) ? { annotations: parseToolAnnotations(tool.annotations) } : {}),
+      },
+    ];
   });
+}
+
+function parseToolAnnotations(value: Record<string, unknown>): McpToolSummary["annotations"] {
+  return {
+    ...(typeof value.readOnlyHint === "boolean" ? { readOnlyHint: value.readOnlyHint } : {}),
+    ...(typeof value.destructiveHint === "boolean" ? { destructiveHint: value.destructiveHint } : {}),
+    ...(typeof value.openWorldHint === "boolean" ? { openWorldHint: value.openWorldHint } : {}),
+  };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

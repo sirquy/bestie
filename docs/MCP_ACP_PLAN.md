@@ -29,7 +29,7 @@ Default safety posture:
 Current local-development CLI foundation plus future additions:
 
 ```bash
-bestie mcp add
+bestie mcp add <name> --url <url> [--oauth-client-id <id>]
 bestie mcp list
 bestie mcp show <name>
 bestie mcp test <name>
@@ -38,7 +38,7 @@ bestie mcp enable <name>
 bestie mcp disable <name>
 ```
 
-Currently implemented commands are `list`, `show`, `test`, `test --connect`, `tools --connect`, `classify`, and classified read-only `call`. Add/enable/disable and broader tool categories remain future work.
+Currently implemented commands are `add`, `list`, `show`, `test`, `test --connect`, `tools --connect`, `classify`, `login`, and classified read-only `call`. Enable/disable and broader tool execution categories remain future work.
 
 ## Multi-Agent Principles
 
@@ -96,12 +96,12 @@ Current MCP skeleton:
 - `mcp.servers` config shape is accepted and validated.
 - `bestie mcp list`, `bestie mcp show <name>`, and `bestie mcp test <name>` inspect configured servers without starting them or printing env values. `show` includes locally classified tools and categories.
 - `bestie mcp test <name> --connect` can explicitly start one enabled stdio MCP server, send initialize, then stop it.
-- `bestie mcp tools <name> --connect` can list MCP tool metadata from one server.
+- `bestie mcp tools <name> --connect` can list MCP tool metadata from one server and auto-saves classifications for previously unseen tools when MCP SDK annotations are present. The mapping is conservative: `destructiveHint` -> `destructive`, `readOnlyHint` -> `read`, `openWorldHint` -> `external_write`, otherwise `unknown`.
 - `bestie mcp classify <server> <tool> --category read` can update local MCP tool classification without starting the server.
 - `bestie mcp call <server> <tool> --read --json '{...}'` can call one MCP tool only when the local config classifies that tool as `read`; calls go through `reviewActionPermission` with redacted audit logging. Add `--ask` to force an interactive one-time approval prompt for the call.
 - terminal chat and Telegram can execute multi-step model-requested read-only internal or MCP tool calls per user turn. MCP tools still require local classification as `read`; internal read tools are built in. Telegram passes an explicit permission policy into the tool loop and uses the inline approval foundation for approval-required categories. The runtime feeds each tool result back to the model before returning the final answer, with guidance to choose the right tool family, recover from missing paths when useful, treat empty results as not found, and avoid inventing unsupported facts. Shell-command JSON such as `{ "cmd": "..." }` is rejected and repaired through the model instead of being printed or executed. For repo-scale documentation summaries, the agent can use `internal.read_markdown_bundle` to discover, sort, and read Markdown docs under per-file and total byte budgets, or `internal.read_many_files` for explicit file sets.
 - terminal chat and channel tool loops can now self-configure MCP servers through `internal.mcp_prepare_server_config` and `internal.mcp_apply_server_config`. The intended flow is: read MCP install docs with `internal.read_url`, list existing servers with `internal.mcp_list_servers`, discover server/tool/auth details, prepare a validated config proposal, and apply it directly after validation. MCP config apply is always allowed by default because it changes Bestie's own local MCP registry and still stores only env var names or auth metadata; raw authorization headers, cookies, API keys, tokens, and secrets must not be written to `config.json`.
-- Authenticated MCP setup should be machine-driven up to the account-consent step. For OAuth servers, Bestie discovers and saves server metadata in `config.json`, including `transport: "streamable-http"` when needed and an `auth` block with `authorizationUrl`, `clientId`, optional scopes/redirect/resource, and the target env var name. After config is saved, Bestie runs `bestie mcp login <server>` through `internal.exec`; that CLI command generates the complete authorization URL with PKCE challenge and state, stores the verifier under the local data directory, and prints the exact URL for the user to open. Bestie must not guess `/authorize` endpoints, query params, OAuth state, placeholders, or provider-specific auth paths by hand. When the user sends the code, Bestie runs `bestie mcp login <server> --code <code>`, stores the result in `.env`, then runs `internal.mcp_list_tools` with `connect=true` to verify discovery. Secrets remain outside config and command output must not echo raw codes or tokens.
+- Authenticated MCP setup should be machine-driven up to the account-consent step. For URL-based servers, Bestie can run `bestie mcp add <server> --url <url> --oauth-client-id <client-id>` to save the server and discover OAuth metadata through the official MCP SDK. The saved `config.json` includes `transport: "streamable-http"` by default and, when discovered, an `auth` block with `authorizationUrl`, `tokenUrl`, `clientId`, scopes/resource, and the target env var name. After config is saved, Bestie runs `bestie mcp login <server>` through `internal.exec`; that CLI command uses SDK OAuth helpers to generate the complete authorization URL with PKCE challenge and state, stores the verifier under the local data directory, and prints the exact URL for the user to open. Bestie must not guess `/authorize` endpoints, query params, OAuth state, placeholders, or provider-specific auth paths by hand. When the user sends the code, Bestie runs `bestie mcp login <server> --code <code>`, exchanges it through `tokenUrl`, stores the resulting authorization value in `.env`, then runs `internal.mcp_list_tools` with `connect=true` to verify discovery and auto-classify annotated tools. Secrets remain outside config and command output must not echo raw codes or tokens.
 - Doctor reports configured MCP servers, disabled-server warnings, and enabled servers missing tool classifications, but does not run MCP connection tests yet.
 
 Multi-agent first milestone:

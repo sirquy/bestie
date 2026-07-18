@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
@@ -356,6 +357,52 @@ test("runAgentToolRequest lists configured MCP servers and configured tools", as
     assert.equal(tools.ok, true);
     assert.deepEqual(tools.result, { server: "fs", transport: "stdio", tools: [{ name: "read_file", category: "read" }], discovered: false });
   } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("runAgentToolRequest discovers MCP OAuth metadata", async () => {
+  const paths = await createTempPaths();
+  const oauthServer = createServer((request: IncomingMessage, response: ServerResponse) => {
+    response.setHeader("content-type", "application/json");
+    if (request.url === "/resource-metadata") {
+      response.end(JSON.stringify({ resource: "https://example.com/mcp", authorization_servers: [oauthOrigin], scopes_supported: ["read", "write"] }));
+      return;
+    }
+    if (request.url === "/.well-known/oauth-authorization-server") {
+      response.end(JSON.stringify({ issuer: oauthOrigin, authorization_endpoint: `${oauthOrigin}/authorize`, token_endpoint: `${oauthOrigin}/token`, response_types_supported: ["code"], scopes_supported: ["read", "write"] }));
+      return;
+    }
+    response.statusCode = 404;
+    response.end(JSON.stringify({ error: "not_found" }));
+  });
+
+  await new Promise<void>((resolve) => oauthServer.listen(0, "127.0.0.1", resolve));
+  const address = oauthServer.address();
+  assert(address && typeof address === "object");
+  const oauthOrigin = `http://127.0.0.1:${address.port}`;
+
+  try {
+    await mkdir(paths.appDir, { recursive: true });
+    const result = await runAgentToolRequest({
+      config: createConfig(),
+      paths,
+      request: { tool: "internal.mcp_discover_oauth", arguments: { url: `${oauthOrigin}/mcp`, resourceMetadataUrl: `${oauthOrigin}/resource-metadata` } },
+    });
+
+    assert.equal(result.ok, true);
+    assert.equal(result.status, "pass");
+    assert.deepEqual(result.result, {
+      authorizationServerUrl: oauthOrigin,
+      resource: "https://example.com/mcp",
+      scopes: ["read", "write"],
+      authorizationUrl: `${oauthOrigin}/authorize`,
+      tokenUrl: `${oauthOrigin}/token`,
+      tokenEndpointAuthMethods: [],
+      resourceMetadataUrl: `${oauthOrigin}/resource-metadata`,
+    });
+  } finally {
+    await new Promise<void>((resolve, reject) => oauthServer.close((error) => (error ? reject(error) : resolve())));
     await rm(paths.rootDir, { recursive: true, force: true });
   }
 });
