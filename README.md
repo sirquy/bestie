@@ -40,7 +40,7 @@ Some roadmap items are intentionally not ready yet: hosted mode, broad external 
 
 ## Requirements
 
-- Node.js 20 or newer
+- Node.js 24
 - npm
 - An OpenAI-compatible provider API key for chat
 - Optional: Telegram bot token for Telegram mode
@@ -55,7 +55,7 @@ npm run dev -- doctor
 npm run dev -- chat
 ```
 
-For a local user install from a checkout:
+For a local user install:
 
 ```bash
 ./install.sh --skip-onboard

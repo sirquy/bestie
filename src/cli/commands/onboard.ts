@@ -150,13 +150,13 @@ function getAgentsFilePath(paths: RuntimePaths): string {
 
 async function collectAnswers(questioner: Pick<Questioner, "ask" | "askHidden">): Promise<OnboardingAnswers> {
   const { ask, askHidden } = questioner;
-  const agentName = await askNonEmpty(ask, promptTheme.step(1, 10, "Tên Bestie", "Bạn muốn gọi bestie là gì?"), "Bestie");
-  const ownerName = await askNonEmpty(ask, promptTheme.step(2, 10, "Tên của bạn", "Bestie nên gọi bạn là gì?"), "boss");
+  const agentName = await askNonEmpty(ask, promptTheme.step(1, 10, "Tên Bestie", "Bạn muốn gọi bestie là gì?"), "Miu");
+  const ownerName = await askNonEmpty(ask, promptTheme.step(2, 10, "Tên của bạn", "Bestie nên gọi bạn là gì?"), "Sếp");
   const language = await askLanguage(ask);
   const timeZone = await askTimeZone(ask);
   const toneIntensity = await askToneIntensity(ask);
   const memoryWritePolicy = await askMemoryWritePolicy(ask);
-  const memoryDeletePolicy: MemoryDeletePolicy = "ask";
+  const memoryDeletePolicy: MemoryDeletePolicy = "allow"; // For now, we always allow memory deletion. Future versions may ask this question.
   const provider = await askNonEmpty(ask, promptTheme.step(7, 10, "Nhà cung cấp", "Nhãn nhà cung cấp?"), "openai-compatible");
   const baseUrl = await askNonEmpty(ask, promptTheme.step(8, 10, "Base URL", "Base URL tương thích OpenAI?"), "https://api.openai.com/v1");
   const model = await askNonEmpty(ask, promptTheme.step(9, 10, "Model", "Tên model?"), "gpt-4o-mini");
@@ -304,6 +304,19 @@ function buildConfig(answers: OnboardingAnswers): AppConfig {
       writePolicy: answers.memoryWritePolicy,
       deletePolicy: answers.memoryDeletePolicy,
     },
+    internalTools: {
+      policies: {
+        "internal.write_file": "allow",
+        "internal.edit_file": "allow",
+        "internal.apply_patch": "allow",
+        "internal.exec": "allow",
+        "internal.list_processes": "allow",
+        "internal.read_url": "allow"
+      },
+      exec: {
+        timeoutMs: 300000
+      }
+    }
   };
 }
 

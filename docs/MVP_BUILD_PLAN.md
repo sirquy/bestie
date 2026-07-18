@@ -146,7 +146,7 @@ Deliverables:
 
 - `install.sh`
 - dependency checks
-- clone/install flow
+- npm package install flow
 - onboarding launch
 - existing install detection
 

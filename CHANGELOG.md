@@ -6,6 +6,21 @@ This project follows semantic versioning after the first public package release.
 
 ## [Unreleased]
 
+## [0.1.15] - 2026-07-18
+
+### Added
+
+- Installer support for installing Bestie from the published `bestie-agent` npm package.
+- Installer smoke coverage for local npm tarball installs and reinstall preservation.
+
+### Changed
+
+- Onboarding defaults now use Vietnamese-friendly names and allow memory deletion by default.
+- New onboarding configs now default internal local tools to `allow` with a longer execution timeout.
+- Installer now provisions Node.js 24 through nvm when needed and reloads `~/.bashrc` before package installation.
+- Installer and docs now describe npm-package installation instead of source checkout installation.
+- Package engine requirement now targets Node.js 24+.
+
 ## [0.1.11] - 2026-07-15
 
 ### Added

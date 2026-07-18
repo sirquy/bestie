@@ -1,6 +1,6 @@
 {
   "name": "bestie-agent",
-  "version": "0.1.14",
+  "version": "0.1.15",
   "description": "Vietnamese-first bestie agent CLI.",
   "type": "module",
   "files": [
@@ -57,7 +57,7 @@
     "smoke:tools:run": "node dist/cli/index.js tools logs --lines 5 | grep -q 'action_permission_decision' && node dist/cli/index.js tools memories --limit 5 >/dev/null && node dist/cli/index.js tools git status >/dev/null"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=24"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",

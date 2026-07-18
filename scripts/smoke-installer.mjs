@@ -1,41 +1,40 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 
 const projectRoot = process.env.INIT_CWD ?? process.cwd();
 const rootDir = await mkdtemp(resolve(tmpdir(), "bestie-installer-smoke-"));
-const installDir = resolve(rootDir, ".local/share/bestie/source");
 const binDir = resolve(rootDir, ".local/bin");
 
 try {
-  const install = await run(resolve(projectRoot, "install.sh"), ["--skip-onboard", "--source-dir", projectRoot, "--dir", installDir, "--bin-dir", binDir], { cwd: rootDir, env: { HOME: rootDir } });
+  const pack = await run("npm", ["pack", "--pack-destination", rootDir], { cwd: projectRoot });
+  const packagePath = resolve(rootDir, pack.stdout.trim().split(/\r?\n/).pop());
+
+  const install = await run(resolve(projectRoot, "install.sh"), ["--skip-onboard", "--package", packagePath, "--bin-dir", binDir], { cwd: rootDir, env: { HOME: rootDir } });
   assert.match(install.stdout, /Cài đặt Bestie hoàn tất/);
 
-  const doctor = await run(resolve(binDir, "bestie"), ["doctor"], { cwd: installDir, env: { HOME: rootDir }, allowFailure: true });
+  const doctor = await run(resolve(binDir, "bestie"), ["doctor"], { cwd: rootDir, env: { HOME: rootDir }, allowFailure: true });
   assert.match(doctor.stdout, /Bestie Doctor/);
   assert.equal(doctor.code, 1);
 
   await run(resolve(binDir, "bestie"), ["onboard", "--skip-provider-test"], {
-    cwd: installDir,
+    cwd: rootDir,
     env: { HOME: rootDir },
-    input: "Bestie\nBoss\nvi\nAsia/Ho_Chi_Minh\n7\nask\nopenai-compatible\nhttp://127.0.0.1:9/v1\ntest-model\ntest-key\n",
+    input: "Bestie\nBoss\nvi\nAsia/Ho_Chi_Minh\n7\nallow\nopenai-compatible\nhttp://127.0.0.1:9/v1\ntest-model\ntest-key\n",
   });
-  const readyDoctor = await run(resolve(binDir, "bestie"), ["doctor"], { cwd: installDir, env: { HOME: rootDir } });
+  const readyDoctor = await run(resolve(binDir, "bestie"), ["doctor"], { cwd: rootDir, env: { HOME: rootDir } });
   assert.match(readyDoctor.stdout, /Tóm tắt: tìm thấy 0 vấn đề/);
 
   const configBefore = await readFile(resolve(rootDir, ".bestie/config.json"), "utf8");
-  const reinstall = await run(resolve(projectRoot, "install.sh"), ["--skip-onboard", "--source-dir", projectRoot, "--dir", installDir, "--bin-dir", binDir], { cwd: rootDir, env: { HOME: rootDir } });
+  const reinstall = await run(resolve(projectRoot, "install.sh"), ["--skip-onboard", "--package", packagePath, "--bin-dir", binDir], { cwd: rootDir, env: { HOME: rootDir } });
   assert.match(reinstall.stdout, /Cài đặt Bestie hoàn tất/);
   assert.equal(await readFile(resolve(rootDir, ".bestie/config.json"), "utf8"), configBefore);
 
-  const unknownDir = resolve(rootDir, "unknown-existing-dir");
-  await mkdir(unknownDir);
-  await writeFile(resolve(unknownDir, "README.md"), "not bestie\n");
-  const rejected = await run(resolve(projectRoot, "install.sh"), ["--skip-onboard", "--source-dir", projectRoot, "--dir", unknownDir, "--bin-dir", binDir], { cwd: rootDir, env: { HOME: rootDir }, allowFailure: true });
+  const rejected = await run(resolve(projectRoot, "install.sh"), ["--skip-onboard", "--source-dir", projectRoot, "--bin-dir", binDir], { cwd: rootDir, env: { HOME: rootDir }, allowFailure: true });
   assert.notEqual(rejected.code, 0);
-  assert.match(rejected.stderr, /không phải checkout Bestie/);
+  assert.match(rejected.stderr, /Không hỗ trợ tùy chọn: --source-dir/);
 } finally {
   await rm(rootDir, { recursive: true, force: true });
 }

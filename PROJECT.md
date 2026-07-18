@@ -514,7 +514,7 @@ After running one command, the installer should:
 
 1. Check the user's environment.
 2. Install required runtime dependencies.
-3. Download or clone the Bestie package.
+3. Install the `bestie-agent` npm package.
 4. Start an onboarding wizard.
 5. Let the user create their own bestie character.
 6. Ask for required API keys and provider choices.
@@ -596,7 +596,7 @@ Reasons:
 
 Suggested stack:
 
-- Node.js 20+
+- Node.js 24
 - TypeScript
 - SQLite for local state
 - Fastify or Hono for local API/webhooks
@@ -697,18 +697,17 @@ Installer responsibilities:
    - `node`
    - `npm` or `pnpm`
 3. Install Node if missing, or print friendly instructions.
-4. Clone or copy the source checkout into `~/.local/share/bestie/source` or a chosen install directory.
-5. Install dependencies.
-6. Build the TypeScript CLI.
-7. Expose the `bestie` command through a predictable user-local bin directory.
-8. Run Doctor after install.
-9. Offer to run onboarding, which writes `.env`, config, character files, and initializes local runtime state.
-10. Leave long-running runtime management to `bestie daemon ...` or `bestie service install`; the installer should not auto-start Telegram/Zalo/cron or install systemd services.
+4. Install Node.js 24 through nvm when needed, then source `~/.bashrc` so the current shell sees the environment.
+5. Install Bestie from the npm package `bestie-agent` instead of cloning or copying source.
+6. Expose the `bestie` command through a predictable user-local bin directory.
+7. Run Doctor after install.
+8. Offer to run onboarding, which writes `.env`, config, character files, and initializes local runtime state.
+9. Leave long-running runtime management to `bestie daemon ...` or `bestie service install`; the installer should not auto-start Telegram/Zalo/cron or install systemd services.
 
 Install path:
 
 ```text
-~/.local/share/bestie/source
+~/.local/bin/bestie
 ```
 
 Runtime data remains under `~/.bestie/`.
@@ -1072,7 +1071,7 @@ Avoid overpromising:
 
 - `install.sh`
 - dependency checks
-- clone/install
+- npm package install
 - run onboarding
 - start command
 

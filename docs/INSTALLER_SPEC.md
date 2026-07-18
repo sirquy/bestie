@@ -23,12 +23,11 @@ Repo-local development may start with:
 
 The installer should:
 
-- install missing environment commands when possible: `git`, `node`, `npm`, and `rsync` when `--source-dir` is used
-- install Node.js 20 through `nvm` when Node.js is missing or older than 20
-- choose a local install directory, defaulting to `~/.local/share/bestie/source`
-- clone the repository when missing, or update only after confirming an existing install is a Bestie checkout
-- run `npm install` and `npm run build`
-- link or expose the `bestie` command in a predictable user-local bin directory
+- install missing environment commands when possible: `git`, `curl` or `wget`, `node`, and `npm`
+- install Node.js 24 through `nvm` when Node.js is missing or not version 24
+- source `~/.bashrc` after environment installation so the current shell sees the updated runtime
+- install Bestie through the npm package `bestie-agent`, not by cloning or copying a source checkout
+- expose the `bestie` command in a predictable user-local bin directory
 - run `bestie doctor` after install
 - offer to run `bestie onboard` after Doctor succeeds
 - print all installer-owned user-facing copy in Vietnamese
@@ -37,25 +36,23 @@ MVP flags:
 
 ```text
 	--skip-onboard      Do not offer to run bestie onboard after install.
-	--dir <path>        Install source checkout here. Defaults to ~/.local/share/bestie/source.
+	--package <name>    Install this npm package. Defaults to bestie-agent.
 	--bin-dir <path>    Place the bestie command here. Defaults to ~/.local/bin.
-	--source-dir <path> Copy this local checkout instead of cloning. Intended for smoke tests.
 ```
 
 ## Existing Install Detection
 
-If the target directory already exists, the installer should:
+The installer does not own source checkouts anymore. Existing source directories should be left alone. Reinstalling should:
 
-- refuse to overwrite unknown directories
-- detect an existing Bestie checkout by package name and CLI entrypoint
 - preserve `~/.bestie/`, `.env`, config, character, memory database, logs, skills, daemon state, and transcripts
-- explain how to update manually if automatic update is not safe
+- update the globally installed npm package
+- explain npm or environment failures without printing secrets
 
 ## Safety And Privacy
 
 The installer must never print or collect API keys, Telegram tokens, or raw `.env` contents.
 
-It should not run network checks beyond dependency installation and repository download unless the user explicitly chooses onboarding or Doctor checks that already require them.
+It should not run network checks beyond dependency installation and npm package installation unless the user explicitly chooses onboarding or Doctor checks that already require them.
 
 ## Recovery Output
 
@@ -68,10 +65,9 @@ Failures should include:
 
 Examples:
 
-- unsupported Node version: install Node.js 20+
+- unsupported Node version: install Node.js 24 with nvm
 - missing `git`: install Git and rerun
-- `npm install` failed: rerun from the checkout after fixing network or npm cache issues
-- build failed: run `npm run build` in the checkout and inspect TypeScript errors
+- `npm install -g bestie-agent` failed: rerun after fixing network, npm auth, or npm cache issues
 
 ## Acceptance Checks
 
@@ -85,7 +81,7 @@ npm run smoke:doctor
 npm run smoke
 ```
 
-The installer smoke must verify a fresh temporary install, onboarding handoff, reinstall preservation of `~/.bestie/`, and refusal to overwrite an unknown existing directory.
+The installer smoke must verify a fresh temporary npm-package install, onboarding handoff, reinstall preservation of `~/.bestie/`, and rejection of old source-install flags.
 
 Installer acceptance once `install.sh` exists:
 
