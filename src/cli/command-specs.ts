@@ -8,6 +8,7 @@ import { runMcpCommand } from "./commands/mcp.js";
 import { runMemoryCommand } from "./commands/memory.js";
 import { runOnboardCommand } from "./commands/onboard.js";
 import { runSkillsCommand } from "./commands/skills.js";
+import { runServiceCommand } from "./commands/daemon.js";
 import { runStatusCommand } from "./commands/status.js";
 import { runToolsCommand } from "./commands/tools.js";
 import { runUpdateCommand } from "./commands/update.js";
@@ -36,8 +37,12 @@ Tùy chọn daemon:
   stop [--channel telegram|zalo|cron|all]     Dừng runtime daemon
   restart [--channel telegram|zalo|cron|all]  Dừng rồi khởi động lại runtime daemon
   status [--channel telegram|zalo|cron|all]   Xem trạng thái runtime daemon
+
+Tùy chọn service:
   install                                    Cài và khởi động user systemd service
   uninstall                                  Dừng và gỡ user systemd service
+  status                                     Gợi ý lệnh xem trạng thái systemd service
+  restart                                    Restart user systemd services
 
 Tùy chọn tools:
   logs --lines N  Đọc log app đã redact gần đây qua permission gate
@@ -69,17 +74,24 @@ export const cliCommandSpecs: CliCommandSpec[] = [
   { name: "status", description: "Xem trạng thái thiết lập local", handler: runStatusCommand },
   {
     name: "daemon",
-    description: "Khởi động, dừng, kiểm tra, hoặc cài daemon nền local",
+    description: "Khởi động, dừng, hoặc kiểm tra daemon nền local",
     handler: runDaemonCommand,
     children: [
       { name: "start", description: "Khởi động runtime daemon", handler: runDaemonCommand },
       { name: "stop", description: "Dừng runtime daemon", handler: runDaemonCommand },
       { name: "restart", description: "Khởi động lại runtime daemon", handler: runDaemonCommand },
       { name: "status", description: "Xem trạng thái runtime daemon", handler: runDaemonCommand },
-      { name: "install", description: "Cài và khởi động user systemd service", handler: runDaemonCommand },
-      { name: "uninstall", description: "Dừng và gỡ user systemd service", handler: runDaemonCommand },
-      { name: "install-service", description: "Alias của install", handler: runDaemonCommand, hidden: true },
-      { name: "uninstall-service", description: "Alias của uninstall", handler: runDaemonCommand, hidden: true },
+    ],
+  },
+  {
+    name: "service",
+    description: "Cài, gỡ, restart, hoặc xem systemd user service của Bestie",
+    handler: runServiceCommand,
+    children: [
+      { name: "install", description: "Cài và khởi động user systemd service", handler: runServiceCommand },
+      { name: "uninstall", description: "Dừng và gỡ user systemd service", handler: runServiceCommand },
+      { name: "status", description: "Gợi ý lệnh xem trạng thái systemd service", handler: runServiceCommand },
+      { name: "restart", description: "Restart user systemd services", handler: runServiceCommand },
     ],
   },
   { name: "logs", description: "Xem log vận hành gần đây đã redact", handler: runLogsCommand },

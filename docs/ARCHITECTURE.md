@@ -34,13 +34,14 @@ Owns user-facing commands:
 - `memory`
 - `channels telegram|zalo`
 - `daemon`
+- `service`
 - `tools`
 - `mcp`
 - `skills`
 - `update`
 - future backup/restore commands
 
-Current local development includes `onboard`, `chat`, `status`, `logs`, `doctor`, `memory`, `channels`, `daemon`, `skills`, `tools`, `mcp`, and `update` commands. Backup/restore remain later milestones.
+Current local development includes `onboard`, `chat`, `status`, `logs`, `doctor`, `memory`, `channels`, `daemon`, `service`, `skills`, `tools`, `mcp`, and `update` commands. Backup/restore remain later milestones.
 
 CLI should call runtime services, not duplicate business logic.
 
@@ -100,6 +101,7 @@ Current real channels:
 - Telegram long polling with owner allowlist, slash commands, typing, edited tool-progress messages, transcript smoke, shared attachment pipeline, and shared runtime behavior
 - Zalo polling with owner allowlist, text replies, memory approval prompts, and friendly tool progress labels
 - daemon start/stop/restart/status for `telegram`, `zalo`, or `all`
+- service install/uninstall/restart/status for Linux user systemd units
 
 Later:
 

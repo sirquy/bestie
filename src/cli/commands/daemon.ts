@@ -35,6 +35,8 @@ interface DaemonCommandOptions {
   sleep?: (milliseconds: number) => Promise<void>;
 }
 
+export type ServiceCommandOptions = DaemonCommandOptions;
+
 interface DaemonState {
   channel?: DaemonChannel;
   pid: number;
@@ -89,17 +91,40 @@ export async function runDaemonCommand(optionsOrArgv: string[] | DaemonCommandOp
     return;
   }
 
-  if (subcommand === "install" || subcommand === "install-service") {
+  throw new UserFacingError("Cách dùng: bestie daemon start|stop|restart|status [--channel telegram|zalo|cron|all]", "DaemonUsageError");
+}
+
+export async function runServiceCommand(optionsOrArgv: string[] | ServiceCommandOptions = process.argv): Promise<void> {
+  const options = Array.isArray(optionsOrArgv) ? { argv: optionsOrArgv } : optionsOrArgv;
+  const argv = options.argv ?? process.argv;
+  const subcommand = argv[3] ?? "status";
+  const paths = options.paths ?? getRuntimePaths();
+  const writeLine = options.writeLine ?? console.log;
+
+  if (subcommand === "install") {
     await installSystemdUserService({ ...options, paths, writeLine });
     return;
   }
 
-  if (subcommand === "uninstall" || subcommand === "uninstall-service") {
+  if (subcommand === "uninstall") {
     await uninstallSystemdUserService({ ...options, paths, writeLine });
     return;
   }
 
-  throw new UserFacingError("Cách dùng: bestie daemon start|stop|restart|status [--channel telegram|zalo|cron|all] | install | uninstall", "DaemonUsageError");
+  if (subcommand === "status") {
+    writeLine(`Trạng thái: systemctl --user status ${DAEMON_CHANNELS.map(getSystemdServiceName).join(" ")}`);
+    return;
+  }
+
+  if (subcommand === "restart") {
+    assertLinuxSystemdUserServiceSupported();
+    const run = options.execFile ?? runExecFile;
+    await run("systemctl", ["--user", "restart", ...DAEMON_CHANNELS.map(getSystemdServiceName)]);
+    writeLine(`${badge("RUN", "green")} Đã restart systemd user services của Bestie.`);
+    return;
+  }
+
+  throw new UserFacingError("Cách dùng: bestie service install|uninstall|status|restart", "ServiceUsageError");
 }
 
 async function installSystemdUserService(options: Required<Pick<DaemonCommandOptions, "paths" | "writeLine">> & DaemonCommandOptions): Promise<void> {

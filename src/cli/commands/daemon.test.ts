@@ -6,7 +6,7 @@ import test from "node:test";
 
 import type { RuntimePaths } from "../../runtime/paths.js";
 import type { AppConfig } from "../../runtime/config.js";
-import { runDaemonCommand } from "./daemon.js";
+import { runDaemonCommand, runServiceCommand } from "./daemon.js";
 
 const TEST_CONFIG: AppConfig = {
   version: 1,
@@ -104,14 +104,14 @@ test("runDaemonCommand can manage all runtime daemons", async () => {
   }
 });
 
-test("runDaemonCommand uninstall ignores missing systemd units", async () => {
+test("runServiceCommand uninstall ignores missing systemd units", async () => {
   const paths = await createTempPaths();
   const calls: string[][] = [];
   const output: string[] = [];
 
   try {
-    await runDaemonCommand({
-      argv: ["node", "bestie", "daemon", "uninstall"],
+    await runServiceCommand({
+      argv: ["node", "bestie", "service", "uninstall"],
       paths,
       writeLine: (message) => output.push(message),
       execFile: async (_file, args) => {
@@ -333,7 +333,7 @@ test("runDaemonCommand does not restart when the old daemon stays alive", async 
   }
 });
 
-test("runDaemonCommand installs a user systemd service", async () => {
+test("runServiceCommand installs a user systemd service", async () => {
   const paths = await createTempPaths();
   const output: string[] = [];
   const calls: Array<{ file: string; args: string[] }> = [];
@@ -343,8 +343,8 @@ test("runDaemonCommand installs a user systemd service", async () => {
     process.env.XDG_CONFIG_HOME = resolve(paths.rootDir, "xdg-config");
     await writeTestConfig(paths, TEST_CONFIG);
     await writeFile(paths.envPath, "BESTIE_TELEGRAM_BOT_TOKEN=telegram\n", { mode: 0o600 });
-    await runDaemonCommand({
-      argv: ["node", "bestie", "daemon", "install"],
+    await runServiceCommand({
+      argv: ["node", "bestie", "service", "install"],
       paths,
       writeLine: (message) => output.push(message),
       execFile: async (file, args) => {
@@ -373,7 +373,7 @@ test("runDaemonCommand installs a user systemd service", async () => {
   }
 });
 
-test("runDaemonCommand uninstalls a user systemd service", async () => {
+test("runServiceCommand uninstalls a user systemd service", async () => {
   const paths = await createTempPaths();
   const output: string[] = [];
   const calls: Array<{ file: string; args: string[] }> = [];
@@ -386,8 +386,8 @@ test("runDaemonCommand uninstalls a user systemd service", async () => {
     await writeFile(resolve(paths.rootDir, "xdg-config/systemd/user/bestie-zalo.service"), "service", { mode: 0o600 });
     await writeFile(resolve(paths.rootDir, "xdg-config/systemd/user/bestie-cron.service"), "service", { mode: 0o600 });
 
-    await runDaemonCommand({
-      argv: ["node", "bestie", "daemon", "uninstall"],
+    await runServiceCommand({
+      argv: ["node", "bestie", "service", "uninstall"],
       paths,
       writeLine: (message) => output.push(message),
       execFile: async (file, args) => {
@@ -411,6 +411,19 @@ test("runDaemonCommand uninstalls a user systemd service", async () => {
     } else {
       process.env.XDG_CONFIG_HOME = oldXdgConfigHome;
     }
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("runDaemonCommand rejects service lifecycle subcommands", async () => {
+  const paths = await createTempPaths();
+
+  try {
+    await assert.rejects(
+      () => runDaemonCommand({ argv: ["node", "bestie", "daemon", "install"], paths }),
+      /bestie daemon start\|stop\|restart\|status/,
+    );
+  } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
   }
 });
