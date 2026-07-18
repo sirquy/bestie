@@ -25,6 +25,7 @@ Current shipped scope is no longer only the original Phase Now slice. The local 
 - one Linux user service through `bestie service install|uninstall|restart|status`, backed by `bestie.service` and hidden foreground `bestie service run`
 - local SQLite memory, pending approvals, pause/resume, and memory inspection commands
 - permission-gated local read/write/action tools, including allowed external workspace paths
+- bounded internal subagent spawning through `internal.spawn_subagent`
 - SDK-backed MCP add/list/show/test/tools/classify/login/call, remote HTTP OAuth setup, and classified read calls
 - local Doctor diagnostics and safe fixes
 - npm version checks through `bestie update` and throttled update notices on chat/daemon/service startup

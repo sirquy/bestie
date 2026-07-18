@@ -48,6 +48,8 @@ Currently implemented commands are `add`, `list`, `show`, `test`, `test --connec
 
 The Bestie stays the user-facing personality and coordinator. Specialist agents help in the background.
 
+Current local foundation: the tool loop supports `internal.spawn_subagent` for one-level, bounded helper investigations. A spawned subagent receives a scoped task, the current runtime context, the same permission policy, and its own max tool-call budget. It cannot recursively spawn another subagent.
+
 Possible specialists:
 
 - Research Agent
@@ -110,8 +112,8 @@ Current MCP skeleton:
 
 Multi-agent first milestone:
 
-1. internal delegation interface
-2. one simple Research Agent
+1. bounded `internal.spawn_subagent` helper tool (implemented)
+2. named specialist presets such as Research Agent or Doctor/Repair Agent
 3. Bestie aggregates and rewrites result
 
 ## Product Principle

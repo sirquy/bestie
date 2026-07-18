@@ -30,6 +30,7 @@ Bestie is under active development. The local CLI foundation includes:
 - Manual daemon management for `telegram`, `zalo`, `cron`, or `all`
 - Linux user service management through one `bestie.service` runtime for configured service targets
 - Permission-gated local read/write/action tools
+- Bounded internal subagent spawning for focused helper investigations
 - SDK-backed MCP server config, OAuth login, tool discovery, classification, and classified read calls
 - Installed skills loaded from `~/.bestie/skills/<skill-name>/SKILL.md`
 - `bestie update` and throttled update notices for new npm versions

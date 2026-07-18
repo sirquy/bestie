@@ -154,6 +154,10 @@ test("parseMcpToolRequest accepts internal read tool requests", () => {
     tool: "internal.supersede_memory",
     arguments: { oldId: 1, newId: 2, reason: "newer memory replaces it" },
   });
+  assert.deepEqual(parseMcpToolRequest('{"tool":"internal.spawn_subagent","arguments":{"task":"inspect docs","name":"docs"}}'), {
+    tool: "internal.spawn_subagent",
+    arguments: { task: "inspect docs", name: "docs" },
+  });
 });
 
 test("parseMcpToolRequestResult rejects supported tool JSON mixed with prose", () => {
@@ -317,6 +321,52 @@ test("runAgentToolRequest runs internal git_status without MCP config", async ()
 
     assert.equal(result.ok, true);
     assert.match(JSON.stringify(result.result), /note\.txt/);
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("runAgentToolRequest spawns a bounded subagent", async () => {
+  const paths = await createTempPaths();
+  const seenMessages: string[] = [];
+
+  try {
+    const result = await runAgentToolRequest({
+      config: { ...createConfig(), mcp: undefined },
+      paths,
+      apiKey: "test-key",
+      chatCompletion: async (_config, _apiKey, options) => {
+        seenMessages.push(...options.messages.map((message) => `${message.role}:${message.content}`));
+        return '{"answer":"Subagent checked the docs."}';
+      },
+      request: { tool: "internal.spawn_subagent", arguments: { task: "Check whether docs mention cron.", name: "docs", maxToolCalls: 3 } },
+    });
+
+    assert.equal(result.ok, true);
+    assert.match(result.message, /Subagent docs completed/);
+    assert.match(JSON.stringify(result.result), /Subagent checked the docs/);
+    assert.ok(seenMessages.some((message) => message.includes("focused Bestie subagent named docs")));
+    assert.ok(seenMessages.some((message) => message.includes("Check whether docs mention cron")));
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("runAgentToolRequest rejects nested subagents", async () => {
+  const paths = await createTempPaths();
+
+  try {
+    const result = await runAgentToolRequest({
+      config: { ...createConfig(), mcp: undefined },
+      paths,
+      apiKey: "test-key",
+      chatCompletion: async () => '{"answer":"should not run"}',
+      subagentDepth: 1,
+      request: { tool: "internal.spawn_subagent", arguments: { task: "nested" } },
+    });
+
+    assert.equal(result.ok, false);
+    assert.match(result.message, /Nested subagents/);
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
   }
@@ -1362,6 +1412,37 @@ test("completeWithAgentTools supports multiple internal tool calls before final 
         { phase: "finish", label: "docs/README.md" },
       ],
     );
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("completeWithAgentTools lets the model spawn a subagent before answering", async () => {
+  const paths = await createTempPaths();
+  const parentToolResults: string[] = [];
+
+  try {
+    const answer = await completeWithAgentTools({
+      config: { ...createConfig(), mcp: undefined },
+      paths,
+      apiKey: "test-key",
+      messages: [{ role: "user", content: "Audit docs quickly." }],
+      chatCompletion: async (_config, _apiKey, options) => {
+        const combined = options.messages.map((message) => message.content).join("\n");
+        if (combined.includes("focused Bestie subagent named docs")) {
+          return '{"answer":"Docs mention cron and service."}';
+        }
+        if (combined.includes("Tool result for internal.spawn_subagent")) {
+          parentToolResults.push(combined);
+          return '{"answer":"Subagent found docs mention cron and service."}';
+        }
+        return '{"tool":"internal.spawn_subagent","arguments":{"task":"Check docs for cron and service status.","name":"docs","maxToolCalls":3}}';
+      },
+    });
+
+    assert.equal(answer, "Subagent found docs mention cron and service.");
+    assert.equal(parentToolResults.length, 1);
+    assert.match(parentToolResults[0], /Docs mention cron and service/);
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
   }

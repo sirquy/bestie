@@ -1,6 +1,6 @@
 # Architecture
 
-This document describes the current long-term architecture and the local-development runtime that now exists. Phase Now terminal chat/onboarding is complete; the codebase is in local MVP hardening with Telegram, Zalo, cron, daemon/service management, local SQLite memory, Doctor, permission-gated tools, installed skills, npm update checks, and SDK-backed MCP setup plus classified read calls implemented for local development.
+This document describes the current long-term architecture and the local-development runtime that now exists. Phase Now terminal chat/onboarding is complete; the codebase is in local MVP hardening with Telegram, Zalo, cron, daemon/service management, local SQLite memory, Doctor, permission-gated tools, bounded internal subagents, installed skills, npm update checks, and SDK-backed MCP setup plus classified read calls implemented for local development.
 
 ## Overview
 
@@ -56,7 +56,7 @@ Coordinates one turn:
 4. send response
 5. store redacted operational logs
 
-The current runtime also includes approved local memory recall, explicit memory writes, permission-gated read tools, a multi-step tool loop, and Doctor diagnostics. Broader write/external/destructive tools, Zep, UI, and multi-agent routing remain later work.
+The current runtime also includes approved local memory recall, explicit memory writes, permission-gated tools, a multi-step tool loop, bounded internal subagents for focused helper investigations, and Doctor diagnostics. Broader write/external/destructive tool maturity, Zep, UI, and named multi-agent orchestration remain later work.
 
 ### Character System
 
@@ -152,11 +152,12 @@ Current foundation and future extension points:
 - MCP config/list/show/test/tools/classify/login/call commands backed by `@modelcontextprotocol/sdk`
 - streamable HTTP MCP setup with metadata discovery, OAuth login URLs, token exchange into `.env`, and classified read calls through local config and permission review
 - agent tool-loop helpers that can prepare/apply MCP server config from docs or links, then reload config without requiring a Bestie restart
+- `internal.spawn_subagent` for one-level, bounded helper investigations inside the existing tool loop
 - future broader MCP execution categories beyond classified reads
 - plugin runtime for native modules
-- agent registry for specialist subagents
+- future agent registry for named specialist subagents
 
-Broader MCP execution categories, plugins, and multi-agent features must wait until Doctor, logging, permissions, and real-channel behavior are mature.
+Broader MCP execution categories, plugins, and named multi-agent features must wait until Doctor, logging, permissions, and real-channel behavior are mature.
 
 ## Data Paths
 

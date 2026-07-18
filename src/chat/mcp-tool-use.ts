@@ -43,6 +43,7 @@ export interface CompleteWithAgentToolsOptions {
   onToken?: (token: string) => void;
   onToolActivity?: AgentToolActivityHandler;
   runtimeContext?: string;
+  subagentDepth?: number;
 }
 
 export interface McpToolRequest {
@@ -53,7 +54,7 @@ export interface McpToolRequest {
 }
 
 export interface InternalToolRequest {
-  tool: "internal.read_file" | "internal.read_many_files" | "internal.read_markdown_bundle" | "internal.list_files" | "internal.search_files" | "internal.read_logs" | "internal.read_url" | "internal.git_status" | "internal.git_diff" | "internal.git_log" | "internal.mcp_list_servers" | "internal.mcp_list_tools" | "internal.mcp_discover_oauth" | "internal.mcp_prepare_server_config" | "internal.mcp_apply_server_config" | "internal.write_file" | "internal.edit_file" | "internal.apply_patch" | "internal.exec" | "internal.list_processes" | "internal.list_memories" | "internal.search_memories" | "internal.inspect_memory" | "internal.analyze_memories" | "internal.plan_memory_hygiene" | "internal.plan_memory_rebalance" | "internal.memory_hygiene_trend" | "internal.remember_memory" | "internal.delete_memory" | "internal.cleanup_memories" | "internal.supersede_memory" | "internal.add_cron_schedule" | "internal.list_cron_schedules" | "internal.remove_cron_schedule" | "internal.toggle_cron_schedule";
+  tool: "internal.read_file" | "internal.read_many_files" | "internal.read_markdown_bundle" | "internal.list_files" | "internal.search_files" | "internal.read_logs" | "internal.read_url" | "internal.git_status" | "internal.git_diff" | "internal.git_log" | "internal.mcp_list_servers" | "internal.mcp_list_tools" | "internal.mcp_discover_oauth" | "internal.mcp_prepare_server_config" | "internal.mcp_apply_server_config" | "internal.write_file" | "internal.edit_file" | "internal.apply_patch" | "internal.exec" | "internal.list_processes" | "internal.spawn_subagent" | "internal.list_memories" | "internal.search_memories" | "internal.inspect_memory" | "internal.analyze_memories" | "internal.plan_memory_hygiene" | "internal.plan_memory_rebalance" | "internal.memory_hygiene_trend" | "internal.remember_memory" | "internal.delete_memory" | "internal.cleanup_memories" | "internal.supersede_memory" | "internal.add_cron_schedule" | "internal.list_cron_schedules" | "internal.remove_cron_schedule" | "internal.toggle_cron_schedule";
   arguments: Record<string, unknown>;
 }
 
@@ -80,9 +81,16 @@ export interface RunMcpToolRequestOptions {
 
 export interface RunAgentToolRequestOptions extends Omit<RunMcpToolRequestOptions, "request"> {
   request: AgentToolRequest;
+  apiKey?: string;
+  chatCompletion?: AgentToolChatCompletionRunner;
+  runtimeContext?: string;
+  subagentDepth?: number;
 }
 
 const DEFAULT_MAX_AGENT_TOOL_CALLS = 250;
+const DEFAULT_MAX_SUBAGENT_TOOL_CALLS = 50;
+const MAX_SUBAGENT_TOOL_CALLS = 100;
+const MAX_SUBAGENT_TASK_BYTES = 16 * 1024;
 
 export async function completeWithAgentTools(options: CompleteWithAgentToolsOptions): Promise<string> {
   const toolRunner = options.toolRunner ?? runAgentToolRequest;
@@ -122,7 +130,7 @@ export async function completeWithAgentTools(options: CompleteWithAgentToolsOpti
     await notifyToolActivity(options, { phase: "start", callIndex: toolCallCount + 1, toolName, label });
     let toolResult: McpToolCallResult;
     try {
-      toolResult = await toolRunner({ config: currentConfig, paths: options.paths, request: decision.request, approver: options.approver, policy: options.policy });
+      toolResult = await toolRunner({ config: currentConfig, paths: options.paths, request: decision.request, approver: options.approver, policy: options.policy, apiKey: options.apiKey, chatCompletion: options.chatCompletion, runtimeContext: options.runtimeContext, subagentDepth: options.subagentDepth ?? 0 });
     } catch (error) {
       const durationMs = Date.now() - startedAt;
       await notifyToolActivity(options, { phase: "finish", callIndex: toolCallCount + 1, toolName, label, ok: false, status: "fail", durationMs });
@@ -270,6 +278,7 @@ export function buildMcpToolInstructions(config: AppConfig, runtimeContext?: str
     'internal.apply_patch {"patch":"git apply compatible patch"}',
     'internal.exec {"command":"npm","args":["test"],"cwd":".","timeoutMs":30000}',
     'internal.list_processes {"limit":20}',
+    'internal.spawn_subagent {"task":"focused task for a helper agent","name":"optional short name","maxToolCalls":20}',
     'internal.list_memories {}',
     'internal.search_memories {"query":"memory search text"}',
     'internal.inspect_memory {"id":1}',
@@ -704,6 +713,10 @@ export async function runAgentToolRequest(options: RunAgentToolRequestOptions): 
     return { ok: result.allowed, status: result.allowed ? "pass" : "fail", message: result.reason, result: { processes: result.processes } };
   }
 
+  if (options.request.tool === "internal.spawn_subagent") {
+    return runSubagentTool(options, args);
+  }
+
   if (options.request.tool === "internal.list_memories") {
     const result = await listActiveMemoriesTool({ paths: options.paths, limit: numberArg(args.limit), approver: options.approver, policy: options.policy });
     return { ok: result.allowed, status: result.allowed ? "pass" : "fail", message: result.reason, result: { memories: result.memories } };
@@ -780,7 +793,77 @@ export async function runAgentToolRequest(options: RunAgentToolRequestOptions): 
 }
 
 export function isInternalToolName(value: string): value is InternalToolRequest["tool"] {
-  return ["internal.read_file", "internal.read_many_files", "internal.read_markdown_bundle", "internal.list_files", "internal.search_files", "internal.read_logs", "internal.read_url", "internal.git_status", "internal.git_diff", "internal.git_log", "internal.mcp_list_servers", "internal.mcp_list_tools", "internal.mcp_discover_oauth", "internal.mcp_prepare_server_config", "internal.mcp_apply_server_config", "internal.write_file", "internal.edit_file", "internal.apply_patch", "internal.exec", "internal.list_processes", "internal.list_memories", "internal.search_memories", "internal.inspect_memory", "internal.analyze_memories", "internal.plan_memory_hygiene", "internal.plan_memory_rebalance", "internal.memory_hygiene_trend", "internal.remember_memory", "internal.delete_memory", "internal.cleanup_memories", "internal.supersede_memory", "internal.add_cron_schedule", "internal.list_cron_schedules", "internal.remove_cron_schedule", "internal.toggle_cron_schedule"].includes(value);
+  return ["internal.read_file", "internal.read_many_files", "internal.read_markdown_bundle", "internal.list_files", "internal.search_files", "internal.read_logs", "internal.read_url", "internal.git_status", "internal.git_diff", "internal.git_log", "internal.mcp_list_servers", "internal.mcp_list_tools", "internal.mcp_discover_oauth", "internal.mcp_prepare_server_config", "internal.mcp_apply_server_config", "internal.write_file", "internal.edit_file", "internal.apply_patch", "internal.exec", "internal.list_processes", "internal.spawn_subagent", "internal.list_memories", "internal.search_memories", "internal.inspect_memory", "internal.analyze_memories", "internal.plan_memory_hygiene", "internal.plan_memory_rebalance", "internal.memory_hygiene_trend", "internal.remember_memory", "internal.delete_memory", "internal.cleanup_memories", "internal.supersede_memory", "internal.add_cron_schedule", "internal.list_cron_schedules", "internal.remove_cron_schedule", "internal.toggle_cron_schedule"].includes(value);
+}
+
+async function runSubagentTool(options: RunAgentToolRequestOptions, args: Record<string, unknown>): Promise<McpToolCallResult> {
+  const task = stringArg(args.task)?.trim();
+  if (!task) {
+    return { ok: false, status: "fail", message: "internal.spawn_subagent requires arguments.task." };
+  }
+  if (Buffer.byteLength(task, "utf8") > MAX_SUBAGENT_TASK_BYTES) {
+    return { ok: false, status: "fail", message: `Subagent task exceeds ${MAX_SUBAGENT_TASK_BYTES} bytes.` };
+  }
+  if (!options.chatCompletion || !options.apiKey) {
+    return { ok: false, status: "fail", message: "internal.spawn_subagent requires chatCompletion and apiKey from the parent runtime." };
+  }
+  if ((options.subagentDepth ?? 0) >= 1) {
+    return { ok: false, status: "fail", message: "Nested subagents are not supported." };
+  }
+
+  const permission = await reviewSubagentPermission(options, task);
+  if (permission.decision !== "allow") {
+    return { ok: false, status: "fail", message: `Subagent spawn denied: ${permission.reason}` };
+  }
+
+  const name = stringArg(args.name)?.trim() || "helper";
+  const maxToolCalls = Math.min(Math.max(numberArg(args.maxToolCalls) ?? DEFAULT_MAX_SUBAGENT_TOOL_CALLS, 1), MAX_SUBAGENT_TOOL_CALLS);
+  const systemMessage = [
+    `You are a focused Bestie subagent named ${name}.`,
+    "Work only on the delegated task. Use tools when needed, but do not spawn another subagent.",
+    "Return a concise answer with evidence and any uncertainty. Do not address unrelated user requests.",
+    options.runtimeContext ? `Parent runtime context:\n${options.runtimeContext}` : undefined,
+  ].filter(Boolean).join("\n");
+
+  const answer = await completeWithAgentTools({
+    config: options.config,
+    paths: options.paths,
+    apiKey: options.apiKey,
+    messages: [
+      { role: "system", content: systemMessage },
+      { role: "user", content: task },
+    ],
+    chatCompletion: options.chatCompletion,
+    approver: options.approver,
+    policy: options.policy,
+    maxToolCalls,
+    runtimeContext: options.runtimeContext,
+    subagentDepth: (options.subagentDepth ?? 0) + 1,
+  });
+
+  return { ok: true, status: "pass", message: `Subagent ${name} completed.`, result: { name, task, answer } };
+}
+
+async function reviewSubagentPermission(options: RunAgentToolRequestOptions, task: string): Promise<{ decision: "allow" | "ask" | "deny"; reason: string }> {
+  const configured = options.config.internalTools?.policies?.["internal.spawn_subagent"];
+  if (configured === "deny") {
+    return { decision: "deny", reason: "internal.spawn_subagent is denied by config." };
+  }
+  if (configured === "allow" || configured === undefined) {
+    return { decision: "allow", reason: "internal.spawn_subagent is allowed by config." };
+  }
+
+  return reviewActionPermission(
+    {
+      category: "read",
+      action: "internal.spawn_subagent",
+      target: "subagent",
+      reason: "Spawn a bounded helper agent requested by the agent.",
+      trusted: false,
+      payloadJson: JSON.stringify({ tool: "internal.spawn_subagent", arguments: { task } }),
+    },
+    { paths: options.paths, approver: options.approver, policy: options.policy },
+  );
 }
 
 type McpServerConfig = NonNullable<AppConfig["mcp"]>["servers"][number];
