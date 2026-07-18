@@ -40,7 +40,7 @@
     "smoke:mcp": "npm run build && npm run smoke:mcp:run",
     "smoke:mcp:run": "node scripts/smoke-mcp.mjs",
     "smoke:onboard": "npm run build && npm run smoke:onboard:run",
-    "smoke:onboard:run": "tmpdir=$(mktemp -d) && cd $tmpdir && printf 'Bestie\\nBoss\\nvi\\nUTC\\n7\\nask\\nopenai-compatible\\nhttp://127.0.0.1:9/v1\\ntest-model\\ntest-key\\n' | HOME=$tmpdir node $INIT_CWD/dist/cli/index.js onboard --skip-provider-test; code=$?; rm -rf $tmpdir; exit $code",
+    "smoke:onboard:run": "tmpdir=$(mktemp -d) && cd $tmpdir && printf 'Bestie\\nBoss\\nask\\nopenai-compatible\\nhttp://127.0.0.1:9/v1\\ntest-model\\ntest-key\\n' | HOME=$tmpdir node $INIT_CWD/dist/cli/index.js onboard --skip-provider-test; code=$?; rm -rf $tmpdir; exit $code",
     "smoke:status": "npm run build && npm run smoke:status:run",
     "smoke:status:run": "node scripts/smoke-cli-temp-runtime.mjs status",
     "smoke:telegram": "npm run build && npm run smoke:telegram:run",

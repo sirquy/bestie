@@ -352,6 +352,39 @@ test("runAgentToolRequest spawns a bounded subagent", async () => {
   }
 });
 
+test("runAgentToolRequest gives subagents internal tool instructions", async () => {
+  const paths = await createTempPaths();
+  let callCount = 0;
+
+  try {
+    await import("node:fs/promises").then((fs) => fs.writeFile(resolve(paths.rootDir, "README.md"), "# Test Repo\n\nSubagent evidence.\n"));
+
+    const result = await runAgentToolRequest({
+      config: { ...createConfig(), mcp: undefined },
+      paths,
+      apiKey: "test-key",
+      chatCompletion: async (_config, _apiKey, options) => {
+        callCount += 1;
+        if (callCount === 1) {
+          const systemContent = typeof options.messages[0]?.content === "string" ? options.messages[0].content : "";
+          assert.match(systemContent, /Available internal tools/);
+          assert.match(systemContent, /internal.read_file/);
+          return '{"tool":"internal.read_file","arguments":{"path":"README.md"}}';
+        }
+        assert.ok(options.messages.some((message) => typeof message.content === "string" && message.content.includes("Tool result for internal.read_file") && message.content.includes("Subagent evidence")));
+        return '{"answer":"Read README.md and found Subagent evidence."}';
+      },
+      request: { tool: "internal.spawn_subagent", arguments: { task: "Read README.md and report evidence.", name: "reviewer", maxToolCalls: 3 } },
+    });
+
+    assert.equal(result.ok, true);
+    assert.match(JSON.stringify(result.result), /Subagent evidence/);
+    assert.equal(callCount, 2);
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
 test("runAgentToolRequest rejects nested subagents", async () => {
   const paths = await createTempPaths();
 

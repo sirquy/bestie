@@ -26,7 +26,7 @@ async function createTempPaths(): Promise<RuntimePaths> {
 
 const TEST_CONFIG = {
   version: 1 as const,
-  agent: { name: "Test", ownerName: "Boss", language: "vi" as const, toneIntensity: 5 },
+  agent: { name: "Test", ownerName: "Boss", language: "vi" as const, timeZone: "Asia/Bangkok", toneIntensity: 5 },
   llm: { provider: "openai-compatible", baseUrl: "http://localhost:1/v1", model: "test", apiKeyEnv: "OPENAI_API_KEY" },
 };
 

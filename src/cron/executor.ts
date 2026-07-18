@@ -113,7 +113,7 @@ export class CronExecutor {
       );
 
       // Compute next run before execution (handles one-shot by setting empty)
-      const nextRunAt = job.scheduleType === "once" ? "" : computeNextRun(job.scheduleType, job.scheduleValue);
+      const nextRunAt = job.scheduleType === "once" ? "" : computeNextRun(job.scheduleType, job.scheduleValue, undefined, this.options.config.agent.timeZone);
       store.updateCronNextRun(job.id, nextRunAt);
 
       const output = await runIsolatedChat({

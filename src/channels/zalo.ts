@@ -627,7 +627,7 @@ async function handleZaloSlashCommand(text: string, chatId: string, options: Zal
     const destination = `zalo:${chatId}`;
 
     if (action === "install") {
-      const result = await installMemoryMaintenanceReport({ paths: options.paths, channel: destination });
+      const result = await installMemoryMaintenanceReport({ paths: options.paths, channel: destination, timeZone: options.config.agent.timeZone });
       await options.client.sendMessage(chatId, result.ok ? formatMemoryMaintenanceInstalled(result.schedule) : result.reason);
       return true;
     }

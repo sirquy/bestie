@@ -45,7 +45,7 @@ Phase Now config started with non-secret `agent` and `llm` fields. The current l
     "name": "Bestie",
     "ownerName": "Owner",
     "language": "vi",
-    "timeZone": "Asia/Ho_Chi_Minh",
+    "timeZone": "Asia/Bangkok",
     "toneIntensity": 7,
     "emojiLevel": "light"
   },

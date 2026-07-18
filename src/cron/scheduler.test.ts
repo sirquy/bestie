@@ -50,6 +50,12 @@ test("computeCronNextRun handles every 30 minutes", () => {
   assert.equal(next, "2026-07-15T10:30:00.000Z");
 });
 
+test("computeCronNextRun matches cron fields in the requested time zone", () => {
+  const from = new Date("2026-07-15T00:30:00Z");
+  const next = computeCronNextRun("0 8 * * *", from, "Asia/Bangkok");
+  assert.equal(next, "2026-07-15T01:00:00.000Z");
+});
+
 test("computeCronNextRun rejects invalid expressions", () => {
   assert.throws(() => computeCronNextRun("0 8 *"), /5 fields/);
   assert.throws(() => computeCronNextRun("* * * *", new Date("2026-01-01T00:00:00Z")), /5 fields/);
@@ -67,6 +73,12 @@ test("computeNextRun for cron_expr", () => {
   const from = new Date("2026-07-15T10:00:00Z");
   const next = computeNextRun("cron_expr", "0 8 * * *", from);
   assert.equal(next, "2026-07-16T08:00:00.000Z");
+});
+
+test("computeNextRun for cron_expr accepts an agent time zone", () => {
+  const from = new Date("2026-07-15T00:30:00Z");
+  const next = computeNextRun("cron_expr", "0 8 * * *", from, "Asia/Bangkok");
+  assert.equal(next, "2026-07-15T01:00:00.000Z");
 });
 
 test("computeNextRun for once", () => {

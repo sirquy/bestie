@@ -8,13 +8,15 @@ import { writeCharacterFiles } from "../../character/writer.js";
 import { testOpenAICompatibleProvider } from "../../llm/provider-test.js";
 import { DEFAULT_LLM_MAX_RETRIES, DEFAULT_LLM_RETRY_DELAY_MS, DEFAULT_LLM_TIMEOUT_MS, type AppConfig, writeConfig } from "../../runtime/config.js";
 import { writeEnvFile } from "../../runtime/env.js";
-import { getLocalTimeZone, isValidTimeZone, normalizeLanguageInput, normalizeTimeZoneInput } from "../../runtime/locale.js";
 import { appendLog } from "../../runtime/logger.js";
 import { getRuntimePaths, type RuntimePaths } from "../../runtime/paths.js";
 import { createCliQuestioner } from "../prompt.js";
 import { badge, bold, color, dim, title, withColorMode } from "../ui.js";
 
 const DEFAULT_API_KEY_ENV = "OPENAI_API_KEY";
+const DEFAULT_LANGUAGE: LanguageMode = "vi";
+const DEFAULT_TIME_ZONE = "Asia/Bangkok";
+const DEFAULT_TONE_INTENSITY = 7;
 
 type LanguageMode = AppConfig["agent"]["language"];
 type MemoryWritePolicy = NonNullable<AppConfig["memory"]>["writePolicy"];
@@ -95,7 +97,7 @@ export async function runOnboardCommand(optionsOrArgv: string[] | OnboardCommand
   const questioner = options.questioner ?? (await createQuestioner());
 
   try {
-    ui.section("Hồ sơ", "Chọn tên, ngôn ngữ, sắc thái và chính sách ghi nhớ.");
+    ui.section("Hồ sơ", "Chọn tên và chính sách ghi nhớ.");
     const answers = await collectAnswers(questioner);
     ui.success("Đã thu thập hồ sơ và thông tin nhà cung cấp.");
 
@@ -150,17 +152,17 @@ function getAgentsFilePath(paths: RuntimePaths): string {
 
 async function collectAnswers(questioner: Pick<Questioner, "ask" | "askHidden">): Promise<OnboardingAnswers> {
   const { ask, askHidden } = questioner;
-  const agentName = await askNonEmpty(ask, promptTheme.step(1, 10, "Tên Bestie", "Bạn muốn gọi bestie là gì?"), "Miu");
-  const ownerName = await askNonEmpty(ask, promptTheme.step(2, 10, "Tên của bạn", "Bestie nên gọi bạn là gì?"), "Sếp");
-  const language = await askLanguage(ask);
-  const timeZone = await askTimeZone(ask);
-  const toneIntensity = await askToneIntensity(ask);
+  const agentName = await askNonEmpty(ask, promptTheme.step(1, 7, "Tên Bestie", "Bạn muốn gọi bestie là gì?"), "Miu");
+  const ownerName = await askNonEmpty(ask, promptTheme.step(2, 7, "Tên của bạn", "Bestie nên gọi bạn là gì?"), "Sếp");
+  const language = DEFAULT_LANGUAGE;
+  const timeZone = DEFAULT_TIME_ZONE;
+  const toneIntensity = DEFAULT_TONE_INTENSITY;
   const memoryWritePolicy = await askMemoryWritePolicy(ask);
   const memoryDeletePolicy: MemoryDeletePolicy = "allow"; // For now, we always allow memory deletion. Future versions may ask this question.
-  const provider = await askNonEmpty(ask, promptTheme.step(7, 10, "Nhà cung cấp", "Nhãn nhà cung cấp?"), "openai-compatible");
-  const baseUrl = await askNonEmpty(ask, promptTheme.step(8, 10, "Base URL", "Base URL tương thích OpenAI?"), "https://api.openai.com/v1");
-  const model = await askNonEmpty(ask, promptTheme.step(9, 10, "Model", "Tên model?"), "gpt-4o-mini");
-  const apiKey = await askNonEmpty(askHidden, promptTheme.step(10, 10, "API key", `Dán API key của nhà cung cấp. Key sẽ được lưu dưới tên ${DEFAULT_API_KEY_ENV} và được ẩn khi nhập.`));
+  const provider = await askNonEmpty(ask, promptTheme.step(4, 7, "Nhà cung cấp", "Nhãn nhà cung cấp?"), "openai-compatible");
+  const baseUrl = await askNonEmpty(ask, promptTheme.step(5, 7, "Base URL", "Base URL tương thích OpenAI?"), "https://api.openai.com/v1");
+  const model = await askNonEmpty(ask, promptTheme.step(6, 7, "Model", "Tên model?"), "gpt-4o-mini");
+  const apiKey = await askNonEmpty(askHidden, promptTheme.step(7, 7, "API key", `Dán API key của nhà cung cấp. Key sẽ được lưu dưới tên ${DEFAULT_API_KEY_ENV} và được ẩn khi nhập.`));
 
   return { agentName, ownerName, language, timeZone, toneIntensity, memoryWritePolicy, memoryDeletePolicy, provider, baseUrl, model, apiKey };
 }
@@ -183,42 +185,9 @@ async function askNonEmpty(
   }
 }
 
-async function askLanguage(ask: AskLine): Promise<LanguageMode> {
-  const answer = await ask(`${promptTheme.step(3, 10, "Ngôn ngữ", "Tag hoặc tên ngôn ngữ mặc định? Ví dụ: vi, English, ja, pt-BR, auto.")}${promptTheme.defaultValue("vi")} `);
-  return normalizeLanguageInput(answer, "vi");
-}
-
-async function askTimeZone(ask: AskLine): Promise<string> {
-  const defaultTimeZone = getLocalTimeZone();
-
-  while (true) {
-    const answer = await ask(`${promptTheme.step(4, 10, "Múi giờ", "Múi giờ IANA cho ngày giờ và lịch chạy cục bộ?")}${promptTheme.defaultValue(defaultTimeZone)} `);
-    const timeZone = normalizeTimeZoneInput(answer, defaultTimeZone);
-
-    if (isValidTimeZone(timeZone)) {
-      return timeZone;
-    }
-
-    promptWarningWriter(promptTheme.warning("Hãy dùng múi giờ IANA hợp lệ, ví dụ Asia/Ho_Chi_Minh hoặc America/New_York."));
-  }
-}
-
-async function askToneIntensity(ask: AskLine): Promise<number> {
-  while (true) {
-    const answer = (await ask(`${promptTheme.step(5, 10, "Sắc thái", "Mức độ sắc thái từ 1 đến 10?")}${promptTheme.defaultValue("7")} `)).trim();
-    const value = Number(answer || "7");
-
-    if (Number.isInteger(value) && value >= 1 && value <= 10) {
-      return value;
-    }
-
-    promptWarningWriter(promptTheme.warning("Hãy chọn một số nguyên từ 1 đến 10."));
-  }
-}
-
 async function askMemoryWritePolicy(ask: AskLine): Promise<MemoryWritePolicy> {
   while (true) {
-    const answer = (await ask(`${promptTheme.step(6, 10, "Bộ nhớ", "Chính sách ghi nhớ: ask, allow, hoặc deny?")}${promptTheme.defaultValue("allow")} `)).trim().toLowerCase();
+    const answer = (await ask(`${promptTheme.step(3, 7, "Bộ nhớ", "Chính sách ghi nhớ: ask, allow, hoặc deny?")}${promptTheme.defaultValue("allow")} `)).trim().toLowerCase();
 
     if (!answer || answer === "allow") {
       return "allow";

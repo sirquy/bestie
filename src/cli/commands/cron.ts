@@ -170,14 +170,14 @@ async function runCronAdd(argv: string[], paths: RuntimePaths, writeLine: (messa
     return;
   }
 
-  const validationError = validateSchedule(scheduleType, scheduleValue);
+  const validationError = validateSchedule(scheduleType, scheduleValue, config.agent.timeZone);
   if (validationError) {
     writeLine(`${badge("FAIL", "red")} Lịch không hợp lệ: ${validationError}`);
     process.exitCode = 1;
     return;
   }
 
-  const nextRunAt = computeNextRun(scheduleType, scheduleValue);
+  const nextRunAt = computeNextRun(scheduleType, scheduleValue, undefined, config.agent.timeZone);
   const store = await SqliteMemoryStore.open(paths);
 
   try {

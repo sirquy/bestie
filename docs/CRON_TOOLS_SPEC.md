@@ -99,6 +99,7 @@ interface AddCronScheduleArgs {
 Validate schedule_value format:
 - `interval`: regex `^\d+[smhd]$` (30s, 5m, 1h, 2d)
 - `cron_expr`: 5-field cron (minute hour dom month dow)
+- `cron_expr` fields are interpreted in `config.agent.timeZone`; `next_run_at` is still stored as an ISO UTC timestamp.
 - `once`: ISO 8601 timestamp, must be in the future
 
 Return: `{ allowed: true, reason: "", scheduleId: number, nextRunAt: string }`
@@ -341,7 +342,7 @@ function computeNextRun(job: CronSchedule): string {
     }
     case "cron_expr": {
       // Use cron-parser library (lightweight, no deps needed — can use a simple parser)
-      return computeCronNextRun(job.scheduleValue, job.timezone ?? "UTC");
+      return computeCronNextRun(job.scheduleValue, undefined, config.agent.timeZone);
     }
     case "once": {
       return ""; // no next run, job is one-shot

@@ -824,13 +824,14 @@ async function runSubagentTool(options: RunAgentToolRequestOptions, args: Record
     "Return a concise answer with evidence and any uncertainty. Do not address unrelated user requests.",
     options.runtimeContext ? `Parent runtime context:\n${options.runtimeContext}` : undefined,
   ].filter(Boolean).join("\n");
+  const systemPrompt = buildMcpToolSystemPrompt(systemMessage, options.config, options.runtimeContext);
 
   const answer = await completeWithAgentTools({
     config: options.config,
     paths: options.paths,
     apiKey: options.apiKey,
     messages: [
-      { role: "system", content: systemMessage },
+      { role: "system", content: systemPrompt },
       { role: "user", content: task },
     ],
     chatCompletion: options.chatCompletion,

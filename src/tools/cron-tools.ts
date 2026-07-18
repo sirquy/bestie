@@ -64,12 +64,12 @@ export async function addCronScheduleTool(
     return { ok: false, status: "fail", message: "internal.add_cron_schedule arguments.channel must be 'telegram:<userId>' or 'zalo:<userId>'." };
   }
 
-  const validationError = validateSchedule(scheduleType, scheduleValue);
+  const validationError = validateSchedule(scheduleType, scheduleValue, options.config.agent.timeZone);
   if (validationError) {
     return { ok: false, status: "fail", message: `Invalid schedule: ${validationError}` };
   }
 
-  const nextRunAt = computeNextRun(scheduleType, scheduleValue);
+  const nextRunAt = computeNextRun(scheduleType, scheduleValue, undefined, options.config.agent.timeZone);
   const store = await SqliteMemoryStore.open(options.paths);
 
   try {

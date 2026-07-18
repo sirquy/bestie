@@ -1680,7 +1680,7 @@ async function handleTelegramSlashCommand(text: string, chatId: number, options:
     const destination = `telegram:${chatId}`;
 
     if (action === "install") {
-      const result = await installMemoryMaintenanceReport({ paths: options.paths, channel: destination });
+      const result = await installMemoryMaintenanceReport({ paths: options.paths, channel: destination, timeZone: options.config.agent.timeZone });
       await options.client.sendMessage(chatId, result.ok ? formatMemoryMaintenanceInstalled(result.schedule) : result.reason);
       return true;
     }

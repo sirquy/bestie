@@ -23,9 +23,6 @@ test("runOnboardCommand writes local files and skips provider test when requeste
         ask: async (question) => {
           if (question.includes("Bạn muốn gọi bestie")) return "Miu";
           if (question.includes("Bestie nên gọi bạn")) return "Boss";
-          if (question.includes("Tag hoặc tên ngôn ngữ")) return "Japanese";
-          if (question.includes("Múi giờ IANA")) return "Asia/Tokyo";
-          if (question.includes("Mức độ sắc thái")) return "7";
           if (question.includes("Chính sách ghi nhớ")) return "ask";
           if (question.includes("Nhãn nhà cung cấp")) return "openai-compatible";
           if (question.includes("Base URL tương thích OpenAI")) return "http://127.0.0.1:9/v1/";
@@ -43,7 +40,7 @@ test("runOnboardCommand writes local files and skips provider test when requeste
       writeLine: (message) => output.push(message),
     });
 
-    const config = JSON.parse(await readFile(paths.configPath, "utf8")) as { agent: { language: string; timeZone: string }; llm: { baseUrl: string; timeoutMs: number }; memory?: { writePolicy?: string; deletePolicy?: string } };
+    const config = JSON.parse(await readFile(paths.configPath, "utf8")) as { agent: { language: string; timeZone: string; toneIntensity: number }; llm: { baseUrl: string; timeoutMs: number }; memory?: { writePolicy?: string; deletePolicy?: string } };
     const envText = await readFile(paths.envPath, "utf8");
     const agentsText = await readFile(resolve(paths.appDir, "AGENTS.md"), "utf8");
     const logText = await readFile(paths.appLogPath, "utf8");
@@ -52,10 +49,11 @@ test("runOnboardCommand writes local files and skips provider test when requeste
     assert.equal(providerTestCalled, false);
     assert.equal(config.llm.baseUrl, "http://127.0.0.1:9/v1");
     assert.equal(config.llm.timeoutMs, 60_000);
-    assert.equal(config.agent.language, "ja");
-    assert.equal(config.agent.timeZone, "Asia/Tokyo");
+    assert.equal(config.agent.language, "vi");
+    assert.equal(config.agent.timeZone, "Asia/Bangkok");
+    assert.equal(config.agent.toneIntensity, 7);
     assert.equal(config.memory?.writePolicy, "ask");
-    assert.equal(config.memory?.deletePolicy, "ask");
+    assert.equal(config.memory?.deletePolicy, "allow");
     assert.match(envText, /OPENAI_API_KEY="test-key"/);
     assert.equal(agentsText, getDefaultAgentsMarkdown());
     assert.match(agentsText, /# AGENTS\.md - Bestie Agent Workspace/);
@@ -129,9 +127,6 @@ function createQuestioner(): { ask: (question: string) => Promise<string>; askHi
     ask: async (question) => {
       if (question.includes("Bạn muốn gọi bestie")) return "Miu";
       if (question.includes("Bestie nên gọi bạn")) return "Boss";
-      if (question.includes("Tag hoặc tên ngôn ngữ")) return "vi";
-      if (question.includes("Múi giờ IANA")) return "UTC";
-      if (question.includes("Mức độ sắc thái")) return "7";
       if (question.includes("Chính sách ghi nhớ")) return "ask";
       if (question.includes("Nhãn nhà cung cấp")) return "openai-compatible";
       if (question.includes("Base URL tương thích OpenAI")) return "http://127.0.0.1:9/v1/";

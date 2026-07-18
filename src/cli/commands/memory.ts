@@ -10,6 +10,7 @@ import { applyMemoryRebalancePlan, formatMemoryRebalanceApplyResult, formatMemor
 import { formatMemorySummary } from "../../memory/summary.js";
 import { formatMemoryTiersReport } from "../../memory/tiers.js";
 import { loadConfig, type MemoryDeletePolicy } from "../../runtime/config.js";
+import { MissingConfigError } from "../../runtime/errors.js";
 import { getRuntimePaths } from "../../runtime/paths.js";
 import { analyzeMemoriesTool, planMemoryHygieneTool, readMemoryHygieneTrendTool, type AnalyzeMemoriesResult, type MemoryAnalysisMode, type MemoryHygienePlanResult } from "../../tools/local-read-tools.js";
 import { badge, dim, rule, title } from "../ui.js";
@@ -654,11 +655,12 @@ async function runMemoryGovernanceCommand(argv: string[]): Promise<void> {
 }
 
 async function installMemoryMaintenance(argv: string[]): Promise<void> {
+  const timeZone = await loadAgentTimeZoneIfConfigured();
   const args = parseFlagArgs(argv.slice(5));
   const scheduleValue = args["--schedule"] ?? MEMORY_MAINTENANCE_DEFAULT_SCHEDULE;
   const channel = args["--channel"] ?? (await defaultMaintenanceChannel());
 
-  const result = await installMemoryMaintenanceReport({ channel, scheduleValue });
+  const result = await installMemoryMaintenanceReport({ channel, scheduleValue, timeZone });
   if (!result.ok) {
     console.error(result.reason.replace(/^Channel must/, "--channel must"));
     process.exitCode = 1;
@@ -1295,6 +1297,17 @@ async function loadMemoryDeletePolicy(): Promise<MemoryDeletePolicy> {
     return config.memory?.deletePolicy ?? "ask";
   } catch {
     return "ask";
+  }
+}
+
+async function loadAgentTimeZoneIfConfigured(): Promise<string | undefined> {
+  try {
+    return (await loadConfig()).agent.timeZone;
+  } catch (error) {
+    if (error instanceof MissingConfigError) {
+      return undefined;
+    }
+    throw error;
   }
 }
 

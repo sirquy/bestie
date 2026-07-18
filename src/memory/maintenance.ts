@@ -22,6 +22,7 @@ export interface MemoryMaintenanceInstallOptions {
   paths?: RuntimePaths;
   channel?: string;
   scheduleValue?: string;
+  timeZone?: string;
 }
 
 export type MemoryMaintenanceInstallResult =
@@ -30,7 +31,8 @@ export type MemoryMaintenanceInstallResult =
 
 export async function installMemoryMaintenanceReport(options: MemoryMaintenanceInstallOptions = {}): Promise<MemoryMaintenanceInstallResult> {
   const scheduleValue = options.scheduleValue ?? MEMORY_MAINTENANCE_DEFAULT_SCHEDULE;
-  const scheduleError = validateSchedule("cron_expr", scheduleValue);
+  const timeZone = options.timeZone ?? "UTC";
+  const scheduleError = validateSchedule("cron_expr", scheduleValue, timeZone);
 
   if (scheduleError) {
     return { ok: false, reason: `Invalid maintenance schedule: ${scheduleError}` };
@@ -54,7 +56,7 @@ export async function installMemoryMaintenanceReport(options: MemoryMaintenanceI
       scheduleValue,
       prompt: MEMORY_MAINTENANCE_PROMPT,
       channel: options.channel,
-      nextRunAt: computeNextRun("cron_expr", scheduleValue),
+      nextRunAt: computeNextRun("cron_expr", scheduleValue, undefined, timeZone),
     });
 
     return { ok: true, schedule };

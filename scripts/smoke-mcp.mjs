@@ -7,7 +7,7 @@ const rootDir = await mkdtemp(resolve(tmpdir(), "bestie-mcp-smoke-"));
 const cliPath = resolve(process.env.INIT_CWD ?? process.cwd(), "dist/cli/index.js");
 
 try {
-  await runCli(["onboard", "--skip-provider-test"], "Bestie\nBoss\nvi\nUTC\n7\nask\nopenai-compatible\nhttp://127.0.0.1:9/v1\ntest-model\ntest-key\n");
+  await runCli(["onboard", "--skip-provider-test"], "Bestie\nBoss\nask\nopenai-compatible\nhttp://127.0.0.1:9/v1\ntest-model\ntest-key\n");
 
   const emptyList = await runCli(["mcp", "list"]);
   assertIncludes(emptyList.stdout, "No MCP servers configured");

@@ -27,12 +27,16 @@ try {
   await run(resolve(binDir, "bestie"), ["onboard", "--skip-provider-test"], {
     cwd: rootDir,
     env: { HOME: rootDir },
-    input: "Bestie\nBoss\nvi\nAsia/Ho_Chi_Minh\n7\nallow\nopenai-compatible\nhttp://127.0.0.1:9/v1\ntest-model\ntest-key\n",
+    input: "Bestie\nBoss\nallow\nopenai-compatible\nhttp://127.0.0.1:9/v1\ntest-model\ntest-key\n",
   });
   const readyDoctor = await run(resolve(binDir, "bestie"), ["doctor"], { cwd: rootDir, env: { HOME: rootDir } });
   assert.match(readyDoctor.stdout, /Tóm tắt: tìm thấy 0 vấn đề/);
 
   const configBefore = await readFile(resolve(rootDir, ".bestie/config.json"), "utf8");
+  const config = JSON.parse(configBefore);
+  assert.equal(config.agent.language, "vi");
+  assert.equal(config.agent.timeZone, "Asia/Bangkok");
+  assert.equal(config.agent.toneIntensity, 7);
   const reinstall = await run(resolve(projectRoot, "install.sh"), ["--skip-onboard", "--package", packagePath, "--bin-dir", binDir], { cwd: rootDir, env: { HOME: rootDir } });
   assert.match(reinstall.stdout, /Cài đặt Bestie hoàn tất/);
   assert.equal(await readFile(resolve(rootDir, ".bestie/config.json"), "utf8"), configBefore);

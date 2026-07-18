@@ -20,10 +20,10 @@ Phase Now should keep this flow minimal: character basics, LLM provider config, 
 Welcome
   -> choose character name
   -> choose what agent calls user
-  -> choose vibe preset
-  -> choose tone sliders
   -> choose memory write policy
   -> choose LLM provider
+  -> enter provider base URL
+  -> enter model
   -> enter API key
   -> write config
   -> test LLM unless --skip-provider-test is set
@@ -42,21 +42,10 @@ Use this for offline setup, smoke tests, or slow/unavailable providers. The comm
 
 - What should your bestie be called?
 - What should it call you?
-- Choose vibe preset:
-  - Funny Savage Bestie
-  - Soft Emotional Bestie
-  - Productivity Coach Bestie
-  - Chaotic Gen Z Friend
-  - Calm Brutally Honest Mentor
-  - Custom
-- Roast level 1-10?
-- Warmth level 1-10?
-- Bluntness level 1-10?
-- Language: any BCP-47 language tag or common language name, for example Vietnamese, English, ja, pt-BR, mixed, or auto.
-- Time zone: IANA time zone for local dates and schedules, for example Asia/Ho_Chi_Minh or America/New_York.
-- Memory write policy: ask / allow / deny? Default: ask.
-- Emoji level: none / light / expressive?
-- Any topics it should never joke about?
+- Memory write policy: ask / allow / deny? Default: allow.
+- Language is not asked during onboarding. Default: `vi`.
+- Time zone is not asked during onboarding. Default: `Asia/Bangkok`.
+- Tone intensity is not asked during onboarding. Default: `7`.
 
 ## LLM Questions
 
@@ -77,7 +66,7 @@ Use this for offline setup, smoke tests, or slow/unavailable providers. The comm
 - provider test result is logged when it runs
 - provider test failure is explained but does not delete or block local files
 - `--skip-provider-test` skips the provider network call and logs that it was skipped
-- `memory.writePolicy` is written to config; default `ask` queues model-requested writes for approval
+- `memory.writePolicy` is written to config; default `allow` stores model-requested writes without prompting
 
 ## Follow-Up Commands
 
