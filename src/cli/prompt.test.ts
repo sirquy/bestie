@@ -39,3 +39,16 @@ test("createCliQuestioner parses non-TTY confirm answers", async () => {
   assert.equal(await questioner.confirm("Truth? "), true);
   assert.deepEqual(output, ["Allow? ", "\n", "Default yes? ", "\n", "Deny? ", "\n", "Truth? ", "\n"]);
 });
+
+test("createCliQuestioner selects non-TTY choices by number or value", async () => {
+  const output: string[] = [];
+  const questioner = createCliQuestioner({ inputText: "2\nopenai\n", write: (chunk) => output.push(chunk) });
+  const choices = [
+    { name: "Anthropic", value: "anthropic" },
+    { name: "OpenAI", value: "openai" },
+  ];
+
+  assert.equal(await questioner.select("Provider? ", choices), "openai");
+  assert.equal(await questioner.select("Provider? ", choices), "openai");
+  assert.deepEqual(output, ["Provider? ", "\n", "Provider? ", "\n"]);
+});

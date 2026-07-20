@@ -48,6 +48,8 @@ test("buildMcpToolInstructions includes global tool selection guidance", () => {
   assert.match(instructions, /use only the generated login command output URL/);
   assert.match(instructions, /code_challenge/);
   assert.match(instructions, /core\/project\/session scopes need rebalancing/);
+  assert.match(instructions, /add_cron_schedule prompt must be the future task itself/);
+  assert.match(instructions, /Never store your current reply, a success message, the schedule ID, next_run_at/);
   assert.match(instructions, /Use git tools for repository state questions/);
   assert.match(instructions, /MCP server discovery/);
   assert.match(instructions, /Do not invent missing facts/);

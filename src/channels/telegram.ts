@@ -64,6 +64,7 @@ import {
 import { buildChannelAudioTranscriptResult, buildChannelProvidedAudioTranscriptResult, type ChannelAudioTranscriptResult } from "./audio-transcription.js";
 import { TELEGRAM_CHANNEL, formatChannelHelpCommands } from "./registry.js";
 import { createChannelResponseController } from "./response-controller.js";
+import { formatChannelToolProgress, shouldShowToolProgress } from "./tool-progress.js";
 
 export type TelegramUpdate = Update;
 type TelegramChatAction = Parameters<Bot["api"]["sendChatAction"]>[1];
@@ -478,7 +479,7 @@ export async function handleTelegramUpdate(update: TelegramUpdate, options: Tele
     }
     const response = createChannelResponseController(adapter.outbound.createResponseAdapter(chatId));
     const handleToolActivity = async (activity: AgentToolActivity): Promise<void> => {
-      if (activity.phase !== "start") {
+      if (!shouldShowToolProgress(activity)) {
         return;
       }
 
@@ -486,7 +487,7 @@ export async function handleTelegramUpdate(update: TelegramUpdate, options: Tele
         return;
       }
 
-      await response.showProgress(formatTelegramToolActivity(activity, options.config.agent.name));
+      await response.showProgress(formatChannelToolProgress(activity, options.config.agent.name));
     };
     const assistantText = await completeWithAgentTools({
       config: options.config,
@@ -960,65 +961,6 @@ async function safeEditTelegramMessageText(client: TelegramClient, chatId: numbe
 function isTelegramMessageNotModifiedError(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error);
   return message.includes("message is not modified");
-}
-
-function formatTelegramToolActivity(activity: AgentToolActivity, agentName: string): string {
-  const target = activity.label.trim();
-  const suffix = target ? ` ${target}` : "";
-
-  if (activity.toolName === "internal.list_files") {
-    return `${agentName} is listing files in${suffix}`;
-  }
-
-  if (activity.toolName === "internal.read_file") {
-    return `${agentName} is reading file${suffix}`;
-  }
-
-  if (activity.toolName === "internal.read_many_files") {
-    return `${agentName} is reading files${suffix}`;
-  }
-
-  if (activity.toolName === "internal.read_markdown_bundle") {
-    return `${agentName} is collecting Markdown docs from${suffix}`;
-  }
-
-  if (activity.toolName === "internal.search_files") {
-    return `${agentName} is searching files for${suffix}`;
-  }
-
-  if (activity.toolName === "internal.read_logs") {
-    return `${agentName} is reading recent logs`;
-  }
-
-  if (activity.toolName === "internal.list_memories") {
-    return `${agentName} is listing saved memories`;
-  }
-
-  if (activity.toolName === "internal.search_memories") {
-    return `${agentName} is searching memories for${suffix}`;
-  }
-
-  if (activity.toolName === "internal.analyze_memories") {
-    return `${agentName} is analyzing saved memories`;
-  }
-
-  if (activity.toolName === "internal.remember_memory") {
-    return `${agentName} is preparing a memory approval`;
-  }
-
-  if (activity.toolName === "internal.delete_memory") {
-    return `${agentName} is deleting memory${suffix}`;
-  }
-
-  if (activity.toolName === "internal.cleanup_memories") {
-    return `${agentName} is cleaning saved memories`;
-  }
-
-  if (activity.toolName.startsWith("mcp.") || activity.toolName.includes("/")) {
-    return `${agentName} is using read tool${suffix}`;
-  }
-
-  return `${agentName} is working${suffix}`;
 }
 
 function splitTelegramMessageText(text: string): string[] {

@@ -3,7 +3,7 @@ import test from "node:test";
 
 import type { AppConfig } from "../runtime/config.js";
 import { ProviderAuthError, ProviderFallbackError, ProviderNetworkError, ProviderRateLimitError, ProviderResponseError, ProviderTimeoutError } from "./errors.js";
-import { buildChatCompletionRequestBody, sendChatCompletion, sendChatCompletionWithFallbacks } from "./openai-compatible.js";
+import { buildAnthropicMessagesRequestBody, buildChatCompletionRequestBody, sendChatCompletion, sendChatCompletionWithFallbacks } from "./openai-compatible.js";
 import type { RuntimePaths } from "../runtime/paths.js";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -69,6 +69,28 @@ test("buildChatCompletionRequestBody preserves multimodal message parts", () => 
   );
 });
 
+test("buildAnthropicMessagesRequestBody maps system prompts and user messages", () => {
+  const claudeConfig: AppConfig = { ...config, llm: { ...config.llm, provider: "claude", baseUrl: "https://api.anthropic.com/v1", model: "claude-sonnet-4-5" } };
+
+  assert.deepEqual(
+    buildAnthropicMessagesRequestBody(claudeConfig, {
+      messages: [
+        { role: "system", content: "You are concise." },
+        { role: "user", content: "Hi" },
+      ],
+      maxTokens: 64,
+      temperature: 0.3,
+    }),
+    {
+      model: "claude-sonnet-4-5",
+      system: "You are concise.",
+      messages: [{ role: "user", content: "Hi" }],
+      max_tokens: 64,
+      temperature: 0.3,
+    },
+  );
+});
+
 test("sendChatCompletion returns assistant text", async () => {
   const fetchImpl = async () =>
     new Response(JSON.stringify({ choices: [{ message: { content: "Xin chao" } }] }), { status: 200 });
@@ -76,6 +98,43 @@ test("sendChatCompletion returns assistant text", async () => {
   const content = await sendChatCompletion(config, "secret", { messages: [{ role: "user", content: "Hi" }] }, fetchImpl);
 
   assert.equal(content, "Xin chao");
+});
+
+test("sendChatCompletion calls OpenAI-compatible aliases with chat completions", async () => {
+  let requestedUrl = "";
+  let authorization = "";
+  const fetchImpl = async (url: string | URL | Request, init?: RequestInit) => {
+    requestedUrl = String(url);
+    authorization = new Headers(init?.headers).get("authorization") ?? "";
+    return new Response(JSON.stringify({ choices: [{ message: { content: "Xin chao" } }] }), { status: 200 });
+  };
+
+  const content = await sendChatCompletion({ ...config, llm: { ...config.llm, provider: "chatgpt" } }, "secret", { messages: [{ role: "user", content: "Hi" }] }, fetchImpl);
+
+  assert.equal(content, "Xin chao");
+  assert.equal(requestedUrl, "https://example.com/v1/chat/completions");
+  assert.equal(authorization, "Bearer secret");
+});
+
+test("sendChatCompletion calls Claude provider with Anthropic messages API", async () => {
+  let requestedUrl = "";
+  let headers: Headers | undefined;
+  let requestBody: unknown;
+  const claudeConfig: AppConfig = { ...config, llm: { ...config.llm, provider: "claude", baseUrl: "https://api.anthropic.com/v1", model: "claude-sonnet-4-5" } };
+  const fetchImpl = async (url: string | URL | Request, init?: RequestInit) => {
+    requestedUrl = String(url);
+    headers = new Headers(init?.headers);
+    requestBody = JSON.parse(String(init?.body));
+    return new Response(JSON.stringify({ content: [{ type: "text", text: "Chao tu Claude" }] }), { status: 200 });
+  };
+
+  const content = await sendChatCompletion(claudeConfig, "secret", { messages: [{ role: "user", content: "Hi" }], maxTokens: 32 }, fetchImpl);
+
+  assert.equal(content, "Chao tu Claude");
+  assert.equal(requestedUrl, "https://api.anthropic.com/v1/messages");
+  assert.equal(headers?.get("x-api-key"), "secret");
+  assert.equal(headers?.get("anthropic-version"), "2023-06-01");
+  assert.deepEqual(requestBody, { model: "claude-sonnet-4-5", messages: [{ role: "user", content: "Hi" }], max_tokens: 32 });
 });
 
 test("sendChatCompletion streams assistant text chunks", async () => {
@@ -98,6 +157,26 @@ test("sendChatCompletion streams assistant text chunks", async () => {
   const content = await sendChatCompletion(config, "secret", { messages: [{ role: "user", content: "Hi" }], stream: true, onToken: (token) => tokens.push(token) }, fetchImpl);
 
   assert.deepEqual(requestBody, { model: "example-model", messages: [{ role: "user", content: "Hi" }], stream: true });
+  assert.deepEqual(tokens, ["Xin", " chao"]);
+  assert.equal(content, "Xin chao");
+});
+
+test("sendChatCompletion streams Claude text deltas", async () => {
+  const tokens: string[] = [];
+  const encoder = new TextEncoder();
+  const claudeConfig: AppConfig = { ...config, llm: { ...config.llm, provider: "anthropic", baseUrl: "https://api.anthropic.com/v1", model: "claude-sonnet-4-5" } };
+  const stream = new ReadableStream({
+    start(controller) {
+      controller.enqueue(encoder.encode('event: content_block_delta\n'));
+      controller.enqueue(encoder.encode('data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"Xin"}}\n\n'));
+      controller.enqueue(encoder.encode('data: {"type":"content_block_delta","delta":{"type":"text_delta","text":" chao"}}\n\n'));
+      controller.close();
+    },
+  });
+  const fetchImpl = async () => new Response(stream, { status: 200, headers: { "content-type": "text/event-stream" } });
+
+  const content = await sendChatCompletion(claudeConfig, "secret", { messages: [{ role: "user", content: "Hi" }], stream: true, onToken: (token) => tokens.push(token) }, fetchImpl);
+
   assert.deepEqual(tokens, ["Xin", " chao"]);
   assert.equal(content, "Xin chao");
 });

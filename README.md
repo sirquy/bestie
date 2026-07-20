@@ -8,7 +8,7 @@ The project is early and intentionally practical: it focuses on a small local ru
 
 - A TypeScript CLI for building and running a personalized AI companion.
 - Vietnamese-first by default, but configurable for other language modes.
-- OpenAI-compatible for LLM providers, with local config for model, base URL, and API key environment variable names.
+- Configurable LLM providers, including OpenAI-compatible endpoints, OpenAI/ChatGPT, and Anthropic Claude.
 - Designed around privacy controls, local logs, explicit permissions, and user-owned memory.
 
 ## What Bestie Is Not
@@ -22,7 +22,7 @@ Bestie is under active development. The local CLI foundation includes:
 - Terminal chat
 - Character prompt loading
 - Minimal onboarding
-- OpenAI-compatible chat provider calls
+- OpenAI-compatible, OpenAI/ChatGPT, and Anthropic Claude chat provider calls
 - Doctor diagnostics
 - Local SQLite memory foundation
 - Telegram and Zalo local polling
@@ -42,7 +42,7 @@ Some roadmap items are intentionally not ready yet: hosted mode, broad external 
 
 - Node.js 24
 - npm
-- An OpenAI-compatible provider API key for chat
+- An LLM provider API key for chat
 - Optional: Telegram bot token for Telegram mode
 
 ## Quickstart
@@ -118,6 +118,7 @@ Example `~/.bestie/.env`:
 
 ```bash
 OPENAI_API_KEY=your-provider-key
+ANTHROPIC_API_KEY=your-claude-key
 BESTIE_TELEGRAM_BOT_TOKEN=your-telegram-token
 ```
 
@@ -133,6 +134,10 @@ Example provider config:
   }
 }
 ```
+
+Use `provider: "chatgpt"` or `"openai"` for OpenAI Chat Completions, `"claude"` or `"anthropic"` for Anthropic Messages API, and `"openai-compatible"` for custom OpenAI-compatible providers.
+
+Run `bestie llm setup` to choose a supported provider interactively, or `bestie llm setup --provider anthropic|openai|custom|ollama|gemini|antigravity` for a faster setup path.
 
 See `docs/CONFIG_SPEC.md` for full config details.
 

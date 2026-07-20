@@ -52,7 +52,7 @@ Coordinates one turn:
 
 1. receive message
 2. build prompt from editable character files
-3. call the configured OpenAI-compatible LLM
+3. call the configured LLM provider
 4. send response
 5. store redacted operational logs
 
@@ -72,7 +72,7 @@ Character config should be data-driven so onboarding and UI can edit it.
 
 ### LLM Adapter
 
-First adapter: OpenAI-compatible HTTP API.
+Current adapters: OpenAI-compatible Chat Completions and Anthropic Messages API.
 
 Required config:
 

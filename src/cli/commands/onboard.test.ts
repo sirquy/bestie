@@ -25,7 +25,7 @@ test("runOnboardCommand writes local files and skips provider test when requeste
           if (question.includes("Bestie nên gọi bạn")) return "Boss";
           if (question.includes("Chính sách ghi nhớ")) return "ask";
           if (question.includes("Nhãn nhà cung cấp")) return "openai-compatible";
-          if (question.includes("Base URL tương thích OpenAI")) return "http://127.0.0.1:9/v1/";
+          if (question.includes("Base URL API")) return "http://127.0.0.1:9/v1/";
           if (question.includes("Tên model")) return "test-model";
           throw new Error(`Unexpected question: ${question}`);
         },
@@ -99,6 +99,42 @@ test("runOnboardCommand runs provider test when not skipped", async () => {
   }
 });
 
+test("runOnboardCommand uses Claude provider defaults", async () => {
+  const paths = await createTempPaths();
+
+  try {
+    await runOnboardCommand({
+      argv: ["node", "bestie", "onboard", "--skip-provider-test"],
+      paths,
+      questioner: {
+        ask: async (question) => {
+          if (question.includes("Bạn muốn gọi bestie")) return "Miu";
+          if (question.includes("Bestie nên gọi bạn")) return "Boss";
+          if (question.includes("Chính sách ghi nhớ")) return "ask";
+          if (question.includes("Nhãn nhà cung cấp")) return "claude";
+          if (question.includes("Base URL API")) return "";
+          if (question.includes("Tên model")) return "";
+          throw new Error(`Unexpected question: ${question}`);
+        },
+        askHidden: async () => "test-key",
+        close: () => undefined,
+      },
+      writeLine: () => undefined,
+    });
+
+    const config = JSON.parse(await readFile(paths.configPath, "utf8")) as { llm: { provider: string; baseUrl: string; model: string; apiKeyEnv: string } };
+    const envText = await readFile(paths.envPath, "utf8");
+
+    assert.equal(config.llm.provider, "claude");
+    assert.equal(config.llm.baseUrl, "https://api.anthropic.com/v1");
+    assert.equal(config.llm.model, "claude-sonnet-4-5");
+    assert.equal(config.llm.apiKeyEnv, "ANTHROPIC_API_KEY");
+    assert.match(envText, /ANTHROPIC_API_KEY="test-key"/);
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
 test("runOnboardCommand highlights provider test failures", async () => {
   const paths = await createTempPaths();
   const output: string[] = [];
@@ -129,7 +165,7 @@ function createQuestioner(): { ask: (question: string) => Promise<string>; askHi
       if (question.includes("Bestie nên gọi bạn")) return "Boss";
       if (question.includes("Chính sách ghi nhớ")) return "ask";
       if (question.includes("Nhãn nhà cung cấp")) return "openai-compatible";
-      if (question.includes("Base URL tương thích OpenAI")) return "http://127.0.0.1:9/v1/";
+      if (question.includes("Base URL API")) return "http://127.0.0.1:9/v1/";
       if (question.includes("Tên model")) return "test-model";
       throw new Error(`Unexpected question: ${question}`);
     },

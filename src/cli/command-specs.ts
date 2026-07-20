@@ -3,6 +3,7 @@ import { runChatCommand } from "./commands/chat.js";
 import { runCronCommand } from "./commands/cron.js";
 import { runDaemonCommand } from "./commands/daemon.js";
 import { runDoctorCommand } from "./commands/doctor.js";
+import { runLlmCommand } from "./commands/llm.js";
 import { runLogsCommand } from "./commands/logs.js";
 import { runMcpCommand } from "./commands/mcp.js";
 import { runMemoryCommand } from "./commands/memory.js";
@@ -28,6 +29,10 @@ Tùy chọn doctor:
 
 Tùy chọn MCP:
   Chạy bestie mcp --help để xem lệnh MCP server.
+
+Tùy chọn LLM:
+  setup [--provider anthropic|openai|custom|ollama|gemini|antigravity]
+    Cấu hình provider LLM đang dùng.
 
 Tùy chọn kênh:
   Chạy bestie channels --help để xem channel adapter và chẩn đoán.
@@ -97,6 +102,14 @@ export const cliCommandSpecs: CliCommandSpec[] = [
   },
   { name: "logs", description: "Xem log vận hành gần đây đã redact", handler: runLogsCommand },
   { name: "doctor", description: "Chẩn đoán vấn đề thiết lập local", handler: runDoctorCommand },
+  {
+    name: "llm",
+    description: "Cấu hình provider LLM",
+    handler: runLlmCommand,
+    children: [
+      { name: "setup", description: "Chọn và cấu hình provider LLM", handler: runLlmCommand },
+    ],
+  },
   { name: "memory", description: "Xem hoặc thêm memory local thủ công", handler: runMemoryCommand },
   {
     name: "mcp",

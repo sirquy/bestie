@@ -8,7 +8,7 @@ export interface ProviderTestResult {
   message?: string;
 }
 
-export async function testOpenAICompatibleProvider(config: AppConfig, apiKey: string): Promise<ProviderTestResult> {
+export async function testLlmProvider(config: AppConfig, apiKey: string): Promise<ProviderTestResult> {
   try {
     await sendChatCompletion(config, apiKey, {
       messages: [
@@ -39,3 +39,5 @@ function getErrorStatus(error: unknown): number | undefined {
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
+
+export const testOpenAICompatibleProvider = testLlmProvider;

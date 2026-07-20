@@ -139,6 +139,16 @@ Phase Now config started with non-secret `agent` and `llm` fields. The current l
 }
 ```
 
+Supported chat provider labels:
+
+- `openai-compatible`: OpenAI Chat Completions compatible endpoint at `{baseUrl}/chat/completions`.
+- `openai` or `chatgpt`: OpenAI Chat Completions endpoint at `{baseUrl}/chat/completions`.
+- `anthropic` or `claude`: Anthropic Messages endpoint at `{baseUrl}/messages`.
+
+Fallback entries may mix providers by setting `provider`, `baseUrl`, `model`, and `apiKeyEnv` on each fallback. When a fallback omits `provider`, `baseUrl`, or `apiKeyEnv`, Bestie inherits the primary LLM value.
+
+Use `bestie llm setup` to configure this block and merge the required secret into `.env`. The command supports Anthropic, ChatGPT/OpenAI, Custom Provider, Ollama, Gemini, and Antigravity. API-key and local/cloud modes write runnable config immediately; OAuth modes scaffold the config and tell the user which token env var must be populated until provider-specific browser OAuth is implemented.
+
 For local audio transcription, replace the `transcription` block with a `local-whisper` provider. The command is executed directly without a shell; `args` must include `{audioPath}` and may include `{modelPath}`. The command should print the transcript to stdout.
 
 For ElevenLabs audio transcription, use an `elevenlabs` provider. `languageCode` is optional; when omitted, Bestie derives the language from `agent.language`, and `mixed` or `auto` lets ElevenLabs auto-detect.
@@ -215,6 +225,7 @@ Onboarding writes the LLM API key. Channel, speech, transcription, and MCP secre
 
 ```bash
 OPENAI_API_KEY=
+ANTHROPIC_API_KEY=
 BESTIE_TELEGRAM_BOT_TOKEN=
 BESTIE_ZALO_BOT_TOKEN=
 ELEVENLABS_API_KEY=

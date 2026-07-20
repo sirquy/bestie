@@ -29,6 +29,7 @@ import { createChannelActivityController } from "./activity.js";
 import { applyMemoryHygienePlanForChannel, formatMemoryAnalysisReport, formatMemoryCleanupDryRunReport, formatMemoryGovernanceStatus, formatMemoryHygieneReport, formatMemoryInspect, formatMemoryMaintenanceInstalled, formatMemoryMaintenanceRemoved, formatMemoryMaintenanceStatus, formatMemoryRetrievalPolicyUpdated } from "./memory-commands.js";
 import { ZALO_CHANNEL, formatChannelHelpCommands } from "./registry.js";
 import { createChannelResponseController } from "./response-controller.js";
+import { formatChannelToolProgress, shouldShowToolProgress } from "./tool-progress.js";
 
 const ZALO_API_BASE_URL = "https://bot-api.zaloplatforms.com";
 const ZALO_MESSAGE_MAX_CHARS = 2_000;
@@ -683,13 +684,13 @@ function createZaloPermissionApprover(client: ZaloClient, chatId: string, paths:
 }
 
 async function handleZaloToolActivity(response: ReturnType<typeof createChannelResponseController>, activity: AgentToolActivity, agentName: string): Promise<void> {
-  if (activity.phase !== "start") {
+  if (!shouldShowToolProgress(activity)) {
     return;
   }
   if (activity.callIndex !== 1 && activity.callIndex % ZALO_TOOL_PROGRESS_EVERY !== 0) {
     return;
   }
-  await response.showProgress(formatZaloToolActivity(activity, agentName));
+  await response.showProgress(formatChannelToolProgress(activity, agentName));
 }
 
 async function runZaloMemoryReasoningPass(options: Parameters<typeof runMemoryReasoningPass>[0]): Promise<MemoryReasoningResult> {
@@ -738,26 +739,6 @@ async function sendZaloMemoryReasoningApprovalsIfNeeded(
       ].filter(Boolean).join("\n")),
     );
   }
-}
-
-function formatZaloToolActivity(activity: AgentToolActivity, agentName: string): string {
-  const target = activity.label.trim();
-  const suffix = target ? ` ${target}` : "";
-
-  if (activity.toolName === "internal.list_files") return `${agentName} is listing files in${suffix}`;
-  if (activity.toolName === "internal.read_file") return `${agentName} is reading file${suffix}`;
-  if (activity.toolName === "internal.read_many_files") return `${agentName} is reading files${suffix}`;
-  if (activity.toolName === "internal.read_markdown_bundle") return `${agentName} is collecting Markdown docs from${suffix}`;
-  if (activity.toolName === "internal.search_files") return `${agentName} is searching files for${suffix}`;
-  if (activity.toolName === "internal.read_logs") return `${agentName} is reading recent logs`;
-  if (activity.toolName === "internal.list_memories") return `${agentName} is listing saved memories`;
-  if (activity.toolName === "internal.search_memories") return `${agentName} is searching memories for${suffix}`;
-  if (activity.toolName === "internal.analyze_memories") return `${agentName} is analyzing saved memories`;
-  if (activity.toolName === "internal.remember_memory") return `${agentName} is preparing a memory approval`;
-  if (activity.toolName === "internal.delete_memory") return `${agentName} is deleting memory${suffix}`;
-  if (activity.toolName === "internal.cleanup_memories") return `${agentName} is cleaning saved memories`;
-  if (activity.toolName.startsWith("mcp.") || activity.toolName.includes("/")) return `${agentName} is using read tool${suffix}`;
-  return `${agentName} is working${suffix}`;
 }
 
 async function sendZaloTextChunks(client: ZaloClient, chatId: string, text: string): Promise<void> {

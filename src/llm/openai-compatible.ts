@@ -7,7 +7,7 @@ import type { RuntimePaths } from "../runtime/paths.js";
 import { redactSecretLikeValues } from "../runtime/secret-redaction.js";
 import { ProviderAuthError, ProviderNetworkError, ProviderRateLimitError, ProviderResponseError, ProviderTimeoutError } from "./errors.js";
 import { ProviderFallbackRecorder } from "./fallbacks.js";
-import type { ChatCompletionOptions, ChatCompletionRequestBody } from "./types.js";
+import type { ChatCompletionOptions, ChatCompletionRequestBody, ChatMessage, ChatMessageContent } from "./types.js";
 
 export type FetchLike = typeof fetch;
 
@@ -56,7 +56,7 @@ export async function sendChatCompletion(
   timeoutMs = config.llm.timeoutMs ?? DEFAULT_LLM_TIMEOUT_MS,
   retryLogOptions: { paths?: RuntimePaths; knownSecrets?: string[] } = {},
 ): Promise<string> {
-  const requestBody = buildChatCompletionRequestBody(config, options);
+  const requestBody = buildProviderRequestBody(config, options);
   const maxRetries = config.llm.maxRetries ?? DEFAULT_LLM_MAX_RETRIES;
   const retryDelayMs = config.llm.retryDelayMs ?? DEFAULT_LLM_RETRY_DELAY_MS;
   let attempt = 0;
@@ -107,7 +107,7 @@ async function logProviderRetry(
 async function sendChatCompletionAttempt(
   config: AppConfig,
   apiKey: string,
-  requestBody: ChatCompletionRequestBody,
+  requestBody: unknown,
   fetchImpl: FetchLike,
   timeoutMs: number,
   onToken?: (token: string) => void,
@@ -122,12 +122,9 @@ async function sendChatCompletionAttempt(
 
   // console.log(requestBody)
   try {
-    response = await fetchImpl(`${config.llm.baseUrl}/chat/completions`, {
+    response = await fetchImpl(buildChatCompletionUrl(config), {
       method: "POST",
-      headers: {
-        authorization: `Bearer ${apiKey}`,
-        "content-type": "application/json",
-      },
+      headers: buildChatCompletionHeaders(config, apiKey),
       body: JSON.stringify(requestBody),
       signal: abortController.signal,
     });
@@ -153,18 +150,47 @@ async function sendChatCompletionAttempt(
     throw new ProviderResponseError(await formatProviderHttpError(response), response.status);
   }
 
-  if (requestBody.stream) {
-    return parseStreamingResponse(response, onToken);
+  const shouldStream = isRecord(requestBody) && requestBody.stream === true;
+  if (shouldStream) {
+    return isAnthropicProvider(config.llm.provider) ? parseAnthropicStreamingResponse(response, onToken) : parseOpenAiStreamingResponse(response, onToken);
   }
 
   const responseBody = await parseJsonResponse(response);
-  const content = extractAssistantText(responseBody);
+  const content = isAnthropicProvider(config.llm.provider) ? extractAnthropicAssistantText(responseBody) : extractOpenAiAssistantText(responseBody);
 
   if (!content) {
     throw new ProviderResponseError("missing assistant message content.");
   }
 
   return content;
+}
+
+function buildProviderRequestBody(config: AppConfig, options: ChatCompletionOptions): unknown {
+  return isAnthropicProvider(config.llm.provider) ? buildAnthropicMessagesRequestBody(config, options) : buildChatCompletionRequestBody(config, options);
+}
+
+function buildChatCompletionUrl(config: AppConfig): string {
+  const baseUrl = config.llm.baseUrl.replace(/\/+$/, "");
+  return isAnthropicProvider(config.llm.provider) ? `${baseUrl}/messages` : `${baseUrl}/chat/completions`;
+}
+
+function buildChatCompletionHeaders(config: AppConfig, apiKey: string): Record<string, string> {
+  if (isAnthropicProvider(config.llm.provider)) {
+    return {
+      "x-api-key": apiKey,
+      "anthropic-version": "2023-06-01",
+      "content-type": "application/json",
+    };
+  }
+
+  return {
+    authorization: `Bearer ${apiKey}`,
+    "content-type": "application/json",
+  };
+}
+
+function isAnthropicProvider(provider: string): boolean {
+  return ["anthropic", "claude"].includes(provider.toLowerCase());
 }
 
 async function formatProviderHttpError(response: Response): Promise<string> {
@@ -227,7 +253,72 @@ export function buildChatCompletionRequestBody(
   };
 }
 
-async function parseStreamingResponse(response: Response, onToken?: (token: string) => void): Promise<string> {
+export interface AnthropicMessagesRequestBody {
+  model: string;
+  messages: Array<{ role: "user" | "assistant"; content: AnthropicMessageContent }>;
+  system?: string;
+  temperature?: number;
+  max_tokens: number;
+  stream?: boolean;
+}
+
+type AnthropicContentPart = { type: "text"; text: string } | { type: "image"; source: { type: "base64"; media_type: string; data: string } };
+type AnthropicMessageContent = string | AnthropicContentPart[];
+
+export function buildAnthropicMessagesRequestBody(config: AppConfig, options: ChatCompletionOptions): AnthropicMessagesRequestBody {
+  const system = options.messages
+    .filter((message) => message.role === "system")
+    .map((message) => contentToPlainText(message.content))
+    .filter(Boolean)
+    .join("\n\n");
+  const messages = options.messages
+    .filter((message): message is ChatMessage & { role: "user" | "assistant" } => message.role === "user" || message.role === "assistant")
+    .map((message) => ({
+      role: message.role,
+      content: toAnthropicContent(message.content),
+    }));
+
+  return {
+    model: config.llm.model,
+    messages,
+    ...(system ? { system } : {}),
+    ...(options.temperature === undefined ? {} : { temperature: options.temperature }),
+    max_tokens: options.maxTokens ?? 1024,
+    ...(options.stream ? { stream: true } : {}),
+  };
+}
+
+function toAnthropicContent(content: ChatMessageContent): AnthropicMessageContent {
+  if (typeof content === "string") {
+    return content;
+  }
+
+  return content.flatMap<AnthropicContentPart>((part) => {
+    if (part.type === "text") {
+      return [{ type: "text" as const, text: part.text }];
+    }
+
+    const match = part.image_url.url.match(/^data:([^;]+);base64,(.+)$/);
+    if (!match) {
+      return [{ type: "text" as const, text: `[Unsupported image URL: ${part.image_url.url.slice(0, 80)}]` }];
+    }
+
+    return [{ type: "image" as const, source: { type: "base64" as const, media_type: match[1], data: match[2] } }];
+  });
+}
+
+function contentToPlainText(content: ChatMessageContent): string {
+  if (typeof content === "string") {
+    return content;
+  }
+
+  return content
+    .filter((part) => part.type === "text")
+    .map((part) => part.text)
+    .join("\n");
+}
+
+async function parseOpenAiStreamingResponse(response: Response, onToken?: (token: string) => void): Promise<string> {
   if (!response.body) {
     throw new ProviderResponseError("streaming response body is missing.");
   }
@@ -275,6 +366,56 @@ async function parseStreamingResponse(response: Response, onToken?: (token: stri
   return content;
 }
 
+async function parseAnthropicStreamingResponse(response: Response, onToken?: (token: string) => void): Promise<string> {
+  if (!response.body) {
+    throw new ProviderResponseError("streaming response body is missing.");
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let content = "";
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) {
+        break;
+      }
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split(/\r?\n/);
+      buffer = lines.pop() ?? "";
+
+      for (const line of lines) {
+        const token = parseAnthropicStreamingLine(line);
+        if (token === undefined) {
+          continue;
+        }
+
+        content += token;
+        onToken?.(token);
+      }
+    }
+
+    const finalToken = parseAnthropicStreamingLine(buffer);
+    if (finalToken !== undefined) {
+      content += finalToken;
+      onToken?.(finalToken);
+    }
+  } catch (error) {
+    throw new ProviderNetworkError(error instanceof Error ? error.message : "Unknown streaming error.");
+  } finally {
+    reader.releaseLock();
+  }
+
+  if (!content.trim()) {
+    throw new ProviderResponseError("missing assistant message content.");
+  }
+
+  return content;
+}
+
 function parseStreamingLine(line: string): string | undefined {
   const trimmed = line.trim();
   if (!trimmed || trimmed.startsWith(":")) {
@@ -304,6 +445,29 @@ function parseStreamingLine(line: string): string | undefined {
   }
 }
 
+function parseAnthropicStreamingLine(line: string): string | undefined {
+  const trimmed = line.trim();
+  if (!trimmed.startsWith("data:")) {
+    return undefined;
+  }
+
+  const payload = trimmed.slice("data:".length).trim();
+  if (!payload || payload === "[DONE]") {
+    return undefined;
+  }
+
+  try {
+    const parsed = JSON.parse(payload) as unknown;
+    if (!isRecord(parsed) || parsed.type !== "content_block_delta" || !isRecord(parsed.delta)) {
+      return undefined;
+    }
+
+    return parsed.delta.type === "text_delta" && typeof parsed.delta.text === "string" ? parsed.delta.text : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 async function parseJsonResponse(response: Response): Promise<unknown> {
   try {
     return await response.json();
@@ -312,7 +476,7 @@ async function parseJsonResponse(response: Response): Promise<unknown> {
   }
 }
 
-function extractAssistantText(responseBody: unknown): string | undefined {
+function extractOpenAiAssistantText(responseBody: unknown): string | undefined {
   if (!isRecord(responseBody) || !Array.isArray(responseBody.choices)) {
     return undefined;
   }
@@ -324,6 +488,19 @@ function extractAssistantText(responseBody: unknown): string | undefined {
 
   const content = firstChoice.message.content;
   return typeof content === "string" && content.trim().length > 0 ? content : undefined;
+}
+
+function extractAnthropicAssistantText(responseBody: unknown): string | undefined {
+  if (!isRecord(responseBody) || !Array.isArray(responseBody.content)) {
+    return undefined;
+  }
+
+  const content = responseBody.content
+    .filter((part): part is { type: string; text: string } => isRecord(part) && part.type === "text" && typeof part.text === "string")
+    .map((part) => part.text)
+    .join("");
+
+  return content.trim().length > 0 ? content : undefined;
 }
 
 function isAbortError(error: unknown): boolean {

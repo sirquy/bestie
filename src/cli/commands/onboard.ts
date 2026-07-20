@@ -5,7 +5,7 @@ import { resolve } from "node:path";
 import { getDefaultAgentsMarkdown } from "../../character/agents-template.js";
 import { generateCharacterConfig, generateSystemPrompt } from "../../character/prompt-generator.js";
 import { writeCharacterFiles } from "../../character/writer.js";
-import { testOpenAICompatibleProvider } from "../../llm/provider-test.js";
+import { testLlmProvider } from "../../llm/provider-test.js";
 import { DEFAULT_LLM_MAX_RETRIES, DEFAULT_LLM_RETRY_DELAY_MS, DEFAULT_LLM_TIMEOUT_MS, type AppConfig, writeConfig } from "../../runtime/config.js";
 import { writeEnvFile } from "../../runtime/env.js";
 import { appendLog } from "../../runtime/logger.js";
@@ -14,6 +14,7 @@ import { createCliQuestioner } from "../prompt.js";
 import { badge, bold, color, dim, title, withColorMode } from "../ui.js";
 
 const DEFAULT_API_KEY_ENV = "OPENAI_API_KEY";
+const ANTHROPIC_API_KEY_ENV = "ANTHROPIC_API_KEY";
 const DEFAULT_LANGUAGE: LanguageMode = "vi";
 const DEFAULT_TIME_ZONE = "Asia/Bangkok";
 const DEFAULT_TONE_INTENSITY = 7;
@@ -40,6 +41,7 @@ interface OnboardingAnswers {
   provider: string;
   baseUrl: string;
   model: string;
+  apiKeyEnv: string;
   apiKey: string;
 }
 
@@ -113,7 +115,7 @@ export async function runOnboardCommand(optionsOrArgv: string[] | OnboardCommand
     const systemPrompt = generateSystemPrompt(character);
 
     await writeConfig(config, paths);
-    await writeEnvFile({ [DEFAULT_API_KEY_ENV]: answers.apiKey }, paths);
+    await writeEnvFile({ [answers.apiKeyEnv]: answers.apiKey }, paths);
     await writeCharacterFiles(character, systemPrompt, paths);
     await writeAgentsFile(paths);
     ui.success("Đã ghi các file runtime cục bộ.");
@@ -160,11 +162,25 @@ async function collectAnswers(questioner: Pick<Questioner, "ask" | "askHidden">)
   const memoryWritePolicy = await askMemoryWritePolicy(ask);
   const memoryDeletePolicy: MemoryDeletePolicy = "allow"; // For now, we always allow memory deletion. Future versions may ask this question.
   const provider = await askNonEmpty(ask, promptTheme.step(4, 7, "Nhà cung cấp", "Nhãn nhà cung cấp?"), "openai-compatible");
-  const baseUrl = await askNonEmpty(ask, promptTheme.step(5, 7, "Base URL", "Base URL tương thích OpenAI?"), "https://api.openai.com/v1");
-  const model = await askNonEmpty(ask, promptTheme.step(6, 7, "Model", "Tên model?"), "gpt-4o-mini");
-  const apiKey = await askNonEmpty(askHidden, promptTheme.step(7, 7, "API key", `Dán API key của nhà cung cấp. Key sẽ được lưu dưới tên ${DEFAULT_API_KEY_ENV} và được ẩn khi nhập.`));
+  const providerDefaults = getLlmProviderDefaults(provider);
+  const baseUrl = await askNonEmpty(ask, promptTheme.step(5, 7, "Base URL", "Base URL API của nhà cung cấp?"), providerDefaults.baseUrl);
+  const model = await askNonEmpty(ask, promptTheme.step(6, 7, "Model", "Tên model?"), providerDefaults.model);
+  const apiKey = await askNonEmpty(askHidden, promptTheme.step(7, 7, "API key", `Dán API key của nhà cung cấp. Key sẽ được lưu dưới tên ${providerDefaults.apiKeyEnv} và được ẩn khi nhập.`));
 
-  return { agentName, ownerName, language, timeZone, toneIntensity, memoryWritePolicy, memoryDeletePolicy, provider, baseUrl, model, apiKey };
+  return { agentName, ownerName, language, timeZone, toneIntensity, memoryWritePolicy, memoryDeletePolicy, provider, baseUrl, model, apiKeyEnv: providerDefaults.apiKeyEnv, apiKey };
+}
+
+function getLlmProviderDefaults(provider: string): { baseUrl: string; model: string; apiKeyEnv: string } {
+  const normalizedProvider = provider.trim().toLowerCase();
+  if (normalizedProvider === "claude" || normalizedProvider === "anthropic") {
+    return { baseUrl: "https://api.anthropic.com/v1", model: "claude-sonnet-4-5", apiKeyEnv: ANTHROPIC_API_KEY_ENV };
+  }
+
+  if (normalizedProvider === "chatgpt" || normalizedProvider === "openai") {
+    return { baseUrl: "https://api.openai.com/v1", model: "gpt-4o-mini", apiKeyEnv: DEFAULT_API_KEY_ENV };
+  }
+
+  return { baseUrl: "https://api.openai.com/v1", model: "gpt-4o-mini", apiKeyEnv: DEFAULT_API_KEY_ENV };
 }
 
 async function askNonEmpty(
@@ -264,7 +280,7 @@ function buildConfig(answers: OnboardingAnswers): AppConfig {
       provider: answers.provider,
       baseUrl: answers.baseUrl.replace(/\/+$/, ""),
       model: answers.model,
-      apiKeyEnv: DEFAULT_API_KEY_ENV,
+      apiKeyEnv: answers.apiKeyEnv,
       timeoutMs: DEFAULT_LLM_TIMEOUT_MS,
       maxRetries: DEFAULT_LLM_MAX_RETRIES,
       retryDelayMs: DEFAULT_LLM_RETRY_DELAY_MS,
@@ -293,7 +309,7 @@ async function runProviderTest(config: AppConfig, apiKey: string, paths: Runtime
   const reporter = providerTestReporter ?? createProviderTestReporter(writeLine, output.isTTY);
   reporter.pending("Đang kiểm tra nhà cung cấp bằng một completion nhỏ...");
 
-  const result = await testOpenAICompatibleProvider(config, apiKey);
+  const result = await testLlmProvider(config, apiKey);
 
   if (result.ok) {
     await appendLog({ event: "provider_test_success", detail: { provider: config.llm.provider, model: config.llm.model } }, { paths });

@@ -1758,6 +1758,35 @@ test("handleTelegramUpdate executes one MCP read tool request before replying", 
   }
 });
 
+test("handleTelegramUpdate keeps trivial date exec progress silent", async () => {
+  const paths = await createTempPaths();
+  const sentMessages: Array<{ chatId: number; text: string }> = [];
+  const editedMessages: Array<{ chatId: number; messageId: number; text: string }> = [];
+  let completionCalls = 0;
+
+  try {
+    await writeRuntimeFiles(paths);
+    const result = await handleTelegramUpdate(createTextUpdate("giờ này là mấy giờ rồi?", 12345), {
+      config,
+      paths,
+      client: createRecordingClient(sentMessages, [], editedMessages),
+      chatCompletion: async () => {
+        completionCalls += 1;
+        return completionCalls === 1
+          ? '{"tool":"internal.exec","arguments":{"command":"date","args":[]}}'
+          : '{"answer":"Bây giờ là 19:02, Sếp."}';
+      },
+      mcpToolRunner: async () => ({ ok: true, status: "pass", message: "command completed", result: { command: "date", stdout: "Sun Jul 19 19:02:00 +07 2026\n", stderr: "", exitCode: 0 } }),
+    });
+
+    assert.equal(result, "replied");
+    assert.deepEqual(sentMessages, [{ chatId: 777, text: "Bây giờ là 19:02, Sếp." }]);
+    assert.deepEqual(editedMessages, []);
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
 test("handleTelegramUpdate repairs tool JSON when the model adds prose before it", async () => {
   const paths = await createTempPaths();
   const sentMessages: Array<{ chatId: number; text: string }> = [];
