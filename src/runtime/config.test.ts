@@ -5,7 +5,7 @@ import { InvalidConfigError } from "./errors.js";
 import { validateConfig } from "./config.js";
 
 const validConfig = {
-  version: 1,
+  version: 2,
   agent: {
     name: "Miu",
     ownerName: "Sep",
@@ -13,32 +13,35 @@ const validConfig = {
     toneIntensity: 7,
   },
   llm: {
-    provider: "openai-compatible",
-    baseUrl: "https://example.com/v1",
-    model: "example-model",
-    apiKeyEnv: "OPENAI_API_KEY",
+    primary: "openai/example-model",
+    authProfile: "openai:api-key",
+    profiles: {
+      "openai:api-key": {
+        provider: "openai-compatible",
+        mode: "api-key" as const,
+        baseUrl: "https://example.com/v1",
+        apiKeyEnv: "OPENAI_API_KEY",
+      },
+    },
+    modelCatalog: {
+      "openai/example-model": { profile: "openai:api-key" },
+    },
   },
 };
 
 test("validateConfig accepts the Phase Now config shape", () => {
   const config = validateConfig({
-    version: 1,
+    version: 2,
     agent: {
       name: "Miu",
       ownerName: "Sếp",
       language: "vi",
       toneIntensity: 7,
     },
-    llm: {
-      provider: "openai-compatible",
-      baseUrl: "https://example.com/v1",
-      model: "example-model",
-      apiKeyEnv: "OPENAI_API_KEY",
-      timeoutMs: 90_000,
-    },
+    llm: { ...validConfig.llm, timeoutMs: 90_000 },
   });
 
-  assert.equal(config.llm.apiKeyEnv, "OPENAI_API_KEY");
+  assert.equal(config.llm.profiles["openai:api-key"]?.apiKeyEnv, "OPENAI_API_KEY");
   assert.equal(config.llm.timeoutMs, 90_000);
   assert.equal(typeof config.agent.timeZone, "string");
 });
@@ -58,19 +61,14 @@ test("validateConfig accepts and validates agent.timeZone", () => {
 
 test("validateConfig keeps llm.timeoutMs optional for existing configs", () => {
   const config = validateConfig({
-    version: 1,
+    version: 2,
     agent: {
       name: "Miu",
       ownerName: "Sep",
       language: "vi",
       toneIntensity: 7,
     },
-    llm: {
-      provider: "openai-compatible",
-      baseUrl: "https://example.com/v1",
-      model: "example-model",
-      apiKeyEnv: "OPENAI_API_KEY",
-    },
+    llm: validConfig.llm,
   });
 
   assert.equal(config.llm.timeoutMs, undefined);
@@ -86,22 +84,57 @@ test("validateConfig accepts optional llm retry settings", () => {
   assert.equal(config.llm.retryDelayMs, 0);
 });
 
-test("validateConfig accepts optional LLM fallback models and providers", () => {
+test("validateConfig allows Gemini profiles without baseUrl", () => {
+  const config = validateConfig({
+    ...validConfig,
+    llm: {
+      primary: "gemini/gemini-2.5-flash",
+      authProfile: "gemini:api-key",
+      profiles: {
+        "gemini:api-key": {
+          provider: "gemini",
+          mode: "api-key",
+          apiKeyEnv: "GEMINI_API_KEY",
+        },
+      },
+      modelCatalog: {
+        "gemini/gemini-2.5-flash": { profile: "gemini:api-key" },
+      },
+    },
+  });
+
+  assert.equal(config.llm.profiles["gemini:api-key"]?.baseUrl, undefined);
+});
+
+test("validateConfig requires baseUrl for HTTP LLM profiles", () => {
+  assert.throws(
+    () => validateConfig({
+      ...validConfig,
+      llm: {
+        ...validConfig.llm,
+        profiles: {
+          "openai:api-key": {
+            provider: "openai-compatible",
+            mode: "api-key",
+            apiKeyEnv: "OPENAI_API_KEY",
+          },
+        },
+      },
+    }),
+    /baseUrl is required/,
+  );
+});
+
+test("validateConfig accepts optional LLM fallback model refs", () => {
   const config = validateConfig({
     ...validConfig,
     llm: {
       ...validConfig.llm,
-      fallbacks: [
-        { model: "fallback-model" },
-        { provider: "openai-compatible", baseUrl: "https://fallback.example.com/v1", model: "fallback-provider-model", apiKeyEnv: "FALLBACK_LLM_API_KEY", timeoutMs: 45_000 },
-      ],
+      fallbacks: ["anthropic/claude-sonnet-4-5"],
     },
   });
 
-  assert.deepEqual(config.llm.fallbacks, [
-    { model: "fallback-model" },
-    { provider: "openai-compatible", baseUrl: "https://fallback.example.com/v1", model: "fallback-provider-model", apiKeyEnv: "FALLBACK_LLM_API_KEY", timeoutMs: 45_000 },
-  ]);
+  assert.deepEqual(config.llm.fallbacks, ["anthropic/claude-sonnet-4-5"]);
 });
 
 test("validateConfig accepts optional OpenAI-compatible transcription provider", () => {
@@ -434,7 +467,7 @@ test("validateConfig rejects invalid llm.timeoutMs", () => {
   assert.throws(
     () =>
       validateConfig({
-        version: 1,
+        version: 2,
         agent: {
           name: "Miu",
           ownerName: "Sep",
@@ -630,7 +663,7 @@ test("validateConfig rejects missing required fields", () => {
   assert.throws(
     () =>
       validateConfig({
-        version: 1,
+        version: 2,
         agent: {
           name: "Miu",
           ownerName: "Sếp",

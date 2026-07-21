@@ -9,7 +9,7 @@ import type { RuntimePaths } from "../runtime/paths.js";
 import { ProviderAuthError, ProviderNetworkError, ProviderRateLimitError, ProviderResponseError, ProviderTimeoutError } from "./errors.js";
 import { ProviderFallbackRecorder, type ProviderFallbackTarget } from "./fallbacks.js";
 import { createLocalAudioTranscription } from "./local-transcription.js";
-import type { FetchLike } from "./openai-compatible.js";
+import type { FetchLike } from "./chat-completion.js";
 import { formatProviderHttpError } from "./provider-http.js";
 
 export interface AudioTranscriptionInput {

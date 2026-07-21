@@ -36,11 +36,11 @@ Installed skills:
 
 ## config.json
 
-Phase Now config started with non-secret `agent` and `llm` fields. The current local build also supports optional `transcription`, `speech`, `memory.writePolicy`, `memory.deletePolicy`, `memory.retrievalPolicy`, `workspace`, `internalTools`, `channels`, and `mcp` fields as features are enabled.
+Phase Now config started with non-secret `agent` and `llm` fields. The current local build uses config version 2 with canonical LLM model refs, auth profiles, and a small model catalog. Optional `transcription`, `speech`, `memory.writePolicy`, `memory.deletePolicy`, `memory.retrievalPolicy`, `workspace`, `internalTools`, `channels`, and `mcp` fields are supported as features are enabled.
 
 ```json
 {
-  "version": 1,
+  "version": 2,
   "agent": {
     "name": "Bestie",
     "ownerName": "Owner",
@@ -50,10 +50,39 @@ Phase Now config started with non-secret `agent` and `llm` fields. The current l
     "emojiLevel": "light"
   },
   "llm": {
-    "provider": "openai-compatible",
-    "baseUrl": "https://api.openai.com/v1",
-    "model": "provider-model-name",
-    "apiKeyEnv": "OPENAI_API_KEY",
+    "primary": "openai/gpt-4o-mini",
+    "fallbacks": ["anthropic/claude-sonnet-4-5", "ollama/llama3.1"],
+    "authProfile": "openai:api-key",
+    "profiles": {
+      "openai:api-key": {
+        "provider": "openai",
+        "mode": "api-key",
+        "baseUrl": "https://api.openai.com/v1",
+        "apiKeyEnv": "OPENAI_API_KEY"
+      },
+      "anthropic:api-key": {
+        "provider": "anthropic",
+        "mode": "api-key",
+        "baseUrl": "https://api.anthropic.com/v1",
+        "apiKeyEnv": "ANTHROPIC_API_KEY"
+      },
+      "ollama:local": {
+        "provider": "openai-compatible",
+        "mode": "local",
+        "baseUrl": "http://127.0.0.1:11434/v1"
+      },
+      "gemini:api-key": {
+        "provider": "gemini",
+        "mode": "api-key",
+        "apiKeyEnv": "GEMINI_API_KEY"
+      }
+    },
+    "modelCatalog": {
+      "openai/gpt-4o-mini": { "profile": "openai:api-key" },
+      "anthropic/claude-sonnet-4-5": { "profile": "anthropic:api-key" },
+      "ollama/llama3.1": { "profile": "ollama:local" },
+      "gemini/gemini-2.5-flash": { "profile": "gemini:api-key" }
+    },
     "timeoutMs": 60000,
     "maxRetries": 1,
     "retryDelayMs": 500
@@ -139,15 +168,15 @@ Phase Now config started with non-secret `agent` and `llm` fields. The current l
 }
 ```
 
-Supported chat provider labels:
+LLM config rules:
 
-- `openai-compatible`: OpenAI Chat Completions compatible endpoint at `{baseUrl}/chat/completions`.
-- `openai` or `chatgpt`: OpenAI Chat Completions endpoint at `{baseUrl}/chat/completions`.
-- `anthropic` or `claude`: Anthropic Messages endpoint at `{baseUrl}/messages`.
+- `llm.primary` and `llm.fallbacks[]` are canonical `provider/model` refs. Bestie splits on the first `/`, so model IDs may contain additional slashes.
+- `llm.profiles` stores non-secret endpoint/auth metadata. `mode: "api-key"` and `mode: "oauth"` require `apiKeyEnv`; `mode: "local"` does not load a secret.
+- `llm.modelCatalog[modelRef].profile` chooses which auth profile backs a model ref. When absent in future generated config, runtime falls back to `llm.authProfile`; current validation expects an explicit catalog object.
+- Runtime provider labels are `openai`/`chatgpt` for OpenAI Chat Completions, `anthropic`/`claude` for Anthropic Messages, `gemini` for native Google Gemini through `@google/genai`, and `openai-compatible` for custom OpenAI-compatible endpoints or Ollama.
+- Fallbacks are model refs, not repeated endpoint objects. Put endpoint/auth details in profiles and map model refs through `modelCatalog`.
 
-Fallback entries may mix providers by setting `provider`, `baseUrl`, `model`, and `apiKeyEnv` on each fallback. When a fallback omits `provider`, `baseUrl`, or `apiKeyEnv`, Bestie inherits the primary LLM value.
-
-Use `bestie llm setup` to configure this block and merge the required secret into `.env`. The command supports Anthropic, ChatGPT/OpenAI, Custom Provider, Ollama, Gemini, and Antigravity. API-key and local/cloud modes write runnable config immediately; OAuth modes scaffold the config and tell the user which token env var must be populated until provider-specific browser OAuth is implemented.
+Use `bestie llm providers` to list supported providers with adapter capabilities and `bestie llm models --provider <provider>` to inspect built-in model refs. Use `bestie llm setup` to configure this block and merge API-key secrets into `.env`. The command adds or updates a profile and model catalog entry; it preserves the current `llm.primary` unless `--set-default` is passed. Use `bestie llm models add --model provider/model --profile provider:mode` and `bestie llm models remove --model provider/model` to manage configured custom model refs; omitted `--profile` defaults to `llm.authProfile`. Use `bestie llm test --model provider/model` to test a configured model without switching primary. Use `bestie llm profiles list`, `bestie llm profiles show --profile provider:mode`, and `bestie llm profiles remove --profile provider:mode` to inspect or remove inactive profiles; removing a profile also removes model catalog entries that point to it. Use `bestie llm fallbacks list`, `bestie llm fallbacks add --model provider/model`, and `bestie llm fallbacks remove --model provider/model` to manage fallback order; fallback refs must already exist in `llm.modelCatalog`. The command supports Anthropic, ChatGPT/OpenAI, Groq, OpenRouter, Custom OpenAI-compatible, Custom Anthropic-compatible, local Ollama, Gemini API key, and Antigravity as a future OAuth provider. OAuth setup fails clearly until each provider has a real browser/device flow; Bestie does not scaffold placeholder OAuth tokens.
 
 For local audio transcription, replace the `transcription` block with a `local-whisper` provider. The command is executed directly without a shell; `args` must include `{audioPath}` and may include `{modelPath}`. The command should print the transcript to stdout.
 

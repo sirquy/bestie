@@ -16,7 +16,7 @@ import {
   type RunAgentToolRequestOptions,
 } from "../chat/mcp-tool-use.js";
 import type { ChatCompletionOptions, ChatMessage, ChatMessageContent } from "../llm/types.js";
-import { sendChatCompletionWithFallbacks } from "../llm/openai-compatible.js";
+import { sendChatCompletionWithFallbacks } from "../llm/chat-completion.js";
 import { fallbackLogDetail, formatProviderFallbackDiagnostics, formatProviderFallbackHealth } from "../llm/fallbacks.js";
 import { runMemoryReasoningPass, type MemoryReasoningResult } from "../memory/reasoning.js";
 import { isMemoryRetrievalPolicy, setMemoryRetrievalPolicy } from "../memory/governance.js";
@@ -30,7 +30,7 @@ import { applyMemoryRebalancePlan, formatMemoryRebalanceApplyResult, formatMemor
 import { formatMemorySummary } from "../memory/summary.js";
 import { formatMemoryTiersReport } from "../memory/tiers.js";
 import type { AppConfig } from "../runtime/config.js";
-import { loadRequiredSecret } from "../runtime/env.js";
+import { loadLlmCandidateSecret, resolvePrimaryLlmCandidate } from "../llm/resolve-config.js";
 import { appendLog, redactSecrets } from "../runtime/logger.js";
 import type { RuntimePaths } from "../runtime/paths.js";
 import { runDoctor, type DoctorReport } from "../runtime/doctor.js";
@@ -460,7 +460,7 @@ export async function handleTelegramUpdate(update: TelegramUpdate, options: Tele
 
   const chatCompletion = options.chatCompletion ?? ((config, _apiKeyValue, requestOptions) => sendChatCompletionWithFallbacks(config, { ...requestOptions, stream: requestOptions.stream ?? true }, { paths: options.paths }));
   const mcpToolRunner = options.mcpToolRunner ?? runAgentToolRequest;
-  const apiKey = await loadRequiredSecret(options.config.llm.apiKeyEnv, options.paths);
+  const apiKey = await loadLlmCandidateSecret(resolvePrimaryLlmCandidate(options.config), options.paths);
   const typing = createChannelActivityController(adapter.outbound.createActivityOptions(chatId, "typing"));
   typing.start();
 
@@ -527,7 +527,7 @@ export async function handleTelegramUpdate(update: TelegramUpdate, options: Tele
       chatCompletion,
     });
     await sendTelegramMemoryReasoningApprovalsIfNeeded(options.client, chatId, options.paths, ownerUserId, memoryReasoning);
-    await appendLog({ event: "telegram_chat_success", detail: { model: options.config.llm.model } }, { paths: options.paths });
+    await appendLog({ event: "telegram_chat_success", detail: { model: options.config.llm.primary } }, { paths: options.paths });
     return "replied";
   } catch (error) {
     typing.stop();

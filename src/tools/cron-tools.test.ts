@@ -22,9 +22,23 @@ async function createTempPaths(): Promise<RuntimePaths> {
 }
 
 const TEST_CONFIG = {
-  version: 1 as const,
+  version: 2 as const,
   agent: { name: "Test", ownerName: "Boss", language: "vi" as const, timeZone: "Asia/Bangkok", toneIntensity: 5 },
-  llm: { provider: "openai-compatible", baseUrl: "http://localhost:1/v1", model: "test", apiKeyEnv: "OPENAI_API_KEY" },
+  llm: {
+      primary: "openai/test-model",
+      authProfile: "openai:api-key",
+      profiles: {
+        "openai:api-key": {
+          provider: "openai-compatible",
+          mode: "api-key" as const,
+          baseUrl: "http://localhost:1/v1",
+          apiKeyEnv: "OPENAI_API_KEY",
+        },
+      },
+      modelCatalog: {
+        "openai/test-model": { profile: "openai:api-key" },
+      }
+    },
 };
 
 test("addCronScheduleTool creates an interval schedule", async () => {

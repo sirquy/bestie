@@ -5,7 +5,7 @@ import { stdout as output } from "node:process";
 
 import { TelegramHttpClient, runTelegramPollingLoop, type TelegramAttachmentParseTelemetry, type TelegramAttachmentTranscriber, type TelegramChatCompletionRunner, type TelegramClient, type TelegramSpeechSynthesizer, type TelegramSpeechVoiceConverter, type TelegramUpdate } from "../../channels/telegram.js";
 import { createChannelSpeechSynthesizer, createChannelVoiceTranscriber } from "../../channels/voice.js";
-import type { FetchLike } from "../../llm/openai-compatible.js";
+import type { FetchLike } from "../../llm/chat-completion.js";
 import { loadConfig, type AppConfig, writeConfig } from "../../runtime/config.js";
 import { loadEnvFile, writeEnvFile } from "../../runtime/env.js";
 import { UserFacingError } from "../../runtime/errors.js";

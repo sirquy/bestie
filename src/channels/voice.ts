@@ -1,6 +1,6 @@
 import { createAudioTranscription } from "../llm/openai-transcription.js";
 import { createSpeech } from "../llm/openai-speech.js";
-import type { FetchLike } from "../llm/openai-compatible.js";
+import type { FetchLike } from "../llm/chat-completion.js";
 import type { AppConfig } from "../runtime/config.js";
 import type { RuntimePaths } from "../runtime/paths.js";
 import type { ChannelAttachmentKind } from "./attachments.js";

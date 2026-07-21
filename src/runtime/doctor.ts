@@ -5,6 +5,7 @@ import { access, mkdir, readFile } from "node:fs/promises";
 
 import { DEFAULT_LLM_TIMEOUT_MS, configExists, loadConfig, type AppConfig } from "./config.js";
 import { loadEnvFile } from "./env.js";
+import { resolvePrimaryLlmCandidate } from "../llm/resolve-config.js";
 import { InvalidConfigError } from "./errors.js";
 import { SqliteMemoryStore } from "../memory/sqlite-store.js";
 import { listMcpServers, type McpServerSummary } from "../mcp/servers.js";
@@ -93,7 +94,7 @@ export async function runDoctor(paths: RuntimePaths = getRuntimePaths(), options
     try {
       const config = await loadConfig(paths);
       configForChecks = config;
-      apiKeyEnv = config.llm.apiKeyEnv;
+      apiKeyEnv = resolvePrimaryLlmCandidate(config).apiKeyEnv;
       telegramConfig = config.channels?.telegram;
       zaloConfig = config.channels?.zalo;
       mcpServers = listMcpServers(config);

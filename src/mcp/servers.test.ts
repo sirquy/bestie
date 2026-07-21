@@ -5,9 +5,23 @@ import type { AppConfig } from "../runtime/config.js";
 import { findMcpServer, listMcpServers, testMcpServerConfig } from "./servers.js";
 
 const configWithServer: AppConfig = {
-  version: 1,
+  version: 2,
   agent: { name: "Miu", ownerName: "Boss", language: "vi", toneIntensity: 7 },
-  llm: { provider: "openai-compatible", baseUrl: "https://example.com/v1", model: "model", apiKeyEnv: "OPENAI_API_KEY" },
+  llm: {
+      primary: "openai/test-model",
+      authProfile: "openai:api-key",
+      profiles: {
+        "openai:api-key": {
+          provider: "openai-compatible",
+          mode: "api-key" as const,
+          baseUrl: "https://example.com/v1",
+          apiKeyEnv: "OPENAI_API_KEY",
+        },
+      },
+      modelCatalog: {
+        "openai/test-model": { profile: "openai:api-key" },
+      }
+    },
   mcp: {
     servers: [{ name: "fs", enabled: true, command: "node", args: ["server.js"], env: { SECRET_TOKEN: "should-not-print", MODE: "readonly" } }],
   },
@@ -34,9 +48,23 @@ test("listMcpServers summarizes remote MCP servers", () => {
 
 test("listMcpServers returns an empty list when MCP is not configured", () => {
   const config: AppConfig = {
-    version: 1,
+    version: 2,
     agent: { name: "Miu", ownerName: "Boss", language: "vi", toneIntensity: 7 },
-    llm: { provider: "openai-compatible", baseUrl: "https://example.com/v1", model: "model", apiKeyEnv: "OPENAI_API_KEY" },
+    llm: {
+      primary: "openai/test-model",
+      authProfile: "openai:api-key",
+      profiles: {
+        "openai:api-key": {
+          provider: "openai-compatible",
+          mode: "api-key" as const,
+          baseUrl: "https://example.com/v1",
+          apiKeyEnv: "OPENAI_API_KEY",
+        },
+      },
+      modelCatalog: {
+        "openai/test-model": { profile: "openai:api-key" },
+      }
+    },
   };
 
   assert.deepEqual(listMcpServers(config), []);

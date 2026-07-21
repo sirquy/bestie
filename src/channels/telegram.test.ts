@@ -19,9 +19,23 @@ import type { ChannelTranscript } from "./attachments.js";
 import { TelegramHttpClient, createTelegramOutboundAdapter, createTelegramRuntimeAdapter, formatTelegramDoctorSummary, handleTelegramUpdate, mapTelegramIncomingMessage, runTelegramPollingLoop, type TelegramClient, type TelegramUpdate } from "./telegram.js";
 
 const config: AppConfig = {
-  version: 1,
+  version: 2,
   agent: { name: "Miu", ownerName: "Boss", language: "vi", toneIntensity: 7 },
-  llm: { provider: "openai-compatible", baseUrl: "https://example.com/v1", model: "example-model", apiKeyEnv: "OPENAI_API_KEY" },
+  llm: {
+      primary: "openai/test-model",
+      authProfile: "openai:api-key",
+      profiles: {
+        "openai:api-key": {
+          provider: "openai-compatible",
+          mode: "api-key" as const,
+          baseUrl: "https://example.com/v1",
+          apiKeyEnv: "OPENAI_API_KEY",
+        },
+      },
+      modelCatalog: {
+        "openai/test-model": { profile: "openai:api-key" },
+      }
+    },
   channels: { telegram: { enabled: true, botTokenEnv: "BESTIE_TELEGRAM_BOT_TOKEN", ownerUserId: "12345" } },
 };
 

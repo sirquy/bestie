@@ -574,9 +574,23 @@ async function captureMain(argv: string[], env: Record<string, string> = {}): Pr
 
 function createTestConfig(): unknown {
   return {
-    version: 1,
+    version: 2,
     agent: { name: "Miu", ownerName: "Boss", language: "vi", toneIntensity: 7 },
-    llm: { provider: "openai-compatible", baseUrl: "https://example.com/v1", model: "example-model", apiKeyEnv: "OPENAI_API_KEY" },
+    llm: {
+      primary: "openai/test-model",
+      authProfile: "openai:api-key",
+      profiles: {
+        "openai:api-key": {
+          provider: "openai-compatible",
+          mode: "api-key" as const,
+          baseUrl: "https://example.com/v1",
+          apiKeyEnv: "OPENAI_API_KEY",
+        },
+      },
+      modelCatalog: {
+        "openai/test-model": { profile: "openai:api-key" },
+      }
+    },
     memory: { writePolicy: "ask", deletePolicy: "ask" },
   };
 }

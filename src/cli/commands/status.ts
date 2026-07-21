@@ -5,6 +5,7 @@ import { loadEnvFile } from "../../runtime/env.js";
 import { InvalidConfigError, MissingConfigError } from "../../runtime/errors.js";
 import { getRuntimePaths } from "../../runtime/paths.js";
 import { checkForPackageUpdate, loadPackageVersionInfo } from "../../runtime/version.js";
+import { resolvePrimaryLlmCandidate } from "../../llm/resolve-config.js";
 import { badge, bold, keyValue, rule, title } from "../ui.js";
 
 export async function runStatusCommand(): Promise<void> {
@@ -25,12 +26,14 @@ export async function runStatusCommand(): Promise<void> {
   try {
     const config = await loadConfig(paths);
     const envValues = await loadEnvFile(paths);
-    const hasSecret = Boolean(process.env[config.llm.apiKeyEnv] ?? envValues[config.llm.apiKeyEnv]);
+    const candidate = resolvePrimaryLlmCandidate(config);
+    const hasSecret = candidate.mode === "local" || Boolean(candidate.apiKeyEnv && (process.env[candidate.apiKeyEnv] ?? envValues[candidate.apiKeyEnv]));
 
-    console.log(keyValue("Nhà cung cấp", config.llm.provider));
-    console.log(keyValue("Base URL", config.llm.baseUrl));
-    console.log(keyValue("Model", bold(config.llm.model)));
-    console.log(keyValue("API key env", `${config.llm.apiKeyEnv} ${hasSecret ? badge("PRESENT", "green") : badge("MISSING", "red")}`));
+    console.log(keyValue("Nhà cung cấp", candidate.provider));
+    console.log(keyValue("Base URL", candidate.baseUrl ?? "SDK default"));
+    console.log(keyValue("Model", bold(candidate.modelRef)));
+    console.log(keyValue("Auth profile", candidate.authProfile));
+    console.log(keyValue("API key env", `${candidate.apiKeyEnv ?? "none"} ${hasSecret ? badge("PRESENT", "green") : badge("MISSING", "red")}`));
     console.log(keyValue("Timeout", `${config.llm.timeoutMs ?? DEFAULT_LLM_TIMEOUT_MS}ms`));
     const hasCharacter = await fileExists(paths.characterPath);
     const hasPrompt = await fileExists(paths.systemPromptPath);

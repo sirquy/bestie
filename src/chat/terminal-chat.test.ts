@@ -123,7 +123,7 @@ test("runTerminalChat uses injected chat client and persists successful turns", 
     assert.deepEqual(output, [
       "Bestie chat local terminal session",
       `Runtime ${paths.appDir}`,
-      "Model openai-compatible/test-model",
+      "Model openai/test-model",
       "[BOT] Bea with [YOU] Andy",
       "Commands /help  /status  /providers  /memory  /pending  /exit",
       "----------------------------",
@@ -448,7 +448,7 @@ test("runTerminalChat executes one MCP read tool request and asks LLM for final 
     assert.deepEqual(output, [
       "Bestie chat local terminal session",
       `Runtime ${paths.appDir}`,
-      "Model openai-compatible/test-model",
+      "Model openai/test-model",
       "[BOT] Bea with [YOU] Andy",
       "Commands /help  /status  /providers  /memory  /pending  /exit",
       "----------------------------",
@@ -668,7 +668,7 @@ test("runTerminalChat repairs invented shell command JSON instead of printing it
     assert.deepEqual(output, [
       "Bestie chat local terminal session",
       `Runtime ${paths.appDir}`,
-      "Model openai-compatible/test-model",
+      "Model openai/test-model",
       "[BOT] Bea with [YOU] Andy",
       "Commands /help  /status  /providers  /memory  /pending  /exit",
       "----------------------------",
@@ -710,7 +710,7 @@ test("runTerminalChat allows slash commands before API key loading", async () =>
     assert.deepEqual(output, [
       "Bestie chat local terminal session",
       `Runtime ${paths.appDir}`,
-      "Model openai-compatible/test-model",
+      "Model openai/test-model",
       "[BOT] Bea with [YOU] Andy",
       "Commands /help  /status  /providers  /memory  /pending  /exit",
       "----------------------------",
@@ -756,7 +756,7 @@ test("runTerminalChat reports provider failures without persisting failed turns"
     assert.deepEqual(output, [
       "Bestie chat local terminal session",
       `Runtime ${paths.appDir}`,
-      "Model openai-compatible/test-model",
+      "Model openai/test-model",
       "[BOT] Bea with [YOU] Andy",
       "Commands /help  /status  /providers  /memory  /pending  /exit",
       "----------------------------",
@@ -824,9 +824,23 @@ test("runTerminalChat logs provider fallback attempts", async () => {
 
 function createConfig(): AppConfig {
   return {
-    version: 1,
+    version: 2,
     agent: { name: "Bea", ownerName: "Andy", language: "vi", toneIntensity: 7 },
-    llm: { provider: "openai-compatible", baseUrl: "http://127.0.0.1:9/v1", model: "test-model", apiKeyEnv: "OPENAI_API_KEY" },
+    llm: {
+      primary: "openai/test-model",
+      authProfile: "openai:api-key",
+      profiles: {
+        "openai:api-key": {
+          provider: "openai-compatible",
+          mode: "api-key" as const,
+          baseUrl: "http://127.0.0.1:9/v1",
+          apiKeyEnv: "OPENAI_API_KEY",
+        },
+      },
+      modelCatalog: {
+        "openai/test-model": { profile: "openai:api-key" },
+      }
+    },
   };
 }
 

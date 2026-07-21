@@ -11,14 +11,17 @@ export type MemoryRetrievalPolicy = "full" | "governed";
 export type InternalToolPolicy = "allow" | "ask" | "deny";
 type OpenAiCompatibleSpeechConfig = Extract<NonNullable<AppConfig["speech"]>, { provider: "openai-compatible" }>;
 
-export interface LlmFallbackConfig {
-  provider?: string;
+export type LlmAuthMode = "api-key" | "oauth" | "local";
+
+export interface LlmProfileConfig {
+  provider: string;
+  mode: LlmAuthMode;
   baseUrl?: string;
-  model: string;
   apiKeyEnv?: string;
-  timeoutMs?: number;
-  maxRetries?: number;
-  retryDelayMs?: number;
+}
+
+export interface LlmModelCatalogEntryConfig {
+  profile: string;
 }
 
 type OpenAiCompatibleTranscriptionConfig = {
@@ -66,7 +69,7 @@ type ElevenLabsSpeechProviderConfig = {
 export type SpeechProviderConfig = OpenAiCompatibleSpeechProviderConfig | ElevenLabsSpeechProviderConfig;
 
 export interface AppConfig {
-  version: 1;
+  version: 2;
   agent: {
     name: string;
     ownerName: string;
@@ -75,14 +78,14 @@ export interface AppConfig {
     toneIntensity: number;
   };
   llm: {
-    provider: string;
-    baseUrl: string;
-    model: string;
-    apiKeyEnv: string;
+    primary: string;
+    fallbacks?: string[];
+    authProfile: string;
+    profiles: Record<string, LlmProfileConfig>;
+    modelCatalog: Record<string, LlmModelCatalogEntryConfig>;
     timeoutMs?: number;
     maxRetries?: number;
     retryDelayMs?: number;
-    fallbacks?: LlmFallbackConfig[];
   };
   transcription?: TranscriptionProviderConfig & { fallbacks?: TranscriptionProviderConfig[] };
   speech?: SpeechProviderConfig & { fallbacks?: SpeechProviderConfig[] };
@@ -201,8 +204,8 @@ export function validateConfig(config: unknown): AppConfig {
     throw new InvalidConfigError("expected an object.");
   }
 
-  if (config.version !== 1) {
-    throw new InvalidConfigError("version must be 1.");
+  if (config.version !== 2) {
+    throw new InvalidConfigError("version must be 2.");
   }
 
   const agent = requireRecord(config.agent, "agent");
@@ -230,7 +233,7 @@ export function validateConfig(config: unknown): AppConfig {
   const internalTools = optionalInternalTools(config.internalTools);
 
   return {
-    version: 1,
+    version: 2,
     agent: {
       name: requireString(agent.name, "agent.name"),
       ownerName: requireString(agent.ownerName, "agent.ownerName"),
@@ -239,14 +242,14 @@ export function validateConfig(config: unknown): AppConfig {
       toneIntensity,
     },
     llm: {
-      provider: requireString(llm.provider, "llm.provider"),
-      baseUrl: requireString(llm.baseUrl, "llm.baseUrl"),
-      model: requireString(llm.model, "llm.model"),
-      apiKeyEnv: requireString(llm.apiKeyEnv, "llm.apiKeyEnv"),
+      primary: requireModelRefString(llm.primary, "llm.primary"),
+      authProfile: requireString(llm.authProfile, "llm.authProfile"),
+      profiles: requireLlmProfiles(llm.profiles),
+      modelCatalog: requireLlmModelCatalog(llm.modelCatalog),
+      ...(llm.fallbacks === undefined ? {} : { fallbacks: optionalModelRefArray(llm.fallbacks, "llm.fallbacks") }),
       timeoutMs,
       maxRetries,
       retryDelayMs,
-      ...(llm.fallbacks === undefined ? {} : { fallbacks: optionalLlmFallbacks(llm.fallbacks) }),
     },
     ...(transcription === undefined ? {} : { transcription }),
     ...(speech === undefined ? {} : { speech }),
@@ -361,24 +364,62 @@ function parseSpeechProvider(value: unknown, path: string): SpeechProviderConfig
   };
 }
 
-function optionalLlmFallbacks(value: unknown): LlmFallbackConfig[] {
+function requireLlmProfiles(value: unknown): Record<string, LlmProfileConfig> {
+  const profiles = requireRecord(value, "llm.profiles");
+  const result: Record<string, LlmProfileConfig> = {};
+  for (const [profileId, rawProfile] of Object.entries(profiles)) {
+    const path = `llm.profiles.${profileId}`;
+    const profile = requireRecord(rawProfile, path);
+    const mode = requireString(profile.mode, `${path}.mode`);
+    if (mode !== "api-key" && mode !== "oauth" && mode !== "local") {
+      throw new InvalidConfigError(`${path}.mode must be api-key, oauth, or local.`);
+    }
+    const apiKeyEnv = profile.apiKeyEnv === undefined ? undefined : requireString(profile.apiKeyEnv, `${path}.apiKeyEnv`);
+    if ((mode === "api-key" || mode === "oauth") && !apiKeyEnv) {
+      throw new InvalidConfigError(`${path}.apiKeyEnv is required for ${mode} profiles.`);
+    }
+    const provider = requireString(profile.provider, `${path}.provider`);
+    const baseUrl = profile.baseUrl === undefined ? undefined : requireString(profile.baseUrl, `${path}.baseUrl`);
+    if (provider !== "gemini" && !baseUrl) {
+      throw new InvalidConfigError(`${path}.baseUrl is required for ${provider} profiles.`);
+    }
+    result[profileId] = {
+      provider,
+      mode,
+      ...(baseUrl === undefined ? {} : { baseUrl }),
+      ...(apiKeyEnv === undefined ? {} : { apiKeyEnv }),
+    };
+  }
+  return result;
+}
+
+function requireLlmModelCatalog(value: unknown): Record<string, LlmModelCatalogEntryConfig> {
+  const catalog = requireRecord(value, "llm.modelCatalog");
+  const result: Record<string, LlmModelCatalogEntryConfig> = {};
+  for (const [modelRef, rawEntry] of Object.entries(catalog)) {
+    const path = `llm.modelCatalog.${modelRef}`;
+    requireModelRefString(modelRef, path);
+    const entry = requireRecord(rawEntry, path);
+    result[modelRef] = { profile: requireString(entry.profile, `${path}.profile`) };
+  }
+  return result;
+}
+
+function optionalModelRefArray(value: unknown, path: string): string[] {
   if (!Array.isArray(value)) {
-    throw new InvalidConfigError("llm.fallbacks must be an array.");
+    throw new InvalidConfigError(`${path} must be an array.`);
   }
 
-  return value.map((fallback, index) => {
-    const path = `llm.fallbacks.${index}`;
-    const item = requireRecord(fallback, path);
-    return {
-      ...(item.provider === undefined ? {} : { provider: requireString(item.provider, `${path}.provider`) }),
-      ...(item.baseUrl === undefined ? {} : { baseUrl: requireString(item.baseUrl, `${path}.baseUrl`) }),
-      model: requireString(item.model, `${path}.model`),
-      ...(item.apiKeyEnv === undefined ? {} : { apiKeyEnv: requireString(item.apiKeyEnv, `${path}.apiKeyEnv`) }),
-      ...(item.timeoutMs === undefined ? {} : { timeoutMs: optionalPositiveInteger(item.timeoutMs, `${path}.timeoutMs`) }),
-      ...(item.maxRetries === undefined ? {} : { maxRetries: optionalNonNegativeInteger(item.maxRetries, `${path}.maxRetries`) }),
-      ...(item.retryDelayMs === undefined ? {} : { retryDelayMs: optionalNonNegativeInteger(item.retryDelayMs, `${path}.retryDelayMs`) }),
-    };
-  });
+  return value.map((entry, index) => requireModelRefString(entry, `${path}.${index}`));
+}
+
+function requireModelRefString(value: unknown, path: string): string {
+  const modelRef = requireString(value, path);
+  const slashIndex = modelRef.indexOf("/");
+  if (slashIndex <= 0 || slashIndex >= modelRef.length - 1) {
+    throw new InvalidConfigError(`${path} must use provider/model format.`);
+  }
+  return modelRef;
 }
 
 function optionalTranscriptionFallbacks(value: unknown): TranscriptionProviderConfig[] {

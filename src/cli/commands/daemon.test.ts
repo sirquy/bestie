@@ -9,9 +9,23 @@ import type { AppConfig } from "../../runtime/config.js";
 import { runDaemonCommand, runServiceCommand } from "./daemon.js";
 
 const TEST_CONFIG: AppConfig = {
-  version: 1,
+  version: 2,
   agent: { name: "Bestie", ownerName: "Owner", language: "vi", timeZone: "Asia/Ho_Chi_Minh", toneIntensity: 7 },
-  llm: { provider: "openai-compatible", baseUrl: "https://example.test/v1", model: "test-model", apiKeyEnv: "OPENAI_API_KEY" },
+  llm: {
+      primary: "openai/test-model",
+      authProfile: "openai:api-key",
+      profiles: {
+        "openai:api-key": {
+          provider: "openai-compatible",
+          mode: "api-key",
+          baseUrl: "https://example.test/v1",
+          apiKeyEnv: "OPENAI_API_KEY",
+        },
+      },
+      modelCatalog: {
+        "openai/test-model": { profile: "openai:api-key" },
+      }
+    },
   channels: {
     telegram: { enabled: true, botTokenEnv: "BESTIE_TELEGRAM_BOT_TOKEN", ownerUserId: "1" },
     zalo: { enabled: true, botTokenEnv: "BESTIE_ZALO_BOT_TOKEN", ownerUserId: "2" },

@@ -5,6 +5,7 @@ import { resolve } from "node:path";
 import { getDefaultAgentsMarkdown } from "../../character/agents-template.js";
 import { generateCharacterConfig, generateSystemPrompt } from "../../character/prompt-generator.js";
 import { writeCharacterFiles } from "../../character/writer.js";
+import { buildModelRef } from "../../llm/model-ref.js";
 import { testLlmProvider } from "../../llm/provider-test.js";
 import { DEFAULT_LLM_MAX_RETRIES, DEFAULT_LLM_RETRY_DELAY_MS, DEFAULT_LLM_TIMEOUT_MS, type AppConfig, writeConfig } from "../../runtime/config.js";
 import { writeEnvFile } from "../../runtime/env.js";
@@ -170,17 +171,25 @@ async function collectAnswers(questioner: Pick<Questioner, "ask" | "askHidden">)
   return { agentName, ownerName, language, timeZone, toneIntensity, memoryWritePolicy, memoryDeletePolicy, provider, baseUrl, model, apiKeyEnv: providerDefaults.apiKeyEnv, apiKey };
 }
 
-function getLlmProviderDefaults(provider: string): { baseUrl: string; model: string; apiKeyEnv: string } {
+function getLlmProviderDefaults(provider: string): { catalogProvider: string; runtimeProvider: string; baseUrl: string; model: string; apiKeyEnv: string } {
   const normalizedProvider = provider.trim().toLowerCase();
   if (normalizedProvider === "claude" || normalizedProvider === "anthropic") {
-    return { baseUrl: "https://api.anthropic.com/v1", model: "claude-sonnet-4-5", apiKeyEnv: ANTHROPIC_API_KEY_ENV };
+    return { catalogProvider: "anthropic", runtimeProvider: "anthropic", baseUrl: "https://api.anthropic.com/v1", model: "claude-sonnet-4-5", apiKeyEnv: ANTHROPIC_API_KEY_ENV };
   }
 
   if (normalizedProvider === "chatgpt" || normalizedProvider === "openai") {
-    return { baseUrl: "https://api.openai.com/v1", model: "gpt-4o-mini", apiKeyEnv: DEFAULT_API_KEY_ENV };
+    return { catalogProvider: "openai", runtimeProvider: "openai", baseUrl: "https://api.openai.com/v1", model: "gpt-4o-mini", apiKeyEnv: DEFAULT_API_KEY_ENV };
   }
 
-  return { baseUrl: "https://api.openai.com/v1", model: "gpt-4o-mini", apiKeyEnv: DEFAULT_API_KEY_ENV };
+  if (normalizedProvider === "groq" || normalizedProvider === "groqcloud" || normalizedProvider === "groq-cloud") {
+    return { catalogProvider: "groq", runtimeProvider: "openai-compatible", baseUrl: "https://api.groq.com/openai/v1", model: "llama-3.1-8b-instant", apiKeyEnv: "GROQ_API_KEY" };
+  }
+
+  if (normalizedProvider === "openrouter" || normalizedProvider === "open-router") {
+    return { catalogProvider: "openrouter", runtimeProvider: "openai-compatible", baseUrl: "https://openrouter.ai/api/v1", model: "openai/gpt-4o-mini", apiKeyEnv: "OPENROUTER_API_KEY" };
+  }
+
+  return { catalogProvider: "openai", runtimeProvider: "openai-compatible", baseUrl: "https://api.openai.com/v1", model: "gpt-4o-mini", apiKeyEnv: DEFAULT_API_KEY_ENV };
 }
 
 async function askNonEmpty(
@@ -267,8 +276,12 @@ function createPromptTheme(useColor: boolean): PromptTheme {
 }
 
 function buildConfig(answers: OnboardingAnswers): AppConfig {
+  const providerDefaults = getLlmProviderDefaults(answers.provider);
+  const modelRef = buildModelRef(providerDefaults.catalogProvider, answers.model);
+  const profileId = `${providerDefaults.catalogProvider}:api-key`;
+
   return {
-    version: 1,
+    version: 2,
     agent: {
       name: answers.agentName,
       ownerName: answers.ownerName,
@@ -277,10 +290,19 @@ function buildConfig(answers: OnboardingAnswers): AppConfig {
       toneIntensity: answers.toneIntensity,
     },
     llm: {
-      provider: answers.provider,
-      baseUrl: answers.baseUrl.replace(/\/+$/, ""),
-      model: answers.model,
-      apiKeyEnv: answers.apiKeyEnv,
+      primary: modelRef,
+      authProfile: profileId,
+      profiles: {
+        [profileId]: {
+          provider: providerDefaults.runtimeProvider,
+          mode: "api-key",
+          baseUrl: answers.baseUrl.replace(/\/+$/, ""),
+          apiKeyEnv: answers.apiKeyEnv,
+        },
+      },
+      modelCatalog: {
+        [modelRef]: { profile: profileId },
+      },
       timeoutMs: DEFAULT_LLM_TIMEOUT_MS,
       maxRetries: DEFAULT_LLM_MAX_RETRIES,
       retryDelayMs: DEFAULT_LLM_RETRY_DELAY_MS,
@@ -312,7 +334,7 @@ async function runProviderTest(config: AppConfig, apiKey: string, paths: Runtime
   const result = await testLlmProvider(config, apiKey);
 
   if (result.ok) {
-    await appendLog({ event: "provider_test_success", detail: { provider: config.llm.provider, model: config.llm.model } }, { paths });
+    await appendLog({ event: "provider_test_success", detail: { model: config.llm.primary } }, { paths });
     reporter.success("Kiểm tra nhà cung cấp thành công.");
     return;
   }

@@ -109,9 +109,24 @@ test("runDoctor --fix migrates legacy runtime directory and env names", async ()
     await writeFile(
       resolve(legacyAppDir, "config.json"),
       `${JSON.stringify({
-        version: 1,
+        version: 2,
         agent: { name: "Miu", ownerName: "Sep", language: "vi", toneIntensity: 7 },
-        llm: { provider: "openai-compatible", baseUrl: "https://example.com/v1", model: "example-model", apiKeyEnv: "AI_OPENAI_API_KEY", timeoutMs: 60_000 },
+        llm: {
+      primary: "openai/test-model",
+      authProfile: "openai:api-key",
+      profiles: {
+        "openai:api-key": {
+          provider: "openai-compatible",
+          mode: "api-key" as const,
+          baseUrl: "https://example.com/v1",
+          apiKeyEnv: "AI_OPENAI_API_KEY",
+        },
+      },
+      modelCatalog: {
+        "openai/test-model": { profile: "openai:api-key" },
+      },
+      timeoutMs: 60_000
+    },
         channels: { telegram: { enabled: true, botTokenEnv: "AI_BESTIE_TELEGRAM_BOT_TOKEN", ownerUserId: "12345" } },
       })}\n`,
     );
@@ -144,9 +159,24 @@ test("runDoctor passes configured Phase Now setup", async () => {
     await mkdir(paths.appDir, { recursive: true });
     await writeConfig(
       {
-        version: 1,
+        version: 2,
         agent: { name: "Miu", ownerName: "Sep", language: "vi", toneIntensity: 7 },
-        llm: { provider: "openai-compatible", baseUrl: "https://example.com/v1", model: "example-model", apiKeyEnv: "OPENAI_API_KEY", timeoutMs: 60_000 },
+        llm: {
+      primary: "openai/test-model",
+      authProfile: "openai:api-key",
+      profiles: {
+        "openai:api-key": {
+          provider: "openai-compatible",
+          mode: "api-key" as const,
+          baseUrl: "https://example.com/v1",
+          apiKeyEnv: "OPENAI_API_KEY",
+        },
+      },
+      modelCatalog: {
+        "openai/test-model": { profile: "openai:api-key" },
+      },
+      timeoutMs: 60_000
+    },
       },
       paths,
     );
@@ -177,9 +207,23 @@ test("runDoctor warns when llm.timeoutMs is missing from older configs", async (
     await mkdir(paths.appDir, { recursive: true });
     await writeConfig(
       {
-        version: 1,
+        version: 2,
         agent: { name: "Miu", ownerName: "Sep", language: "vi", toneIntensity: 7 },
-        llm: { provider: "openai-compatible", baseUrl: "https://example.com/v1", model: "example-model", apiKeyEnv: "OPENAI_API_KEY" },
+        llm: {
+      primary: "openai/test-model",
+      authProfile: "openai:api-key",
+      profiles: {
+        "openai:api-key": {
+          provider: "openai-compatible",
+          mode: "api-key" as const,
+          baseUrl: "https://example.com/v1",
+          apiKeyEnv: "OPENAI_API_KEY",
+        },
+      },
+      modelCatalog: {
+        "openai/test-model": { profile: "openai:api-key" },
+      }
+    },
       },
       paths,
     );
@@ -205,9 +249,24 @@ test("runDoctor warns about recent provider fallback failures", async () => {
     await mkdir(paths.appDir, { recursive: true });
     await writeConfig(
       {
-        version: 1,
+        version: 2,
         agent: { name: "Miu", ownerName: "Sep", language: "vi", toneIntensity: 7 },
-        llm: { provider: "openai-compatible", baseUrl: "https://example.com/v1", model: "example-model", apiKeyEnv: "OPENAI_API_KEY", timeoutMs: 60_000 },
+        llm: {
+      primary: "openai/test-model",
+      authProfile: "openai:api-key",
+      profiles: {
+        "openai:api-key": {
+          provider: "openai-compatible",
+          mode: "api-key" as const,
+          baseUrl: "https://example.com/v1",
+          apiKeyEnv: "OPENAI_API_KEY",
+        },
+      },
+      modelCatalog: {
+        "openai/test-model": { profile: "openai:api-key" },
+      },
+      timeoutMs: 60_000
+    },
       },
       paths,
     );
@@ -247,9 +306,24 @@ test("runDoctor warns about unusual LLM request timeouts", async () => {
     await mkdir(paths.appDir, { recursive: true });
     await writeConfig(
       {
-        version: 1,
+        version: 2,
         agent: { name: "Miu", ownerName: "Sep", language: "vi", toneIntensity: 7 },
-        llm: { provider: "openai-compatible", baseUrl: "https://example.com/v1", model: "example-model", apiKeyEnv: "OPENAI_API_KEY", timeoutMs: 1000 },
+        llm: {
+      primary: "openai/test-model",
+      authProfile: "openai:api-key",
+      profiles: {
+        "openai:api-key": {
+          provider: "openai-compatible",
+          mode: "api-key" as const,
+          baseUrl: "https://example.com/v1",
+          apiKeyEnv: "OPENAI_API_KEY",
+        },
+      },
+      modelCatalog: {
+        "openai/test-model": { profile: "openai:api-key" },
+      },
+      timeoutMs: 1000
+    },
       },
       paths,
     );
@@ -288,9 +362,23 @@ test("runDoctor fails broad .env permissions without exposing secrets", async ()
     await mkdir(paths.appDir, { recursive: true });
     await writeConfig(
       {
-        version: 1,
+        version: 2,
         agent: { name: "Miu", ownerName: "Sep", language: "vi", toneIntensity: 7 },
-        llm: { provider: "openai-compatible", baseUrl: "https://example.com/v1", model: "example-model", apiKeyEnv: "OPENAI_API_KEY" },
+        llm: {
+      primary: "openai/test-model",
+      authProfile: "openai:api-key",
+      profiles: {
+        "openai:api-key": {
+          provider: "openai-compatible",
+          mode: "api-key" as const,
+          baseUrl: "https://example.com/v1",
+          apiKeyEnv: "OPENAI_API_KEY",
+        },
+      },
+      modelCatalog: {
+        "openai/test-model": { profile: "openai:api-key" },
+      }
+    },
       },
       paths,
     );
@@ -388,9 +476,23 @@ test("runDoctor checks Telegram token only when Telegram is enabled", async () =
     await mkdir(paths.appDir, { recursive: true });
     await writeConfig(
       {
-        version: 1,
+        version: 2,
         agent: { name: "Miu", ownerName: "Sep", language: "vi", toneIntensity: 7 },
-        llm: { provider: "openai-compatible", baseUrl: "https://example.com/v1", model: "example-model", apiKeyEnv: "OPENAI_API_KEY" },
+        llm: {
+      primary: "openai/test-model",
+      authProfile: "openai:api-key",
+      profiles: {
+        "openai:api-key": {
+          provider: "openai-compatible",
+          mode: "api-key" as const,
+          baseUrl: "https://example.com/v1",
+          apiKeyEnv: "OPENAI_API_KEY",
+        },
+      },
+      modelCatalog: {
+        "openai/test-model": { profile: "openai:api-key" },
+      }
+    },
         channels: { telegram: { enabled: true, botTokenEnv: "BESTIE_TELEGRAM_BOT_TOKEN", ownerUserId: "12345" } },
       },
       paths,
@@ -557,9 +659,24 @@ test("runDoctor fails when Telegram transcription is allowed without a provider"
     await mkdir(paths.appDir, { recursive: true });
     await writeConfig(
       {
-        version: 1,
+        version: 2,
         agent: { name: "Miu", ownerName: "Sep", language: "vi", toneIntensity: 7 },
-        llm: { provider: "openai-compatible", baseUrl: "https://example.com/v1", model: "example-model", apiKeyEnv: "OPENAI_API_KEY", timeoutMs: 60_000 },
+        llm: {
+      primary: "openai/test-model",
+      authProfile: "openai:api-key",
+      profiles: {
+        "openai:api-key": {
+          provider: "openai-compatible",
+          mode: "api-key" as const,
+          baseUrl: "https://example.com/v1",
+          apiKeyEnv: "OPENAI_API_KEY",
+        },
+      },
+      modelCatalog: {
+        "openai/test-model": { profile: "openai:api-key" },
+      },
+      timeoutMs: 60_000
+    },
         channels: { telegram: { enabled: true, botTokenEnv: "BESTIE_TELEGRAM_BOT_TOKEN", ownerUserId: "12345", attachments: { transcriptionPolicy: "allow" } } },
       },
       paths,
@@ -584,9 +701,24 @@ test("runDoctor checks ElevenLabs transcription provider", async () => {
     await mkdir(paths.appDir, { recursive: true });
     await writeConfig(
       {
-        version: 1,
+        version: 2,
         agent: { name: "Miu", ownerName: "Sep", language: "vi", toneIntensity: 7 },
-        llm: { provider: "openai-compatible", baseUrl: "https://example.com/v1", model: "example-model", apiKeyEnv: "OPENAI_API_KEY", timeoutMs: 60_000 },
+        llm: {
+      primary: "openai/test-model",
+      authProfile: "openai:api-key",
+      profiles: {
+        "openai:api-key": {
+          provider: "openai-compatible",
+          mode: "api-key" as const,
+          baseUrl: "https://example.com/v1",
+          apiKeyEnv: "OPENAI_API_KEY",
+        },
+      },
+      modelCatalog: {
+        "openai/test-model": { profile: "openai:api-key" },
+      },
+      timeoutMs: 60_000
+    },
         transcription: { provider: "elevenlabs", apiKeyEnv: "ELEVENLABS_API_KEY", modelId: "scribe_v2" },
         channels: { telegram: { enabled: true, botTokenEnv: "BESTIE_TELEGRAM_BOT_TOKEN", ownerUserId: "12345", attachments: { transcriptionPolicy: "allow" } } },
       },
@@ -618,9 +750,24 @@ test("runDoctor checks local transcription command and warns for tiny Vietnamese
     await writeFile(modelPath, new Uint8Array([1, 2, 3]));
     await writeConfig(
       {
-        version: 1,
+        version: 2,
         agent: { name: "Miu", ownerName: "Sep", language: "vi", toneIntensity: 7 },
-        llm: { provider: "openai-compatible", baseUrl: "https://example.com/v1", model: "example-model", apiKeyEnv: "OPENAI_API_KEY", timeoutMs: 60_000 },
+        llm: {
+      primary: "openai/test-model",
+      authProfile: "openai:api-key",
+      profiles: {
+        "openai:api-key": {
+          provider: "openai-compatible",
+          mode: "api-key" as const,
+          baseUrl: "https://example.com/v1",
+          apiKeyEnv: "OPENAI_API_KEY",
+        },
+      },
+      modelCatalog: {
+        "openai/test-model": { profile: "openai:api-key" },
+      },
+      timeoutMs: 60_000
+    },
         transcription: { provider: "local-whisper", command: commandPath, args: ["{modelPath}", "{audioPath}", "-l", "vi"], modelPath },
         channels: { telegram: { enabled: true, botTokenEnv: "BESTIE_TELEGRAM_BOT_TOKEN", ownerUserId: "12345", attachments: { transcriptionPolicy: "allow" } } },
       },
@@ -649,9 +796,24 @@ test("runDoctor fails when local transcription model is missing", async () => {
     await chmod(commandPath, 0o755);
     await writeConfig(
       {
-        version: 1,
+        version: 2,
         agent: { name: "Miu", ownerName: "Sep", language: "vi", toneIntensity: 7 },
-        llm: { provider: "openai-compatible", baseUrl: "https://example.com/v1", model: "example-model", apiKeyEnv: "OPENAI_API_KEY", timeoutMs: 60_000 },
+        llm: {
+      primary: "openai/test-model",
+      authProfile: "openai:api-key",
+      profiles: {
+        "openai:api-key": {
+          provider: "openai-compatible",
+          mode: "api-key" as const,
+          baseUrl: "https://example.com/v1",
+          apiKeyEnv: "OPENAI_API_KEY",
+        },
+      },
+      modelCatalog: {
+        "openai/test-model": { profile: "openai:api-key" },
+      },
+      timeoutMs: 60_000
+    },
         transcription: { provider: "local-whisper", command: commandPath, args: ["{modelPath}", "{audioPath}"], modelPath: resolve(paths.rootDir, "missing-model.bin") },
         channels: { telegram: { enabled: true, botTokenEnv: "BESTIE_TELEGRAM_BOT_TOKEN", ownerUserId: "12345", attachments: { transcriptionPolicy: "allow" } } },
       },
@@ -682,9 +844,24 @@ test("runDoctor checks Telegram speech reply provider and ffmpeg", async () => {
     process.env.PATH = `${resolve(paths.rootDir, "bin")}${delimiter}${oldPath ?? ""}`;
     await writeConfig(
       {
-        version: 1,
+        version: 2,
         agent: { name: "Miu", ownerName: "Sep", language: "vi", toneIntensity: 7 },
-        llm: { provider: "openai-compatible", baseUrl: "https://example.com/v1", model: "example-model", apiKeyEnv: "OPENAI_API_KEY", timeoutMs: 60_000 },
+        llm: {
+      primary: "openai/test-model",
+      authProfile: "openai:api-key",
+      profiles: {
+        "openai:api-key": {
+          provider: "openai-compatible",
+          mode: "api-key" as const,
+          baseUrl: "https://example.com/v1",
+          apiKeyEnv: "OPENAI_API_KEY",
+        },
+      },
+      modelCatalog: {
+        "openai/test-model": { profile: "openai:api-key" },
+      },
+      timeoutMs: 60_000
+    },
         speech: { provider: "openai-compatible", baseUrl: "http://localhost:20128/v1", model: "google-tts/vi", apiKeyEnv: "BESTIE_TTS_API_KEY" },
         channels: { telegram: { enabled: true, botTokenEnv: "BESTIE_TELEGRAM_BOT_TOKEN", ownerUserId: "12345", voiceReplyPolicy: "voice-input-only" } },
       },
@@ -710,9 +887,24 @@ test("runDoctor fails when Telegram voice replies are enabled without a speech p
     await mkdir(paths.appDir, { recursive: true });
     await writeConfig(
       {
-        version: 1,
+        version: 2,
         agent: { name: "Miu", ownerName: "Sep", language: "vi", toneIntensity: 7 },
-        llm: { provider: "openai-compatible", baseUrl: "https://example.com/v1", model: "example-model", apiKeyEnv: "OPENAI_API_KEY", timeoutMs: 60_000 },
+        llm: {
+      primary: "openai/test-model",
+      authProfile: "openai:api-key",
+      profiles: {
+        "openai:api-key": {
+          provider: "openai-compatible",
+          mode: "api-key" as const,
+          baseUrl: "https://example.com/v1",
+          apiKeyEnv: "OPENAI_API_KEY",
+        },
+      },
+      modelCatalog: {
+        "openai/test-model": { profile: "openai:api-key" },
+      },
+      timeoutMs: 60_000
+    },
         channels: { telegram: { enabled: true, botTokenEnv: "BESTIE_TELEGRAM_BOT_TOKEN", ownerUserId: "12345", voiceReplyPolicy: "voice-input-only" } },
       },
       paths,
@@ -737,9 +929,24 @@ test("runDoctor can run an opt-in Telegram speech round trip test", async () => 
     await mkdir(paths.appDir, { recursive: true });
     await writeConfig(
       {
-        version: 1,
+        version: 2,
         agent: { name: "Miu", ownerName: "Sep", language: "vi", toneIntensity: 7 },
-        llm: { provider: "openai-compatible", baseUrl: "https://example.com/v1", model: "example-model", apiKeyEnv: "OPENAI_API_KEY", timeoutMs: 60_000 },
+        llm: {
+      primary: "openai/test-model",
+      authProfile: "openai:api-key",
+      profiles: {
+        "openai:api-key": {
+          provider: "openai-compatible",
+          mode: "api-key" as const,
+          baseUrl: "https://example.com/v1",
+          apiKeyEnv: "OPENAI_API_KEY",
+        },
+      },
+      modelCatalog: {
+        "openai/test-model": { profile: "openai:api-key" },
+      },
+      timeoutMs: 60_000
+    },
         speech: { provider: "openai-compatible", baseUrl: "http://localhost:20128/v1", model: "google-tts/vi", apiKeyEnv: "BESTIE_TTS_API_KEY" },
         channels: { telegram: { enabled: true, botTokenEnv: "BESTIE_TELEGRAM_BOT_TOKEN", ownerUserId: "12345", voiceReplyPolicy: "voice-input-only" } },
       },
@@ -818,9 +1025,24 @@ test("runDoctor reports MCP server config without exposing env values", async ()
     await mkdir(paths.appDir, { recursive: true });
     await writeConfig(
       {
-        version: 1,
+        version: 2,
         agent: { name: "Miu", ownerName: "Sep", language: "vi", toneIntensity: 7 },
-        llm: { provider: "openai-compatible", baseUrl: "https://example.com/v1", model: "example-model", apiKeyEnv: "OPENAI_API_KEY", timeoutMs: 60_000 },
+        llm: {
+      primary: "openai/test-model",
+      authProfile: "openai:api-key",
+      profiles: {
+        "openai:api-key": {
+          provider: "openai-compatible",
+          mode: "api-key" as const,
+          baseUrl: "https://example.com/v1",
+          apiKeyEnv: "OPENAI_API_KEY",
+        },
+      },
+      modelCatalog: {
+        "openai/test-model": { profile: "openai:api-key" },
+      },
+      timeoutMs: 60_000
+    },
         mcp: { servers: [{ name: "dry-run", enabled: false, command: "node", env: { SECRET_TOKEN: "mcp-secret-value" }, tools: [{ name: "read_file", category: "read" }] }] },
       },
       paths,
@@ -847,9 +1069,24 @@ test("runDoctor warns when enabled MCP servers do not classify tools", async () 
     await mkdir(paths.appDir, { recursive: true });
     await writeConfig(
       {
-        version: 1,
+        version: 2,
         agent: { name: "Miu", ownerName: "Sep", language: "vi", toneIntensity: 7 },
-        llm: { provider: "openai-compatible", baseUrl: "https://example.com/v1", model: "example-model", apiKeyEnv: "OPENAI_API_KEY", timeoutMs: 60_000 },
+        llm: {
+      primary: "openai/test-model",
+      authProfile: "openai:api-key",
+      profiles: {
+        "openai:api-key": {
+          provider: "openai-compatible",
+          mode: "api-key" as const,
+          baseUrl: "https://example.com/v1",
+          apiKeyEnv: "OPENAI_API_KEY",
+        },
+      },
+      modelCatalog: {
+        "openai/test-model": { profile: "openai:api-key" },
+      },
+      timeoutMs: 60_000
+    },
         mcp: { servers: [{ name: "fs", enabled: true, command: "node" }] },
       },
       paths,
@@ -873,9 +1110,23 @@ async function createConfiguredPaths(): Promise<RuntimePaths> {
   await mkdir(paths.appDir, { recursive: true });
   await writeConfig(
     {
-      version: 1,
+      version: 2,
       agent: { name: "Miu", ownerName: "Sep", language: "vi", toneIntensity: 7 },
-      llm: { provider: "openai-compatible", baseUrl: "https://example.com/v1", model: "example-model", apiKeyEnv: "OPENAI_API_KEY" },
+      llm: {
+      primary: "openai/test-model",
+      authProfile: "openai:api-key",
+      profiles: {
+        "openai:api-key": {
+          provider: "openai-compatible",
+          mode: "api-key" as const,
+          baseUrl: "https://example.com/v1",
+          apiKeyEnv: "OPENAI_API_KEY",
+        },
+      },
+      modelCatalog: {
+        "openai/test-model": { profile: "openai:api-key" },
+      }
+    },
     },
     paths,
   );
@@ -889,9 +1140,24 @@ async function writeTelegramConfiguredFiles(paths: RuntimePaths, envValues: Reco
   await mkdir(paths.appDir, { recursive: true });
   await writeConfig(
     {
-      version: 1,
+      version: 2,
       agent: { name: "Miu", ownerName: "Sep", language: "vi", toneIntensity: 7 },
-      llm: { provider: "openai-compatible", baseUrl: "https://example.com/v1", model: "example-model", apiKeyEnv: "OPENAI_API_KEY", timeoutMs: 60_000 },
+      llm: {
+      primary: "openai/test-model",
+      authProfile: "openai:api-key",
+      profiles: {
+        "openai:api-key": {
+          provider: "openai-compatible",
+          mode: "api-key" as const,
+          baseUrl: "https://example.com/v1",
+          apiKeyEnv: "OPENAI_API_KEY",
+        },
+      },
+      modelCatalog: {
+        "openai/test-model": { profile: "openai:api-key" },
+      },
+      timeoutMs: 60_000
+    },
       channels: { telegram: { enabled: true, botTokenEnv: "BESTIE_TELEGRAM_BOT_TOKEN", ownerUserId: "12345" } },
     },
     paths,
@@ -904,9 +1170,24 @@ async function writeZaloConfiguredFiles(paths: RuntimePaths, envValues: Record<s
   await mkdir(paths.appDir, { recursive: true });
   await writeConfig(
     {
-      version: 1,
+      version: 2,
       agent: { name: "Miu", ownerName: "Sep", language: "vi", toneIntensity: 7 },
-      llm: { provider: "openai-compatible", baseUrl: "https://example.com/v1", model: "example-model", apiKeyEnv: "OPENAI_API_KEY", timeoutMs: 60_000 },
+      llm: {
+      primary: "openai/test-model",
+      authProfile: "openai:api-key",
+      profiles: {
+        "openai:api-key": {
+          provider: "openai-compatible",
+          mode: "api-key" as const,
+          baseUrl: "https://example.com/v1",
+          apiKeyEnv: "OPENAI_API_KEY",
+        },
+      },
+      modelCatalog: {
+        "openai/test-model": { profile: "openai:api-key" },
+      },
+      timeoutMs: 60_000
+    },
       channels: { zalo: { enabled: true, botTokenEnv: "BESTIE_ZALO_BOT_TOKEN", ownerUserId: "zalo-owner-1" } },
     },
     paths,

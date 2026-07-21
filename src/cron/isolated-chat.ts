@@ -1,7 +1,7 @@
 import type { AppConfig } from "../runtime/config.js";
 import type { RuntimePaths } from "../runtime/paths.js";
-import { sendChatCompletionWithFallbacks } from "../llm/openai-compatible.js";
-import { loadRequiredSecret } from "../runtime/env.js";
+import { sendChatCompletionWithFallbacks } from "../llm/chat-completion.js";
+import { loadLlmCandidateSecret, resolvePrimaryLlmCandidate } from "../llm/resolve-config.js";
 import { appendLog } from "../runtime/logger.js";
 import { SqliteMemoryStore } from "../memory/sqlite-store.js";
 import { buildChatMessages } from "../chat/message-builder.js";
@@ -25,7 +25,7 @@ const cronChatCompletion: AgentToolChatCompletionRunner = (config: AppConfig, _a
   sendChatCompletionWithFallbacks(config, options);
 
 export async function runIsolatedChat(options: IsolatedChatOptions): Promise<string> {
-  const apiKey = options.apiKey ?? (await loadRequiredSecret(options.config.llm.apiKeyEnv, options.paths));
+  const apiKey = options.apiKey ?? (await loadLlmCandidateSecret(resolvePrimaryLlmCandidate(options.config), options.paths));
 
   const systemPrompt = buildCronSystemPrompt(options.config, await loadWorkspaceInstructions(options.paths));
   const memories = await loadActiveMemories(options.paths);

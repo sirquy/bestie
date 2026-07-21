@@ -39,9 +39,23 @@ test("runChannelsCommand lists channel config and daemon state", async () => {
     await mkdir(paths.appDir, { recursive: true });
     await writeConfig(
       {
-        version: 1,
+        version: 2,
         agent: { name: "Miu", ownerName: "Boss", language: "vi", toneIntensity: 7 },
-        llm: { provider: "openai-compatible", baseUrl: "https://example.com/v1", model: "example-model", apiKeyEnv: "OPENAI_API_KEY" },
+        llm: {
+      primary: "openai/test-model",
+      authProfile: "openai:api-key",
+      profiles: {
+        "openai:api-key": {
+          provider: "openai-compatible",
+          mode: "api-key",
+          baseUrl: "https://example.com/v1",
+          apiKeyEnv: "OPENAI_API_KEY",
+        },
+      },
+      modelCatalog: {
+        "openai/test-model": { profile: "openai:api-key" },
+      }
+    },
         channels: {
           telegram: { enabled: true, botTokenEnv: "BESTIE_TELEGRAM_BOT_TOKEN", ownerUserId: "12345" },
           zalo: { enabled: false, botTokenEnv: "BESTIE_ZALO_BOT_TOKEN", ownerUserId: "" },
@@ -80,9 +94,23 @@ test("runChannelsCommand runs channel-focused doctor checks", async () => {
     await mkdir(paths.appDir, { recursive: true });
     await writeConfig(
       {
-        version: 1,
+        version: 2,
         agent: { name: "Miu", ownerName: "Boss", language: "vi", toneIntensity: 7 },
-        llm: { provider: "openai-compatible", baseUrl: "https://example.com/v1", model: "example-model", apiKeyEnv: "OPENAI_API_KEY" },
+        llm: {
+      primary: "openai/test-model",
+      authProfile: "openai:api-key",
+      profiles: {
+        "openai:api-key": {
+          provider: "openai-compatible",
+          mode: "api-key",
+          baseUrl: "https://example.com/v1",
+          apiKeyEnv: "OPENAI_API_KEY",
+        },
+      },
+      modelCatalog: {
+        "openai/test-model": { profile: "openai:api-key" },
+      }
+    },
         channels: {
           telegram: { enabled: true, botTokenEnv: "BESTIE_TELEGRAM_BOT_TOKEN", ownerUserId: "12345" },
           zalo: { enabled: true, botTokenEnv: "BESTIE_ZALO_BOT_TOKEN", ownerUserId: "" },
@@ -114,9 +142,23 @@ test("runChannelsCommand prints channel doctor JSON", async () => {
     await mkdir(paths.appDir, { recursive: true });
     await writeConfig(
       {
-        version: 1,
+        version: 2,
         agent: { name: "Miu", ownerName: "Boss", language: "vi", toneIntensity: 7 },
-        llm: { provider: "openai-compatible", baseUrl: "https://example.com/v1", model: "example-model", apiKeyEnv: "OPENAI_API_KEY" },
+        llm: {
+      primary: "openai/test-model",
+      authProfile: "openai:api-key",
+      profiles: {
+        "openai:api-key": {
+          provider: "openai-compatible",
+          mode: "api-key",
+          baseUrl: "https://example.com/v1",
+          apiKeyEnv: "OPENAI_API_KEY",
+        },
+      },
+      modelCatalog: {
+        "openai/test-model": { profile: "openai:api-key" },
+      }
+    },
         channels: {
           telegram: { enabled: true, botTokenEnv: "BESTIE_TELEGRAM_BOT_TOKEN", ownerUserId: "12345" },
           zalo: { enabled: true, botTokenEnv: "BESTIE_ZALO_BOT_TOKEN", ownerUserId: "" },

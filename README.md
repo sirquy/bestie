@@ -8,7 +8,7 @@ The project is early and intentionally practical: it focuses on a small local ru
 
 - A TypeScript CLI for building and running a personalized AI companion.
 - Vietnamese-first by default, but configurable for other language modes.
-- Configurable LLM providers, including OpenAI-compatible endpoints, OpenAI/ChatGPT, and Anthropic Claude.
+- Configurable LLM providers, including OpenAI-compatible endpoints, OpenAI/ChatGPT, Anthropic Claude, Groq, OpenRouter, and native Gemini API key.
 - Designed around privacy controls, local logs, explicit permissions, and user-owned memory.
 
 ## What Bestie Is Not
@@ -22,7 +22,7 @@ Bestie is under active development. The local CLI foundation includes:
 - Terminal chat
 - Character prompt loading
 - Minimal onboarding
-- OpenAI-compatible, OpenAI/ChatGPT, and Anthropic Claude chat provider calls
+- OpenAI-compatible, OpenAI/ChatGPT, Anthropic Claude, Groq, OpenRouter, and native Gemini chat provider calls
 - Doctor diagnostics
 - Local SQLite memory foundation
 - Telegram and Zalo local polling
@@ -127,17 +127,34 @@ Example provider config:
 ```json
 {
   "llm": {
-    "provider": "openai-compatible",
-    "baseUrl": "https://api.openai.com/v1",
-    "model": "provider-model-name",
-    "apiKeyEnv": "OPENAI_API_KEY"
+    "primary": "openai/gpt-4o-mini",
+    "fallbacks": ["anthropic/claude-sonnet-4-5"],
+    "authProfile": "openai:api-key",
+    "profiles": {
+      "openai:api-key": {
+        "provider": "openai",
+        "mode": "api-key",
+        "baseUrl": "https://api.openai.com/v1",
+        "apiKeyEnv": "OPENAI_API_KEY"
+      },
+      "anthropic:api-key": {
+        "provider": "anthropic",
+        "mode": "api-key",
+        "baseUrl": "https://api.anthropic.com/v1",
+        "apiKeyEnv": "ANTHROPIC_API_KEY"
+      }
+    },
+    "modelCatalog": {
+      "openai/gpt-4o-mini": { "profile": "openai:api-key" },
+      "anthropic/claude-sonnet-4-5": { "profile": "anthropic:api-key" }
+    }
   }
 }
 ```
 
-Use `provider: "chatgpt"` or `"openai"` for OpenAI Chat Completions, `"claude"` or `"anthropic"` for Anthropic Messages API, and `"openai-compatible"` for custom OpenAI-compatible providers.
+Model refs use `provider/model`. Profiles hold endpoint and auth mode metadata; secrets still live in `.env` through `apiKeyEnv`. Local profiles such as Ollama use `mode: "local"` and do not need an API key.
 
-Run `bestie llm setup` to choose a supported provider interactively, or `bestie llm setup --provider anthropic|openai|custom|ollama|gemini|antigravity` for a faster setup path.
+Run `bestie llm providers` to list supported providers with adapter capabilities and `bestie llm models --provider gemini` to inspect built-in model refs. Run `bestie llm setup` to choose a supported provider interactively, or `bestie llm setup --provider anthropic|openai|groq|openrouter|custom-openai|custom-anthropic|ollama|gemini|antigravity` for a faster setup path. The setup command adds/updates a profile and catalog entry; pass `--set-default` to make the selected model the active primary. Use `bestie llm models add --model provider/model --profile provider:mode` and `bestie llm models remove --model provider/model` to manage configured custom model refs. Use `bestie llm test --model provider/model` to test a configured model without switching primary, `bestie llm profiles list|show|remove --profile provider:mode` to inspect or remove inactive profiles, and `bestie llm fallbacks list|add|remove --model provider/model` to manage fallback order. OAuth providers are hidden behind provider-specific implementations; Bestie does not write placeholder OAuth config.
 
 See `docs/CONFIG_SPEC.md` for full config details.
 

@@ -40,14 +40,15 @@ test("runOnboardCommand writes local files and skips provider test when requeste
       writeLine: (message) => output.push(message),
     });
 
-    const config = JSON.parse(await readFile(paths.configPath, "utf8")) as { agent: { language: string; timeZone: string; toneIntensity: number }; llm: { baseUrl: string; timeoutMs: number }; memory?: { writePolicy?: string; deletePolicy?: string } };
+    const config = JSON.parse(await readFile(paths.configPath, "utf8")) as AppConfig;
     const envText = await readFile(paths.envPath, "utf8");
     const agentsText = await readFile(resolve(paths.appDir, "AGENTS.md"), "utf8");
     const logText = await readFile(paths.appLogPath, "utf8");
 
     assert.equal(closed, true);
     assert.equal(providerTestCalled, false);
-    assert.equal(config.llm.baseUrl, "http://127.0.0.1:9/v1");
+    assert.equal(config.llm.primary, "openai/test-model");
+    assert.equal(config.llm.profiles["openai:api-key"]?.baseUrl, "http://127.0.0.1:9/v1");
     assert.equal(config.llm.timeoutMs, 60_000);
     assert.equal(config.agent.language, "vi");
     assert.equal(config.agent.timeZone, "Asia/Bangkok");
@@ -89,7 +90,7 @@ test("runOnboardCommand runs provider test when not skipped", async () => {
       writeLine: (message) => output.push(message),
     });
 
-    assert.equal(providerTestConfig?.llm.model, "test-model");
+    assert.equal(providerTestConfig?.llm.primary, "openai/test-model");
     assert.equal(providerTestApiKey, "test-key");
     assert.ok(output.some((line) => line.includes("Kiểm tra nhà cung cấp")));
     assert.ok(output.some((line) => line.includes("mocked provider unavailable")));
@@ -122,14 +123,86 @@ test("runOnboardCommand uses Claude provider defaults", async () => {
       writeLine: () => undefined,
     });
 
-    const config = JSON.parse(await readFile(paths.configPath, "utf8")) as { llm: { provider: string; baseUrl: string; model: string; apiKeyEnv: string } };
+    const config = JSON.parse(await readFile(paths.configPath, "utf8")) as AppConfig;
     const envText = await readFile(paths.envPath, "utf8");
 
-    assert.equal(config.llm.provider, "claude");
-    assert.equal(config.llm.baseUrl, "https://api.anthropic.com/v1");
-    assert.equal(config.llm.model, "claude-sonnet-4-5");
-    assert.equal(config.llm.apiKeyEnv, "ANTHROPIC_API_KEY");
+    assert.equal(config.llm.primary, "anthropic/claude-sonnet-4-5");
+    assert.equal(config.llm.profiles["anthropic:api-key"]?.provider, "anthropic");
+    assert.equal(config.llm.profiles["anthropic:api-key"]?.baseUrl, "https://api.anthropic.com/v1");
+    assert.equal(config.llm.profiles["anthropic:api-key"]?.apiKeyEnv, "ANTHROPIC_API_KEY");
     assert.match(envText, /ANTHROPIC_API_KEY="test-key"/);
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("runOnboardCommand uses Groq provider defaults", async () => {
+  const paths = await createTempPaths();
+
+  try {
+    await runOnboardCommand({
+      argv: ["node", "bestie", "onboard", "--skip-provider-test"],
+      paths,
+      questioner: {
+        ask: async (question) => {
+          if (question.includes("Bạn muốn gọi bestie")) return "Miu";
+          if (question.includes("Bestie nên gọi bạn")) return "Boss";
+          if (question.includes("Chính sách ghi nhớ")) return "ask";
+          if (question.includes("Nhãn nhà cung cấp")) return "groq";
+          if (question.includes("Base URL API")) return "";
+          if (question.includes("Tên model")) return "";
+          throw new Error(`Unexpected question: ${question}`);
+        },
+        askHidden: async () => "test-key",
+        close: () => undefined,
+      },
+      writeLine: () => undefined,
+    });
+
+    const config = JSON.parse(await readFile(paths.configPath, "utf8")) as AppConfig;
+    const envText = await readFile(paths.envPath, "utf8");
+
+    assert.equal(config.llm.primary, "groq/llama-3.1-8b-instant");
+    assert.equal(config.llm.profiles["groq:api-key"]?.provider, "openai-compatible");
+    assert.equal(config.llm.profiles["groq:api-key"]?.baseUrl, "https://api.groq.com/openai/v1");
+    assert.equal(config.llm.profiles["groq:api-key"]?.apiKeyEnv, "GROQ_API_KEY");
+    assert.match(envText, /GROQ_API_KEY="test-key"/);
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("runOnboardCommand uses OpenRouter provider defaults", async () => {
+  const paths = await createTempPaths();
+
+  try {
+    await runOnboardCommand({
+      argv: ["node", "bestie", "onboard", "--skip-provider-test"],
+      paths,
+      questioner: {
+        ask: async (question) => {
+          if (question.includes("Bạn muốn gọi bestie")) return "Miu";
+          if (question.includes("Bestie nên gọi bạn")) return "Boss";
+          if (question.includes("Chính sách ghi nhớ")) return "ask";
+          if (question.includes("Nhãn nhà cung cấp")) return "openrouter";
+          if (question.includes("Base URL API")) return "";
+          if (question.includes("Tên model")) return "";
+          throw new Error(`Unexpected question: ${question}`);
+        },
+        askHidden: async () => "test-key",
+        close: () => undefined,
+      },
+      writeLine: () => undefined,
+    });
+
+    const config = JSON.parse(await readFile(paths.configPath, "utf8")) as AppConfig;
+    const envText = await readFile(paths.envPath, "utf8");
+
+    assert.equal(config.llm.primary, "openrouter/openai/gpt-4o-mini");
+    assert.equal(config.llm.profiles["openrouter:api-key"]?.provider, "openai-compatible");
+    assert.equal(config.llm.profiles["openrouter:api-key"]?.baseUrl, "https://openrouter.ai/api/v1");
+    assert.equal(config.llm.profiles["openrouter:api-key"]?.apiKeyEnv, "OPENROUTER_API_KEY");
+    assert.match(envText, /OPENROUTER_API_KEY="test-key"/);
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
   }

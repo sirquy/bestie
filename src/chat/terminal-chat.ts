@@ -6,9 +6,9 @@ import { createCliPermissionApprover } from "../cli/permission-approver.js";
 import type { AppConfig } from "../runtime/config.js";
 import { appendLog } from "../runtime/logger.js";
 import type { RuntimePaths } from "../runtime/paths.js";
-import { sendChatCompletionWithFallbacks } from "../llm/openai-compatible.js";
+import { sendChatCompletionWithFallbacks } from "../llm/chat-completion.js";
 import { fallbackLogDetail, formatProviderFallbackDiagnostics, formatProviderFallbackHealth } from "../llm/fallbacks.js";
-import { loadRequiredSecret } from "../runtime/env.js";
+import { loadLlmCandidateSecret, resolvePrimaryLlmCandidate } from "../llm/resolve-config.js";
 import type { ChatCompletionOptions, ChatMessage } from "../llm/types.js";
 import { createCliQuestioner } from "../cli/prompt.js";
 import { badge, bold, color, dim, rule } from "../cli/ui.js";
@@ -83,7 +83,7 @@ export async function runTerminalChat(options: TerminalChatOptions): Promise<voi
       }
 
       try {
-        apiKey ??= await loadRequiredSecret(options.config.llm.apiKeyEnv, options.paths);
+        apiKey ??= await loadLlmCandidateSecret(resolvePrimaryLlmCandidate(options.config), options.paths);
         const memories = await loadActiveMemories(options.paths);
         const messages = buildChatMessages(buildTerminalSystemPrompt(options.systemPrompt, options.config), recentTurns, userInput, memories, { memoryRetrievalPolicy: options.config.memory?.retrievalPolicy ?? "full" });
         const indicator = startChatIndicator(options.agentName);
@@ -127,7 +127,7 @@ export async function runTerminalChat(options: TerminalChatOptions): Promise<voi
         if (!(await isMemoryPaused(options.paths))) {
           recentTurns = appendConversationTurn(recentTurns, userInput, assistantText);
         }
-        await appendLog({ event: "chat_request_success", detail: { model: options.config.llm.model } }, { paths: options.paths });
+        await appendLog({ event: "chat_request_success", detail: { model: options.config.llm.primary } }, { paths: options.paths });
       } catch (error) {
         const message = error instanceof Error ? error.message : "Unknown chat error.";
         await appendLog({ event: "chat_request_failure", detail: { message, ...fallbackLogDetail(error) } }, { paths: options.paths, knownSecrets: apiKey ? [apiKey] : [] });
@@ -157,7 +157,7 @@ function printChatHeader(options: TerminalChatOptions, writeLine: (message: stri
   const ownerName = options.ownerName ?? options.config.agent.ownerName;
   writeLine(`${bold(color("magenta", "Bestie chat"))} ${dim("local terminal session")}`);
   writeLine(`${dim("Runtime")} ${options.paths.appDir}`);
-  writeLine(`${dim("Model")} ${options.config.llm.provider}/${options.config.llm.model}`);
+  writeLine(`${dim("Model")} ${options.config.llm.primary}`);
   writeLine(`${badge("BOT", "cyan")} ${bold(agentName)} ${dim("with")} ${badge("YOU", "green")} ${bold(ownerName)}`);
   writeLine(`${dim("Commands")} /help  /status  /providers  /memory  /pending  /exit`);
   writeLine(rule(28));

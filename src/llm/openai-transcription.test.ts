@@ -10,9 +10,23 @@ import { ProviderAuthError, ProviderFallbackError, ProviderResponseError, Provid
 import { createAudioTranscription, sendAudioTranscription, sendElevenLabsAudioTranscription } from "./openai-transcription.js";
 
 const config: AppConfig = {
-  version: 1,
+  version: 2,
   agent: { name: "Miu", ownerName: "Sep", language: "vi", toneIntensity: 7 },
-  llm: { provider: "openai-compatible", baseUrl: "https://example.com/v1", model: "chat-model", apiKeyEnv: "OPENAI_API_KEY" },
+  llm: {
+      primary: "openai/test-model",
+      authProfile: "openai:api-key",
+      profiles: {
+        "openai:api-key": {
+          provider: "openai-compatible",
+          mode: "api-key" as const,
+          baseUrl: "https://example.com/v1",
+          apiKeyEnv: "OPENAI_API_KEY",
+        },
+      },
+      modelCatalog: {
+        "openai/test-model": { profile: "openai:api-key" },
+      }
+    },
   transcription: { provider: "openai-compatible", baseUrl: "https://audio.example.com/v1", model: "whisper-1", apiKeyEnv: "BESTIE_TRANSCRIPTION_API_KEY" },
 };
 

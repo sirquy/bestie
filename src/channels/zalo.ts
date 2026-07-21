@@ -3,7 +3,7 @@ import { buildChatMessages } from "../chat/message-builder.js";
 import { buildMcpToolSystemPrompt, completeWithAgentTools, runAgentToolRequest, type AgentToolActivity } from "../chat/mcp-tool-use.js";
 import { fallbackLogDetail, formatProviderFallbackDiagnostics, formatProviderFallbackHealth } from "../llm/fallbacks.js";
 import { ProviderAuthError, ProviderFallbackError, ProviderNetworkError, ProviderRateLimitError, ProviderResponseError, ProviderTimeoutError } from "../llm/errors.js";
-import { sendChatCompletionWithFallbacks } from "../llm/openai-compatible.js";
+import { sendChatCompletionWithFallbacks } from "../llm/chat-completion.js";
 import type { ChatCompletionOptions, ChatMessage } from "../llm/types.js";
 import { isMemoryRetrievalPolicy, setMemoryRetrievalPolicy } from "../memory/governance.js";
 import { buildMemoryHygieneDoctorReport, formatMemoryHygieneDoctorReport } from "../memory/hygiene-doctor.js";
@@ -17,7 +17,7 @@ import { applyMemoryRebalancePlan, formatMemoryRebalanceApplyResult, formatMemor
 import { formatMemorySummary } from "../memory/summary.js";
 import { formatMemoryTiersReport } from "../memory/tiers.js";
 import type { AppConfig } from "../runtime/config.js";
-import { loadRequiredSecret } from "../runtime/env.js";
+import { loadLlmCandidateSecret, resolvePrimaryLlmCandidate } from "../llm/resolve-config.js";
 import { appendLog, redactSecrets } from "../runtime/logger.js";
 import type { RuntimePaths } from "../runtime/paths.js";
 import { executeApprovedAction } from "../safety/approval-executor.js";
@@ -257,7 +257,7 @@ export async function handleZaloUpdate(update: ZaloUpdate, options: ZaloUpdateHa
   }
 
   const chatCompletion = options.chatCompletion ?? ((config, _apiKeyValue, requestOptions) => sendChatCompletionWithFallbacks(config, { ...requestOptions, stream: requestOptions.stream ?? true }, { paths: options.paths }));
-  const apiKey = await loadRequiredSecret(options.config.llm.apiKeyEnv, options.paths);
+  const apiKey = await loadLlmCandidateSecret(resolvePrimaryLlmCandidate(options.config), options.paths);
   const adapter = createZaloRuntimeAdapter(options.client);
   const typing = createChannelActivityController(adapter.outbound.createActivityOptions(incoming.chatId, "typing"));
   typing.start();
@@ -287,7 +287,7 @@ export async function handleZaloUpdate(update: ZaloUpdate, options: ZaloUpdateHa
     await persistZaloConversationTurn(options.paths, zaloConfig.ownerUserId, text, assistantText);
     const memoryReasoning = await runZaloMemoryReasoningPass({ config: options.config, paths: options.paths, apiKey, turn: { channel: "zalo", userId: zaloConfig.ownerUserId, userInput: text, assistantText }, chatCompletion });
     await sendZaloMemoryReasoningApprovalsIfNeeded(options.client, incoming.chatId, options.paths, zaloConfig.ownerUserId, memoryReasoning);
-    await appendLog({ event: "zalo_chat_success", detail: { model: options.config.llm.model } }, { paths: options.paths });
+    await appendLog({ event: "zalo_chat_success", detail: { model: options.config.llm.primary } }, { paths: options.paths });
     return "replied";
   } catch (error) {
     typing.stop();

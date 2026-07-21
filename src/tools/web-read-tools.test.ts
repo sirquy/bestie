@@ -53,9 +53,23 @@ test("readUrlTool rejects non-http urls and truncates content", async () => {
 
 function createConfig(policies: Record<string, "allow" | "ask" | "deny"> = {}): AppConfig {
   return {
-    version: 1,
+    version: 2,
     agent: { name: "Bea", ownerName: "Andy", language: "vi", toneIntensity: 7 },
-    llm: { provider: "openai-compatible", baseUrl: "http://127.0.0.1:9/v1", model: "test-model", apiKeyEnv: "OPENAI_API_KEY" },
+    llm: {
+      primary: "openai/test-model",
+      authProfile: "openai:api-key",
+      profiles: {
+        "openai:api-key": {
+          provider: "openai-compatible",
+          mode: "api-key" as const,
+          baseUrl: "http://127.0.0.1:9/v1",
+          apiKeyEnv: "OPENAI_API_KEY",
+        },
+      },
+      modelCatalog: {
+        "openai/test-model": { profile: "openai:api-key" },
+      }
+    },
     internalTools: { policies },
   };
 }

@@ -2,15 +2,18 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import type { AppConfig } from "../runtime/config.js";
+import { resolvePrimaryLlmCandidate } from "./resolve-config.js";
 import { ProviderAuthError, ProviderFallbackError, ProviderNetworkError, ProviderRateLimitError, ProviderResponseError, ProviderTimeoutError } from "./errors.js";
-import { buildAnthropicMessagesRequestBody, buildChatCompletionRequestBody, sendChatCompletion, sendChatCompletionWithFallbacks } from "./openai-compatible.js";
+import { buildGeminiGenerateContentRequest } from "./adapters/gemini.js";
+import { buildAnthropicMessagesRequestBody, buildChatCompletionRequestBody } from "./adapters/http-chat.js";
+import { sendChatCompletion, sendChatCompletionWithFallbacks } from "./chat-completion.js";
 import type { RuntimePaths } from "../runtime/paths.js";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 
 const config: AppConfig = {
-  version: 1,
+  version: 2,
   agent: {
     name: "Miu",
     ownerName: "Sep",
@@ -18,16 +21,25 @@ const config: AppConfig = {
     toneIntensity: 7,
   },
   llm: {
-    provider: "openai-compatible",
-    baseUrl: "https://example.com/v1",
-    model: "example-model",
-    apiKeyEnv: "OPENAI_API_KEY",
+    primary: "openai/example-model",
+    authProfile: "openai:api-key",
+    profiles: {
+      "openai:api-key": {
+        provider: "openai-compatible",
+        mode: "api-key",
+        baseUrl: "https://example.com/v1",
+        apiKeyEnv: "OPENAI_API_KEY",
+      },
+    },
+    modelCatalog: {
+      "openai/example-model": { profile: "openai:api-key" },
+    },
   },
 };
 
 test("buildChatCompletionRequestBody uses OpenAI-compatible shape", () => {
   assert.deepEqual(
-    buildChatCompletionRequestBody(config, {
+    buildChatCompletionRequestBody(resolvePrimaryLlmCandidate(config), {
       messages: [{ role: "user", content: "Chao" }],
       maxTokens: 42,
       temperature: 0.7,
@@ -43,7 +55,7 @@ test("buildChatCompletionRequestBody uses OpenAI-compatible shape", () => {
 
 test("buildChatCompletionRequestBody preserves multimodal message parts", () => {
   assert.deepEqual(
-    buildChatCompletionRequestBody(config, {
+    buildChatCompletionRequestBody(resolvePrimaryLlmCandidate(config), {
       messages: [
         {
           role: "user",
@@ -70,10 +82,21 @@ test("buildChatCompletionRequestBody preserves multimodal message parts", () => 
 });
 
 test("buildAnthropicMessagesRequestBody maps system prompts and user messages", () => {
-  const claudeConfig: AppConfig = { ...config, llm: { ...config.llm, provider: "claude", baseUrl: "https://api.anthropic.com/v1", model: "claude-sonnet-4-5" } };
+  const claudeConfig: AppConfig = {
+    ...config,
+    llm: {
+      ...config.llm,
+      primary: "anthropic/claude-sonnet-4-5",
+      authProfile: "anthropic:api-key",
+      profiles: {
+        "anthropic:api-key": { provider: "claude", mode: "api-key", baseUrl: "https://api.anthropic.com/v1", apiKeyEnv: "ANTHROPIC_API_KEY" },
+      },
+      modelCatalog: { "anthropic/claude-sonnet-4-5": { profile: "anthropic:api-key" } },
+    },
+  };
 
   assert.deepEqual(
-    buildAnthropicMessagesRequestBody(claudeConfig, {
+    buildAnthropicMessagesRequestBody(resolvePrimaryLlmCandidate(claudeConfig), {
       messages: [
         { role: "system", content: "You are concise." },
         { role: "user", content: "Hi" },
@@ -87,6 +110,28 @@ test("buildAnthropicMessagesRequestBody maps system prompts and user messages", 
       messages: [{ role: "user", content: "Hi" }],
       max_tokens: 64,
       temperature: 0.3,
+    },
+  );
+});
+
+test("buildGeminiGenerateContentRequest maps system prompts and multimodal messages", () => {
+  assert.deepEqual(
+    buildGeminiGenerateContentRequest(resolvePrimaryLlmCandidate(createGeminiConfig()), {
+      messages: [
+        { role: "system", content: "You are concise." },
+        { role: "user", content: [{ type: "text", text: "Describe" }, { type: "image_url", image_url: { url: "data:image/png;base64,abc" } }] },
+        { role: "assistant", content: "A small image." },
+      ],
+      maxTokens: 64,
+      temperature: 0.3,
+    }),
+    {
+      model: "gemini-2.5-flash",
+      contents: [
+        { role: "user", parts: [{ text: "Describe" }, { inlineData: { mimeType: "image/png", data: "abc" } }] },
+        { role: "model", parts: [{ text: "A small image." }] },
+      ],
+      config: { systemInstruction: "You are concise.", maxOutputTokens: 64, temperature: 0.3 },
     },
   );
 });
@@ -109,7 +154,7 @@ test("sendChatCompletion calls OpenAI-compatible aliases with chat completions",
     return new Response(JSON.stringify({ choices: [{ message: { content: "Xin chao" } }] }), { status: 200 });
   };
 
-  const content = await sendChatCompletion({ ...config, llm: { ...config.llm, provider: "chatgpt" } }, "secret", { messages: [{ role: "user", content: "Hi" }] }, fetchImpl);
+  const content = await sendChatCompletion({ ...config, llm: { ...config.llm, profiles: { "openai:api-key": { ...config.llm.profiles["openai:api-key"]!, provider: "chatgpt" } } } }, "secret", { messages: [{ role: "user", content: "Hi" }] }, fetchImpl);
 
   assert.equal(content, "Xin chao");
   assert.equal(requestedUrl, "https://example.com/v1/chat/completions");
@@ -120,7 +165,7 @@ test("sendChatCompletion calls Claude provider with Anthropic messages API", asy
   let requestedUrl = "";
   let headers: Headers | undefined;
   let requestBody: unknown;
-  const claudeConfig: AppConfig = { ...config, llm: { ...config.llm, provider: "claude", baseUrl: "https://api.anthropic.com/v1", model: "claude-sonnet-4-5" } };
+  const claudeConfig = createAnthropicConfig("claude");
   const fetchImpl = async (url: string | URL | Request, init?: RequestInit) => {
     requestedUrl = String(url);
     headers = new Headers(init?.headers);
@@ -135,6 +180,78 @@ test("sendChatCompletion calls Claude provider with Anthropic messages API", asy
   assert.equal(headers?.get("x-api-key"), "secret");
   assert.equal(headers?.get("anthropic-version"), "2023-06-01");
   assert.deepEqual(requestBody, { model: "claude-sonnet-4-5", messages: [{ role: "user", content: "Hi" }], max_tokens: 32 });
+});
+
+test("sendChatCompletion calls Gemini native SDK", async () => {
+  const calls: unknown[] = [];
+  class FakeGoogleGenAI {
+    models = {
+      generateContent: async (params: unknown) => {
+        calls.push(params);
+        return { text: "Chao tu Gemini" };
+      },
+      generateContentStream: async () => { throw new Error("unused"); },
+    };
+    constructor(public options: unknown) {
+      calls.push(options);
+    }
+  }
+
+  const content = await sendChatCompletion(createGeminiConfig(), "secret", { messages: [{ role: "user", content: "Hi" }], maxTokens: 32 }, undefined, undefined, { googleGenAIClass: FakeGoogleGenAI });
+
+  assert.equal(content, "Chao tu Gemini");
+  assert.deepEqual(calls, [
+    { apiKey: "secret", httpOptions: { timeout: 60000 } },
+    { model: "gemini-2.5-flash", contents: [{ role: "user", parts: [{ text: "Hi" }] }], config: { maxOutputTokens: 32 } },
+  ]);
+});
+
+test("sendChatCompletion reads Gemini candidate text parts", async () => {
+  class FakeGoogleGenAI {
+    models = {
+      generateContent: async () => ({ candidates: [{ content: { parts: [{ text: "Chao" }, { text: " Gemini" }] } }] }),
+      generateContentStream: async () => { throw new Error("unused"); },
+    };
+  }
+
+  const content = await sendChatCompletion(createGeminiConfig(), "secret", { messages: [{ role: "user", content: "Hi" }] }, undefined, undefined, { googleGenAIClass: FakeGoogleGenAI });
+
+  assert.equal(content, "Chao Gemini");
+});
+
+test("sendChatCompletion reports Gemini media-only responses", async () => {
+  class FakeGoogleGenAI {
+    models = {
+      generateContent: async () => ({ candidates: [{ content: { parts: [{ inlineData: { mimeType: "image/png", data: "abc" } }] } }] }),
+      generateContentStream: async () => { throw new Error("unused"); },
+    };
+  }
+
+  await assert.rejects(
+    sendChatCompletion(createGeminiConfig(), "secret", { messages: [{ role: "user", content: "Hi" }] }, undefined, undefined, { googleGenAIClass: FakeGoogleGenAI }),
+    /Gemini returned non-text media parts without assistant text/,
+  );
+});
+
+test("sendChatCompletion streams Gemini native SDK chunks", async () => {
+  const tokens: string[] = [];
+  class FakeGoogleGenAI {
+    models = {
+      generateContent: async () => { throw new Error("unused"); },
+      generateContentStream: async () => {
+        async function* stream() {
+          yield { text: "Xin" };
+          yield { text: " chao" };
+        }
+        return stream();
+      },
+    };
+  }
+
+  const content = await sendChatCompletion(createGeminiConfig(), "secret", { messages: [{ role: "user", content: "Hi" }], stream: true, onToken: (token) => tokens.push(token) }, undefined, undefined, { googleGenAIClass: FakeGoogleGenAI });
+
+  assert.equal(content, "Xin chao");
+  assert.deepEqual(tokens, ["Xin", " chao"]);
 });
 
 test("sendChatCompletion streams assistant text chunks", async () => {
@@ -164,7 +281,7 @@ test("sendChatCompletion streams assistant text chunks", async () => {
 test("sendChatCompletion streams Claude text deltas", async () => {
   const tokens: string[] = [];
   const encoder = new TextEncoder();
-  const claudeConfig: AppConfig = { ...config, llm: { ...config.llm, provider: "anthropic", baseUrl: "https://api.anthropic.com/v1", model: "claude-sonnet-4-5" } };
+  const claudeConfig = createAnthropicConfig("anthropic");
   const stream = new ReadableStream({
     start(controller) {
       controller.enqueue(encoder.encode('event: content_block_delta\n'));
@@ -394,7 +511,15 @@ test("sendChatCompletionWithFallbacks tries configured fallback model and provid
           ...config.llm,
           maxRetries: 1,
           retryDelayMs: 0,
-          fallbacks: [{ provider: "openai-compatible", baseUrl: "https://fallback.example.com/v1", model: "fallback-model", apiKeyEnv: "FALLBACK_LLM_API_KEY" }],
+          fallbacks: ["fallback/fallback-model"],
+          profiles: {
+            ...config.llm.profiles,
+            "fallback:api-key": { provider: "openai-compatible", mode: "api-key", baseUrl: "https://fallback.example.com/v1", apiKeyEnv: "FALLBACK_LLM_API_KEY" },
+          },
+          modelCatalog: {
+            ...config.llm.modelCatalog,
+            "fallback/fallback-model": { profile: "fallback:api-key" },
+          },
         },
       },
       { messages: [{ role: "user", content: "Hi" }] },
@@ -427,7 +552,15 @@ test("sendChatCompletionWithFallbacks reports every failed fallback attempt", as
             ...config,
             llm: {
               ...config.llm,
-              fallbacks: [{ provider: "openai-compatible", baseUrl: "https://fallback.example.com/v1", model: "fallback-model", apiKeyEnv: "FALLBACK_LLM_API_KEY" }],
+              fallbacks: ["fallback/fallback-model"],
+              profiles: {
+                ...config.llm.profiles,
+                "fallback:api-key": { provider: "openai-compatible", mode: "api-key", baseUrl: "https://fallback.example.com/v1", apiKeyEnv: "FALLBACK_LLM_API_KEY" },
+              },
+              modelCatalog: {
+                ...config.llm.modelCatalog,
+                "fallback/fallback-model": { profile: "fallback:api-key" },
+              },
             },
           },
           { messages: [{ role: "user", content: "Hi" }] },
@@ -464,5 +597,35 @@ async function createTempPaths(): Promise<RuntimePaths> {
     dataDir,
     memoryDbPath: resolve(dataDir, "memory.sqlite"),
     workspaceDir: resolve(appDir, "workspace"),
+  };
+}
+
+function createAnthropicConfig(provider: string): AppConfig {
+  return {
+    ...config,
+    llm: {
+      ...config.llm,
+      primary: "anthropic/claude-sonnet-4-5",
+      authProfile: "anthropic:api-key",
+      profiles: {
+        "anthropic:api-key": { provider, mode: "api-key", baseUrl: "https://api.anthropic.com/v1", apiKeyEnv: "ANTHROPIC_API_KEY" },
+      },
+      modelCatalog: { "anthropic/claude-sonnet-4-5": { profile: "anthropic:api-key" } },
+    },
+  };
+}
+
+function createGeminiConfig(): AppConfig {
+  return {
+    ...config,
+    llm: {
+      ...config.llm,
+      primary: "gemini/gemini-2.5-flash",
+      authProfile: "gemini:api-key",
+      profiles: {
+        "gemini:api-key": { provider: "gemini", mode: "api-key", baseUrl: "https://generativelanguage.googleapis.com/v1beta", apiKeyEnv: "GEMINI_API_KEY" },
+      },
+      modelCatalog: { "gemini/gemini-2.5-flash": { profile: "gemini:api-key" } },
+    },
   };
 }
