@@ -18,7 +18,7 @@ Current shipped scope is no longer only the original Phase Now slice. The local 
 - terminal chat
 - editable character prompt and installed skills from `~/.bestie/skills`
 - minimal onboarding/config wizard
-- OpenAI-compatible LLM calls with fallback diagnostics
+- provider-profile LLM calls with fallback diagnostics, including OpenAI/ChatGPT, Anthropic Claude, OpenAI-compatible endpoints, Groq, OpenRouter, Ollama, and native Gemini API-key mode
 - basic redacted logs
 - Telegram and Zalo channel runtimes behind `bestie channels telegram|zalo`
 - daemon management through `bestie daemon --channel telegram|zalo|cron|all`

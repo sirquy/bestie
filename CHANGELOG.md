@@ -6,6 +6,32 @@ This project follows semantic versioning after the first public package release.
 
 ## [Unreleased]
 
+## [0.1.17] - 2026-07-21
+
+### Fixed
+
+- Gemini onboarding now uses `GEMINI_API_KEY` instead of falling back to `OPENAI_API_KEY`.
+- Gemini onboarding no longer asks for or stores `baseUrl`, matching native `@google/genai` API-key setup.
+
+## [0.1.16] - 2026-07-21
+
+### Added
+
+- Config v2 LLM provider profiles with canonical `provider/model` refs, model catalog entries, fallback ordering, and provider diagnostics.
+- Native Gemini API-key adapter through `@google/genai`.
+- LLM provider CLI management for providers, models, profiles, fallbacks, and model-specific tests.
+- Built-in provider catalog entries for Anthropic Claude, OpenAI/ChatGPT, Groq, OpenRouter, Ollama, Gemini, and custom compatible providers.
+
+### Changed
+
+- Gemini setup no longer stores or passes `baseUrl`; native SDK defaults own Gemini endpoint selection.
+- HTTP-backed providers still require `baseUrl` and fail with a clear provider response error when it is missing.
+
+### Fixed
+
+- Gemini responses with candidate text parts are normalized even when the SDK aggregate `text` field is absent.
+- Gemini media-only responses now fail with a clear diagnostic instead of a generic missing-content error.
+
 ## [0.1.15] - 2026-07-18
 
 ### Added

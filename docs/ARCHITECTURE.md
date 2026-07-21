@@ -4,7 +4,7 @@ This document describes the current long-term architecture and the local-develop
 
 ## Overview
 
-Bestie is a local-first, self-hostable agent runtime. The core runtime should be shared by CLI, Telegram, local web UI, future MCP integrations, and future multi-agent features.
+Bestie is a local-first, self-hostable agent runtime. The core runtime is shared by the CLI, Telegram, Zalo, cron, MCP read foundations, installed skills, and future UI/multi-agent features.
 
 ```text
 User / Channel
@@ -72,16 +72,21 @@ Character config should be data-driven so onboarding and UI can edit it.
 
 ### LLM Adapter
 
-Current adapters: OpenAI-compatible Chat Completions and Anthropic Messages API.
+Current adapters:
 
-Required config:
+- OpenAI/ChatGPT and generic OpenAI-compatible Chat Completions.
+- Anthropic Claude Messages API.
+- Native Gemini API-key mode through `@google/genai`.
 
-- `baseUrl`
-- `apiKeyEnv`
-- `model`
-- optional temperature/max tokens
+Current config uses version 2 model refs and profiles:
 
-Adapters should normalize errors for Doctor and logs.
+- `llm.primary` and `llm.fallbacks[]` are `provider/model` refs.
+- `llm.profiles` stores auth mode, endpoint metadata, and `apiKeyEnv` names.
+- `llm.modelCatalog` maps model refs to profiles.
+- HTTP providers require `baseUrl`; native Gemini intentionally omits `baseUrl` and lets the SDK use its default endpoint.
+- API keys live in `.env`; Gemini uses `GEMINI_API_KEY`.
+
+Adapters normalize auth, rate limit, timeout, network, malformed response, fallback, and media-only response errors for Doctor, logs, and channel/terminal display.
 
 ### Memory Router
 

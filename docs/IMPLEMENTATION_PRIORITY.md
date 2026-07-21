@@ -12,21 +12,22 @@ This file defines what to build now, next, later, and future. It exists to preve
 
 ## Now
 
-Status: completed for local development.
+Status: completed for local development and superseded by the local MVP foundation.
 
-Build:
+Delivered:
 
 - terminal chat
 - character prompt
 - minimal onboarding/config wizard
-- OpenAI-compatible LLM call
-- basic logs
+- config v2 with provider/model refs, auth profiles, fallback order, and provider catalog
+- LLM adapters for OpenAI/ChatGPT, Anthropic Claude, OpenAI-compatible endpoints, Groq, OpenRouter, Ollama, and native Gemini API-key mode
+- basic redacted logs
 
 Goal: prove the character feels alive.
 
 ## Next
 
-Status: completed for local development. Local SQLite memory, basic memory policy, status, Doctor MVP, Telegram/Zalo channel runtimes, cron, daemon/service management, permission-gated local tools, bounded internal subagents, SDK-backed MCP setup plus classified read calls, installed skills, npm update checks, and opt-in Telegram real-bot smoke are implemented and validated for local development.
+Status: completed for local development. Local SQLite memory, basic memory policy, status, Doctor MVP, Telegram/Zalo channel runtimes, cron, daemon/service management, permission-gated local tools, bounded internal subagents, SDK-backed MCP setup plus classified read calls, installed skills, npm update checks, native Gemini API-key setup, provider catalog/CLI management, and opt-in Telegram real-bot smoke are implemented and validated for local development.
 
 Build:
 

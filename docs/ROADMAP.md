@@ -5,11 +5,11 @@
 - terminal chat
 - character prompt
 - minimal onboarding/config wizard
-- OpenAI-compatible LLM call
+- config v2 provider profiles and LLM calls across OpenAI/ChatGPT, Anthropic Claude, OpenAI-compatible endpoints, Groq, OpenRouter, Ollama, and native Gemini API-key mode
 - basic logs
 - character eval suite
 
-Status: completed for local development.
+Status: completed for local development and shipped through the npm CLI.
 
 ## Next
 
@@ -19,7 +19,7 @@ Status: completed for local development.
 - Telegram/Zalo reliability fixes discovered by daily local use
 - skills and update-command polish when it improves owner workflows
 
-Status: local MVP foundation complete. Terminal chat, onboarding, local SQLite memory, Doctor, Telegram/Zalo local polling, cron, daemon management for `telegram|zalo|cron|all`, one `bestie.service` systemd runtime, permission-gated local tools, bounded internal subagents, SDK-backed MCP setup plus classified read calls, installed skills, npm update checks, Telegram real-bot smoke, and one-command installer smoke exist for local development.
+Status: local MVP foundation complete. Terminal chat, onboarding, local SQLite memory, Doctor, Telegram/Zalo local polling, cron, daemon management for `telegram|zalo|cron|all`, one `bestie.service` systemd runtime, permission-gated local tools, bounded internal subagents, SDK-backed MCP setup plus classified read calls, installed skills, provider catalog/management CLI, npm update checks, Telegram real-bot smoke, and one-command installer smoke exist for local development.
 
 ## Later
 

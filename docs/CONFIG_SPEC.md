@@ -255,13 +255,16 @@ Onboarding writes the LLM API key. Channel, speech, transcription, and MCP secre
 ```bash
 OPENAI_API_KEY=
 ANTHROPIC_API_KEY=
+GEMINI_API_KEY=
+GROQ_API_KEY=
+OPENROUTER_API_KEY=
 BESTIE_TELEGRAM_BOT_TOKEN=
 BESTIE_ZALO_BOT_TOKEN=
 ELEVENLABS_API_KEY=
 COMPOSIO_CONSUMER_API_KEY=
 ```
 
-Secrets must not be printed after entry and must be redacted from logs.
+Secrets must not be printed after entry and must be redacted from logs. Gemini setup and onboarding use `GEMINI_API_KEY`; OpenAI-compatible custom providers may use `OPENAI_API_KEY` or a user-chosen env var name.
 
 Telegram voice setup commands follow the same rule. `bestie channels telegram voice setup-elevenlabs` prompts for `ELEVENLABS_API_KEY` and writes the secret only to `.bestie/.env`; `.bestie/config.json` stores the env var name plus non-secret voice/model IDs. `bestie channels telegram voice setup-local`, `models`, and `download-model` should print only local paths, model names, sizes, and status details.
 

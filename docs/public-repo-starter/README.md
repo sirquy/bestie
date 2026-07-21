@@ -100,7 +100,8 @@ Bestie keeps local runtime files under `~/.bestie/` by default. Secrets belong i
 Example `~/.bestie/.env`:
 
 ```bash
-OPENAI_API_KEY=your-provider-key
+OPENAI_API_KEY=your-openai-compatible-key
+GEMINI_API_KEY=your-gemini-key
 BESTIE_TELEGRAM_BOT_TOKEN=your-telegram-token
 BESTIE_ZALO_BOT_TOKEN=your-zalo-token
 ```

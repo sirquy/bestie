@@ -27,7 +27,7 @@ Deliverables:
 
 - `character.json`
 - `system-prompt.md`
-- OpenAI-compatible LLM adapter
+- provider-profile LLM adapter layer for OpenAI-compatible endpoints, Anthropic Claude, and native Gemini API-key mode
 - `bestie chat`
 - basic redacted operational logs
 
@@ -47,12 +47,13 @@ Deliverables:
 - character creation questions
 - LLM provider setup
 - non-blocking provider test completion
-- config/env generation
+- config v2/env generation with provider/model refs, profiles, model catalog entries, and provider-specific API key env names
 
 Acceptance:
 
 - fresh install can create config without manual file editing
 - user meets the character in terminal after onboarding
+- Gemini onboarding writes `GEMINI_API_KEY` and does not ask for or store `baseUrl`
 
 ## Milestone 3 - Telegram Channel
 

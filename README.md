@@ -117,8 +117,9 @@ Bestie keeps local runtime files under `~/.bestie/` by default. Secrets belong i
 Example `~/.bestie/.env`:
 
 ```bash
-OPENAI_API_KEY=your-provider-key
+OPENAI_API_KEY=your-openai-compatible-key
 ANTHROPIC_API_KEY=your-claude-key
+GEMINI_API_KEY=your-gemini-key
 BESTIE_TELEGRAM_BOT_TOKEN=your-telegram-token
 ```
 
@@ -142,17 +143,23 @@ Example provider config:
         "mode": "api-key",
         "baseUrl": "https://api.anthropic.com/v1",
         "apiKeyEnv": "ANTHROPIC_API_KEY"
+      },
+      "gemini:api-key": {
+        "provider": "gemini",
+        "mode": "api-key",
+        "apiKeyEnv": "GEMINI_API_KEY"
       }
     },
     "modelCatalog": {
       "openai/gpt-4o-mini": { "profile": "openai:api-key" },
-      "anthropic/claude-sonnet-4-5": { "profile": "anthropic:api-key" }
+      "anthropic/claude-sonnet-4-5": { "profile": "anthropic:api-key" },
+      "gemini/gemini-2.5-flash": { "profile": "gemini:api-key" }
     }
   }
 }
 ```
 
-Model refs use `provider/model`. Profiles hold endpoint and auth mode metadata; secrets still live in `.env` through `apiKeyEnv`. Local profiles such as Ollama use `mode: "local"` and do not need an API key.
+Model refs use `provider/model`. Profiles hold endpoint and auth mode metadata; secrets still live in `.env` through `apiKeyEnv`. HTTP providers store `baseUrl`; native Gemini API-key profiles intentionally omit `baseUrl` and let `@google/genai` use its default endpoint. Local profiles such as Ollama use `mode: "local"` and do not need an API key.
 
 Run `bestie llm providers` to list supported providers with adapter capabilities and `bestie llm models --provider gemini` to inspect built-in model refs. Run `bestie llm setup` to choose a supported provider interactively, or `bestie llm setup --provider anthropic|openai|groq|openrouter|custom-openai|custom-anthropic|ollama|gemini|antigravity` for a faster setup path. The setup command adds/updates a profile and catalog entry; pass `--set-default` to make the selected model the active primary. Use `bestie llm models add --model provider/model --profile provider:mode` and `bestie llm models remove --model provider/model` to manage configured custom model refs. Use `bestie llm test --model provider/model` to test a configured model without switching primary, `bestie llm profiles list|show|remove --profile provider:mode` to inspect or remove inactive profiles, and `bestie llm fallbacks list|add|remove --model provider/model` to manage fallback order. OAuth providers are hidden behind provider-specific implementations; Bestie does not write placeholder OAuth config.
 

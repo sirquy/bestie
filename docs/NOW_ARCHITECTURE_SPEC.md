@@ -2,7 +2,7 @@
 
 ## Goal
 
-Define the architecture for the Phase Now slice: terminal chat, character prompt, minimal onboarding/config wizard, OpenAI-compatible LLM calls, and basic logs.
+Define the architecture for the Phase Now slice: terminal chat, character prompt, minimal onboarding/config wizard, LLM provider calls, and basic logs.
 
 The architecture must prove character quality quickly while leaving clean seams for later Telegram, memory, Doctor, installer, and UI work.
 
@@ -28,7 +28,7 @@ Inside boundary:
 - Local config and env loading.
 - Character file loading.
 - Terminal chat loop.
-- OpenAI-compatible LLM request/response handling.
+- LLM provider request/response handling.
 - Redacted local logging.
 
 Outside boundary:
@@ -64,7 +64,10 @@ src/
     prompt-generator.ts
     schema.ts
   llm/
-    openai-compatible.ts
+    chat-completion.ts
+    resolve-config.ts
+    model-catalog.ts
+    adapters/
     errors.ts
     types.ts
   chat/
@@ -130,15 +133,16 @@ Responsibilities:
 
 ### `src/llm`
 
-Owns provider communication.
+Owns provider resolution and communication.
 
 Responsibilities:
 
-- Build OpenAI-compatible chat completion requests.
-- Send requests to configured base URL and model.
-- Read API key from configured env var.
+- Resolve config v2 `provider/model` refs through `llm.modelCatalog` and `llm.profiles`.
+- Build provider-specific requests for OpenAI-compatible, Anthropic Claude, and native Gemini adapters.
+- Read API keys from configured env var names without logging secret values.
+- Preserve native SDK assumptions, such as Gemini using `@google/genai` without a configured `baseUrl`.
 - Return assistant text or normalized provider errors.
-- Avoid provider-specific product assumptions beyond OpenAI-compatible shape.
+- Retry transient failures and walk configured fallback model refs.
 
 ### `src/chat`
 
@@ -173,18 +177,27 @@ Stores non-secret configuration only.
 
 ```json
 {
-  "version": 1,
+  "version": 2,
   "agent": {
-    "name": "",
-    "ownerName": "",
+    "name": "Bestie",
+    "ownerName": "Boss",
     "language": "vi",
+    "timeZone": "Asia/Bangkok",
     "toneIntensity": 7
   },
   "llm": {
-    "provider": "openai-compatible",
-    "baseUrl": "",
-    "model": "provider-model-name",
-    "apiKeyEnv": "OPENAI_API_KEY"
+    "primary": "gemini/gemini-2.5-flash",
+    "authProfile": "gemini:api-key",
+    "profiles": {
+      "gemini:api-key": {
+        "provider": "gemini",
+        "mode": "api-key",
+        "apiKeyEnv": "GEMINI_API_KEY"
+      }
+    },
+    "modelCatalog": {
+      "gemini/gemini-2.5-flash": { "profile": "gemini:api-key" }
+    }
   }
 }
 ```
@@ -194,7 +207,7 @@ Stores non-secret configuration only.
 Stores secrets.
 
 ```bash
-OPENAI_API_KEY=...
+GEMINI_API_KEY=...
 ```
 
 Rules:

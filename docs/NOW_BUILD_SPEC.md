@@ -2,9 +2,9 @@
 
 ## Goal
 
-Build the smallest working slice that proves the Bestie character feels alive before the project invests in Telegram, Zep, installer, UI, MCP, or avatar/voice work. This spec is the historical contract for Phase Now; local memory and Doctor foundations were started afterward as Next-scope work.
+Build the smallest working slice that proves the Bestie character feels alive before the project invests in Telegram, Zep, installer, UI, MCP, or avatar/voice work. This spec is the historical contract for Phase Now; the current project has since moved into a broader local MVP with config v2, provider profiles, Telegram/Zalo, cron, local memory, Doctor, permission-gated tools, installed skills, npm update checks, daemon/service management, and MCP read foundations.
 
-Phase Now delivered a terminal-based chat loop with a configurable character prompt, OpenAI-compatible LLM call, minimal onboarding/config wizard, and basic logs for local development.
+Phase Now delivered a terminal-based chat loop with a configurable character prompt, LLM provider calls, minimal onboarding/config wizard, and basic logs for local development. The shipped implementation now supports OpenAI/ChatGPT, Anthropic Claude, generic OpenAI-compatible endpoints, Groq, OpenRouter, Ollama, and native Gemini API-key mode.
 
 ## Source Of Truth
 
@@ -22,7 +22,7 @@ If this spec conflicts with either file, prefer `PROJECT.md`, then `docs/IMPLEME
 - Terminal chat command.
 - Minimal onboarding/config wizard.
 - Character prompt loading from local files.
-- OpenAI-compatible chat completion call.
+- LLM chat completion call through the provider adapter layer.
 - Basic runtime config loading.
 - Basic logs for startup, config loading, LLM request outcome, and errors.
 - README quickstart for Phase Now.
@@ -62,9 +62,10 @@ bestie logs
 - Ask for memory write policy: `ask`, `allow`, or `deny`.
 - Ask for LLM provider configuration:
   - provider label
-  - base URL
+  - base URL for HTTP providers
   - model name
   - API key
+  - Gemini API-key setup uses `GEMINI_API_KEY` and does not ask for or store `baseUrl`
 - Save non-secret config to a config file.
 - Save secrets to a local `.env` file.
 - Generate or update local character files.
@@ -75,7 +76,7 @@ bestie logs
 
 - Load config and character prompt.
 - Start an interactive terminal loop.
-- Send user messages to an OpenAI-compatible chat completion endpoint.
+- Send user messages through the configured LLM provider adapter.
 - Include the character system prompt in each request.
 - Print the assistant response.
 - Exit cleanly on `/exit` or `Ctrl+C`.
@@ -121,25 +122,35 @@ Recommended paths for local development:
 .bestie/logs/app.log
 ```
 
-Config may include:
+Historical Phase Now config was version 1. Current config is version 2 and may include:
 
 ```json
 {
-  "version": 1,
+  "version": 2,
   "agent": {
-    "name": "",
-    "ownerName": "",
+    "name": "Bestie",
+    "ownerName": "Boss",
     "language": "vi",
+    "timeZone": "Asia/Bangkok",
     "toneIntensity": 7
   },
   "llm": {
-    "provider": "openai-compatible",
-    "baseUrl": "",
-    "model": "provider-model-name",
-    "apiKeyEnv": "OPENAI_API_KEY"
+    "primary": "gemini/gemini-2.5-flash",
+    "authProfile": "gemini:api-key",
+    "profiles": {
+      "gemini:api-key": {
+        "provider": "gemini",
+        "mode": "api-key",
+        "apiKeyEnv": "GEMINI_API_KEY"
+      }
+    },
+    "modelCatalog": {
+      "gemini/gemini-2.5-flash": { "profile": "gemini:api-key" }
+    }
   },
   "memory": {
-    "writePolicy": "ask"
+    "writePolicy": "allow",
+    "deletePolicy": "allow"
   }
 }
 ```
@@ -169,7 +180,7 @@ src/character
   Loads character.json and system-prompt.md.
 
 src/llm
-  Calls OpenAI-compatible chat completion endpoints.
+  Resolves model refs, loads auth profiles, and calls provider-specific chat adapters.
 
 src/chat
   Runs the terminal chat loop and assembles messages.
@@ -183,7 +194,7 @@ Terminal user input
   -> runtime config/env loader
   -> character prompt loader
   -> chat message builder
-  -> OpenAI-compatible LLM client
+  -> LLM provider adapter
   -> terminal response
   -> redacted log event
 ```
@@ -207,14 +218,14 @@ Original Phase Now did not introduce channel, memory, tool, MCP, or UI dependenc
 - `bestie onboard` does not print entered API keys after submission.
 - `bestie onboard --skip-provider-test` creates local files without making a provider network call.
 - `bestie status` reports setup status without exposing secrets.
-- `bestie chat` can complete a terminal conversation using an OpenAI-compatible provider.
+- `bestie chat` can complete a terminal conversation using a configured provider profile.
 - `bestie chat` includes the local system prompt in the LLM request.
 - The assistant replies in Vietnamese by default when language is `vi`.
 - Serious or unsafe user messages reduce playful roasting and use a safety-first tone.
 - Logs are written for command start, provider test result, chat request success/failure, and handled errors.
 - Logs redact API keys and token-like values.
 - Provider fallback diagnostics are available without exposing secrets: raw structured attempts stay in local logs, while `/providers` redacts and truncates displayed error text.
-- No Telegram, Zep, MCP, plugin, installer, avatar, voice, or UI code is required for this phase. Local SQLite memory was added after this phase as a Next-scope foundation.
+- No Telegram, Zep, MCP, plugin, installer, avatar, voice, or UI code was required for the original phase. Telegram/Zalo, local SQLite memory, cron, Doctor, tools, MCP read foundations, installed skills, installer/update flows, daemon/service management, and Telegram voice helpers were added after this phase as local MVP work.
 
 ## Validation Plan
 

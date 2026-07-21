@@ -10,21 +10,22 @@ Core idea:
 
 > A best-friend AI who can make the user laugh, think, calm down, stop lying to themselves, and move forward.
 
-## 2. MVP Goal
+## 2. MVP Goal And Current State
 
-The first version should be small but alive.
+The first version should be small but alive: start with a believable character, then add channel/runtime power only behind local controls.
 
-MVP v1:
+Current local MVP status:
 
-- Runs as a Telegram bot or web chat.
-- Has a strong Vietnamese-first personality.
-- Remembers basic facts and preferences about the user.
-- Can chat casually, reflect, advise, brainstorm, and challenge bad ideas.
-- Has no dangerous external powers at first.
-- Logs conversations and memory updates clearly.
-- Can later evolve into voice/avatar/app form.
+- Runs as terminal chat, Telegram polling, Zalo polling, cron schedules, daemon targets, and one Linux user service.
+- Has a strong Vietnamese-first personality stored in editable local character and prompt files.
+- Remembers basic facts and preferences through local SQLite memory with inspect, search, approval, hygiene, and governance commands.
+- Can chat casually, reflect, advise, brainstorm, challenge bad ideas, and use permission-gated local tools.
+- Supports configurable LLM provider profiles and model refs, including OpenAI/ChatGPT, Anthropic Claude, Groq, OpenRouter, local Ollama, custom OpenAI-compatible endpoints, and native Gemini API-key mode.
+- Logs provider failures, fallback attempts, memory updates, permission decisions, and runtime diagnostics with secret redaction.
+- Loads installed skills from `~/.bestie/skills` and supports SDK-backed MCP setup plus classified read calls.
+- Can later evolve into broader UI, hosted mode, avatar/body, optional Zep, and broader external actions.
 
-Do not start by building a fully autonomous agent. Start by creating a believable character.
+Do not let the local MVP become a fully autonomous public agent. Keep power behind explicit config, Doctor checks, permission review, and redacted logs.
 
 ## 3. Character Concept
 
@@ -210,20 +211,20 @@ Use examples like these to tune the agent:
 
 ## 9. Core Architecture
 
-Recommended simple architecture for v1:
+Current local architecture:
 
 ```text
-Telegram/Web UI
-  -> Backend API
-    -> Conversation Router
-      -> Intent/Mode Detector
-      -> Memory Retrieval
-      -> Persona Prompt Builder
-      -> LLM via OpenAI-compatible API
-      -> Safety/Permission Filter
-      -> Response
-      -> Memory Update
+Terminal / Telegram / Zalo / Cron
+  -> Channel or CLI adapter
+    -> Shared chat/runtime loop
+      -> Character prompt + installed skills
+      -> SQLite memory context
+      -> Permission-gated internal tools and classified MCP reads
+      -> LLM provider adapter
+      -> Redacted logs + memory reasoning
 ```
+
+The original v1 sketch mentioned Telegram or web chat. The shipped local MVP currently prioritizes terminal, Telegram, Zalo, cron, daemon/service, SQLite memory, Doctor, MCP read foundations, and installed skills. Web UI, hosted mode, avatar/body, optional Zep, and broad external execution remain later work.
 
 Main components:
 
@@ -883,18 +884,27 @@ Example:
 
 ```json
 {
-  "version": 1,
+  "version": 2,
   "agent": {
     "name": "Miu",
     "ownerName": "Mathew",
     "language": "vi",
+    "timeZone": "Asia/Bangkok",
     "toneIntensity": 7
   },
   "llm": {
-    "provider": "openai-compatible",
-    "baseUrl": "https://api.openai.com/v1",
-    "model": "provider-model-name",
-    "apiKeyEnv": "OPENAI_API_KEY"
+    "primary": "gemini/gemini-2.5-flash",
+    "authProfile": "gemini:api-key",
+    "profiles": {
+      "gemini:api-key": {
+        "provider": "gemini",
+        "mode": "api-key",
+        "apiKeyEnv": "GEMINI_API_KEY"
+      }
+    },
+    "modelCatalog": {
+      "gemini/gemini-2.5-flash": { "profile": "gemini:api-key" }
+    }
   },
   "memory": {
     "provider": "sqlite",
@@ -1019,7 +1029,7 @@ Bestie: a self-hosted AI companion with memory, personality, and attitude.
 Short description:
 
 ```text
-Create your own AI best friend: funny, blunt, emotionally aware, and configurable. Install with one command, connect your LLM provider, optionally connect Zep memory, and chat through Telegram or the web.
+Create your own AI best friend: funny, blunt, emotionally aware, and configurable. Install from npm, connect your LLM provider, keep memory local by default, and chat through terminal, Telegram, or Zalo.
 ```
 
 Avoid overpromising:
@@ -1041,7 +1051,7 @@ Avoid overpromising:
 
 ### Milestone 1 - Character Chat Loop
 
-- OpenAI-compatible LLM call.
+- Provider-profile LLM call.
 - Character prompt loading.
 - Terminal chat mode.
 - Basic logs.
@@ -2199,7 +2209,7 @@ Focus:
 - terminal chat
 - character prompt
 - config wizard
-- OpenAI-compatible LLM call
+- provider-profile LLM call
 - basic logs
 
 Goal:

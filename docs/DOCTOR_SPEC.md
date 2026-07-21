@@ -40,7 +40,7 @@ The current implementation checks local setup under `~/.bestie`, SQLite memory, 
 - Telegram speech reply readiness when voice replies are enabled: ElevenLabs or OpenAI-compatible speech provider secret exists, ffmpeg is available for Telegram Ogg/Opus voice-note conversion, and `--telegram-speech-test` can opt into local synthesis/conversion without sending Telegram messages
 - Telegram bot identity via `getMe` only when `--telegram-connect` is explicitly passed; default Doctor avoids external network calls
 - Zalo token presence when Zalo is enabled, and Zalo bot identity only when `--zalo-connect` is explicitly passed
-- MCP server config summary without printing env values; disabled servers and enabled servers missing tool classifications warn, connection tests are future work
+- MCP server config summary without printing env values; disabled servers and enabled servers missing tool classifications warn, and opt-in `test/tools/call` flows can connect through the SDK-backed MCP commands
 
 ## Output Format
 
