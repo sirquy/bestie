@@ -12,6 +12,7 @@ import { runSkillsCommand } from "./commands/skills.js";
 import { runServiceCommand } from "./commands/daemon.js";
 import { runStatusCommand } from "./commands/status.js";
 import { runToolsCommand } from "./commands/tools.js";
+import { runUiCommand } from "./commands/ui.js";
 import { runUpdateCommand } from "./commands/update.js";
 import { runVoiceCommand } from "./commands/voice.js";
 import type { CliCommandSpec } from "./command-router.js";
@@ -57,6 +58,11 @@ Tùy chọn tools:
 
 Tùy chọn update:
   --apply  Chạy npm install -g bestie-agent@latest sau khi tìm thấy bản mới
+
+Tùy chọn UI:
+  --port N    Chọn port local; dùng 0 để hệ điều hành tự cấp port trống
+  --host H    Bind host local, mặc định 127.0.0.1
+  --no-open   Không tự mở trình duyệt
 
 Tùy chọn cron:
   list           Liệt kê toàn bộ lịch cron
@@ -128,6 +134,16 @@ export const cliCommandSpecs: CliCommandSpec[] = [
   createChannelsCommandSpec("channel", true),
   { name: "skills", description: "Liệt kê skill đã cài từ .bestie/skills", handler: runSkillsCommand },
   { name: "tools", description: "Chạy tool local qua permission gate", handler: runToolsCommand },
+  {
+    name: "ui",
+    description: "Mở web console local của Bestie",
+    handler: runUiCommand,
+    options: [
+      { flags: "--port <port>", description: "Chọn port local; dùng 0 để hệ điều hành tự cấp port trống", name: "port" },
+      { flags: "--host <host>", description: "Bind host local, mặc định 127.0.0.1", name: "host" },
+      { flags: "--no-open", description: "Không tự mở trình duyệt", name: "open" },
+    ],
+  },
   {
     name: "voice",
     description: "Cấu hình voice input và speech output dùng chung",

@@ -54,7 +54,12 @@
     "smoke:zalo:setup": "npm run build && npm run smoke:zalo:setup:run",
     "smoke:zalo:setup:run": "node scripts/smoke-zalo-setup.mjs",
     "smoke:tools": "npm run build && npm run smoke:tools:run",
-    "smoke:tools:run": "node dist/cli/index.js tools logs --lines 5 | grep -q 'action_permission_decision' && node dist/cli/index.js tools memories --limit 5 >/dev/null && node dist/cli/index.js tools git status >/dev/null"
+    "smoke:tools:run": "node dist/cli/index.js tools logs --lines 5 | grep -q 'action_permission_decision' && node dist/cli/index.js tools memories --limit 5 >/dev/null && node dist/cli/index.js tools git status >/dev/null",
+    "smoke:ui": "npm run build && npm run smoke:ui:run",
+    "smoke:ui:all": "npm run build && npm run smoke:ui:run && npm run smoke:ui:browser:run",
+    "smoke:ui:browser": "npm run build && npm run smoke:ui:browser:run",
+    "smoke:ui:browser:run": "node scripts/smoke-ui-browser.mjs",
+    "smoke:ui:run": "node scripts/smoke-ui.mjs"
   },
   "engines": {
     "node": ">=24"
@@ -62,6 +67,7 @@
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^20.14.15",
+    "playwright": "^1.61.1",
     "tsx": "^4.16.2",
     "typescript": "^5.5.4"
   },
