@@ -1,4 +1,4 @@
-import { loadConfig, type AppConfig, type InternalToolPolicy } from "../../runtime/config.js";
+import { loadConfig, writeConfig, type AppConfig, type InternalToolPolicy } from "../../runtime/config.js";
 import { getRuntimePaths, type RuntimePaths } from "../../runtime/paths.js";
 
 export interface UiToolsSummary {
@@ -41,6 +41,23 @@ export async function getUiToolsSummary(paths: RuntimePaths = getRuntimePaths())
   };
 }
 
+export async function updateUiToolPolicy(options: { tool: string; policy: InternalToolPolicy; paths?: RuntimePaths }): Promise<UiToolsSummary> {
+  const paths = options.paths ?? getRuntimePaths();
+  const tool = options.tool.trim();
+  if (!tool) throw new Error("Tool name is required.");
+  if (!isInternalToolPolicy(options.policy)) throw new Error("Tool policy must be allow, ask, or deny.");
+
+  const config = await loadConfig(paths);
+  await writeConfig({
+    ...config,
+    internalTools: {
+      ...(config.internalTools ?? {}),
+      policies: { ...(config.internalTools?.policies ?? {}), [tool]: options.policy },
+    },
+  }, paths);
+  return getUiToolsSummary(paths);
+}
+
 function buildPolicySummary(policies: Record<string, InternalToolPolicy>): UiToolsSummary["policies"] {
   const entries = Object.entries(policies)
     .map(([tool, policy]) => ({ tool, policy }))
@@ -52,4 +69,8 @@ function buildPolicySummary(policies: Record<string, InternalToolPolicy>): UiToo
     deny: entries.filter((entry) => entry.policy === "deny").length,
     entries,
   };
+}
+
+function isInternalToolPolicy(value: string): value is InternalToolPolicy {
+  return value === "allow" || value === "ask" || value === "deny";
 }

@@ -2,6 +2,7 @@ import type { PendingActionApproval } from "../memory/sqlite-store.js";
 import type { SqliteMemoryStore } from "../memory/sqlite-store.js";
 import { isInternalToolName, runAgentToolRequest } from "../chat/mcp-tool-use.js";
 import type { AgentToolRequest } from "../chat/mcp-tool-use.js";
+import type { McpToolCallResult } from "../mcp/connection.js";
 import type { AppConfig } from "../runtime/config.js";
 import type { RuntimePaths } from "../runtime/paths.js";
 
@@ -12,6 +13,8 @@ export interface ApprovalExecutionResult {
   status: ApprovalExecutionStatus;
   shortText: string;
   message: string;
+  request?: AgentToolRequest;
+  toolResult?: McpToolCallResult;
 }
 
 export async function executeApprovedAction(store: SqliteMemoryStore, approval: PendingActionApproval, decision: ApprovalDecision, options?: { config?: AppConfig; paths?: RuntimePaths }): Promise<ApprovalExecutionResult> {
@@ -59,6 +62,8 @@ async function executeInternalToolApproval(store: SqliteMemoryStore, approval: P
     status: result.ok ? "executed" : "invalid",
     shortText: result.ok ? "Action executed." : "Action failed.",
     message: `Approval ${approval.status}: ${approval.id}. ${result.ok ? "Executed" : "Failed"} ${request.tool}: ${result.message}`,
+    request,
+    toolResult: result,
   };
 }
 

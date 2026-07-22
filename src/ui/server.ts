@@ -2,15 +2,19 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import type { AddressInfo } from "node:net";
 
 import { getUiApprovalsSummary, runUiApprovalAction } from "./api/approvals.js";
+import type { AgentToolActivity } from "../chat/mcp-tool-use.js";
+import { SqliteMemoryStore } from "../memory/sqlite-store.js";
 import { getUiCharacterSummary, updateUiCharacter } from "./api/character.js";
 import { getUiChannelSummary, runUiChannelAction } from "./api/channels.js";
+import { createUiChatSession, deleteUiChatSession, exportUiChatSession, forkUiChatSession, getUiChatSessionEvents, getUiChatSessionMessages, getUiChatSessions, importUiChatSession, prepareUiChatRetry, prepareUiChatRunReplay, runUiChat, runUiChatContinue, searchUiChatSessions, updateUiChatSession } from "./api/chat.js";
 import { getUiDoctorSummary, runUiDoctorFix } from "./api/doctor.js";
 import { getUiMemorySummary, runUiMemoryAction, searchUiMemories } from "./api/memory.js";
 import { getUiMcpSummary } from "./api/mcp.js";
 import { getUiProviderSummary, runUiProviderTest, setUiProviderPrimary, setupUiProvider, updateUiProviderFallback } from "./api/providers.js";
 import { getUiSettingsSummary, updateUiSettings } from "./api/settings.js";
+import { deleteUiSkill, getUiSkill, getUiSkillsSummary, writeUiSkill } from "./api/skills.js";
 import { getUiStatusSummary } from "./api/status.js";
-import { getUiToolsSummary } from "./api/tools.js";
+import { getUiToolsSummary, updateUiToolPolicy } from "./api/tools.js";
 import { HOME_PAGE_CLIENT_SCRIPT } from "./home/client-script.js";
 import { renderHomePage } from "./home-page.js";
 
@@ -116,8 +120,64 @@ async function handleRequestAsync(request: IncomingMessage, response: ServerResp
     return;
   }
 
+  if (method === "PUT" && url.pathname === "/api/tools/policy") {
+    const body = await readJsonBody(request);
+    if (!isRecord(body) || typeof body.tool !== "string" || typeof body.policy !== "string") {
+      sendJson(response, 400, { ok: false, error: "Tool policy update requires tool and policy.", code: "UiToolPolicyInvalidRequest" });
+      return;
+    }
+    sendJson(response, 200, await updateUiToolPolicy({ tool: body.tool, policy: body.policy as "allow" | "ask" | "deny" }));
+    return;
+  }
+
   if (method === "GET" && url.pathname === "/api/settings") {
     sendJson(response, 200, await getUiSettingsSummary());
+    return;
+  }
+
+  if (method === "GET" && url.pathname === "/api/skills") {
+    sendJson(response, 200, await getUiSkillsSummary());
+    return;
+  }
+
+  if (method === "GET" && url.pathname === "/api/skills/item") {
+    const name = url.searchParams.get("name") ?? "";
+    sendJson(response, 200, await getUiSkill(name));
+    return;
+  }
+
+  if (method === "GET" && url.pathname === "/api/chat/sessions") {
+    sendJson(response, 200, await getUiChatSessions());
+    return;
+  }
+
+  if (method === "GET" && url.pathname === "/api/chat/search") {
+    const filter = url.searchParams.get("filter") ?? "all";
+    if (!isUiChatSessionFilter(filter)) {
+      sendJson(response, 400, { ok: false, error: "Chat search filter must be all|approval|cancelled|error|fork|retry.", code: "UiChatInvalidSearchFilter" });
+      return;
+    }
+    sendJson(response, 200, await searchUiChatSessions({ query: url.searchParams.get("q") ?? undefined, filter }));
+    return;
+  }
+
+  if (method === "GET" && url.pathname === "/api/chat/session") {
+    const id = Number(url.searchParams.get("id"));
+    if (!Number.isFinite(id)) {
+      sendJson(response, 400, { ok: false, error: "Chat session requires numeric id.", code: "UiChatInvalidSession" });
+      return;
+    }
+    sendJson(response, 200, await getUiChatSessionMessages(id));
+    return;
+  }
+
+  if (method === "GET" && url.pathname === "/api/chat/events") {
+    const id = Number(url.searchParams.get("sessionId"));
+    if (!Number.isFinite(id)) {
+      sendJson(response, 400, { ok: false, error: "Chat events require numeric sessionId.", code: "UiChatInvalidSession" });
+      return;
+    }
+    sendJson(response, 200, await getUiChatSessionEvents(id));
     return;
   }
 
@@ -162,17 +222,231 @@ async function handleRequestAsync(request: IncomingMessage, response: ServerResp
     return;
   }
 
+  if (method === "POST" && url.pathname === "/api/chat") {
+    const body = await readJsonBody(request);
+    if (!isRecord(body) || typeof body.message !== "string") {
+      sendJson(response, 400, { ok: false, error: "Chat requires message.", code: "UiChatInvalidRequest" });
+      return;
+    }
+    sendJson(response, 200, await runUiChat({
+      message: body.message,
+      sessionId: typeof body.sessionId === "number" ? body.sessionId : undefined,
+      history: Array.isArray(body.history) ? body.history.filter(isUiChatMessage) : [],
+      attachments: Array.isArray(body.attachments) ? body.attachments.filter(isUiChatAttachment) : [],
+      toolsEnabled: body.toolsEnabled !== false,
+      memoryEnabled: body.memoryEnabled !== false,
+      providerModelRef: typeof body.providerModelRef === "string" && body.providerModelRef ? body.providerModelRef : undefined,
+      replaySourceRunId: typeof body.replaySourceRunId === "number" ? body.replaySourceRunId : undefined,
+    }));
+    return;
+  }
+
+  if (method === "POST" && url.pathname === "/api/chat/sessions") {
+    const body = await readJsonBody(request);
+    const title = isRecord(body) && typeof body.title === "string" ? body.title : undefined;
+    sendJson(response, 200, await createUiChatSession(title));
+    return;
+  }
+
+  if (method === "GET" && url.pathname === "/api/chat/export") {
+    const id = Number(url.searchParams.get("id"));
+    if (!Number.isFinite(id)) {
+      sendJson(response, 400, { ok: false, error: "Chat export requires id.", code: "UiChatInvalidExport" });
+      return;
+    }
+    sendJson(response, 200, await exportUiChatSession(id));
+    return;
+  }
+
+  if (method === "POST" && url.pathname === "/api/chat/import") {
+    const body = await readJsonBody(request);
+    const source = isRecord(body) && isRecord(body.export) ? body.export : body;
+    if (!isRecord(source) || !Array.isArray(source.messages)) {
+      sendJson(response, 400, { ok: false, error: "Chat import requires exported messages.", code: "UiChatInvalidImport" });
+      return;
+    }
+    const session = isRecord(source.session) ? source.session : undefined;
+    const title = isRecord(body) && typeof body.title === "string" ? body.title : session && typeof session.title === "string" ? session.title : undefined;
+    sendJson(response, 200, await importUiChatSession({
+      title,
+      messages: source.messages.filter(isUiChatMessage),
+      events: Array.isArray(source.events) ? source.events.filter(isRecord) : [],
+    }));
+    return;
+  }
+
+  if (method === "PUT" && url.pathname === "/api/chat/session") {
+    const body = await readJsonBody(request);
+    if (!isRecord(body) || typeof body.id !== "number") {
+      sendJson(response, 400, { ok: false, error: "Chat session update requires id.", code: "UiChatInvalidSessionUpdate" });
+      return;
+    }
+    sendJson(response, 200, await updateUiChatSession({ id: body.id, title: typeof body.title === "string" ? body.title : undefined, pinned: typeof body.pinned === "boolean" ? body.pinned : undefined, toolsEnabled: typeof body.toolsEnabled === "boolean" ? body.toolsEnabled : undefined, memoryEnabled: typeof body.memoryEnabled === "boolean" ? body.memoryEnabled : undefined, providerModelRef: typeof body.providerModelRef === "string" ? body.providerModelRef : undefined }));
+    return;
+  }
+
+  if (method === "POST" && url.pathname === "/api/chat/sessions/delete") {
+    const body = await readJsonBody(request);
+    if (!isRecord(body) || typeof body.id !== "number" || body.confirm !== true) {
+      sendJson(response, 400, { ok: false, error: "Chat session delete requires id and confirm=true.", code: "UiChatInvalidSessionDelete" });
+      return;
+    }
+    sendJson(response, 200, await deleteUiChatSession(body.id));
+    return;
+  }
+
+  if (method === "POST" && url.pathname === "/api/chat/retry") {
+    const body = await readJsonBody(request);
+    if (!isRecord(body) || typeof body.sessionId !== "number" || body.confirm !== true) {
+      sendJson(response, 400, { ok: false, error: "Chat retry requires sessionId and confirm=true.", code: "UiChatInvalidRetry" });
+      return;
+    }
+    sendJson(response, 200, await prepareUiChatRetry(body.sessionId, typeof body.messageId === "number" ? body.messageId : undefined));
+    return;
+  }
+
+  if (method === "POST" && url.pathname === "/api/chat/replay") {
+    const body = await readJsonBody(request);
+    if (!isRecord(body) || typeof body.sessionId !== "number" || typeof body.runId !== "number" || body.confirm !== true) {
+      sendJson(response, 400, { ok: false, error: "Chat replay requires sessionId, runId, and confirm=true.", code: "UiChatInvalidReplay" });
+      return;
+    }
+    sendJson(response, 200, await prepareUiChatRunReplay({ sessionId: body.sessionId, runId: body.runId }));
+    return;
+  }
+
+  if (method === "POST" && url.pathname === "/api/chat/fork") {
+    const body = await readJsonBody(request);
+    if (!isRecord(body) || typeof body.sessionId !== "number" || typeof body.messageId !== "number" || body.confirm !== true) {
+      sendJson(response, 400, { ok: false, error: "Chat fork requires sessionId, messageId, and confirm=true.", code: "UiChatInvalidFork" });
+      return;
+    }
+    sendJson(response, 200, await forkUiChatSession({ sessionId: body.sessionId, messageId: body.messageId, title: typeof body.title === "string" ? body.title : undefined }));
+    return;
+  }
+
+  if (method === "POST" && url.pathname === "/api/chat/continue") {
+    const body = await readJsonBody(request);
+    if (!isRecord(body) || typeof body.sessionId !== "number" || typeof body.approvalId !== "number" || body.confirm !== true) {
+      sendJson(response, 400, { ok: false, error: "Chat continue requires sessionId, approvalId, and confirm=true.", code: "UiChatInvalidContinue" });
+      return;
+    }
+    sendJson(response, 200, await runUiChatContinue({ sessionId: body.sessionId, approvalId: body.approvalId }));
+    return;
+  }
+
+  if (method === "POST" && url.pathname === "/api/chat/continue/stream") {
+    const body = await readJsonBody(request);
+    if (!isRecord(body) || typeof body.sessionId !== "number" || typeof body.approvalId !== "number" || body.confirm !== true) {
+      sendJson(response, 400, { ok: false, error: "Chat continue requires sessionId, approvalId, and confirm=true.", code: "UiChatInvalidContinue" });
+      return;
+    }
+
+    sendSseHeaders(response);
+    sendSseEvent(response, "ready", { ok: true });
+    const streamSessionId = body.sessionId;
+    let completed = false;
+    response.once("close", () => {
+      if (!completed) void recordChatStreamCancelled(streamSessionId);
+    });
+    try {
+      const result = await runUiChatContinue({
+        sessionId: body.sessionId,
+        approvalId: body.approvalId,
+        stream: true,
+        onTimelineEvent: (event) => sendSseEvent(response, "timeline", event),
+        onToken: (token) => sendSseEvent(response, "token", { token }),
+      });
+      completed = true;
+      sendSseEvent(response, "done", result);
+    } catch (error) {
+      completed = true;
+      sendSseEvent(response, "error", { ok: false, error: error instanceof Error ? error.message : "Unexpected chat continue error.", code: "UiChatContinueStreamError" });
+    } finally {
+      response.end();
+    }
+    return;
+  }
+
+  if (method === "POST" && url.pathname === "/api/chat/stream") {
+    const body = await readJsonBody(request);
+    if (!isRecord(body) || typeof body.message !== "string") {
+      sendJson(response, 400, { ok: false, error: "Chat requires message.", code: "UiChatInvalidRequest" });
+      return;
+    }
+
+    sendSseHeaders(response);
+    sendSseEvent(response, "ready", { ok: true });
+    const streamSessionId = typeof body.sessionId === "number" ? body.sessionId : undefined;
+    let completed = false;
+    response.once("close", () => {
+      if (!completed && streamSessionId !== undefined) void recordChatStreamCancelled(streamSessionId);
+    });
+    try {
+      const result = await runUiChat({
+        message: body.message,
+        sessionId: typeof body.sessionId === "number" ? body.sessionId : undefined,
+        history: Array.isArray(body.history) ? body.history.filter(isUiChatMessage) : [],
+        attachments: Array.isArray(body.attachments) ? body.attachments.filter(isUiChatAttachment) : [],
+        toolsEnabled: body.toolsEnabled !== false,
+        memoryEnabled: body.memoryEnabled !== false,
+        providerModelRef: typeof body.providerModelRef === "string" && body.providerModelRef ? body.providerModelRef : undefined,
+        replaySourceRunId: typeof body.replaySourceRunId === "number" ? body.replaySourceRunId : undefined,
+        stream: true,
+        onTimelineEvent: (event) => sendSseEvent(response, "timeline", event),
+        onToken: (token) => sendSseEvent(response, "token", { token }),
+        onToolActivity: (activity: AgentToolActivity) => sendSseEvent(response, "tool", activity),
+      });
+      completed = true;
+      sendSseEvent(response, "done", result);
+    } catch (error) {
+      completed = true;
+      sendSseEvent(response, "error", { ok: false, error: error instanceof Error ? error.message : "Unexpected chat error.", code: "UiChatStreamError" });
+    } finally {
+      response.end();
+    }
+    return;
+  }
+
+  if (method === "PUT" && url.pathname === "/api/skills/item") {
+    const body = await readJsonBody(request);
+    if (!isRecord(body) || typeof body.name !== "string" || typeof body.content !== "string") {
+      sendJson(response, 400, { ok: false, error: "Skill write requires name and content.", code: "UiSkillInvalidRequest" });
+      return;
+    }
+    sendJson(response, 200, await writeUiSkill({ name: body.name, content: body.content, previousName: typeof body.previousName === "string" ? body.previousName : undefined }));
+    return;
+  }
+
+  if (method === "POST" && url.pathname === "/api/skills/delete") {
+    const body = await readJsonBody(request);
+    if (!isRecord(body) || typeof body.name !== "string" || body.confirm !== true) {
+      sendJson(response, 400, { ok: false, error: "Skill delete requires name and confirm=true.", code: "UiSkillInvalidRequest" });
+      return;
+    }
+    sendJson(response, 200, await deleteUiSkill({ name: body.name }));
+    return;
+  }
+
   if (method === "POST" && url.pathname === "/api/channels/action") {
     const body = await readJsonBody(request);
     if (!isRecord(body) || !isUiChannelAction(body.action)) {
-      sendJson(response, 400, { ok: false, error: "Missing action daemon_start|daemon_stop|daemon_restart|cron_toggle.", code: "UiChannelInvalidActionRequest" });
+      sendJson(response, 400, { ok: false, error: "Missing action daemon_start|daemon_stop|daemon_restart|cron_toggle|cron_add|cron_update|cron_delete|cron_trigger.", code: "UiChannelInvalidActionRequest" });
       return;
     }
     if (body.action === "cron_toggle" && (typeof body.id !== "number" || typeof body.enabled !== "boolean")) {
       sendJson(response, 400, { ok: false, error: "Cron toggle requires numeric id and boolean enabled.", code: "UiChannelInvalidActionRequest" });
       return;
     }
-    if (body.action !== "cron_toggle" && !isUiDaemonChannel(body.channel)) {
+    if ((body.action === "cron_delete" || body.action === "cron_trigger") && typeof body.id !== "number") {
+      sendJson(response, 400, { ok: false, error: "Cron action requires numeric id.", code: "UiChannelInvalidActionRequest" });
+      return;
+    }
+    if ((body.action === "cron_add" || body.action === "cron_update") && !isUiCronWriteRequest(body, body.action === "cron_update")) {
+      sendJson(response, 400, { ok: false, error: "Cron write requires name, scheduleType, scheduleValue, prompt, and enabled.", code: "UiChannelInvalidActionRequest" });
+      return;
+    }
+    if (!body.action.startsWith("cron_") && !isUiDaemonChannel(body.channel)) {
       sendJson(response, 400, { ok: false, error: "Daemon actions require channel telegram|zalo|cron.", code: "UiChannelInvalidActionRequest" });
       return;
     }
@@ -189,6 +463,49 @@ async function handleRequestAsync(request: IncomingMessage, response: ServerResp
         return;
       }
       sendJson(response, 200, await runUiChannelAction({ action: body.action, id, enabled, confirm: true }));
+      return;
+    }
+
+    if (body.action === "cron_add") {
+      const cronAdd = body as { name: string; scheduleType: "interval" | "cron_expr" | "once"; scheduleValue: string; prompt: string; channel?: string; enabled: boolean };
+      sendJson(response, 200, await runUiChannelAction({
+        action: body.action,
+        name: cronAdd.name,
+        scheduleType: cronAdd.scheduleType,
+        scheduleValue: cronAdd.scheduleValue,
+        prompt: cronAdd.prompt,
+        channel: cronAdd.channel,
+        enabled: cronAdd.enabled,
+        confirm: true,
+      }));
+      return;
+    }
+
+    if (body.action === "cron_update") {
+      const cronUpdate = body as { id: number; name: string; scheduleType: "interval" | "cron_expr" | "once"; scheduleValue: string; prompt: string; channel?: string; enabled: boolean };
+      sendJson(response, 200, await runUiChannelAction({
+        action: body.action,
+        id: cronUpdate.id,
+        name: cronUpdate.name,
+        scheduleType: cronUpdate.scheduleType,
+        scheduleValue: cronUpdate.scheduleValue,
+        prompt: cronUpdate.prompt,
+        channel: cronUpdate.channel,
+        enabled: cronUpdate.enabled,
+        confirm: true,
+      }));
+      return;
+    }
+
+    if (body.action === "cron_delete") {
+      const id = body.id as number;
+      sendJson(response, 200, await runUiChannelAction({ action: body.action, id, confirm: true }));
+      return;
+    }
+
+    if (body.action === "cron_trigger") {
+      const id = body.id as number;
+      sendJson(response, 200, await runUiChannelAction({ action: body.action, id, confirm: true }));
       return;
     }
 
@@ -307,6 +624,22 @@ async function handleRequestAsync(request: IncomingMessage, response: ServerResp
   sendJson(response, 404, { ok: false, error: "Not found", code: "UiRouteNotFound" });
 }
 
+function isUiChatAttachment(value: unknown): value is { name: string; type?: string; size?: number; content: string } {
+  return isRecord(value) && typeof value.name === "string" && typeof value.content === "string" && (value.type === undefined || typeof value.type === "string") && (value.size === undefined || typeof value.size === "number");
+}
+
+async function recordChatStreamCancelled(sessionId: number): Promise<void> {
+  const store = await SqliteMemoryStore.open();
+  try {
+    store.getUiChatSession(sessionId);
+    store.addUiChatEvent(sessionId, "cancelled", "Chat stream cancelled by client", JSON.stringify({ sessionId }));
+  } catch {
+    return;
+  } finally {
+    store.close();
+  }
+}
+
 function readJsonBody(request: IncomingMessage): Promise<unknown> {
   return new Promise((resolve, reject) => {
     let body = "";
@@ -337,8 +670,24 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function isUiChannelAction(value: unknown): value is "daemon_start" | "daemon_stop" | "daemon_restart" | "cron_toggle" {
-  return value === "daemon_start" || value === "daemon_stop" || value === "daemon_restart" || value === "cron_toggle";
+function isUiChatMessage(value: unknown): value is { role: "user" | "assistant"; content: string } {
+  return isRecord(value) && (value.role === "user" || value.role === "assistant") && typeof value.content === "string";
+}
+
+function isUiChatSessionFilter(value: string): value is "all" | "approval" | "cancelled" | "error" | "fork" | "retry" {
+  return value === "all" || value === "approval" || value === "cancelled" || value === "error" || value === "fork" || value === "retry";
+}
+
+function isUiChannelAction(value: unknown): value is "daemon_start" | "daemon_stop" | "daemon_restart" | "cron_toggle" | "cron_add" | "cron_update" | "cron_delete" | "cron_trigger" {
+  return value === "daemon_start" || value === "daemon_stop" || value === "daemon_restart" || value === "cron_toggle" || value === "cron_add" || value === "cron_update" || value === "cron_delete" || value === "cron_trigger";
+}
+
+function isUiCronWriteRequest(value: Record<string, unknown>, requireId: boolean): value is Record<string, unknown> & { id?: number; name: string; scheduleType: "interval" | "cron_expr" | "once"; scheduleValue: string; prompt: string; channel?: string; enabled: boolean } {
+  return (!requireId || typeof value.id === "number") && typeof value.name === "string" && isUiCronScheduleType(value.scheduleType) && typeof value.scheduleValue === "string" && typeof value.prompt === "string" && typeof value.enabled === "boolean" && (value.channel === undefined || typeof value.channel === "string");
+}
+
+function isUiCronScheduleType(value: unknown): value is "interval" | "cron_expr" | "once" {
+  return value === "interval" || value === "cron_expr" || value === "once";
 }
 
 function isUiDaemonChannel(value: unknown): value is "telegram" | "zalo" | "cron" {
@@ -355,6 +704,19 @@ function sendJson(response: ServerResponse, statusCode: number, body: unknown): 
     "content-type": "application/json; charset=utf-8",
   });
   response.end(`${JSON.stringify(body)}\n`);
+}
+
+function sendSseHeaders(response: ServerResponse): void {
+  response.writeHead(200, {
+    "content-type": "text/event-stream; charset=utf-8",
+    "cache-control": "no-cache, no-transform",
+    connection: "keep-alive",
+  });
+}
+
+function sendSseEvent(response: ServerResponse, event: string, data: unknown): void {
+  response.write(`event: ${event}\n`);
+  response.write(`data: ${JSON.stringify(data)}\n\n`);
 }
 
 function sendHtml(response: ServerResponse, body: string): void {

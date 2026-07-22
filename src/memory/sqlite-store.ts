@@ -86,6 +86,58 @@ export interface NewMessage {
   content: string;
 }
 
+export interface UiChatSession {
+  id: number;
+  title: string;
+  createdAt: string;
+  updatedAt: string;
+  pinnedAt?: string;
+  toolsEnabled: boolean;
+  memoryEnabled: boolean;
+  providerModelRef?: string;
+  messageCount: number;
+  eventTypes: string[];
+}
+
+export interface UiChatMessage {
+  id: number;
+  sessionId: number;
+  runId?: number;
+  role: "user" | "assistant";
+  content: string;
+  createdAt: string;
+}
+
+export interface UiChatEvent {
+  id: number;
+  sessionId: number;
+  runId?: number;
+  eventType: string;
+  label?: string;
+  payloadJson?: string;
+  createdAt: string;
+}
+
+export interface UiChatRun {
+  id: number;
+  sessionId: number;
+  status: string;
+  model?: string;
+  providerModelRef?: string;
+  userMessageId?: number;
+  assistantMessageId?: number;
+  metadataJson?: string;
+  startedAt: string;
+  finishedAt?: string;
+}
+
+export interface UiChatBranchLink {
+  sessionId: number;
+  title: string;
+  sourceSessionId: number;
+  sourceMessageId: number;
+}
+
 export type CronScheduleType = "interval" | "cron_expr" | "once";
 
 export interface CronSchedule {
@@ -621,6 +673,191 @@ export class SqliteMemoryStore {
     return rows.map(mapMemoryRow);
   }
 
+  // --- UI chat sessions ---
+
+  createUiChatSession(title = "New chat"): UiChatSession {
+    const result = this.db.prepare("INSERT INTO ui_chat_sessions (title) VALUES (?)").run(title.trim() || "New chat");
+    return this.getUiChatSession(Number(result.lastInsertRowid));
+  }
+
+  listUiChatSessions(limit = 30): UiChatSession[] {
+    const rows = this.db
+      .prepare(`
+        SELECT ui_chat_sessions.*, COUNT(DISTINCT ui_chat_messages.id) AS message_count, GROUP_CONCAT(DISTINCT ui_chat_events.event_type) AS event_types
+        FROM ui_chat_sessions
+        LEFT JOIN ui_chat_messages ON ui_chat_messages.session_id = ui_chat_sessions.id
+        LEFT JOIN ui_chat_events ON ui_chat_events.session_id = ui_chat_sessions.id
+        GROUP BY ui_chat_sessions.id
+        ORDER BY ui_chat_sessions.pinned_at IS NULL ASC, ui_chat_sessions.pinned_at DESC, ui_chat_sessions.updated_at DESC, ui_chat_sessions.id DESC
+        LIMIT ?
+      `)
+      .all(limit) as UiChatSessionRow[];
+
+    return rows.map(mapUiChatSessionRow);
+  }
+
+  searchUiChatSessions(options: { query?: string; eventType?: string; limit?: number } = {}): UiChatSession[] {
+    const query = options.query?.trim();
+    const eventType = options.eventType?.trim();
+    const rows = this.db
+      .prepare(`
+        SELECT ui_chat_sessions.*, COUNT(DISTINCT ui_chat_messages.id) AS message_count, GROUP_CONCAT(DISTINCT ui_chat_events.event_type) AS event_types
+        FROM ui_chat_sessions
+        LEFT JOIN ui_chat_messages ON ui_chat_messages.session_id = ui_chat_sessions.id
+        LEFT JOIN ui_chat_events ON ui_chat_events.session_id = ui_chat_sessions.id
+        WHERE (@query IS NULL OR ui_chat_sessions.title LIKE @query ESCAPE '\\' OR ui_chat_messages.content LIKE @query ESCAPE '\\')
+          AND (@eventType IS NULL OR ui_chat_events.event_type = @eventType)
+        GROUP BY ui_chat_sessions.id
+        ORDER BY ui_chat_sessions.pinned_at IS NULL ASC, ui_chat_sessions.pinned_at DESC, ui_chat_sessions.updated_at DESC, ui_chat_sessions.id DESC
+        LIMIT @limit
+      `)
+      .all({ query: query ? `%${escapeLike(query)}%` : null, eventType: eventType || null, limit: options.limit ?? 30 }) as UiChatSessionRow[];
+
+    return rows.map(mapUiChatSessionRow);
+  }
+
+  getUiChatSession(id: number): UiChatSession {
+    const row = this.db
+      .prepare(`
+        SELECT ui_chat_sessions.*, COUNT(DISTINCT ui_chat_messages.id) AS message_count, GROUP_CONCAT(DISTINCT ui_chat_events.event_type) AS event_types
+        FROM ui_chat_sessions
+        LEFT JOIN ui_chat_messages ON ui_chat_messages.session_id = ui_chat_sessions.id
+        LEFT JOIN ui_chat_events ON ui_chat_events.session_id = ui_chat_sessions.id
+        WHERE ui_chat_sessions.id = ?
+        GROUP BY ui_chat_sessions.id
+      `)
+      .get(id) as UiChatSessionRow | undefined;
+
+    if (!row) {
+      throw new Error(`UI chat session not found: ${id}`);
+    }
+
+    return mapUiChatSessionRow(row);
+  }
+
+  updateUiChatSessionTitle(id: number, title: string): UiChatSession {
+    this.db.prepare("UPDATE ui_chat_sessions SET title = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(title.trim() || "New chat", id);
+    return this.getUiChatSession(id);
+  }
+
+  updateUiChatSessionPinned(id: number, pinned: boolean): UiChatSession {
+    this.db.prepare("UPDATE ui_chat_sessions SET pinned_at = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(pinned ? new Date().toISOString() : null, id);
+    return this.getUiChatSession(id);
+  }
+
+  updateUiChatSessionPreferences(id: number, preferences: { toolsEnabled?: boolean; memoryEnabled?: boolean; providerModelRef?: string | null }): UiChatSession {
+    const current = this.getUiChatSession(id);
+    this.db.prepare("UPDATE ui_chat_sessions SET tools_enabled = ?, memory_enabled = ?, provider_model_ref = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?")
+      .run((preferences.toolsEnabled ?? current.toolsEnabled) ? 1 : 0, (preferences.memoryEnabled ?? current.memoryEnabled) ? 1 : 0, preferences.providerModelRef === undefined ? current.providerModelRef ?? null : preferences.providerModelRef || null, id);
+    return this.getUiChatSession(id);
+  }
+
+  deleteUiChatSession(id: number): boolean {
+    const result = this.db.prepare("DELETE FROM ui_chat_sessions WHERE id = ?").run(id);
+    return result.changes > 0;
+  }
+
+  addUiChatMessage(sessionId: number, role: "user" | "assistant", content: string, runId?: number): UiChatMessage {
+    const transaction = this.db.transaction(() => {
+      const result = this.db
+        .prepare("INSERT INTO ui_chat_messages (session_id, run_id, role, content) VALUES (?, ?, ?, ?)")
+        .run(sessionId, runId ?? null, role, content);
+      this.db.prepare("UPDATE ui_chat_sessions SET updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(sessionId);
+      return Number(result.lastInsertRowid);
+    });
+
+    return this.getUiChatMessage(transaction());
+  }
+
+  createUiChatRun(sessionId: number, options: { model?: string; providerModelRef?: string; userMessageId?: number; metadataJson?: string } = {}): UiChatRun {
+    const result = this.db
+      .prepare("INSERT INTO ui_chat_runs (session_id, status, model, provider_model_ref, user_message_id, metadata_json) VALUES (?, 'running', ?, ?, ?, ?)")
+      .run(sessionId, options.model ?? null, options.providerModelRef ?? null, options.userMessageId ?? null, options.metadataJson ?? null);
+    return this.getUiChatRun(Number(result.lastInsertRowid));
+  }
+
+  finishUiChatRun(id: number, options: { status: string; model?: string; assistantMessageId?: number; metadataJson?: string }): UiChatRun {
+    this.db.prepare("UPDATE ui_chat_runs SET status = ?, model = COALESCE(?, model), assistant_message_id = COALESCE(?, assistant_message_id), metadata_json = COALESCE(?, metadata_json), finished_at = CURRENT_TIMESTAMP WHERE id = ?")
+      .run(options.status, options.model ?? null, options.assistantMessageId ?? null, options.metadataJson ?? null, id);
+    return this.getUiChatRun(id);
+  }
+
+  listUiChatRuns(sessionId: number, limit = 40): UiChatRun[] {
+    const rows = this.db.prepare("SELECT * FROM ui_chat_runs WHERE session_id = ? ORDER BY id DESC LIMIT ?").all(sessionId, limit) as UiChatRunRow[];
+    return rows.reverse().map(mapUiChatRunRow);
+  }
+
+  listUiChatMessages(sessionId: number, limit = 80): UiChatMessage[] {
+    const rows = this.db
+      .prepare("SELECT * FROM ui_chat_messages WHERE session_id = ? ORDER BY id DESC LIMIT ?")
+      .all(sessionId, limit) as UiChatMessageRow[];
+
+    return rows.reverse().map(mapUiChatMessageRow);
+  }
+
+  deleteUiChatMessagesAfter(sessionId: number, messageId: number): number {
+    const result = this.db.prepare("DELETE FROM ui_chat_messages WHERE session_id = ? AND id > ?").run(sessionId, messageId);
+    if (result.changes > 0) {
+      this.db.prepare("UPDATE ui_chat_sessions SET updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(sessionId);
+    }
+    return result.changes;
+  }
+
+  forkUiChatSession(sessionId: number, messageId: number, title?: string): UiChatSession {
+    const source = this.getUiChatSession(sessionId);
+    const messages = this.listUiChatMessages(source.id).filter((message) => message.id <= messageId);
+    if (!messages.some((message) => message.id === messageId)) {
+      throw new Error(`UI chat message not found in session ${sessionId}: ${messageId}`);
+    }
+
+    const transaction = this.db.transaction(() => {
+      const fork = this.createUiChatSession(title ?? `${source.title} fork`);
+      for (const message of messages) {
+        this.addUiChatMessage(fork.id, message.role, message.content);
+      }
+      this.addUiChatEvent(fork.id, "fork", "Forked chat session", JSON.stringify({ sourceSessionId: source.id, sourceMessageId: messageId }));
+      return this.getUiChatSession(fork.id);
+    });
+
+    return transaction();
+  }
+
+  addUiChatEvent(sessionId: number, eventType: string, label?: string, payloadJson?: string, runId?: number): UiChatEvent {
+    const result = this.db
+      .prepare("INSERT INTO ui_chat_events (session_id, run_id, event_type, label, payload_json) VALUES (?, ?, ?, ?, ?)")
+      .run(sessionId, runId ?? null, eventType, label ?? null, payloadJson ?? null);
+    return this.getUiChatEvent(Number(result.lastInsertRowid));
+  }
+
+  listUiChatEvents(sessionId: number, limit = 80): UiChatEvent[] {
+    const rows = this.db
+      .prepare("SELECT * FROM ui_chat_events WHERE session_id = ? ORDER BY id DESC LIMIT ?")
+      .all(sessionId, limit) as UiChatEventRow[];
+
+    return rows.reverse().map(mapUiChatEventRow);
+  }
+
+  listUiChatBranchLinks(): UiChatBranchLink[] {
+    const rows = this.db
+      .prepare(`
+        SELECT ui_chat_events.session_id, ui_chat_sessions.title, ui_chat_events.payload_json
+        FROM ui_chat_events
+        INNER JOIN ui_chat_sessions ON ui_chat_sessions.id = ui_chat_events.session_id
+        WHERE ui_chat_events.event_type = 'fork' AND ui_chat_events.payload_json IS NOT NULL
+        ORDER BY ui_chat_events.id ASC
+      `)
+      .all() as Array<{ session_id: number; title: string; payload_json: string }>;
+    return rows.flatMap((row) => {
+      try {
+        const payload = JSON.parse(row.payload_json) as { sourceSessionId?: unknown; sourceMessageId?: unknown };
+        if (typeof payload.sourceSessionId !== "number" || typeof payload.sourceMessageId !== "number") return [];
+        return [{ sessionId: row.session_id, title: row.title, sourceSessionId: payload.sourceSessionId, sourceMessageId: payload.sourceMessageId }];
+      } catch {
+        return [];
+      }
+    });
+  }
+
   // --- Cron schedule CRUD ---
 
   addCronSchedule(schedule: NewCronSchedule): CronSchedule {
@@ -691,6 +928,32 @@ export class SqliteMemoryStore {
     return this.getCronSchedule(id);
   }
 
+  updateCronSchedule(id: number, schedule: NewCronSchedule): CronSchedule {
+    this.db
+      .prepare(`
+        UPDATE cron_schedules
+        SET name = @name,
+            schedule_type = @scheduleType,
+            schedule_value = @scheduleValue,
+            prompt = @prompt,
+            channel = @channel,
+            enabled = @enabled,
+            next_run_at = @nextRunAt
+        WHERE id = @id
+      `)
+      .run({
+        id,
+        name: schedule.name,
+        scheduleType: schedule.scheduleType,
+        scheduleValue: schedule.scheduleValue,
+        prompt: schedule.prompt,
+        channel: schedule.channel ?? null,
+        enabled: schedule.enabled !== false ? 1 : 0,
+        nextRunAt: schedule.nextRunAt,
+      });
+    return this.getCronSchedule(id);
+  }
+
   removeCronSchedule(id: number): boolean {
     const result = this.db.prepare("DELETE FROM cron_schedules WHERE id = ?").run(id);
     return result.changes > 0;
@@ -755,6 +1018,9 @@ export class SqliteMemoryStore {
       this.db.prepare("DELETE FROM cron_schedules").run();
       this.db.prepare("DELETE FROM pending_memories").run();
       this.db.prepare("DELETE FROM pending_action_approvals").run();
+      this.db.prepare("DELETE FROM ui_chat_messages").run();
+      this.db.prepare("DELETE FROM ui_chat_events").run();
+      this.db.prepare("DELETE FROM ui_chat_sessions").run();
       this.db.prepare("DELETE FROM memories").run();
       this.db.prepare("DELETE FROM messages").run();
       if (hasMemorySearchIndex(this.db)) {
@@ -801,6 +1067,36 @@ export class SqliteMemoryStore {
     return row ? mapPendingActionApprovalRow(row) : undefined;
   }
 
+  private getUiChatMessage(id: number): UiChatMessage {
+    const row = this.db.prepare("SELECT * FROM ui_chat_messages WHERE id = ?").get(id) as UiChatMessageRow | undefined;
+
+    if (!row) {
+      throw new Error(`UI chat message not found after insert: ${id}`);
+    }
+
+    return mapUiChatMessageRow(row);
+  }
+
+  private getUiChatEvent(id: number): UiChatEvent {
+    const row = this.db.prepare("SELECT * FROM ui_chat_events WHERE id = ?").get(id) as UiChatEventRow | undefined;
+
+    if (!row) {
+      throw new Error(`UI chat event not found after insert: ${id}`);
+    }
+
+    return mapUiChatEventRow(row);
+  }
+
+  private getUiChatRun(id: number): UiChatRun {
+    const row = this.db.prepare("SELECT * FROM ui_chat_runs WHERE id = ?").get(id) as UiChatRunRow | undefined;
+
+    if (!row) {
+      throw new Error(`UI chat run not found after insert: ${id}`);
+    }
+
+    return mapUiChatRunRow(row);
+  }
+
   private decidePendingActionApproval(id: number, status: "approved" | "denied"): PendingActionApproval | undefined {
     this.expirePendingActionApprovals();
     const result = this.db
@@ -841,6 +1137,51 @@ interface MessageRow {
   role: StoredMessageRole;
   content: string;
   created_at: string;
+}
+
+interface UiChatSessionRow {
+  id: number;
+  title: string;
+  pinned_at?: string | null;
+  tools_enabled?: number | null;
+  memory_enabled?: number | null;
+  provider_model_ref?: string | null;
+  created_at: string;
+  updated_at: string;
+  message_count: number;
+  event_types: string | null;
+}
+
+interface UiChatMessageRow {
+  id: number;
+  session_id: number;
+  run_id: number | null;
+  role: "user" | "assistant";
+  content: string;
+  created_at: string;
+}
+
+interface UiChatEventRow {
+  id: number;
+  session_id: number;
+  run_id: number | null;
+  event_type: string;
+  label: string | null;
+  payload_json: string | null;
+  created_at: string;
+}
+
+interface UiChatRunRow {
+  id: number;
+  session_id: number;
+  status: string;
+  model: string | null;
+  provider_model_ref: string | null;
+  user_message_id: number | null;
+  assistant_message_id: number | null;
+  metadata_json: string | null;
+  started_at: string;
+  finished_at: string | null;
 }
 
 interface PendingMemoryRow {
@@ -1062,6 +1403,59 @@ function mapMessageRow(row: MessageRow): StoredMessage {
   };
 }
 
+function mapUiChatSessionRow(row: UiChatSessionRow): UiChatSession {
+  return {
+    id: row.id,
+    title: row.title,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    pinnedAt: row.pinned_at ?? undefined,
+    toolsEnabled: row.tools_enabled !== 0,
+    memoryEnabled: row.memory_enabled !== 0,
+    providerModelRef: row.provider_model_ref ?? undefined,
+    messageCount: row.message_count ?? 0,
+    eventTypes: row.event_types ? row.event_types.split(",").filter(Boolean) : [],
+  };
+}
+
+function mapUiChatMessageRow(row: UiChatMessageRow): UiChatMessage {
+  return {
+    id: row.id,
+    sessionId: row.session_id,
+    runId: row.run_id ?? undefined,
+    role: row.role,
+    content: row.content,
+    createdAt: row.created_at,
+  };
+}
+
+function mapUiChatEventRow(row: UiChatEventRow): UiChatEvent {
+  return {
+    id: row.id,
+    sessionId: row.session_id,
+    runId: row.run_id ?? undefined,
+    eventType: row.event_type,
+    label: row.label ?? undefined,
+    payloadJson: row.payload_json ?? undefined,
+    createdAt: row.created_at,
+  };
+}
+
+function mapUiChatRunRow(row: UiChatRunRow): UiChatRun {
+  return {
+    id: row.id,
+    sessionId: row.session_id,
+    status: row.status,
+    model: row.model ?? undefined,
+    providerModelRef: row.provider_model_ref ?? undefined,
+    userMessageId: row.user_message_id ?? undefined,
+    assistantMessageId: row.assistant_message_id ?? undefined,
+    metadataJson: row.metadata_json ?? undefined,
+    startedAt: row.started_at,
+    finishedAt: row.finished_at ?? undefined,
+  };
+}
+
 function escapeLike(value: string): string {
   return value.replace(/[\\%_]/g, (match) => `\\${match}`);
 }
@@ -1115,6 +1509,63 @@ function applyMemoryMigrations(db: Database.Database): void {
       created_at TEXT DEFAULT CURRENT_TIMESTAMP
     )
   `);
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS ui_chat_sessions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      title TEXT NOT NULL,
+      pinned_at TEXT,
+      tools_enabled INTEGER DEFAULT 1,
+      memory_enabled INTEGER DEFAULT 1,
+      provider_model_ref TEXT,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS ui_chat_messages (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      session_id INTEGER NOT NULL,
+      run_id INTEGER,
+      role TEXT NOT NULL CHECK(role IN ('user', 'assistant')),
+      content TEXT NOT NULL,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (session_id) REFERENCES ui_chat_sessions(id) ON DELETE CASCADE,
+      FOREIGN KEY (run_id) REFERENCES ui_chat_runs(id) ON DELETE SET NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS ui_chat_runs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      session_id INTEGER NOT NULL,
+      status TEXT NOT NULL,
+      model TEXT,
+      provider_model_ref TEXT,
+      user_message_id INTEGER,
+      assistant_message_id INTEGER,
+      metadata_json TEXT,
+      started_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      finished_at TEXT,
+      FOREIGN KEY (session_id) REFERENCES ui_chat_sessions(id) ON DELETE CASCADE,
+      FOREIGN KEY (user_message_id) REFERENCES ui_chat_messages(id) ON DELETE SET NULL,
+      FOREIGN KEY (assistant_message_id) REFERENCES ui_chat_messages(id) ON DELETE SET NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS ui_chat_events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      session_id INTEGER NOT NULL,
+      run_id INTEGER,
+      event_type TEXT NOT NULL,
+      label TEXT,
+      payload_json TEXT,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (session_id) REFERENCES ui_chat_sessions(id) ON DELETE CASCADE,
+      FOREIGN KEY (run_id) REFERENCES ui_chat_runs(id) ON DELETE SET NULL
+    );
+  `);
+  addColumnIfMissing(db, "ui_chat_sessions", "pinned_at", "TEXT");
+  addColumnIfMissing(db, "ui_chat_sessions", "tools_enabled", "INTEGER DEFAULT 1");
+  addColumnIfMissing(db, "ui_chat_sessions", "memory_enabled", "INTEGER DEFAULT 1");
+  addColumnIfMissing(db, "ui_chat_sessions", "provider_model_ref", "TEXT");
+  addColumnIfMissing(db, "ui_chat_messages", "run_id", "INTEGER");
+  addColumnIfMissing(db, "ui_chat_events", "run_id", "INTEGER");
 }
 
 function initializeMemorySearchIndex(db: Database.Database): void {

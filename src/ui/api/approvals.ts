@@ -3,7 +3,7 @@ import { access } from "node:fs/promises";
 import { SqliteMemoryStore, type PendingActionApproval } from "../../memory/sqlite-store.js";
 import { getRuntimePaths, type RuntimePaths } from "../../runtime/paths.js";
 
-const APPROVAL_CHANNELS = ["telegram", "zalo"] as const;
+const APPROVAL_CHANNELS = ["telegram", "zalo", "ui-chat"] as const;
 
 export interface UiApprovalsSummary {
   ok: true;
@@ -69,6 +69,11 @@ export async function runUiApprovalAction(options: UiApprovalActionOptions): Pro
     const approval = options.action === "approve" ? store.approvePendingActionApproval(options.id) : store.denyPendingActionApproval(options.id);
     if (!approval) {
       throw new Error(`Pending approval not found: ${options.id}`);
+    }
+
+    const chatSessionId = approval.channel === "ui-chat" && approval.userId?.startsWith("session:") ? Number(approval.userId.slice("session:".length)) : undefined;
+    if (chatSessionId !== undefined && Number.isInteger(chatSessionId)) {
+      store.addUiChatEvent(chatSessionId, options.action === "approve" ? "approval_approved" : "approval_denied", options.action === "approve" ? "Approval ready to continue" : "Approval denied", JSON.stringify({ approvalId: approval.id, action: approval.action, target: approval.target }));
     }
 
     return {

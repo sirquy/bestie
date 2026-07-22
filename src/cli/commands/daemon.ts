@@ -196,17 +196,34 @@ async function runServiceRuntime(options: Required<Pick<DaemonCommandOptions, "p
 }
 
 async function runServiceChannel(channel: DaemonChannel, options: { paths: RuntimePaths; writeLine: (message: string) => void }): Promise<void> {
-  if (channel === "cron") {
-    await runCronCommand({ argv: ["node", "bestie", "cron", "run"], paths: options.paths, writeLine: options.writeLine });
-    return;
-  }
+  const paths = options.paths;
+  const writeLine = options.writeLine;
 
-  if (channel === "telegram") {
-    await runTelegramCommand({ argv: ["node", "bestie", "channels", "telegram"], paths: options.paths, writeLine: options.writeLine });
-    return;
-  }
+  // Record a daemon state file for this channel so the UI can detect it's running
+  // even when started under systemd (the service runtime runs channels in-process).
+  const cliEntry = process.argv[1] ? resolve(process.argv[1]) : resolve(paths.rootDir, "dist/cli/index.js");
+  const command = process.execPath;
+  const args = getDaemonArgs(cliEntry, channel);
+  const logPath = resolve(paths.logsDir, `daemon-${channel}.log`);
 
-  await runZaloCommand({ argv: ["node", "bestie", "channels", "zalo"], paths: options.paths, writeLine: options.writeLine });
+  await mkdir(paths.logsDir, { recursive: true });
+  await writeDaemonState(paths, channel, { channel, pid: process.pid, command, args, startedAt: new Date().toISOString(), logPath });
+
+  try {
+    if (channel === "cron") {
+      await runCronCommand({ argv: ["node", "bestie", "cron", "run"], paths, writeLine });
+      return;
+    }
+
+    if (channel === "telegram") {
+      await runTelegramCommand({ argv: ["node", "bestie", "channels", "telegram"], paths, writeLine });
+      return;
+    }
+
+    await runZaloCommand({ argv: ["node", "bestie", "channels", "zalo"], paths, writeLine });
+  } finally {
+    await removeDaemonState(paths, channel);
+  }
 }
 
 function isChannelServiceConfigured(channel: DaemonChannel, config: AppConfig, envValues: Record<string, string>): boolean {
@@ -406,15 +423,22 @@ function getSystemdUserServicePath(serviceName: string): string {
 }
 
 function buildSystemdUserService(options: { nodePath: string; cliEntry: string; rootDir: string }): string {
-  const args = [options.cliEntry, "service", "run"];
+  const serviceCmd = `${systemdEscape(options.nodePath)} ${systemdEscape(options.cliEntry)} service run`;
+  const uiCmd = `${systemdEscape(options.nodePath)} ${systemdEscape(options.cliEntry)} ui`;
+  // Start both the service runtime and the web UI in the same unit using a small shell wrapper.
+  // This keeps the existing behaviour (service runtime) and also launches the UI alongside it.
+  // The shell waits for child processes so systemd tracks the wrapper process.
+  // Launch both processes and exit if either one stops so systemd can restart both.
+  // Uses bash's `wait -n` to detect the first exited child, then kills the other and exits.
+  const execLine = `/bin/bash -lc '${serviceCmd} & pid1=$!; ${uiCmd} & pid2=$!; wait -n "$pid1" "$pid2"; kill "$pid1" "$pid2" 2>/dev/null || true; wait'`;
   return `[Unit]
-Description=Bestie service runtime
+Description=Bestie service runtime (channels + web UI)
 After=network-online.target
 
 [Service]
 Type=simple
 WorkingDirectory=${systemdEscape(options.rootDir)}
-ExecStart=${systemdEscape(options.nodePath)} ${args.map(systemdEscape).join(" ")}
+ExecStart=${execLine}
 Restart=on-failure
 RestartSec=5
 TimeoutStopSec=45

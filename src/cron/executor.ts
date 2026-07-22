@@ -99,6 +99,19 @@ export class CronExecutor {
     }
   }
 
+  async runScheduleNow(id: number): Promise<void> {
+    const store = await SqliteMemoryStore.open(this.options.paths);
+    let job: CronSchedule;
+
+    try {
+      job = store.getCronSchedule(id);
+    } finally {
+      store.close();
+    }
+
+    await this.executeJob(job);
+  }
+
   private async executeJob(job: CronSchedule): Promise<void> {
     const store = await SqliteMemoryStore.open(this.options.paths);
     let logId: number | undefined;

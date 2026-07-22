@@ -37,6 +37,7 @@ export interface CompleteWithAgentToolsOptions {
   apiKey: string;
   messages: ChatMessage[];
   chatCompletion: AgentToolChatCompletionRunner;
+  reloadConfig?: () => Promise<AppConfig>;
   toolRunner?: AgentToolRunner;
   approver?: PermissionApprover;
   policy?: PermissionPolicy;
@@ -142,7 +143,7 @@ export async function completeWithAgentTools(options: CompleteWithAgentToolsOpti
     await notifyToolActivity(options, { phase: "finish", callIndex: toolCallCount + 1, toolName, label, ok: toolResult.ok, status: toolResult.status, durationMs });
     if (toolResult.ok) {
       completedToolResults.set(toolSignature, { toolName, result: toolResult });
-      currentConfig = await loadConfig(options.paths).catch(() => currentConfig);
+      currentConfig = await (options.reloadConfig?.() ?? loadConfig(options.paths)).catch(() => currentConfig);
     }
     messages.push({ role: "user", content: buildAgentToolResultMessage(toolName, toolResult) });
     assistantText = await options.chatCompletion(currentConfig, options.apiKey, { messages, stream: options.streamFinalResponse, onToken: options.onToken });
@@ -393,7 +394,7 @@ function isEmptyToolResult(result: unknown): boolean {
   return ["memories", "matches", "entries", "files", "lines"].some((key) => Array.isArray((result as Record<string, unknown>)[key]) && ((result as Record<string, unknown>)[key] as unknown[]).length === 0);
 }
 
-function formatToolRequestName(request: { tool: string; server?: string; name?: string }): string {
+export function formatToolRequestName(request: { tool: string; server?: string; name?: string }): string {
   return request.tool === "mcp.read" ? `${request.server}/${request.name}` : request.tool;
 }
 
