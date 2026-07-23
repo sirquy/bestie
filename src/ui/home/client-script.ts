@@ -1,4 +1,5 @@
 export const HOME_PAGE_CLIENT_SCRIPT = `const state = {};
+const KNOWLEDGE_MAP_PREFS_KEY = "bestie.knowledgeMapPreferences.v1";
 const text = (value) => value === undefined || value === null || value === "" ? "-" : String(value);
 const pillClass = (value) => value === true || value === "pass" || value === "running" || value === "allow" ? "good" : value === false || value === "fail" || value === "stopped" || value === "deny" ? "bad" : "warn";
 const escapeHtml = (value) => text(value).replace(/[&<>"]/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[char]));
@@ -27,6 +28,48 @@ const iconButton = (name, label, attrs) => '<button ' + attrs + ' type="button">
 const actionDropdown = (actions) => '<details class="message-menu knowledge-action-menu"><summary aria-label="Actions" onclick="event.stopPropagation()">' + icon('dots') + '</summary><div class="message-menu-popover">' + actions.join('') + '</div></details>';
 const row = (label, value, tone) => '<div class="row"><span>' + icon(tone === "good" ? "check" : tone === "bad" ? "x" : "activity") + escapeHtml(label) + '</span><span class="pill ' + (tone ?? "") + '">' + escapeHtml(value) + '</span></div>';
 const option = (value, label, selected) => '<option value="' + escapeHtml(value) + '"' + (selected ? ' selected' : '') + '>' + escapeHtml(label) + '</option>';
+function readLocalJson(key) {
+  try { return JSON.parse(localStorage.getItem(key) || "null"); } catch { return null; }
+}
+
+function writeLocalJson(key, value) {
+  try { localStorage.setItem(key, JSON.stringify(value)); } catch {}
+}
+
+function loadKnowledgeMapPreferences() {
+  if (state.knowledgeMapPreferencesLoaded) return;
+  state.knowledgeMapPreferencesLoaded = true;
+  const prefs = readLocalJson(KNOWLEDGE_MAP_PREFS_KEY) ?? {};
+  state.knowledgeDrawer = prefs.drawer ?? state.knowledgeDrawer;
+  state.knowledgeGraphFilters = prefs.filters ?? state.knowledgeGraphFilters;
+  state.knowledgeGraphSearch = prefs.search ?? state.knowledgeGraphSearch;
+  state.knowledgeConnectedOnly = prefs.connectedOnly ?? state.knowledgeConnectedOnly;
+  state.knowledgeOverlayCollapsed = prefs.overlayCollapsed ?? state.knowledgeOverlayCollapsed;
+  state.knowledgeClusterBy = prefs.clusterBy ?? state.knowledgeClusterBy;
+  state.knowledgeRelationDensity = prefs.relationDensity ?? state.knowledgeRelationDensity;
+  state.knowledgeMotion = prefs.motion ?? state.knowledgeMotion;
+  state.knowledgeActiveView = prefs.activeView ?? state.knowledgeActiveView ?? "all";
+  state.knowledgeSavedView = prefs.savedView ?? state.knowledgeSavedView;
+  state.selectedKnowledge = prefs.selected ?? state.selectedKnowledge;
+}
+
+function captureKnowledgeMapView() {
+  return {
+    drawer: state.knowledgeDrawer ?? "closed",
+    filters: state.knowledgeGraphFilters ?? { kind: "all", scope: "all", trust: "all" },
+    search: state.knowledgeGraphSearch ?? "",
+    connectedOnly: Boolean(state.knowledgeConnectedOnly),
+    overlayCollapsed: Boolean(state.knowledgeOverlayCollapsed),
+    clusterBy: state.knowledgeClusterBy ?? "none",
+    relationDensity: state.knowledgeRelationDensity ?? "all",
+    motion: state.knowledgeMotion ?? "subtle",
+    selected: state.selectedKnowledge?.type === "entity" || state.selectedKnowledge?.type === "relation" ? state.selectedKnowledge : undefined,
+  };
+}
+
+function saveKnowledgeMapPreferences() {
+  writeLocalJson(KNOWLEDGE_MAP_PREFS_KEY, { ...captureKnowledgeMapView(), activeView: state.knowledgeActiveView ?? "all", savedView: state.knowledgeSavedView });
+}
 function renderMarkdown(value) {
   const escaped = escapeHtml(value);
   const fence = String.fromCharCode(96).repeat(3);
@@ -1455,6 +1498,7 @@ function bindProviderControls() {
 function activateSegment(panelSelector, segmentId) {
   const root = document.querySelector(panelSelector);
   if (!root || !segmentId) return;
+  root.dataset.activeSegment = segmentId;
   root.querySelectorAll("[data-segment-target]").forEach((button) => button.classList.toggle("active", button.dataset.segmentTarget === segmentId));
   root.querySelectorAll(".segment").forEach((segment) => segment.classList.toggle("active", segment.id === segmentId));
 }
@@ -1527,30 +1571,95 @@ function loadKnowledgeGraph() {
 }
 
 function renderKnowledgeGraphPanel(graph, mode) {
+  loadKnowledgeMapPreferences();
   state.knowledgeGraph = graph;
   state.knowledgeReviewPriority = state.knowledgeReviewPriority ?? "all";
   state.knowledgeReviewAction = state.knowledgeReviewAction ?? "all";
   state.knowledgeTrustFilter = state.knowledgeTrustFilter ?? "all";
   state.knowledgeTrustSort = state.knowledgeTrustSort ?? "score";
-  state.knowledgeDrawer = state.knowledgeDrawer ?? "inspector";
+  state.knowledgeDrawer = state.knowledgeDrawer ?? "closed";
+  state.knowledgeGraphFilters = state.knowledgeGraphFilters ?? { kind: "all", scope: "all", trust: "all" };
+  state.knowledgeGraphSearch = state.knowledgeGraphSearch ?? "";
+  state.knowledgeConnectedOnly = state.knowledgeConnectedOnly ?? false;
+  state.knowledgeOverlayCollapsed = state.knowledgeOverlayCollapsed ?? false;
+  state.knowledgeClusterBy = state.knowledgeClusterBy ?? "none";
+  state.knowledgeRelationDensity = state.knowledgeRelationDensity ?? "all";
+  state.knowledgeMotion = state.knowledgeMotion ?? "subtle";
   setValue("#knowledge-panel .value", 'Entities ' + text(graph.counts?.entities) + ' / Relations ' + text(graph.counts?.relations) + ' / Score ' + text(graph.analysis?.score));
   const entities = graph.entities ?? [];
   const relations = graph.relations ?? [];
   const pending = graph.pending ?? [];
   const suggestions = filterKnowledgeReviewSuggestions(graph.review?.suggestions ?? []);
+  const graphSummary = '<div class="summary-strip knowledge-map-summary"><span><strong>' + escapeHtml(graph.counts?.entities ?? 0) + '</strong><small>Entities</small></span><span><strong>' + escapeHtml(graph.counts?.relations ?? 0) + '</strong><small>Relations</small></span><span><strong>' + escapeHtml(graph.counts?.pending ?? 0) + '</strong><small>Pending</small></span><span><strong>' + escapeHtml(graph.trust?.averageScore ?? graph.analysis?.score ?? 100) + '</strong><small>Trust</small></span></div>';
+  const graphSegments = '<div class="segmented knowledge-map-segments" role="tablist" aria-label="Knowledge graph views"><button class="active" data-segment-target="knowledge-map" type="button">Map</button><button data-segment-target="knowledge-review" type="button">Review</button><button data-segment-target="knowledge-trust" type="button">Trust</button><button data-segment-target="knowledge-search-view" type="button">Search</button></div>';
   setBody("#knowledge-panel", [
-    '<div class="summary-strip"><span><strong>' + escapeHtml(graph.counts?.entities ?? 0) + '</strong><small>Entities</small></span><span><strong>' + escapeHtml(graph.counts?.relations ?? 0) + '</strong><small>Relations</small></span><span><strong>' + escapeHtml(graph.counts?.pending ?? 0) + '</strong><small>Pending</small></span><span><strong>' + escapeHtml(graph.trust?.averageScore ?? graph.analysis?.score ?? 100) + '</strong><small>Trust</small></span></div>',
-    '<div class="segmented" role="tablist" aria-label="Knowledge graph views"><button class="active" data-segment-target="knowledge-map" type="button">Map</button><button data-segment-target="knowledge-review" type="button">Review</button><button data-segment-target="knowledge-trust" type="button">Trust</button><button data-segment-target="knowledge-search-view" type="button">Search</button></div>',
-    '<div class="segment active" id="knowledge-map"><div class="knowledge-map-shell" data-knowledge-drawer="' + escapeHtml(state.knowledgeDrawer) + '"><div class="knowledge-map-toolbar"><button data-knowledge-drawer-open="list" type="button">' + icon("layers") + '<span>List</span></button><button data-knowledge-drawer-open="inspector" type="button">' + icon("sliders") + '<span>Inspector</span></button></div><div class="knowledge-canvas"><div id="knowledge-cytoscape" class="knowledge-cytoscape" role="img" aria-label="Knowledge graph map"></div></div><aside class="knowledge-drawer" aria-label="Knowledge graph drawer"><div class="knowledge-drawer-head"><div><div class="label" id="knowledge-drawer-title">' + escapeHtml(state.knowledgeDrawer === "list" ? "Graph items" : "Inspector") + '</div><div class="subvalue">' + escapeHtml(state.knowledgeDrawer === "list" ? "Entities and relations" : "Selected graph item") + '</div></div><button data-knowledge-drawer-close type="button" aria-label="Close">' + icon("x") + '</button></div><div class="knowledge-drawer-view knowledge-drawer-list"><div class="stack">' + (entities.slice(0, 12).map(renderKnowledgeEntity).join("") || row("Entities", "empty", "")) + (relations.slice(0, 12).map(renderKnowledgeRelation).join("")) + '</div></div><div class="knowledge-drawer-view knowledge-drawer-inspector"><div id="knowledge-inspector" class="knowledge-inspector">' + renderKnowledgeInspector(graph) + '</div></div></aside></div></div>',
+    graphSummary,
+    graphSegments,
+    '<div class="segment active" id="knowledge-map"><div class="knowledge-map-shell" data-knowledge-drawer="' + escapeHtml(state.knowledgeDrawer) + '" data-knowledge-overlay="' + (state.knowledgeOverlayCollapsed ? "collapsed" : "expanded") + '"><div class="knowledge-map-overlay"><div class="knowledge-map-overlay-head"><button data-knowledge-overlay-toggle type="button" title="Toggle map tools">' + icon(state.knowledgeOverlayCollapsed ? "sliders" : "x") + '<span>' + (state.knowledgeOverlayCollapsed ? "Tools" : "Hide") + '</span></button><span class="pill" id="knowledge-visible-count">visible graph</span><button data-knowledge-graph-action="fit" type="button" title="Fit graph">' + icon("activity") + '<span>Fit</span></button><button data-knowledge-drawer-open="inspector" type="button" title="Open inspector">' + icon("sliders") + '<span>Inspector</span></button></div>' + graphSummary + graphSegments + renderKnowledgeMapToolbar(entities, relations) + '</div><div class="knowledge-canvas"><div id="knowledge-provenance-overlay" class="knowledge-provenance-overlay" aria-live="polite">' + renderKnowledgeProvenanceOverlay(graph) + '</div><div id="knowledge-cytoscape" class="knowledge-cytoscape" role="img" aria-label="Knowledge graph map"></div></div><aside class="knowledge-drawer" aria-label="Knowledge graph drawer"><div class="knowledge-drawer-head"><div><div class="label" id="knowledge-drawer-title">' + escapeHtml(state.knowledgeDrawer === "list" ? "Graph items" : "Inspector") + '</div><div class="subvalue">' + escapeHtml(state.knowledgeDrawer === "list" ? "Entities and relations" : "Selected graph item") + '</div></div><button data-knowledge-drawer-close type="button" aria-label="Close">' + icon("x") + '</button></div><div class="knowledge-drawer-view knowledge-drawer-list"><div id="knowledge-drawer-list" class="stack">' + renderKnowledgeDrawerList(graph) + '</div></div><div class="knowledge-drawer-view knowledge-drawer-inspector"><div id="knowledge-inspector" class="knowledge-inspector">' + renderKnowledgeInspector(graph) + '</div></div></aside></div></div>',
     '<div class="segment" id="knowledge-review">' + renderKnowledgeReviewControls(graph) + '<div class="knowledge-detail-layout"><div class="stack">' + (suggestions.map((suggestion) => renderKnowledgeSuggestion(suggestion, suggestion.index, graph)).join("") || row("Review", "clean for current filters", "good")) + renderKnowledgePendingReviewSection(pending) + '</div><div id="knowledge-review-inspector" class="knowledge-inspector">' + renderKnowledgeInspector(graph) + '</div></div></div>',
     '<div class="segment" id="knowledge-trust">' + renderKnowledgeTrustDashboard(graph) + '</div>',
     '<div class="segment" id="knowledge-search-view"><div class="control-grid"><input id="knowledge-search" placeholder="Search graph"><button id="knowledge-search-run" type="button">Search</button></div><div class="knowledge-detail-layout"><div id="knowledge-search-results" class="stack">' + (mode === "search" ? renderKnowledgeSearchResults(graph) : row("Search", "ready", "")) + '</div><div id="knowledge-search-inspector" class="knowledge-inspector">' + renderKnowledgeInspector(graph) + '</div></div></div>',
   ].join(""));
   bindKnowledgeGraphControls();
   renderKnowledgeCytoscapeGraph(entities, relations);
+  document.querySelector("#knowledge-panel")?.setAttribute("data-active-segment", "knowledge-map");
   if (mode === "search") activateSegment("#knowledge-panel", "knowledge-search-view");
   if (mode === "review") activateSegment("#knowledge-panel", "knowledge-review");
   if (mode === "trust") activateSegment("#knowledge-panel", "knowledge-trust");
+}
+
+function renderKnowledgeMapToolbar(entities, relations) {
+  const filters = state.knowledgeGraphFilters ?? { kind: "all", scope: "all", trust: "all" };
+  const kinds = [...new Set((entities ?? []).map((entity) => entity.kind).filter(Boolean))].sort();
+  const scopes = [...new Set([...(entities ?? []).map((entity) => entity.scope), ...(relations ?? []).map((relation) => relation.scope)].filter(Boolean))].sort();
+  const trusts = [...new Set([...(entities ?? []).map((entity) => entity.trust?.level), ...(relations ?? []).map((relation) => relation.trust?.level)].filter(Boolean))].sort();
+  const activeView = state.knowledgeActiveView ?? "all";
+  const customOption = activeView === "custom" ? option("custom", "Custom", true) : "";
+  const savedOption = state.knowledgeSavedView ? option("saved", "Saved view", activeView === "saved") : "";
+  return '<div class="knowledge-map-toolbar"><div class="knowledge-map-views"><select id="knowledge-map-view" aria-label="Graph saved view">' + option("all", "All", activeView === "all") + option("review", "Review", activeView === "review") + option("high-trust", "High trust", activeView === "high-trust") + option("focused", "Focused", activeView === "focused") + customOption + savedOption + '</select><button data-knowledge-view-apply type="button">' + icon("check") + '<span>Apply</span></button><button data-knowledge-view-save type="button">' + icon("database") + '<span>Save</span></button></div><div class="knowledge-map-cluster"><select id="knowledge-cluster-by" aria-label="Graph clustering">' + option("none", "Cluster off", state.knowledgeClusterBy === "none") + option("kind", "Cluster by kind", state.knowledgeClusterBy === "kind") + option("scope", "Cluster by scope", state.knowledgeClusterBy === "scope") + option("trust", "Cluster by trust", state.knowledgeClusterBy === "trust") + '</select><select id="knowledge-relation-density" aria-label="Relation density">' + option("all", "All relations", state.knowledgeRelationDensity === "all") + option("balanced", "Balanced", state.knowledgeRelationDensity === "balanced") + option("strong", "Strong only", state.knowledgeRelationDensity === "strong") + '</select><select id="knowledge-motion" aria-label="Graph motion">' + option("subtle", "Motion subtle", state.knowledgeMotion !== "off") + option("off", "Motion off", state.knowledgeMotion === "off") + '</select></div><div class="knowledge-map-search"><input id="knowledge-map-search" placeholder="Search graph" value="' + escapeHtml(state.knowledgeGraphSearch ?? "") + '"><select id="knowledge-map-search-result" aria-label="Graph search results">' + renderKnowledgeMapSearchOptions(entities, relations, state.knowledgeGraphSearch ?? "") + '</select><button data-knowledge-graph-action="focus-search" type="button">' + icon("activity") + '<span>Focus</span></button><button data-knowledge-graph-action="unfocus" type="button">' + icon("x") + '<span>Unfocus</span></button><label class="knowledge-focus-toggle"><input id="knowledge-connected-only" type="checkbox"' + (state.knowledgeConnectedOnly ? ' checked' : '') + '><span>Connected only</span></label></div><div class="knowledge-map-actions"><button data-knowledge-graph-action="fit" type="button" title="Fit graph">' + icon("activity") + '<span>Fit</span></button><button data-knowledge-graph-action="reset" type="button" title="Reset layout">' + icon("refresh") + '<span>Reset</span></button><button data-knowledge-graph-action="zoom-in" type="button" title="Zoom in">' + icon("spark") + '<span>Zoom in</span></button><button data-knowledge-graph-action="zoom-out" type="button" title="Zoom out">' + icon("square") + '<span>Zoom out</span></button></div><div class="knowledge-map-filters"><select id="knowledge-kind-filter" aria-label="Graph kind filter">' + option("all", "All kinds", filters.kind === "all") + kinds.map((kind) => option(kind, kind, filters.kind === kind)).join("") + '</select><select id="knowledge-scope-filter" aria-label="Graph scope filter">' + option("all", "All scopes", filters.scope === "all") + scopes.map((scope) => option(scope, scope === "core" ? "Core scope" : scope === "project" ? "Project scope" : scope, filters.scope === scope)).join("") + '</select><select id="knowledge-map-trust-filter" aria-label="Graph trust filter">' + option("all", "All trust", filters.trust === "all") + trusts.map((trust) => option(trust, trust, filters.trust === trust)).join("") + '</select><button data-knowledge-graph-action="clear-filters" type="button">' + icon("x") + '<span>Clear</span></button></div><div class="knowledge-map-actions"><button data-knowledge-drawer-open="list" type="button">' + icon("layers") + '<span>List</span></button><button data-knowledge-drawer-open="inspector" type="button">' + icon("sliders") + '<span>Inspector</span></button></div></div><div class="knowledge-legend"><span><i class="person"></i>person</span><span><i class="project"></i>project</span><span><i class="preference"></i>preference</span><span><i class="topic"></i>topic</span></div>';
+}
+
+function renderKnowledgeMapSearchOptions(entities, relations, query) {
+  const normalized = String(query ?? "").trim().toLowerCase();
+  const options = [
+    ...(entities ?? []).map((entity) => ({ value: "entity:" + entity.id, label: 'Entity #' + entity.id + ' ' + entity.canonicalName, text: [entity.canonicalName, entity.kind, entity.scope, ...(entity.aliases ?? [])].join(" ") })),
+    ...(relations ?? []).map((relation) => ({ value: "relation:" + relation.id, label: 'Relation #' + relation.id + ' ' + relation.sourceName + ' --' + relation.relationType + '--> ' + relation.targetName, text: [relation.sourceName, relation.relationType, relation.targetName, relation.scope, relation.evidence].join(" ") })),
+  ].filter((item) => !normalized || item.text.toLowerCase().includes(normalized) || item.label.toLowerCase().includes(normalized)).slice(0, 16);
+  return options.length ? options.map((item) => option(item.value, item.label, false)).join("") : option("", "No graph results", true);
+}
+
+function renderKnowledgeDrawerList(graph) {
+  if (state.selectedKnowledge?.type === "cluster") return renderKnowledgeClusterDrilldown(graph, String(state.selectedKnowledge.id));
+  const entities = graph.entities ?? [];
+  const relations = graph.relations ?? [];
+  return (entities.slice(0, 12).map(renderKnowledgeEntity).join("") || row("Entities", "empty", "")) + relations.slice(0, 12).map(renderKnowledgeRelation).join("");
+}
+
+function renderKnowledgeClusterDrilldown(graph, clusterId) {
+  const cluster = getKnowledgeClusterMembers(graph, clusterId);
+  if (!cluster) return row("Cluster", "not found", "warn");
+  const relationRows = cluster.relations.slice(0, 8).map(renderKnowledgeRelation).join("") || row("Relations", "none inside cluster", "");
+  const entityRows = cluster.entities.slice(0, 12).map(renderKnowledgeEntity).join("") || row("Entities", "empty", "");
+  return '<div class="knowledge-cluster-detail"><div class="label">Cluster</div><div class="value">' + escapeHtml(cluster.label) + '</div><div class="summary-strip"><span><strong>' + escapeHtml(cluster.entities.length) + '</strong><small>Entities</small></span><span><strong>' + escapeHtml(cluster.relations.length) + '</strong><small>Relations</small></span></div><div class="actions inline-actions"><button data-knowledge-cluster-expand="' + escapeHtml(cluster.id) + '" type="button">' + icon("layers") + '<span>Expand cluster</span></button></div><div class="tool-section"><div class="label">Members</div>' + entityRows + '</div><div class="tool-section"><div class="label">Internal relations</div>' + relationRows + '</div></div>';
+}
+
+function getKnowledgeClusterMembers(graph, clusterId) {
+  const clusterBy = state.knowledgeClusterBy ?? "none";
+  if (clusterBy === "none") return undefined;
+  const prefix = "cluster-" + clusterBy + "-";
+  if (!clusterId.startsWith(prefix)) return undefined;
+  const normalizedValue = clusterId.slice(prefix.length);
+  const entities = (graph.entities ?? []).filter((entity) => knowledgeClusterKey(entity, clusterBy).replace(/[^a-z0-9_-]/gi, "-").toLowerCase() === normalizedValue);
+  const ids = new Set(entities.map((entity) => Number(entity.id)));
+  const relations = (graph.relations ?? []).filter((relation) => ids.has(Number(relation.sourceEntityId)) && ids.has(Number(relation.targetEntityId)));
+  const label = entities[0] ? knowledgeClusterKey(entities[0], clusterBy) + " (" + entities.length + ")" : normalizedValue;
+  return { id: clusterId, label, clusterBy, value: entities[0] ? knowledgeClusterKey(entities[0], clusterBy) : normalizedValue, entities, relations };
+}
+
+function knowledgeClusterKey(entity, clusterBy) {
+  if (clusterBy === "scope") return String(entity.scope ?? "session");
+  if (clusterBy === "trust") return String(entity.trust?.level ?? "medium");
+  return String(entity.kind ?? "topic");
 }
 
 function renderKnowledgeTrustDashboard(graph) {
@@ -1660,7 +1769,7 @@ function renderKnowledgeCytoscapeGraph(entities, relations) {
   const cy = window.cytoscape({
     container,
     elements: graphElements.elements,
-    layout: { name: "cose", animate: false, fit: true, padding: 28, nodeRepulsion: 5200, idealEdgeLength: 128, edgeElasticity: 86, gravity: 0.28, numIter: 900 },
+    layout: knowledgeGraphLayoutOptions(28),
     minZoom: 0.42,
     maxZoom: 2.2,
     wheelSensitivity: 0.18,
@@ -1670,22 +1779,46 @@ function renderKnowledgeCytoscapeGraph(entities, relations) {
       { selector: "node.project", style: { "background-color": "#64d487" } },
       { selector: "node.preference", style: { "background-color": "#f0b35d" } },
       { selector: "node.topic", style: { "background-color": "#8aa8ff" } },
+      { selector: "node.cluster", style: { "border-color": "#eef6ed", "border-opacity": 0.84, "border-width": 4, "font-size": 12, "height": "data(size)", "shape": "round-rectangle", "text-margin-y": 10, "width": "data(size)" } },
       { selector: "edge", style: { "curve-style": "bezier", "font-family": "Trebuchet MS, Verdana, sans-serif", "font-size": 10, "font-weight": 800, label: "data(label)", "line-color": "rgba(238, 246, 237, 0.28)", opacity: "data(opacity)", "target-arrow-color": "rgba(238, 246, 237, 0.38)", "target-arrow-shape": "triangle", "text-background-color": "rgba(8, 13, 11, 0.88)", "text-background-opacity": 1, "text-background-padding": 2, "text-rotation": "autorotate", "text-wrap": "wrap", "width": "data(width)" } },
+      { selector: ".filtered", style: { display: "none" } },
+      { selector: ".dimmed", style: { opacity: 0.14 } },
+      { selector: "node.highlighted", style: { "border-color": "#e0b257", "border-width": 4 } },
+      { selector: "edge.highlighted", style: { "line-color": "#e0b257", "target-arrow-color": "#e0b257", opacity: 1, width: 3.8 } },
       { selector: ":selected", style: { "border-color": "#e0b257", "border-width": 4, "line-color": "#e0b257", "target-arrow-color": "#e0b257", opacity: 1 } },
     ],
   });
   cy.on("tap", "node", (event) => {
+    const clusterId = event.target.data("clusterId");
+    if (clusterId) {
+      state.selectedKnowledge = { type: "cluster", id: clusterId };
+      setKnowledgeDrawer("list");
+      renderKnowledgeInspectorTargets(state.knowledgeGraph);
+      return;
+    }
     state.selectedKnowledge = { type: "entity", id: Number(event.target.data("entityId")) };
     setKnowledgeDrawer("inspector");
     renderKnowledgeInspectorTargets(state.knowledgeGraph);
   });
   cy.on("tap", "edge", (event) => {
+    if (!event.target.data("relationId")) {
+      setKnowledgeDrawer("list");
+      return;
+    }
     state.selectedKnowledge = { type: "relation", id: Number(event.target.data("relationId")) };
     setKnowledgeDrawer("inspector");
     renderKnowledgeInspectorTargets(state.knowledgeGraph);
   });
+  cy.on("tap", (event) => {
+    if (event.target === cy) {
+      clearKnowledgeGraphFocus({ closeDrawer: true, save: true });
+      applyKnowledgeGraphFilters();
+    }
+  });
   state.knowledgeCytoscape = cy;
-  window.__bestieKnowledgeGraph = { cy };
+  window.__bestieKnowledgeGraph = { cy, select: selectKnowledgeGraphById };
+  applyKnowledgeGraphFilters();
+  applyKnowledgeGraphSelectionHighlight();
   container.dataset.knowledgeGraphReady = "true";
 }
 
@@ -1697,14 +1830,56 @@ function buildKnowledgeCytoscapeElements(entities, relations) {
   });
   const nodes = [...byId.values()].slice(0, 48);
   const nodeIds = new Set(nodes.map((node) => Number(node.id)));
+  if ((state.knowledgeClusterBy ?? "none") !== "none") return buildKnowledgeClusterElements(nodes, relations ?? [], nodeIds);
   const nodeElements = nodes.map((node) => {
     const confidence = Number(node.confidence ?? 0.7);
     const kind = ["person", "project", "preference", "topic"].includes(node.kind) ? node.kind : "topic";
-    return { data: { id: "entity-" + node.id, entityId: Number(node.id), label: String(node.canonicalName ?? ("Entity " + node.id)), size: 30 + Math.round(Math.max(0, Math.min(1, confidence)) * 18) }, classes: kind };
+    return { data: { id: "entity-" + node.id, entityId: Number(node.id), kind, scope: String(node.scope ?? "session"), trust: String(node.trust?.level ?? "medium"), label: String(node.canonicalName ?? ("Entity " + node.id)), searchText: [node.canonicalName, node.kind, node.scope, ...(node.aliases ?? [])].join(" "), size: 30 + Math.round(Math.max(0, Math.min(1, confidence)) * 18) }, classes: kind };
   });
   const edgeElements = (relations ?? []).filter((relation) => nodeIds.has(Number(relation.sourceEntityId)) && nodeIds.has(Number(relation.targetEntityId))).slice(0, 80).map((relation) => {
     const confidence = Math.max(0, Math.min(1, Number(relation.confidence ?? 0.55)));
-    return { data: { id: "relation-" + relation.id, source: "entity-" + relation.sourceEntityId, target: "entity-" + relation.targetEntityId, relationId: Number(relation.id), label: String(relation.relationType ?? "related"), opacity: 0.34 + confidence * 0.56, width: 1.2 + confidence * 2.4 } };
+    return { data: { id: "relation-" + relation.id, source: "entity-" + relation.sourceEntityId, target: "entity-" + relation.targetEntityId, relationId: Number(relation.id), kind: "relation", scope: String(relation.scope ?? "session"), trust: String(relation.trust?.level ?? "medium"), confidence, label: String(relation.relationType ?? "related"), searchText: [relation.sourceName, relation.relationType, relation.targetName, relation.scope, relation.evidence].join(" "), opacity: 0.34 + confidence * 0.56, width: 1.2 + confidence * 2.4 } };
+  });
+  return { elements: [...nodeElements, ...edgeElements], nodeCount: nodeElements.length, edgeCount: edgeElements.length };
+}
+
+function buildKnowledgeClusterElements(nodes, relations, nodeIds) {
+  const clusterBy = state.knowledgeClusterBy ?? "none";
+  const entityCluster = new Map();
+  const groups = new Map();
+  nodes.forEach((node) => {
+    const key = String(clusterBy === "scope" ? node.scope ?? "session" : clusterBy === "trust" ? node.trust?.level ?? "medium" : node.kind ?? "topic");
+    const id = "cluster-" + clusterBy + "-" + key.replace(/[^a-z0-9_-]/gi, "-").toLowerCase();
+    entityCluster.set(Number(node.id), id);
+    const group = groups.get(id) ?? { id, key, count: 0, kinds: new Set(), scopes: new Set(), trusts: new Set(), confidence: 0 };
+    group.count += 1;
+    group.confidence += Number(node.confidence ?? 0.7);
+    group.kinds.add(String(node.kind ?? "topic"));
+    group.scopes.add(String(node.scope ?? "session"));
+    group.trusts.add(String(node.trust?.level ?? "medium"));
+    groups.set(id, group);
+  });
+  const nodeElements = [...groups.values()].map((group) => {
+    const kind = clusterBy === "kind" && ["person", "project", "preference", "topic"].includes(group.key) ? group.key : "topic";
+    const confidence = group.count ? group.confidence / group.count : 0.7;
+    return { data: { id: group.id, clusterId: group.id, clusterBy, clusterValue: group.key, kind, scope: clusterBy === "scope" ? group.key : "cluster", trust: clusterBy === "trust" ? group.key : "medium", memberKinds: [...group.kinds], memberScopes: [...group.scopes], memberTrusts: [...group.trusts], label: group.key + " (" + group.count + ")", size: 42 + Math.min(34, group.count * 8 + Math.round(confidence * 8)) }, classes: kind + " cluster" };
+  });
+  const edges = new Map();
+  relations.filter((relation) => nodeIds.has(Number(relation.sourceEntityId)) && nodeIds.has(Number(relation.targetEntityId))).forEach((relation) => {
+    const source = entityCluster.get(Number(relation.sourceEntityId));
+    const target = entityCluster.get(Number(relation.targetEntityId));
+    if (!source || !target || source === target) return;
+    const key = source < target ? source + "::" + target : target + "::" + source;
+    const edge = edges.get(key) ?? { source, target, count: 0, confidence: 0, scopes: new Set(), trusts: new Set() };
+    edge.count += 1;
+    edge.confidence += Math.max(0, Math.min(1, Number(relation.confidence ?? 0.55)));
+    edge.scopes.add(String(relation.scope ?? "session"));
+    edge.trusts.add(String(relation.trust?.level ?? "medium"));
+    edges.set(key, edge);
+  });
+  const edgeElements = [...edges.entries()].slice(0, 80).map(([id, edge]) => {
+    const confidence = edge.count ? edge.confidence / edge.count : 0.55;
+    return { data: { id: "cluster-edge-" + id.replace(/[^a-z0-9_-]/gi, "-"), source: edge.source, target: edge.target, kind: "relation", scope: edge.scopes.size === 1 ? [...edge.scopes][0] : "cluster", trust: edge.trusts.size === 1 ? [...edge.trusts][0] : "medium", confidence, label: edge.count + " relations", opacity: 0.28 + Math.min(0.6, confidence * 0.5), width: 1.6 + Math.min(4, edge.count * 0.8) } };
   });
   return { elements: [...nodeElements, ...edgeElements], nodeCount: nodeElements.length, edgeCount: edgeElements.length };
 }
@@ -1817,12 +1992,384 @@ function setKnowledgeDrawer(drawer) {
   if (!shell) return;
   shell.dataset.knowledgeDrawer = state.knowledgeDrawer;
   const title = document.querySelector("#knowledge-drawer-title");
-  if (title) title.textContent = state.knowledgeDrawer === "list" ? "Graph items" : "Inspector";
+  if (title) title.textContent = state.knowledgeDrawer === "list" && state.selectedKnowledge?.type === "cluster" ? "Cluster detail" : state.knowledgeDrawer === "list" ? "Graph items" : "Inspector";
+  const list = document.querySelector("#knowledge-drawer-list");
+  if (list) list.innerHTML = renderKnowledgeDrawerList(state.knowledgeGraph ?? {});
   state.knowledgeCytoscape?.resize();
-  state.knowledgeCytoscape?.fit(undefined, 28);
+  bindKnowledgeGraphInteractiveControls();
+  saveKnowledgeMapPreferences();
+}
+
+function expandKnowledgeCluster(clusterId) {
+  const cluster = getKnowledgeClusterMembers(state.knowledgeGraph ?? {}, clusterId);
+  if (!cluster) return;
+  state.knowledgeClusterBy = "none";
+  state.knowledgeRelationDensity = "all";
+  state.knowledgeGraphSearch = cluster.entities.map((entity) => entity.canonicalName).slice(0, 3).join(" ");
+  state.knowledgeGraphFilters = { kind: cluster.clusterBy === "kind" ? cluster.value : "all", scope: cluster.clusterBy === "scope" ? cluster.value : "all", trust: cluster.clusterBy === "trust" ? cluster.value : "all" };
+  state.knowledgeConnectedOnly = false;
+  state.knowledgeActiveView = "custom";
+  state.selectedKnowledge = undefined;
+  setKnowledgeDrawer("list");
+  syncKnowledgeMapControls();
+  renderKnowledgeCytoscapeGraph(state.knowledgeGraph?.entities ?? [], state.knowledgeGraph?.relations ?? []);
+  applyKnowledgeGraphFilters();
+  showToast("Cluster expanded on the map.", "good");
+  saveKnowledgeMapPreferences();
+}
+
+function setKnowledgeOverlayCollapsed(collapsed) {
+  state.knowledgeOverlayCollapsed = Boolean(collapsed);
+  const shell = document.querySelector("#knowledge-map .knowledge-map-shell");
+  if (!shell) return;
+  shell.dataset.knowledgeOverlay = state.knowledgeOverlayCollapsed ? "collapsed" : "expanded";
+  const toggle = document.querySelector("[data-knowledge-overlay-toggle]");
+  if (toggle) {
+    toggle.title = state.knowledgeOverlayCollapsed ? "Show map tools" : "Hide map tools";
+    const label = toggle.querySelector("span");
+    if (label) label.textContent = state.knowledgeOverlayCollapsed ? "Tools" : "Hide";
+  }
+  state.knowledgeCytoscape?.resize();
+  saveKnowledgeMapPreferences();
+}
+
+function syncKnowledgeMapControls() {
+  const filters = state.knowledgeGraphFilters ?? { kind: "all", scope: "all", trust: "all" };
+  const viewSelect = document.querySelector("#knowledge-map-view");
+  if (viewSelect && state.knowledgeActiveView === "custom" && !Array.from(viewSelect.options).some((item) => item.value === "custom")) {
+    viewSelect.appendChild(new Option("Custom", "custom", false, true));
+  }
+  const values = { "#knowledge-kind-filter": filters.kind, "#knowledge-scope-filter": filters.scope, "#knowledge-map-trust-filter": filters.trust, "#knowledge-map-search": state.knowledgeGraphSearch ?? "", "#knowledge-map-view": state.knowledgeActiveView ?? "all", "#knowledge-cluster-by": state.knowledgeClusterBy ?? "none", "#knowledge-relation-density": state.knowledgeRelationDensity ?? "all", "#knowledge-motion": state.knowledgeMotion ?? "subtle" };
+  Object.entries(values).forEach(([selector, value]) => {
+    const element = document.querySelector(selector);
+    if (element && element.value !== undefined) element.value = value;
+  });
+  const connectedOnly = document.querySelector("#knowledge-connected-only");
+  if (connectedOnly) connectedOnly.checked = Boolean(state.knowledgeConnectedOnly);
+  updateKnowledgeMapSearchResults();
+}
+
+function applyKnowledgeMapView(view) {
+  const selectedView = view || "all";
+  const saved = selectedView === "saved" ? state.knowledgeSavedView : undefined;
+  state.knowledgeActiveView = selectedView;
+  state.knowledgeConnectedOnly = false;
+  if (selectedView === "all") {
+    clearKnowledgeGraphFocus({ closeDrawer: true, save: false });
+    state.knowledgeGraphFilters = { kind: "all", scope: "all", trust: "all" };
+    state.knowledgeGraphSearch = "";
+    state.knowledgeClusterBy = "none";
+    state.knowledgeRelationDensity = "all";
+    setKnowledgeDrawer("closed");
+  } else if (selectedView === "review") {
+    state.knowledgeGraphFilters = { kind: "all", scope: "all", trust: "low" };
+    state.knowledgeGraphSearch = "";
+    state.knowledgeClusterBy = "trust";
+    state.knowledgeRelationDensity = "balanced";
+    setKnowledgeDrawer("list");
+    setKnowledgeOverlayCollapsed(false);
+  } else if (selectedView === "high-trust") {
+    state.knowledgeGraphFilters = { kind: "all", scope: "all", trust: "high" };
+    state.knowledgeGraphSearch = "";
+    state.knowledgeClusterBy = "kind";
+    state.knowledgeRelationDensity = "strong";
+    setKnowledgeDrawer("closed");
+  } else if (selectedView === "focused") {
+    if (state.selectedKnowledge?.type === "entity" || state.selectedKnowledge?.type === "relation") {
+      state.knowledgeConnectedOnly = true;
+      state.knowledgeClusterBy = "none";
+      setKnowledgeDrawer("inspector");
+      focusKnowledgeGraphViewport(state.selectedKnowledge.type, state.selectedKnowledge.id);
+    } else {
+      showToast("Select a node or relation before using Focused view.", "warn");
+      state.knowledgeActiveView = "all";
+    }
+  } else if (saved) {
+    state.knowledgeGraphFilters = saved.filters ?? { kind: "all", scope: "all", trust: "all" };
+    state.knowledgeGraphSearch = saved.search ?? "";
+    state.knowledgeConnectedOnly = Boolean(saved.connectedOnly);
+    state.knowledgeClusterBy = saved.clusterBy ?? "none";
+    state.knowledgeRelationDensity = saved.relationDensity ?? "all";
+    state.selectedKnowledge = saved.selected ?? state.selectedKnowledge;
+    setKnowledgeOverlayCollapsed(Boolean(saved.overlayCollapsed));
+    setKnowledgeDrawer(saved.drawer ?? "closed");
+  }
+  syncKnowledgeMapControls();
+  renderKnowledgeCytoscapeGraph(state.knowledgeGraph?.entities ?? [], state.knowledgeGraph?.relations ?? []);
+  applyKnowledgeGraphFilters();
+  saveKnowledgeMapPreferences();
+}
+
+function saveCurrentKnowledgeMapView() {
+  state.knowledgeSavedView = captureKnowledgeMapView();
+  state.knowledgeActiveView = "saved";
+  saveKnowledgeMapPreferences();
+  renderKnowledgeGraphPanel(state.knowledgeGraph ?? {}, "map");
+  showToast("Knowledge graph view saved.", "good");
+}
+
+function runKnowledgeGraphMapAction(action) {
+  const cy = state.knowledgeCytoscape;
+  if (!cy) return;
+  if (action === "fit") {
+    fitKnowledgeGraph(cy.elements().not(".filtered"), 32);
+  } else if (action === "reset") {
+    cy.layout(knowledgeGraphLayoutOptions(32)).run();
+  } else if (action === "zoom-in" || action === "zoom-out") {
+    const nextZoom = cy.zoom() * (action === "zoom-in" ? 1.18 : 0.84);
+    const zoom = { level: Math.max(0.42, Math.min(2.2, nextZoom)), renderedPosition: { x: cy.width() / 2, y: cy.height() / 2 } };
+    if (knowledgeMotionEnabled()) cy.animate({ zoom }, { duration: 160 });
+    else cy.zoom(zoom);
+  } else if (action === "clear-filters") {
+    clearKnowledgeGraphFocus({ closeDrawer: true, save: false });
+    state.knowledgeGraphFilters = { kind: "all", scope: "all", trust: "all" };
+    state.knowledgeConnectedOnly = false;
+    state.knowledgeGraphSearch = "";
+    state.knowledgeActiveView = "all";
+    state.knowledgeClusterBy = "none";
+    state.knowledgeRelationDensity = "all";
+    ["#knowledge-kind-filter", "#knowledge-scope-filter", "#knowledge-map-trust-filter"].forEach((selector) => {
+      const select = document.querySelector(selector);
+      if (select) select.value = "all";
+    });
+    const connectedOnly = document.querySelector("#knowledge-connected-only");
+    if (connectedOnly) connectedOnly.checked = false;
+    const search = document.querySelector("#knowledge-map-search");
+    if (search) search.value = "";
+    syncKnowledgeMapControls();
+    setKnowledgeDrawer("closed");
+    applyKnowledgeGraphFilters();
+    saveKnowledgeMapPreferences();
+  } else if (action === "unfocus") {
+    clearKnowledgeGraphFocus({ closeDrawer: true, save: true });
+    applyKnowledgeGraphFilters();
+  } else if (action === "focus-search") {
+    focusKnowledgeGraphSearchResult(document.querySelector("#knowledge-map-search-result")?.value ?? "");
+  }
+}
+
+function clearKnowledgeGraphFocus(options = {}) {
+  state.selectedKnowledge = undefined;
+  state.knowledgeConnectedOnly = false;
+  if (options.closeDrawer) state.knowledgeDrawer = "closed";
+  if (state.knowledgeActiveView === "focused") state.knowledgeActiveView = "custom";
+  const connectedOnly = document.querySelector("#knowledge-connected-only");
+  if (connectedOnly) connectedOnly.checked = false;
+  state.knowledgeCytoscape?.elements().removeClass("highlighted dimmed").unselect();
+  renderKnowledgeInspectorTargets(state.knowledgeGraph ?? {});
+  syncKnowledgeMapControls();
+  if (options.closeDrawer) setKnowledgeDrawer("closed");
+  if (options.save) saveKnowledgeMapPreferences();
+}
+
+function focusKnowledgeGraphSearchResult(value) {
+  if (!value) return;
+  const [type, idText] = String(value).split(":");
+  const id = Number(idText);
+  if ((type !== "entity" && type !== "relation") || !Number.isFinite(id)) return;
+  state.knowledgeConnectedOnly = true;
+  state.knowledgeActiveView = "focused";
+  const connectedOnly = document.querySelector("#knowledge-connected-only");
+  if (connectedOnly) connectedOnly.checked = true;
+  selectKnowledgeGraphById(type, id);
+  applyKnowledgeGraphFilters();
+  focusKnowledgeGraphViewport(type, id);
+  saveKnowledgeMapPreferences();
+}
+
+function focusKnowledgeGraphViewport(type, id) {
+  const cy = state.knowledgeCytoscape;
+  if (!cy) return;
+  const item = cy.$id((type === "entity" ? "entity-" : "relation-") + id);
+  if (!item.length) return;
+  const neighborhood = type === "entity" ? item.closedNeighborhood().not(".filtered") : item.union(item.connectedNodes()).not(".filtered");
+  fitKnowledgeGraph(neighborhood.length ? neighborhood : item, 72);
+}
+
+function knowledgeMotionEnabled() {
+  return state.knowledgeMotion !== "off" && !window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
+}
+
+function knowledgeGraphLayoutOptions(padding) {
+  return { name: "cose", animate: false, fit: true, padding, nodeRepulsion: 5200, idealEdgeLength: 128, edgeElasticity: 86, gravity: 0.28, numIter: 900 };
+}
+
+function fitKnowledgeGraph(elements, padding) {
+  const cy = state.knowledgeCytoscape;
+  if (!cy) return;
+  if (knowledgeMotionEnabled()) cy.animate({ fit: { eles: elements, padding } }, { duration: 220 });
+  else cy.fit(elements, padding);
+}
+
+function applyKnowledgeGraphFilters() {
+  const cy = state.knowledgeCytoscape;
+  if (!cy) return;
+  const filters = state.knowledgeGraphFilters ?? { kind: "all", scope: "all", trust: "all" };
+  const densityThreshold = knowledgeRelationDensityThreshold();
+  cy.nodes().forEach((node) => {
+    const hidden = !knowledgeNodeMatchesFilter(node, filters);
+    node.toggleClass("filtered", hidden);
+  });
+  cy.edges().forEach((edge) => {
+    const hidden = edge.source().hasClass("filtered") || edge.target().hasClass("filtered") || Number(edge.data("confidence") ?? 0.55) < densityThreshold || (filters.scope !== "all" && edge.data("scope") !== filters.scope) || (filters.trust !== "all" && edge.data("trust") !== filters.trust);
+    edge.toggleClass("filtered", hidden);
+  });
+  applyKnowledgeConnectedOnlyFilter();
+  const visibleNodes = cy.nodes().not(".filtered").length;
+  const visibleEdges = cy.edges().not(".filtered").length;
+  const count = document.querySelector("#knowledge-visible-count");
+  if (count) count.textContent = visibleNodes + " nodes / " + visibleEdges + " edges" + ((state.knowledgeClusterBy ?? "none") === "none" ? "" : " / " + state.knowledgeClusterBy + " clusters");
+  applyKnowledgeGraphSelectionHighlight();
+  cy.fit(cy.elements().not(".filtered"), 32);
+}
+
+function knowledgeRelationDensityThreshold() {
+  if (state.knowledgeRelationDensity === "strong") return 0.7;
+  if (state.knowledgeRelationDensity === "balanced") return 0.5;
+  return 0;
+}
+
+function knowledgeNodeMatchesFilter(node, filters) {
+  const hasMember = (key, value) => Array.isArray(node.data(key)) && node.data(key).includes(value);
+  if (filters.kind !== "all" && node.data("kind") !== filters.kind && !hasMember("memberKinds", filters.kind)) return false;
+  if (filters.scope !== "all" && node.data("scope") !== filters.scope && !hasMember("memberScopes", filters.scope)) return false;
+  if (filters.trust !== "all" && node.data("trust") !== filters.trust && !hasMember("memberTrusts", filters.trust)) return false;
+  return true;
+}
+
+function applyKnowledgeConnectedOnlyFilter() {
+  const cy = state.knowledgeCytoscape;
+  const selected = state.selectedKnowledge;
+  if (!cy || !state.knowledgeConnectedOnly || !selected || (selected.type !== "entity" && selected.type !== "relation")) return;
+  const item = cy.$id((selected.type === "entity" ? "entity-" : "relation-") + selected.id);
+  if (!item.length) return;
+  const neighborhood = selected.type === "entity" ? item.closedNeighborhood() : item.union(item.connectedNodes());
+  cy.elements().not(neighborhood).addClass("filtered");
+}
+
+function applyKnowledgeGraphSelectionHighlight() {
+  const cy = state.knowledgeCytoscape;
+  if (!cy) return;
+  cy.elements().removeClass("highlighted dimmed").unselect();
+  const selected = state.selectedKnowledge;
+  if (!selected) return;
+  if (selected.type === "cluster") {
+    const cluster = cy.$id(String(selected.id));
+    if (!cluster.length || cluster.hasClass("filtered")) return;
+    cy.elements().not(cluster.closedNeighborhood()).not(".filtered").addClass("dimmed");
+    cluster.closedNeighborhood().not(".filtered").addClass("highlighted");
+    cluster.select();
+    return;
+  }
+  if (selected.type !== "entity" && selected.type !== "relation") return;
+  const item = cy.$id((selected.type === "entity" ? "entity-" : "relation-") + selected.id);
+  if (!item.length || item.hasClass("filtered")) return;
+  const neighborhood = selected.type === "entity" ? item.closedNeighborhood().not(".filtered") : item.union(item.connectedNodes()).not(".filtered");
+  cy.elements().not(neighborhood).not(".filtered").addClass("dimmed");
+  neighborhood.addClass("highlighted");
+  item.select();
 }
 
 function bindKnowledgeGraphInteractiveControls() {
+  document.querySelectorAll("[data-knowledge-view-apply]").forEach((button) => {
+    if (button.dataset.knowledgeViewBound === "true") return;
+    button.dataset.knowledgeViewBound = "true";
+    button.addEventListener("click", () => applyKnowledgeMapView(document.querySelector("#knowledge-map-view")?.value ?? "all"));
+  });
+  document.querySelectorAll("[data-knowledge-view-save]").forEach((button) => {
+    if (button.dataset.knowledgeViewBound === "true") return;
+    button.dataset.knowledgeViewBound = "true";
+    button.addEventListener("click", () => saveCurrentKnowledgeMapView());
+  });
+  document.querySelectorAll("#knowledge-map-view").forEach((select) => {
+    if (select.dataset.knowledgeViewBound === "true") return;
+    select.dataset.knowledgeViewBound = "true";
+    select.addEventListener("change", (event) => applyKnowledgeMapView(event.target.value));
+  });
+  document.querySelectorAll("#knowledge-cluster-by").forEach((select) => {
+    if (select.dataset.knowledgeClusterBound === "true") return;
+    select.dataset.knowledgeClusterBound = "true";
+    select.addEventListener("change", (event) => {
+      state.knowledgeClusterBy = event.target.value;
+      state.knowledgeActiveView = "custom";
+      syncKnowledgeMapControls();
+      renderKnowledgeCytoscapeGraph(state.knowledgeGraph?.entities ?? [], state.knowledgeGraph?.relations ?? []);
+      saveKnowledgeMapPreferences();
+    });
+  });
+  document.querySelectorAll("#knowledge-relation-density").forEach((select) => {
+    if (select.dataset.knowledgeDensityBound === "true") return;
+    select.dataset.knowledgeDensityBound = "true";
+    select.addEventListener("change", (event) => {
+      state.knowledgeRelationDensity = event.target.value;
+      state.knowledgeActiveView = "custom";
+      syncKnowledgeMapControls();
+      applyKnowledgeGraphFilters();
+      saveKnowledgeMapPreferences();
+    });
+  });
+  document.querySelectorAll("#knowledge-motion").forEach((select) => {
+    if (select.dataset.knowledgeMotionBound === "true") return;
+    select.dataset.knowledgeMotionBound = "true";
+    select.addEventListener("change", (event) => {
+      state.knowledgeMotion = event.target.value;
+      state.knowledgeActiveView = "custom";
+      syncKnowledgeMapControls();
+      state.knowledgeCytoscape?.layout(knowledgeGraphLayoutOptions(32)).run();
+      saveKnowledgeMapPreferences();
+    });
+  });
+  document.querySelectorAll("[data-knowledge-cluster-expand]").forEach((button) => {
+    if (button.dataset.knowledgeClusterExpandBound === "true") return;
+    button.dataset.knowledgeClusterExpandBound = "true";
+    button.addEventListener("click", () => expandKnowledgeCluster(button.dataset.knowledgeClusterExpand));
+  });
+  document.querySelectorAll("[data-knowledge-overlay-toggle]").forEach((button) => {
+    if (button.dataset.knowledgeOverlayBound === "true") return;
+    button.dataset.knowledgeOverlayBound = "true";
+    button.addEventListener("click", () => setKnowledgeOverlayCollapsed(!state.knowledgeOverlayCollapsed));
+  });
+  document.querySelectorAll("[data-knowledge-graph-action]").forEach((button) => {
+    if (button.dataset.knowledgeGraphActionBound === "true") return;
+    button.dataset.knowledgeGraphActionBound = "true";
+    button.addEventListener("click", () => runKnowledgeGraphMapAction(button.dataset.knowledgeGraphAction));
+  });
+  ["#knowledge-kind-filter", "#knowledge-scope-filter", "#knowledge-map-trust-filter"].forEach((selector) => {
+    document.querySelector(selector)?.addEventListener("change", () => {
+      state.knowledgeGraphFilters = {
+        kind: document.querySelector("#knowledge-kind-filter")?.value ?? "all",
+        scope: document.querySelector("#knowledge-scope-filter")?.value ?? "all",
+        trust: document.querySelector("#knowledge-map-trust-filter")?.value ?? "all",
+      };
+      state.knowledgeActiveView = "custom";
+      applyKnowledgeGraphFilters();
+      syncKnowledgeMapControls();
+      saveKnowledgeMapPreferences();
+    });
+  });
+  document.querySelector("#knowledge-map-search")?.addEventListener("input", (event) => {
+    state.knowledgeGraphSearch = event.target.value;
+    state.knowledgeActiveView = "custom";
+    updateKnowledgeMapSearchResults();
+    syncKnowledgeMapControls();
+    saveKnowledgeMapPreferences();
+  });
+  document.querySelector("#knowledge-map-search")?.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      focusKnowledgeGraphSearchResult(document.querySelector("#knowledge-map-search-result")?.value ?? "");
+    }
+  });
+  document.querySelector("#knowledge-map-search-result")?.addEventListener("change", (event) => focusKnowledgeGraphSearchResult(event.target.value));
+  document.querySelector("#knowledge-connected-only")?.addEventListener("change", (event) => {
+    state.knowledgeConnectedOnly = Boolean(event.target.checked);
+    state.knowledgeActiveView = "custom";
+    if (!state.knowledgeConnectedOnly) clearKnowledgeGraphFocus({ closeDrawer: true, save: false });
+    applyKnowledgeGraphFilters();
+    if (state.knowledgeConnectedOnly && (state.selectedKnowledge?.type === "entity" || state.selectedKnowledge?.type === "relation")) focusKnowledgeGraphViewport(state.selectedKnowledge.type, state.selectedKnowledge.id);
+    syncKnowledgeMapControls();
+    saveKnowledgeMapPreferences();
+  });
   document.querySelectorAll("[data-knowledge-drawer-open]").forEach((button) => {
     if (button.dataset.knowledgeDrawerBound === "true") return;
     button.dataset.knowledgeDrawerBound = "true";
@@ -1873,9 +2420,20 @@ function bindKnowledgeGraphInteractiveControls() {
   });
 }
 
+function updateKnowledgeMapSearchResults() {
+  const graph = state.knowledgeGraph ?? {};
+  const select = document.querySelector("#knowledge-map-search-result");
+  if (!select) return;
+  select.innerHTML = renderKnowledgeMapSearchOptions(graph.entities ?? [], graph.relations ?? [], state.knowledgeGraphSearch ?? "");
+}
+
 function selectKnowledgeGraphItem(element) {
   const type = element.dataset.knowledgeSelect;
   const id = type === "entity" ? Number(element.dataset.entityId) : type === "relation" ? Number(element.dataset.relationId) : type === "pending" ? Number(element.dataset.pendingId) : Number(element.dataset.suggestionIndex);
+  selectKnowledgeGraphById(type, id);
+}
+
+function selectKnowledgeGraphById(type, id) {
   state.selectedKnowledge = { type, id };
   setKnowledgeDrawer("inspector");
   renderKnowledgeInspectorTargets(state.knowledgeGraph);
@@ -1887,12 +2445,98 @@ function renderKnowledgeInspectorTargets(graph) {
     const target = document.querySelector(selector);
     if (target) target.innerHTML = html;
   });
+  const provenance = document.querySelector("#knowledge-provenance-overlay");
+  if (provenance) {
+    const provenanceHtml = renderKnowledgeProvenanceOverlay(graph ?? state.knowledgeGraph ?? {});
+    provenance.innerHTML = provenanceHtml;
+    provenance.classList.toggle("is-empty", !provenanceHtml);
+  }
   document.querySelectorAll("[data-knowledge-select]").forEach((element) => {
     const type = element.dataset.knowledgeSelect;
     const id = type === "entity" ? Number(element.dataset.entityId) : type === "relation" ? Number(element.dataset.relationId) : type === "pending" ? Number(element.dataset.pendingId) : Number(element.dataset.suggestionIndex);
     element.classList.toggle("selected", state.selectedKnowledge?.type === type && Number(state.selectedKnowledge?.id) === id);
   });
+  applyKnowledgeGraphSelectionHighlight();
   bindKnowledgeGraphInteractiveControls();
+}
+
+function getSelectedKnowledgeItem(graph) {
+  const selected = state.selectedKnowledge;
+  if (!selected) return undefined;
+  if (selected.type === "entity") {
+    const entity = (graph.entities ?? []).find((candidate) => Number(candidate.id) === Number(selected.id));
+    if (!entity) return undefined;
+    const relations = (graph.relations ?? []).filter((relation) => Number(relation.sourceEntityId) === Number(entity.id) || Number(relation.targetEntityId) === Number(entity.id));
+    return { type: "entity", item: entity, relations };
+  }
+  if (selected.type === "relation") {
+    const relation = (graph.relations ?? []).find((candidate) => Number(candidate.id) === Number(selected.id));
+    return relation ? { type: "relation", item: relation } : undefined;
+  }
+  if (selected.type === "cluster") {
+    const cluster = getKnowledgeClusterMembers(graph, String(selected.id));
+    return cluster ? { type: "cluster", item: cluster } : undefined;
+  }
+  return undefined;
+}
+
+function renderKnowledgeProvenanceOverlay(graph) {
+  const selected = getSelectedKnowledgeItem(graph ?? state.knowledgeGraph ?? {});
+  if (!selected) return "";
+  if (selected.type === "entity") {
+    const entity = selected.item;
+    const relations = selected.relations ?? [];
+    const trust = entity.trust;
+    return '<div class="knowledge-provenance-head"><div><div class="label">Provenance</div><div class="value">Entity #' + escapeHtml(entity.id) + ' ' + escapeHtml(entity.canonicalName) + '</div></div>' + renderKnowledgeProvenanceTrust(trust) + '</div>'
+      + '<div class="knowledge-provenance-grid">'
+      + row("Source", renderKnowledgeSource(entity), trust?.needsSource ? "warn" : "good")
+      + row("Why", makeEntityWhy(entity, relations), "")
+      + row("Updated", entity.updatedAt ?? entity.createdAt ?? "unknown", trust?.stale ? "warn" : "")
+      + row("Relations", relations.length ? relations.length + ' connected' : 'none', relations.length ? "good" : "warn")
+      + '</div>'
+      + renderKnowledgeAuditTimeline(entity, [
+        { label: "Created", value: entity.createdAt },
+        { label: "Updated", value: entity.updatedAt },
+        { label: "Source", value: renderKnowledgeSource(entity) },
+      ])
+      + renderKnowledgeProvenanceActions(renderKnowledgeSourceJump(entity));
+  }
+  if (selected.type === "relation") {
+    const relation = selected.item;
+    const trust = relation.trust;
+    return '<div class="knowledge-provenance-head"><div><div class="label">Provenance</div><div class="value">Relation #' + escapeHtml(relation.id) + ' ' + escapeHtml(relation.relationType) + '</div></div>' + renderKnowledgeProvenanceTrust(trust) + '</div>'
+      + '<div class="knowledge-provenance-grid">'
+      + row("Source", '#' + relation.sourceEntityId + ' ' + relation.sourceName, "")
+      + row("Target", '#' + relation.targetEntityId + ' ' + relation.targetName, "")
+      + row("Evidence", relation.evidence || makeRelationWhy(relation), relation.confidence < 0.5 ? "warn" : "")
+      + row("Origin", renderKnowledgeSource(relation), trust?.needsSource ? "warn" : "good")
+      + '</div>'
+      + renderKnowledgeAuditTimeline(relation, [
+        { label: "Created", value: relation.createdAt },
+        { label: "Updated", value: relation.updatedAt },
+        { label: "Source", value: renderKnowledgeSource(relation) },
+      ])
+      + renderKnowledgeProvenanceActions(renderKnowledgeSourceJump(relation));
+  }
+  const cluster = selected.item;
+  return '<div class="knowledge-provenance-head"><div><div class="label">Provenance</div><div class="value">Cluster ' + escapeHtml(cluster.label) + '</div></div><span class="pill">' + escapeHtml(cluster.clusterBy) + '</span></div>'
+    + '<div class="knowledge-provenance-grid">'
+    + row("Cluster by", cluster.clusterBy + ' / ' + cluster.value, "")
+    + row("Entities", cluster.entities.length, cluster.entities.length ? "good" : "warn")
+    + row("Relations", cluster.relations.length, "")
+    + row("Timeline", "Grouped from current filtered graph view", "")
+    + '</div>'
+    + renderKnowledgeProvenanceActions('<button data-knowledge-cluster-expand="' + escapeHtml(cluster.id) + '" type="button">' + icon("layers") + '<span>Expand cluster</span></button>');
+}
+
+function renderKnowledgeProvenanceTrust(trust) {
+  if (!trust) return '<span class="pill">Trust n/a</span>';
+  const tone = trust.level === "high" ? "good" : trust.level === "low" ? "warn" : "";
+  return '<span class="pill ' + tone + '">Trust ' + escapeHtml(trust.score) + ' / ' + escapeHtml(trust.level) + '</span>';
+}
+
+function renderKnowledgeProvenanceActions(actions) {
+  return actions ? '<div class="actions inline-actions knowledge-provenance-actions">' + actions + '</div>' : "";
 }
 
 function renderKnowledgeInspector(graph) {
