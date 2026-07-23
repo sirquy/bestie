@@ -66,10 +66,10 @@
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",
-    "@types/node": "^20.14.15",
+    "@types/node": "^26.1.1",
     "playwright": "^1.61.1",
     "tsx": "^4.16.2",
-    "typescript": "^5.5.4"
+    "typescript": "^7.0.2"
   },
   "dependencies": {
     "@elevenlabs/elevenlabs-js": "^2.57.0",
