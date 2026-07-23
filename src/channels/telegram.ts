@@ -18,6 +18,7 @@ import {
 import type { ChatCompletionOptions, ChatMessage, ChatMessageContent } from "../llm/types.js";
 import { sendChatCompletionWithFallbacks } from "../llm/chat-completion.js";
 import { fallbackLogDetail, formatProviderFallbackDiagnostics, formatProviderFallbackHealth } from "../llm/fallbacks.js";
+import { runKnowledgeReasoningPass, type KnowledgeReasoningResult } from "../memory/knowledge-reasoning.js";
 import { runMemoryReasoningPass, type MemoryReasoningResult } from "../memory/reasoning.js";
 import { isMemoryRetrievalPolicy, setMemoryRetrievalPolicy } from "../memory/governance.js";
 import { getMemoryMaintenanceReportStatus, installMemoryMaintenanceReport, removeMemoryMaintenanceReport, runMemoryMaintenanceDigest } from "../memory/maintenance.js";
@@ -473,7 +474,8 @@ export async function handleTelegramUpdate(update: TelegramUpdate, options: Tele
     const systemPrompt = await loadSystemPrompt(options.paths);
     const memories = await loadActiveMemories(options.paths);
     const recentTurns = await loadRecentTelegramTurns(options.paths, ownerUserId);
-    const messages = buildChatMessages(buildMcpToolSystemPrompt(systemPrompt, options.config, buildTelegramRuntimeToolContext(decision.incoming)), recentTurns, userInput, memories, { memoryRetrievalPolicy: options.config.memory?.retrievalPolicy ?? "full" });
+    const knowledgeGraph = await loadRelevantKnowledgeGraph(options.paths, userInput);
+    const messages = buildChatMessages(buildMcpToolSystemPrompt(systemPrompt, options.config, buildTelegramRuntimeToolContext(decision.incoming)), recentTurns, userInput, memories, { memoryRetrievalPolicy: options.config.memory?.retrievalPolicy ?? "full", knowledgeGraph });
     if (savedAttachment?.visionImage) {
       attachTelegramVisionImage(messages, userInput, savedAttachment.visionImage.dataUrl);
     }
@@ -498,6 +500,7 @@ export async function handleTelegramUpdate(update: TelegramUpdate, options: Tele
       toolRunner: async (toolOptions) => {
         const result = await mcpToolRunner(toolOptions);
         await sendTelegramMemoryApprovalIfNeeded(options.client, chatId, options.paths, ownerUserId, toolOptions.request.tool, result);
+        await sendTelegramKnowledgeApprovalIfNeeded(options.client, chatId, options.paths, ownerUserId, toolOptions.request.tool, result);
         return result;
       },
       approver: createTelegramPermissionApprover(options.client, chatId, options.paths),
@@ -526,7 +529,15 @@ export async function handleTelegramUpdate(update: TelegramUpdate, options: Tele
       turn: { channel: "telegram", userId: ownerUserId, userInput, assistantText },
       chatCompletion,
     });
+    const knowledgeReasoning = await runTelegramKnowledgeReasoningPass({
+      config: options.config,
+      paths: options.paths,
+      apiKey,
+      turn: { channel: "telegram", userId: ownerUserId, userInput, assistantText },
+      chatCompletion,
+    });
     await sendTelegramMemoryReasoningApprovalsIfNeeded(options.client, chatId, options.paths, ownerUserId, memoryReasoning);
+    await sendTelegramKnowledgeReasoningApprovalsIfNeeded(options.client, chatId, options.paths, ownerUserId, knowledgeReasoning);
     await appendLog({ event: "telegram_chat_success", detail: { model: options.config.llm.primary } }, { paths: options.paths });
     return "replied";
   } catch (error) {
@@ -660,6 +671,16 @@ async function runTelegramMemoryReasoningPass(options: Parameters<typeof runMemo
   }
 }
 
+async function runTelegramKnowledgeReasoningPass(options: Parameters<typeof runKnowledgeReasoningPass>[0]): Promise<KnowledgeReasoningResult> {
+  try {
+    return await runKnowledgeReasoningPass(options);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown knowledge reasoning error.";
+    await appendLog({ event: "knowledge_reasoning_failure", detail: { channel: "telegram", message } }, { paths: options.paths, knownSecrets: [options.apiKey] });
+    return { storedEntities: [], storedRelations: [], pending: [], skipped: [] };
+  }
+}
+
 async function sendTelegramSpeechReplyIfNeeded(options: {
   client: TelegramClient;
   chatId: number;
@@ -774,6 +795,47 @@ async function sendTelegramMemoryReasoningApprovalsIfNeeded(
           `Memory approval needed. Request: ${approvalId}`,
           `Type: ${pending.type}`,
           `Content: ${pending.content}`,
+          pending.reason ? `Reason: ${pending.reason}` : undefined,
+          "Choose Approve to save it or Deny to reject it.",
+        ].filter(Boolean).join("\n"),
+      ),
+      { replyMarkup: createApprovalReplyMarkup(approvalId) },
+    );
+  }
+}
+
+async function sendTelegramKnowledgeReasoningApprovalsIfNeeded(
+  client: TelegramClient,
+  chatId: number,
+  paths: RuntimePaths,
+  ownerUserId: string,
+  result: KnowledgeReasoningResult,
+): Promise<void> {
+  for (const pending of result.pending) {
+    const store = await SqliteMemoryStore.open(paths);
+    let approvalId: number;
+
+    try {
+      approvalId = store.addPendingActionApproval({
+        channel: "telegram",
+        userId: ownerUserId,
+        category: "local_write",
+        action: "knowledge_approve",
+        target: `pending-knowledge:${pending.id}`,
+        reason: "Approve or deny a knowledge graph item inferred from the latest conversation.",
+        proposedReason: pending.reason ?? "Knowledge graph reasoning proposed this item.",
+        ttlMs: TELEGRAM_ACTION_APPROVAL_TTL_MS,
+      }).id;
+    } finally {
+      store.close();
+    }
+
+    await client.sendMessage(
+      chatId,
+      redactSecrets(
+        [
+          `Knowledge graph approval needed. Request: ${approvalId}`,
+          formatPendingKnowledgePayloadSummary(pending.payload),
           pending.reason ? `Reason: ${pending.reason}` : undefined,
           "Choose Approve to save it or Deny to reject it.",
         ].filter(Boolean).join("\n"),
@@ -942,6 +1004,50 @@ async function sendTelegramMemoryApprovalIfNeeded(
   await client.sendMessage(
     chatId,
     [`${ownerUserId ? "Memory approval needed" : "Approval needed"}. Request: ${approvalId}`, `Type: ${type}`, `Content: ${content}`, "Choose Approve to save it or Deny to reject it."].join("\n"),
+    { replyMarkup: createApprovalReplyMarkup(approvalId) },
+  );
+}
+
+async function sendTelegramKnowledgeApprovalIfNeeded(
+  client: TelegramClient,
+  chatId: number,
+  paths: RuntimePaths,
+  ownerUserId: string,
+  toolName: string,
+  result: { ok: boolean; result?: unknown },
+): Promise<void> {
+  if (toolName !== "internal.remember_knowledge" || !result.ok || !isPendingMemoryToolResult(result.result)) {
+    return;
+  }
+
+  const store = await SqliteMemoryStore.open(paths);
+  let approvalId: number;
+  let summary = "Payload unavailable.";
+
+  try {
+    const pending = store.getPendingKnowledgeItem(result.result.id);
+    if (!pending) {
+      return;
+    }
+
+    summary = formatPendingKnowledgePayloadSummary(pending.payload);
+    approvalId = store.addPendingActionApproval({
+      channel: "telegram",
+      userId: ownerUserId,
+      category: "local_write",
+      action: "knowledge_approve",
+      target: `pending-knowledge:${pending.id}`,
+      reason: "Approve or deny model-requested knowledge graph write.",
+      proposedReason: pending.reason ?? "Knowledge graph write policy is ask.",
+      ttlMs: TELEGRAM_ACTION_APPROVAL_TTL_MS,
+    }).id;
+  } finally {
+    store.close();
+  }
+
+  await client.sendMessage(
+    chatId,
+    [`Knowledge graph approval needed. Request: ${approvalId}`, summary, "Choose Approve to save it or Deny to reject it."].join("\n"),
     { replyMarkup: createApprovalReplyMarkup(approvalId) },
   );
 }
@@ -1739,6 +1845,14 @@ function isPendingMemoryToolResult(value: unknown): value is { id: number; statu
   return typeof value === "object" && value !== null && "id" in value && "status" in value && Number.isInteger((value as { id: unknown }).id) && (value as { status: unknown }).status === "pending";
 }
 
+function formatPendingKnowledgePayloadSummary(payload: unknown): string {
+  const text = JSON.stringify(payload);
+  if (!text) {
+    return "Payload: empty";
+  }
+  return `Payload: ${text.length > 500 ? `${text.slice(0, 497)}...` : text}`;
+}
+
 function parseTelegramMemoryCommand(text: string): "list" | "tiers" | "rebalance" | "rebalance_apply" | "rebalance_apply_confirm" | "summary" | "digest" | "pending" | `pending_inspect:${number}` | "pause" | "resume" | "analyze" | "cleanup_dry_run" | "hygiene" | "hygiene_status" | "hygiene_trend" | "hygiene_doctor" | "hygiene_apply" | "hygiene_apply_confirm" | "governance_status" | `governance_policy:${string}` | `pin:${number}` | `unpin:${number}` | `scope:${string}` | `inspect:${number}` | `move:${number}:${string}` | `supersede:${number}:${number}` | "maintenance:install" | "maintenance:status" | "maintenance:remove" | undefined {
   if (text === "/memory" || text === "/memory list" || text === "/memory status") {
     return "list";
@@ -1904,6 +2018,21 @@ async function loadActiveMemories(paths: RuntimePaths): Promise<import("../memor
     }
 
     return store.listActiveMemories();
+  } finally {
+    store.close();
+  }
+}
+
+async function loadRelevantKnowledgeGraph(paths: RuntimePaths, query: string): Promise<import("../memory/sqlite-store.js").KnowledgeGraphSearchResult | undefined> {
+  const store = await SqliteMemoryStore.open(paths);
+
+  try {
+    if (store.getMemoryState().paused) {
+      return undefined;
+    }
+
+    const graph = store.searchKnowledgeGraph(query, 12);
+    return graph.entities.length === 0 && graph.relations.length === 0 ? undefined : graph;
   } finally {
     store.close();
   }

@@ -58,6 +58,14 @@ The current local memory slice includes policy, schema, and a minimal SQLite sto
 
 This keeps the storage layer testable while avoiding language-specific remember-request regexes.
 
+## Local Knowledge Graph
+
+Bestie now includes a local SQLite knowledge graph as an extension of approved memory. See [KNOWLEDGE_GRAPH_SPEC.md](KNOWLEDGE_GRAPH_SPEC.md) for the detailed contract.
+
+The current graph slice stores active entities, active relations, and pending graph items in SQLite. It exposes `bestie memory graph ...` commands, including `pending`, `approve`, `reject`, and `reject-all` for queued graph writes, `review` for prioritized cleanup suggestions, plus `merge entity`, `update relation`, and `forget relation` for review-first cleanup, `internal.search_knowledge`, `internal.inspect_entity`, `internal.analyze_knowledge`, `internal.plan_knowledge_review`, `internal.remember_knowledge`, and permission-gated `internal.merge_knowledge_entities`, `internal.update_knowledge_relation`, and `internal.forget_knowledge_relation`, runs a bounded post-turn knowledge reasoning pass when `memory.writePolicy` is explicitly configured, creates owner-channel approval requests for queued Telegram/Zalo graph writes, flags duplicate entity candidates and relation conflicts in graph hygiene, and injects compact relevant graph facts into chat context when memory is active.
+
+Graph writes follow `memory.writePolicy`; graph deletion follows `memory.deletePolicy`; secret-like graph payloads are never stored.
+
 ## SQLite Tables
 
 ```sql

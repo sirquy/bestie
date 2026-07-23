@@ -50,6 +50,11 @@ export async function seedUiSmokeRuntime(paths) {
     store.addMemory({ type: "preference", content: "User prefers concise replies.", source: "smoke", scope: "core" });
     store.addMemory({ type: "project_context", content: "Working on Bestie UI memory center.", source: "smoke", scope: "project" });
     store.addPendingMemory({ type: "sensitive_personal", content: "Review this memory before saving.", reason: "Sensitive memory requires approval.", source: "smoke" });
+    const user = store.upsertKnowledgeEntity({ canonicalName: "User", kind: "person", aliases: ["Boss"], confidence: 0.9 });
+    const bestie = store.upsertKnowledgeEntity({ canonicalName: "Bestie", kind: "project", aliases: ["Bestie Agent"], confidence: 0.86 });
+    const ui = store.upsertKnowledgeEntity({ canonicalName: "Bestie UI", kind: "project", aliases: ["Local Console"], confidence: 0.74 });
+    store.upsertKnowledgeRelation({ sourceEntityId: user.id, relationType: "works_on", targetEntityId: bestie.id, evidence: "Smoke user is building Bestie.", confidence: 0.82 });
+    store.upsertKnowledgeRelation({ sourceEntityId: bestie.id, relationType: "includes", targetEntityId: ui.id, evidence: "Bestie UI is part of the local console.", confidence: 0.78 });
     const schedule = store.addCronSchedule({ name: "Daily check", scheduleType: "cron_expr", scheduleValue: "0 8 * * *", prompt: "Send a short update.", channel: "telegram:111", nextRunAt: new Date(Date.now() + 60_000).toISOString() });
     const log = store.createCronLog(schedule.id);
     store.finishCronLog(log.id, "ok", "Smoke cron output");
@@ -59,6 +64,10 @@ export async function seedUiSmokeRuntime(paths) {
     const chatRun = store.createUiChatRun(chatSession.id, { model: "openai/test-model", providerModelRef: "openai/test-model", userMessageId: chatUserMessage.id, metadataJson: JSON.stringify({ inputChars: chatUserMessage.content.length, outputChars: 74, toolCalls: 1 }) });
     const chatAssistantMessage = store.addUiChatMessage(chatSession.id, "assistant", "**Ready** for `approval`:\n- check one\n- check two\n\n```\nbestie doctor\n```", chatRun.id);
     store.finishUiChatRun(chatRun.id, { status: "done", assistantMessageId: chatAssistantMessage.id, metadataJson: JSON.stringify({ inputChars: chatUserMessage.content.length, output: chatAssistantMessage.content, outputChars: chatAssistantMessage.content.length, toolCalls: 1 }) });
+    const graphSource = `ui-chat:${chatSession.id}:message:${chatAssistantMessage.id}:run:${chatRun.id}`;
+    store.upsertKnowledgeEntity({ canonicalName: "Bestie UI", kind: "project", aliases: ["Local Console"], confidence: 0.74, sourceMessageId: graphSource });
+    store.upsertKnowledgeRelation({ sourceEntityId: bestie.id, relationType: "includes", targetEntityId: ui.id, evidence: "Bestie UI is part of the local console.", confidence: 0.78, sourceMessageId: graphSource });
+    store.addPendingKnowledgeItem({ payload: { entities: [{ name: "Graph Review", kind: "topic" }], relations: [] }, reason: "Review graph smoke payload.", source: graphSource });
     store.forkUiChatSession(chatSession.id, chatUserMessage.id, "Approval chat fork");
     store.addUiChatEvent(chatSession.id, "approval_required", "internal.exec requires approval", JSON.stringify({ approvalId: 999, category: "local_write", target: ".", proposedReason: "Smoke chat approval" }), chatRun.id);
     store.addUiChatEvent(chatSession.id, "done", "Assistant response completed", JSON.stringify({ characters: chatAssistantMessage.content.length, toolCalls: 1 }), chatRun.id);

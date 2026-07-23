@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import test from "node:test";
 
+import { runKnowledgeReasoningPass } from "./knowledge-reasoning.js";
 import { runMemoryReasoningPass } from "./reasoning.js";
 import { SqliteMemoryStore } from "./sqlite-store.js";
 import type { AppConfig } from "../runtime/config.js";
@@ -23,6 +24,54 @@ test("runMemoryReasoningPass stores allowed durable candidates", async () => {
 
     assert.deepEqual(result.stored.map((memory) => `${memory.type}:${memory.content}:${memory.source}`), ["communication_preference:User prefers terse answers.:reasoning:terminal"]);
     assert.deepEqual(result.pending, []);
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("runKnowledgeReasoningPass stores durable graph candidates", async () => {
+  const paths = await createTempPaths();
+
+  try {
+    const result = await runKnowledgeReasoningPass({
+      config: { ...createConfig(), memory: { writePolicy: "allow" } },
+      paths,
+      apiKey: "test-key",
+      turn: { channel: "terminal", userInput: "I am building Bestie with SQLite memory.", assistantText: "Got it." },
+      chatCompletion: async () => JSON.stringify({
+        entities: [
+          { name: "User", kind: "person", confidence: 0.9 },
+          { name: "Bestie", kind: "project", aliases: ["Bestie Agent"], confidence: 0.9 },
+        ],
+        relations: [{ sourceName: "User", sourceKind: "person", type: "works_on", targetName: "Bestie", targetKind: "project", evidence: "User is building Bestie.", confidence: 0.85 }],
+      }),
+    });
+
+    assert.deepEqual(result.storedEntities.map((entity) => `${entity.kind}:${entity.canonicalName}`), ["person:User", "project:Bestie"]);
+    assert.deepEqual(result.storedRelations.map((relation) => relation.relationType), ["works_on"]);
+    assert.deepEqual(result.pending, []);
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("runKnowledgeReasoningPass queues graph candidates when write policy asks", async () => {
+  const paths = await createTempPaths();
+
+  try {
+    const result = await runKnowledgeReasoningPass({
+      config: { ...createConfig(), memory: { writePolicy: "ask" } },
+      paths,
+      apiKey: "test-key",
+      turn: { channel: "telegram", userId: "12345", userInput: "Bestie depends on SQLite.", assistantText: "Noted." },
+      chatCompletion: async () => JSON.stringify({
+        entities: [{ name: "Bestie", kind: "project", confidence: 0.9 }, { name: "SQLite", kind: "tool", confidence: 0.9 }],
+        relations: [{ sourceName: "Bestie", sourceKind: "project", type: "depends_on", targetName: "SQLite", targetKind: "tool", confidence: 0.9 }],
+      }),
+    });
+
+    assert.equal(result.pending.length, 1);
+    assert.match(result.pending[0]?.reason ?? "", /Reasoned from telegram conversation/);
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
   }

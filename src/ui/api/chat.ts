@@ -3,6 +3,8 @@ import { appendConversationTurn, buildChatMessages } from "../../chat/message-bu
 import { loadSystemPrompt } from "../../character/prompt-loader.js";
 import { sendChatCompletionWithFallbacks } from "../../llm/chat-completion.js";
 import { loadLlmCandidateSecret, resolvePrimaryLlmCandidate } from "../../llm/resolve-config.js";
+import type { ChatCompletionOptions } from "../../llm/types.js";
+import { runKnowledgeReasoningPass, type KnowledgeReasoningResult } from "../../memory/knowledge-reasoning.js";
 import { SqliteMemoryStore } from "../../memory/sqlite-store.js";
 import { loadConfig } from "../../runtime/config.js";
 import { appendLog } from "../../runtime/logger.js";
@@ -26,6 +28,7 @@ export interface UiChatOptions {
   replaySourceRunId?: number;
   paths?: RuntimePaths;
   stream?: boolean;
+  chatCompletion?: (config: Awaited<ReturnType<typeof loadConfig>>, apiKey: string, options: ChatCompletionOptions) => Promise<string>;
   onToken?: (token: string) => void;
   onToolActivity?: (activity: AgentToolActivity) => void | Promise<void>;
   onTimelineEvent?: (event: UiChatTimelineEvent) => void | Promise<void>;
@@ -38,7 +41,7 @@ export interface UiChatAttachment {
   content: string;
 }
 
-export type UiChatTimelineEventType = "thinking" | "tool_start" | "tool_finish" | "token" | "approval_required" | "done" | "error";
+export type UiChatTimelineEventType = "thinking" | "tool_start" | "tool_finish" | "token" | "approval_required" | "memory_capture" | "done" | "error";
 
 export interface UiChatTimelineEvent {
   type: UiChatTimelineEventType;
@@ -500,10 +503,12 @@ export async function runUiChat(options: UiChatOptions): Promise<UiChatResult> {
   const config = applyProviderOverride(await loadConfig(paths));
   const systemPrompt = await loadSystemPrompt(paths);
   const apiKey = await loadLlmCandidateSecret(resolvePrimaryLlmCandidate(config), paths);
+  const chatCompletion = options.chatCompletion ?? ((currentConfig: typeof config, _apiKey: string, requestOptions: ChatCompletionOptions) => sendChatCompletionWithFallbacks(currentConfig, requestOptions, { paths }));
   const memories = options.memoryEnabled === false ? [] : await loadActiveMemories(paths);
   const history = toChatHistory(options.history ?? []);
   const promptInput = appendAttachmentContext(userInput, options.attachments);
-  const messages = buildChatMessages(buildMcpToolSystemPrompt(systemPrompt, config), history, promptInput, memories, { memoryRetrievalPolicy: config.memory?.retrievalPolicy ?? "full" });
+  const knowledgeGraph = options.memoryEnabled === false ? undefined : await loadRelevantKnowledgeGraph(paths, promptInput);
+  const messages = buildChatMessages(buildMcpToolSystemPrompt(systemPrompt, config), history, promptInput, memories, { memoryRetrievalPolicy: config.memory?.retrievalPolicy ?? "full", knowledgeGraph });
   const toolActivities: AgentToolActivity[] = [];
   const persistedUser = options.sessionId === undefined ? undefined : await persistUserChatMessage(paths, options.sessionId, userInput);
   const session = persistedUser?.session;
@@ -524,7 +529,7 @@ export async function runUiChat(options: UiChatOptions): Promise<UiChatResult> {
       apiKey,
       messages,
       approver: session ? createUiChatApprover(paths, session.id, timelineOptions) : undefined,
-      chatCompletion: (currentConfig, _apiKey, requestOptions) => sendChatCompletionWithFallbacks(currentConfig, requestOptions, { paths }),
+      chatCompletion,
       reloadConfig: async () => applyProviderOverride(await loadConfig(paths)),
       maxToolCalls: options.toolsEnabled === false ? 0 : 20,
       streamFinalResponse: options.stream === true,
@@ -548,9 +553,58 @@ export async function runUiChat(options: UiChatOptions): Promise<UiChatResult> {
 
   const persistedAssistant = session ? await persistAssistantChatMessage(paths, session.id, answer, run?.id) : undefined;
   const finishedRun = run ? await finishUiChatRun(paths, run.id, { status: "done", model: config.llm.primary, assistantMessageId: persistedAssistant?.message.id, metadataJson: JSON.stringify(buildChatRunMetadata(userInput, options, { model: config.llm.primary, output: answer, outputChars: answer.length, toolCalls: toolActivities.length })) }) : undefined;
+  if (options.memoryEnabled !== false) {
+    await runUiKnowledgeReasoningPass({ config, paths, apiKey, userInput: promptInput, assistantText: answer, sessionId: session?.id, assistantMessageId: persistedAssistant?.message.id, runId: run?.id, timelineOptions, chatCompletion });
+  }
   await emitTimelineEvent(paths, session?.id, timelineOptions, { type: "done", label: "Assistant response completed", payload: { characters: answer.length, toolCalls: toolActivities.length } });
   await appendLog({ event: "ui_chat_success", detail: { model: config.llm.primary, toolCalls: toolActivities.length } }, { paths, knownSecrets: [apiKey] });
   return { ok: true, ...(persistedAssistant ? { session: persistedAssistant.session } : {}), ...(finishedRun ? { run: finishedRun } : {}), answer, model: config.llm.primary, toolActivities };
+}
+
+async function runUiKnowledgeReasoningPass(options: {
+  config: Awaited<ReturnType<typeof loadConfig>>;
+  paths: RuntimePaths;
+  apiKey: string;
+  userInput: string;
+  assistantText: string;
+  sessionId?: number;
+  assistantMessageId?: number;
+  runId?: number;
+  timelineOptions: UiChatTimelineSink;
+  chatCompletion: (config: Awaited<ReturnType<typeof loadConfig>>, apiKey: string, options: ChatCompletionOptions) => Promise<string>;
+}): Promise<KnowledgeReasoningResult> {
+  try {
+    const result = await runKnowledgeReasoningPass({
+      config: options.config,
+      paths: options.paths,
+      apiKey: options.apiKey,
+      turn: { channel: "ui", userId: options.sessionId === undefined ? undefined : `session:${options.sessionId}`, sourceMessageId: formatUiChatKnowledgeSource(options), userInput: options.userInput, assistantText: options.assistantText },
+      chatCompletion: options.chatCompletion,
+    });
+    const storedEntities = result.storedEntities.length;
+    const storedRelations = result.storedRelations.length;
+    const pending = result.pending.length;
+    const skipped = result.skipped.length;
+    if (storedEntities > 0 || storedRelations > 0 || pending > 0 || skipped > 0) {
+      await emitTimelineEvent(options.paths, options.sessionId, options.timelineOptions, {
+        type: "memory_capture",
+        label: pending > 0 ? "Knowledge graph memory pending review" : storedEntities > 0 || storedRelations > 0 ? "Knowledge graph memory captured" : "Knowledge graph memory skipped",
+        payload: { storedEntities, storedRelations, pending, skipped },
+      });
+    }
+    return result;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown knowledge reasoning error.";
+    await appendLog({ event: "knowledge_reasoning_failure", detail: { channel: "ui", message } }, { paths: options.paths, knownSecrets: [options.apiKey] });
+    return { storedEntities: [], storedRelations: [], pending: [], skipped: [] };
+  }
+}
+
+function formatUiChatKnowledgeSource(options: { sessionId?: number; assistantMessageId?: number; runId?: number }): string | undefined {
+  if (options.sessionId === undefined || options.assistantMessageId === undefined) {
+    return undefined;
+  }
+  return `ui-chat:${options.sessionId}:message:${options.assistantMessageId}${options.runId === undefined ? "" : `:run:${options.runId}`}`;
 }
 
 function createUiChatApprover(paths: RuntimePaths, sessionId: number, options: UiChatOptions) {
@@ -665,6 +719,17 @@ async function loadActiveMemories(paths: RuntimePaths): Promise<import("../../me
   try {
     if (store.getMemoryState().paused) return [];
     return store.listActiveMemories();
+  } finally {
+    store.close();
+  }
+}
+
+async function loadRelevantKnowledgeGraph(paths: RuntimePaths, query: string): Promise<import("../../memory/sqlite-store.js").KnowledgeGraphSearchResult | undefined> {
+  const store = await SqliteMemoryStore.open(paths);
+  try {
+    if (store.getMemoryState().paused) return undefined;
+    const graph = store.searchKnowledgeGraph(query, 12);
+    return graph.entities.length === 0 && graph.relations.length === 0 ? undefined : graph;
   } finally {
     store.close();
   }

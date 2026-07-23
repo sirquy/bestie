@@ -1,5 +1,6 @@
 import { stdout as output } from "node:process";
 
+import { runKnowledgeReasoningPass } from "../memory/knowledge-reasoning.js";
 import { runMemoryReasoningPass } from "../memory/reasoning.js";
 import { SqliteMemoryStore } from "../memory/sqlite-store.js";
 import { createCliPermissionApprover } from "../cli/permission-approver.js";
@@ -85,7 +86,8 @@ export async function runTerminalChat(options: TerminalChatOptions): Promise<voi
       try {
         apiKey ??= await loadLlmCandidateSecret(resolvePrimaryLlmCandidate(options.config), options.paths);
         const memories = await loadActiveMemories(options.paths);
-        const messages = buildChatMessages(buildTerminalSystemPrompt(options.systemPrompt, options.config), recentTurns, userInput, memories, { memoryRetrievalPolicy: options.config.memory?.retrievalPolicy ?? "full" });
+        const knowledgeGraph = await loadRelevantKnowledgeGraph(options.paths, userInput);
+        const messages = buildChatMessages(buildTerminalSystemPrompt(options.systemPrompt, options.config), recentTurns, userInput, memories, { memoryRetrievalPolicy: options.config.memory?.retrievalPolicy ?? "full", knowledgeGraph });
         const indicator = startChatIndicator(options.agentName);
         let assistantText: string;
         const writeChatLine = (message: string) => {
@@ -124,6 +126,13 @@ export async function runTerminalChat(options: TerminalChatOptions): Promise<voi
           turn: { channel: "terminal", userInput, assistantText },
           chatCompletion,
         });
+        await runTerminalKnowledgeReasoningPass({
+          config: options.config,
+          paths: options.paths,
+          apiKey,
+          turn: { channel: "terminal", userInput, assistantText },
+          chatCompletion,
+        });
         if (!(await isMemoryPaused(options.paths))) {
           recentTurns = appendConversationTurn(recentTurns, userInput, assistantText);
         }
@@ -146,6 +155,15 @@ async function runTerminalMemoryReasoningPass(options: Parameters<typeof runMemo
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown memory reasoning error.";
     await appendLog({ event: "memory_reasoning_failure", detail: { channel: "terminal", message } }, { paths: options.paths, knownSecrets: [options.apiKey] });
+  }
+}
+
+async function runTerminalKnowledgeReasoningPass(options: Parameters<typeof runKnowledgeReasoningPass>[0]): Promise<void> {
+  try {
+    await runKnowledgeReasoningPass(options);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown knowledge reasoning error.";
+    await appendLog({ event: "knowledge_reasoning_failure", detail: { channel: "terminal", message } }, { paths: options.paths, knownSecrets: [options.apiKey] });
   }
 }
 
@@ -358,6 +376,22 @@ async function loadActiveMemories(paths: RuntimePaths): Promise<import("../memor
     store.close();
   }
 }
+
+async function loadRelevantKnowledgeGraph(paths: RuntimePaths, query: string): Promise<import("../memory/sqlite-store.js").KnowledgeGraphSearchResult | undefined> {
+  const store = await SqliteMemoryStore.open(paths);
+
+  try {
+    if (store.getMemoryState().paused) {
+      return undefined;
+    }
+
+    const graph = store.searchKnowledgeGraph(query, 12);
+    return graph.entities.length === 0 && graph.relations.length === 0 ? undefined : graph;
+  } finally {
+    store.close();
+  }
+}
+
 async function isMemoryPaused(paths: RuntimePaths): Promise<boolean> {
   const store = await SqliteMemoryStore.open(paths);
 

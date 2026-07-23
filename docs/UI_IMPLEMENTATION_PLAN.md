@@ -62,8 +62,9 @@ Shipped panels:
 - Provider Hub with presets, setup, primary model, fallback add/remove, and test primary.
 - Character Studio for `character.json` and `system-prompt.md` edits.
 - Memory Center for active memory search and pending memory approve/reject.
+- Knowledge Graph for local entity/relation map rendering, clickable item inspector with timeline/audit hints, graph search, pending graph writes, review suggestions, and confirmation/approval-gated graph actions.
 - Channel Hub for Telegram, Zalo, cron, and daemon actions.
-- Approvals Hub for pending permission decisions without exposing payload JSON.
+- Approvals Hub for pending permission decisions without exposing payload JSON, including guarded execution for queued local UI actions.
 - MCP Hub with server cards, transports, auth/env metadata, tool categories, and tool names.
 - Tools & Permissions with policy counts, per-tool policy rows, workspace paths, and exec timeout.
 - Settings for low-risk agent and memory policy edits.

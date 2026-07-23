@@ -9,8 +9,9 @@ import type { AppConfig } from "../runtime/config.js";
 import type { RuntimePaths } from "../runtime/paths.js";
 import { formatWorkspaceRelativePath, resolveWorkspacePath } from "../runtime/workspace.js";
 import { reviewActionPermission, type PermissionApprover, type PermissionPolicy } from "../safety/permission-policy.js";
+import { analyzeKnowledgeGraph, planKnowledgeGraphReview, type KnowledgeGraphAnalysis, type KnowledgeGraphReviewPlan } from "../memory/knowledge-governance.js";
 import { planMemoryRebalance, type MemoryRebalanceRecommendation } from "../memory/rebalance.js";
-import { SqliteMemoryStore, type MemoryHygieneSnapshot, type StoredMemory } from "../memory/sqlite-store.js";
+import { SqliteMemoryStore, type KnowledgeEntity, type KnowledgeGraphSearchResult, type KnowledgeRelationWithEntities, type MemoryHygieneSnapshot, type StoredMemory } from "../memory/sqlite-store.js";
 
 export interface LocalToolOptions {
   config?: AppConfig;
@@ -48,6 +49,29 @@ export interface InspectMemoryResult {
   allowed: boolean;
   reason: string;
   memory?: StoredMemory;
+}
+
+export interface SearchKnowledgeGraphToolResult {
+  allowed: boolean;
+  reason: string;
+  graph: KnowledgeGraphSearchResult;
+}
+
+export interface InspectKnowledgeEntityToolResult {
+  allowed: boolean;
+  reason: string;
+  entity?: KnowledgeEntity;
+  neighborhood: KnowledgeRelationWithEntities[];
+}
+
+export interface AnalyzeKnowledgeGraphToolResult {
+  allowed: boolean;
+  reason: string;
+  analysis: KnowledgeGraphAnalysis;
+}
+
+export interface PlanKnowledgeGraphReviewToolResult extends AnalyzeKnowledgeGraphToolResult {
+  plan: KnowledgeGraphReviewPlan;
 }
 
 export type MemoryAnalysisMode = "all" | "duplicates" | "stale" | "conflicts";
@@ -281,6 +305,136 @@ export async function inspectMemoryTool(options: LocalToolOptions & { id: number
   }
 }
 
+export async function searchKnowledgeGraphTool(options: LocalToolOptions & { query: string; limit?: number }): Promise<SearchKnowledgeGraphToolResult> {
+  const permission = await reviewActionPermission(
+    {
+      category: "read",
+      action: "search_knowledge_graph",
+      target: "local knowledge graph",
+      reason: "Search approved active local knowledge graph entities and relations.",
+      trusted: true,
+    },
+    { paths: options.paths, approver: options.approver, policy: options.policy },
+  );
+
+  if (permission.decision !== "allow") {
+    return { allowed: false, reason: permission.reason, graph: { query: options.query, entities: [], relations: [] } };
+  }
+
+  const store = await SqliteMemoryStore.open(options.paths);
+
+  try {
+    return {
+      allowed: true,
+      reason: permission.reason,
+      graph: store.searchKnowledgeGraph(options.query, normalizeOptionalMemoryLimit(options.limit)),
+    };
+  } finally {
+    store.close();
+  }
+}
+
+export async function inspectKnowledgeEntityTool(options: LocalToolOptions & { id: number; limit?: number }): Promise<InspectKnowledgeEntityToolResult> {
+  const permission = await reviewActionPermission(
+    {
+      category: "read",
+      action: "inspect_knowledge_entity",
+      target: `knowledge entity #${options.id}`,
+      reason: "Inspect one approved active local knowledge graph entity and its one-hop relations.",
+      trusted: true,
+    },
+    { paths: options.paths, approver: options.approver, policy: options.policy },
+  );
+
+  if (permission.decision !== "allow") {
+    return { allowed: false, reason: permission.reason, neighborhood: [] };
+  }
+
+  const store = await SqliteMemoryStore.open(options.paths);
+
+  try {
+    const entity = store.getKnowledgeEntity(options.id);
+    return {
+      allowed: true,
+      reason: permission.reason,
+      entity,
+      neighborhood: entity ? store.getKnowledgeEntityNeighborhood(entity.id, normalizeOptionalMemoryLimit(options.limit) ?? 20) : [],
+    };
+  } finally {
+    store.close();
+  }
+}
+
+export async function analyzeKnowledgeGraphTool(options: LocalToolOptions): Promise<AnalyzeKnowledgeGraphToolResult> {
+  const permission = await reviewActionPermission(
+    {
+      category: "read",
+      action: "analyze_knowledge_graph",
+      target: "local knowledge graph",
+      reason: "Find duplicate entity candidates, relation conflicts, and pending review items in the local knowledge graph.",
+      trusted: true,
+    },
+    { paths: options.paths, approver: options.approver, policy: options.policy },
+  );
+
+  const emptyAnalysis = emptyKnowledgeGraphAnalysis();
+  if (permission.decision !== "allow") {
+    return { allowed: false, reason: permission.reason, analysis: emptyAnalysis };
+  }
+
+  const store = await SqliteMemoryStore.open(options.paths);
+
+  try {
+    return {
+      allowed: true,
+      reason: permission.reason,
+      analysis: analyzeKnowledgeGraph({
+        entities: store.listKnowledgeEntities({ limit: 10_000 }),
+        relations: store.listKnowledgeRelations(10_000),
+        pending: store.listPendingKnowledgeItems(10_000),
+      }),
+    };
+  } finally {
+    store.close();
+  }
+}
+
+export async function planKnowledgeGraphReviewTool(options: LocalToolOptions & { limit?: number }): Promise<PlanKnowledgeGraphReviewToolResult> {
+  const permission = await reviewActionPermission(
+    {
+      category: "read",
+      action: "plan_knowledge_graph_review",
+      target: "local knowledge graph",
+      reason: "Prioritize safe next review steps for duplicate entities, conflicting relations, and pending graph items.",
+      trusted: true,
+    },
+    { paths: options.paths, approver: options.approver, policy: options.policy },
+  );
+
+  const emptyAnalysis = emptyKnowledgeGraphAnalysis();
+  if (permission.decision !== "allow") {
+    return { allowed: false, reason: permission.reason, analysis: emptyAnalysis, plan: planKnowledgeGraphReview(emptyAnalysis, normalizeOptionalMemoryLimit(options.limit) ?? 10) };
+  }
+
+  const store = await SqliteMemoryStore.open(options.paths);
+
+  try {
+    const analysis = analyzeKnowledgeGraph({
+      entities: store.listKnowledgeEntities({ limit: 10_000 }),
+      relations: store.listKnowledgeRelations(10_000),
+      pending: store.listPendingKnowledgeItems(10_000),
+    });
+    return {
+      allowed: true,
+      reason: permission.reason,
+      analysis,
+      plan: planKnowledgeGraphReview(analysis, normalizeOptionalMemoryLimit(options.limit) ?? 10),
+    };
+  } finally {
+    store.close();
+  }
+}
+
 export async function analyzeMemoriesTool(options: LocalToolOptions & { mode?: MemoryAnalysisMode }): Promise<AnalyzeMemoriesResult> {
   const mode = normalizeMemoryAnalysisMode(options.mode);
   const permission = await reviewActionPermission(
@@ -432,6 +586,10 @@ export async function readMemoryHygieneTrendTool(options: LocalToolOptions & { l
 
 function normalizeOptionalMemoryLimit(limit: number | undefined): number | undefined {
   return limit === undefined ? undefined : normalizeMemoryLimit(limit);
+}
+
+function emptyKnowledgeGraphAnalysis(): KnowledgeGraphAnalysis {
+  return { checkedEntities: 0, checkedRelations: 0, orphanEntities: [], lowConfidenceRelations: [], mergeCandidates: [], conflictingRelations: [], pendingItems: [], score: 100 };
 }
 
 function normalizeMemoryTrendLimit(limit: number | undefined): number {

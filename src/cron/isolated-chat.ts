@@ -29,7 +29,8 @@ export async function runIsolatedChat(options: IsolatedChatOptions): Promise<str
 
   const systemPrompt = buildCronSystemPrompt(options.config, await loadWorkspaceInstructions(options.paths));
   const memories = await loadActiveMemories(options.paths);
-  const messages = buildChatMessages(systemPrompt, [], options.prompt, memories, { memoryRetrievalPolicy: options.config.memory?.retrievalPolicy ?? "full" });
+  const knowledgeGraph = await loadRelevantKnowledgeGraph(options.paths, options.prompt);
+  const messages = buildChatMessages(systemPrompt, [], options.prompt, memories, { memoryRetrievalPolicy: options.config.memory?.retrievalPolicy ?? "full", knowledgeGraph });
 
   appendLog(
     { event: "cron_isolated_chat_start", detail: { prompt: options.prompt.slice(0, 120) } },
@@ -63,6 +64,21 @@ async function loadActiveMemories(paths: RuntimePaths): Promise<import("../memor
     }
 
     return store.listActiveMemories();
+  } finally {
+    store.close();
+  }
+}
+
+async function loadRelevantKnowledgeGraph(paths: RuntimePaths, query: string): Promise<import("../memory/sqlite-store.js").KnowledgeGraphSearchResult | undefined> {
+  const store = await SqliteMemoryStore.open(paths);
+
+  try {
+    if (store.getMemoryState().paused) {
+      return undefined;
+    }
+
+    const graph = store.searchKnowledgeGraph(query, 12);
+    return graph.entities.length === 0 && graph.relations.length === 0 ? undefined : graph;
   } finally {
     store.close();
   }

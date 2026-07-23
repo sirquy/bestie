@@ -28,6 +28,7 @@ try {
   if (brandColor !== "rgb(238, 246, 237)") throw new Error(`Sidebar brand title should be light, got ${brandColor}`);
   await assertPanel(page, `${server.url}/#provider-panel`, "#provider-panel", "openai/test-model via openai-compatible", ["ChatGPT", "Gemini", "Set primary"]);
   await assertMemoryPanel(page, `${server.url}/#memory-panel`);
+  await assertKnowledgePanel(page, `${server.url}/#knowledge-panel`);
   await assertChannelPanel(page, `${server.url}/#channel-panel`);
   await assertApprovalsPanel(page, `${server.url}/#approvals-panel`);
   await assertMcpPanel(page, `${server.url}/#mcp-panel`);
@@ -51,7 +52,7 @@ try {
 }
 
 async function assertVisualLayouts(page, baseUrl, outputDir) {
-  const panels = ["chat-panel", "provider-panel", "channel-panel", "approvals-panel", "mcp-panel", "tools-panel", "skills-panel"];
+  const panels = ["chat-panel", "provider-panel", "knowledge-panel", "channel-panel", "approvals-panel", "mcp-panel", "tools-panel", "skills-panel"];
   const viewports = [
     { name: "desktop", width: 1280, height: 900 },
     { name: "mobile", width: 390, height: 844 },
@@ -78,6 +79,83 @@ async function assertMemoryPanel(page, url) {
   await page.click("#memory-search-run");
   await page.waitForSelector("#memory-search-view.active");
   await page.waitForSelector("text=Search results for \"concise\"");
+}
+
+async function assertKnowledgePanel(page, url) {
+  await assertPanel(page, url, "#knowledge-panel", "Entities 3 / Relations 2", ["Bestie UI", "works_on", "Review"]);
+  await page.waitForSelector('#knowledge-panel .knowledge-cytoscape[data-knowledge-graph-ready="true"]');
+  const graphGeometry = await page.locator("#knowledge-panel .knowledge-cytoscape").evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    return { width: rect.width, height: rect.height, nodes: Number(element.dataset.nodeCount ?? 0), edges: Number(element.dataset.edgeCount ?? 0), canvases: element.querySelectorAll("canvas").length };
+  });
+  if (graphGeometry.width < 280 || graphGeometry.height < 260 || graphGeometry.nodes < 3 || graphGeometry.edges < 2 || graphGeometry.canvases < 1) throw new Error(`Knowledge graph map did not render enough content: ${JSON.stringify(graphGeometry)}`);
+  await page.evaluate(() => window.__bestieKnowledgeGraph.cy.$id("entity-3").emit("tap"));
+  await page.waitForSelector("#knowledge-inspector >> text=Entity");
+  await page.waitForSelector("#knowledge-inspector >> text=Connected relations");
+  await page.waitForSelector("#knowledge-inspector >> text=Timeline");
+  await page.waitForSelector("#knowledge-inspector >> text=Why this exists");
+  await page.waitForSelector('#knowledge-inspector [data-knowledge-source-session]');
+  await page.click('#knowledge-inspector [data-knowledge-source-session]');
+  await page.waitForSelector("#chat-panel.active");
+  await page.waitForSelector("#chat-transcript .chat-message.source-highlight");
+  await page.waitForSelector("#chat-inspector >> text=Run #");
+  await page.goto(url, { waitUntil: "networkidle" });
+  await page.waitForSelector("#knowledge-panel.active");
+  await page.waitForSelector('#knowledge-panel .knowledge-cytoscape[data-knowledge-graph-ready="true"]');
+  await page.evaluate(() => window.__bestieKnowledgeGraph.cy.edges()[0].emit("tap"));
+  await page.waitForSelector("#knowledge-inspector >> text=Relation");
+  await page.waitForSelector('#knowledge-inspector [data-knowledge-action="update_relation"]');
+  await page.waitForSelector("#knowledge-inspector >> text=Evidence");
+  await page.waitForSelector("#knowledge-inspector >> text=Trust");
+  await page.click('#knowledge-panel [data-segment-target="knowledge-trust"]');
+  await page.waitForSelector("#knowledge-trust.active");
+  await page.waitForSelector("#knowledge-trust-filter");
+  await page.waitForSelector("#knowledge-trust >> text=Average");
+  await page.selectOption("#knowledge-trust-sort", "age");
+  await page.selectOption("#knowledge-trust-filter", "source");
+  await page.waitForSelector("#knowledge-trust >> text=Needs source");
+  await page.selectOption("#knowledge-trust-filter", "all");
+  await page.click('#knowledge-trust [data-knowledge-select="entity"], #knowledge-trust [data-knowledge-select="relation"]');
+  await page.waitForSelector("#knowledge-trust-inspector >> text=Trust");
+  await page.click('#knowledge-panel [data-segment-target="knowledge-review"]');
+  await page.waitForSelector("#knowledge-review.active");
+  await page.waitForSelector("#knowledge-review-priority");
+  await page.waitForSelector("#knowledge-review-action");
+  await page.selectOption("#knowledge-review-action", "inspect_pending");
+  await page.waitForSelector("#knowledge-review >> text=Pending graph item");
+  await page.click('#knowledge-review [data-knowledge-select="suggestion"]');
+  await page.waitForSelector("#knowledge-review-inspector >> text=Impact preview");
+  await page.waitForSelector('#knowledge-review-inspector [data-knowledge-jump-type="pending"]');
+  await page.click('#knowledge-review-inspector [data-knowledge-jump-type="pending"]');
+  await page.waitForSelector("#knowledge-review-inspector >> text=Pending graph write");
+  await page.selectOption("#knowledge-review-action", "all");
+  await page.waitForSelector("#knowledge-review >> text=Review graph smoke payload");
+  await page.click('#knowledge-review [data-knowledge-select="pending"]');
+  await page.waitForSelector("#knowledge-review-inspector >> text=Pending graph write");
+  await page.waitForSelector("#knowledge-review-inspector >> text=queued");
+  await page.click('#knowledge-panel [data-segment-target="knowledge-search-view"]');
+  await page.fill("#knowledge-search", "Bestie UI");
+  await page.click("#knowledge-search-run");
+  await page.waitForSelector("#knowledge-search-view.active");
+  await page.waitForSelector('text=Search results for "Bestie UI"');
+  await page.waitForSelector("#knowledge-search-results >> text=Bestie UI");
+  await page.click('#knowledge-search-results [data-knowledge-select="relation"]');
+  await page.waitForSelector("#knowledge-search-inspector >> text=Relation");
+  await page.waitForSelector("#knowledge-search-inspector >> text=Timeline");
+  await page.click('#knowledge-search-results [data-knowledge-action="update_relation"]');
+  await page.waitForSelector("#input-dialog[open]");
+  await page.fill("#input-value", "0.56");
+  await page.click("#input-confirm");
+  await page.waitForSelector("#confirm-dialog[open]");
+  await page.click('#confirm-dialog button[value="confirm"]');
+  await page.waitForSelector("#toast.show >> text=Graph approval queued.");
+  await page.goto(url.replace("#knowledge-panel", "#approvals-panel"), { waitUntil: "networkidle" });
+  await page.waitForSelector("#approvals-panel.active");
+  await page.waitForSelector("#approvals-panel >> text=internal.update_knowledge_relation");
+  await page.click('#approvals-panel [data-approval-action="approve"]');
+  await page.waitForSelector("#confirm-dialog[open]");
+  await page.click('#confirm-dialog button[value="confirm"]');
+  await page.waitForFunction(() => document.querySelector("#approvals-panel .value")?.textContent?.includes("Pending 1"));
 }
 
 async function assertChatPanel(page, url, homeDir) {

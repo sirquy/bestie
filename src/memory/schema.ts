@@ -34,6 +34,64 @@ CREATE TABLE IF NOT EXISTS memory_links (
   UNIQUE(source_memory_id, target_memory_id, kind)
 );
 
+CREATE TABLE IF NOT EXISTS knowledge_entities (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  canonical_name TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  aliases_json TEXT DEFAULT '[]',
+  sensitivity TEXT DEFAULT 'normal',
+  scope TEXT DEFAULT 'global',
+  confidence REAL DEFAULT 1.0,
+  source_memory_id INTEGER,
+  source_message_id TEXT,
+  status TEXT DEFAULT 'active',
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(canonical_name, kind),
+  FOREIGN KEY (source_memory_id) REFERENCES memories(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS knowledge_relations (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  source_entity_id INTEGER NOT NULL,
+  relation_type TEXT NOT NULL,
+  target_entity_id INTEGER NOT NULL,
+  evidence TEXT,
+  sensitivity TEXT DEFAULT 'normal',
+  scope TEXT DEFAULT 'global',
+  confidence REAL DEFAULT 1.0,
+  source_memory_id INTEGER,
+  source_message_id TEXT,
+  status TEXT DEFAULT 'active',
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (source_entity_id) REFERENCES knowledge_entities(id) ON DELETE CASCADE,
+  FOREIGN KEY (target_entity_id) REFERENCES knowledge_entities(id) ON DELETE CASCADE,
+  FOREIGN KEY (source_memory_id) REFERENCES memories(id) ON DELETE SET NULL,
+  UNIQUE(source_entity_id, relation_type, target_entity_id)
+);
+
+CREATE TABLE IF NOT EXISTS pending_knowledge_items (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  payload_json TEXT NOT NULL,
+  reason TEXT,
+  source TEXT DEFAULT 'manual',
+  explicit_consent INTEGER DEFAULT 0,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS knowledge_audit_events (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  subject_type TEXT NOT NULL CHECK(subject_type IN ('entity', 'relation', 'pending')),
+  subject_id INTEGER NOT NULL,
+  event_type TEXT NOT NULL,
+  actor TEXT DEFAULT 'system',
+  channel TEXT,
+  reason TEXT,
+  payload_summary TEXT,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE IF NOT EXISTS messages (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   channel TEXT,

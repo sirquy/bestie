@@ -31,6 +31,7 @@ try {
   await assertMemory(`${server.url}/api/memory`, `${server.url}/api/memory/search`, `${server.url}/api/memory/action`);
   await assertChannels(`${server.url}/api/channels`, `${server.url}/api/channels/action`);
   await assertApprovals(`${server.url}/api/approvals`, `${server.url}/api/approvals/action`);
+  await assertKnowledgeGraph(`${server.url}/api/knowledge-graph`, `${server.url}/api/knowledge-graph/search`, `${server.url}/api/knowledge-graph/action`, `${server.url}/api/approvals`, `${server.url}/api/approvals/action`);
   await assertMcp(`${server.url}/api/mcp`);
   await assertTools(`${server.url}/api/tools`);
   await assertSkills(`${server.url}/api/skills`, `${server.url}/api/skills/item`, `${server.url}/api/skills/delete`);
@@ -70,12 +71,12 @@ async function assertHome(url, scriptUrl) {
   const response = await fetch(url);
   const html = await response.text();
   assertHomeScriptSyntax();
-  if (!response.ok || !html.includes("Bestie UI") || !html.includes("/assets/home.js") || !html.includes("memory-panel") || !html.includes("channel-panel") || !html.includes("approvals-panel") || !html.includes("mcp-panel") || !html.includes("tools-panel") || !html.includes("settings-panel") || !html.includes("input-dialog") || html.includes("topbar") || html.includes("status-strip") || html.includes("metric-grid") || html.includes("/api/status") || html.includes("data-provider-preset")) {
+  if (!response.ok || !html.includes("Bestie UI") || !html.includes("/assets/cytoscape.min.js") || !html.includes("/assets/home.js") || !html.includes("memory-panel") || !html.includes("knowledge-panel") || !html.includes("channel-panel") || !html.includes("approvals-panel") || !html.includes("mcp-panel") || !html.includes("tools-panel") || !html.includes("settings-panel") || !html.includes("input-dialog") || html.includes("topbar") || html.includes("status-strip") || html.includes("metric-grid") || html.includes("/api/status") || html.includes("data-provider-preset")) {
     throw new Error(`Unexpected home response for ${url}: ${response.status}`);
   }
   const scriptResponse = await fetch(scriptUrl);
   const script = await scriptResponse.text();
-  if (!scriptResponse.ok || !script.includes("/api/status") || !script.includes("/api/doctor") || !script.includes("/api/doctor/fix") || !script.includes("/api/providers") || !script.includes("/api/providers/test") || !script.includes("/api/character") || !script.includes("/api/memory") || !script.includes("/api/channels") || !script.includes("/api/channels/action") || !script.includes("/api/approvals") || !script.includes("/api/approvals/action") || !script.includes("/api/mcp") || !script.includes("/api/tools") || !script.includes("/api/settings") || !script.includes("data-provider-preset") || !script.includes("character-form") || !script.includes("data-channel-action") || !script.includes("settings-form") || !script.includes("provider-setup-note") || !script.includes("data-provider-field") || !script.includes("data-approval-action") || !script.includes("memory-row") || !script.includes("data-mcp-summary") || !script.includes("data-mcp-server") || !script.includes("data-mcp-categories") || !script.includes("data-tools-summary") || !script.includes("data-tool-policy") || !script.includes("message-menu") || !script.includes("data-chat-inspect-run") || !script.includes("chat-replay-run") || !script.includes("renderChatInspector") || !script.includes("chat-composer-status") || !script.includes("resizeChatComposer") || !script.includes("loadChatAttachments") || !script.includes("chat-attachment-preview") || !script.includes("scrollChatTranscriptToBottom") || !script.includes("hashchange")) {
+  if (!scriptResponse.ok || !script.includes("/api/status") || !script.includes("/api/doctor") || !script.includes("/api/doctor/fix") || !script.includes("/api/providers") || !script.includes("/api/providers/test") || !script.includes("/api/character") || !script.includes("/api/memory") || !script.includes("/api/knowledge-graph") || !script.includes("/api/knowledge-graph/action") || !script.includes("/api/channels") || !script.includes("/api/channels/action") || !script.includes("/api/approvals") || !script.includes("/api/approvals/action") || !script.includes("/api/mcp") || !script.includes("/api/tools") || !script.includes("/api/settings") || !script.includes("data-provider-preset") || !script.includes("character-form") || !script.includes("data-channel-action") || !script.includes("settings-form") || !script.includes("provider-setup-note") || !script.includes("data-provider-field") || !script.includes("data-approval-action") || !script.includes("memory-row") || !script.includes("knowledge-row") || !script.includes("knowledge-cytoscape") || !script.includes("renderKnowledgeCytoscapeGraph") || !script.includes("knowledge-svg") || !script.includes("knowledge-inspector") || !script.includes("knowledge-timeline") || !script.includes("knowledge-review-toolbar") || !script.includes("knowledge-trust") || !script.includes("knowledge-trust-filter") || !script.includes("renderKnowledgeTrustDashboard") || !script.includes("Impact preview") || !script.includes("data-knowledge-jump-type") || !script.includes("Why this exists") || !script.includes("data-knowledge-action") || !script.includes("data-knowledge-select") || !script.includes("data-knowledge-source-session") || !script.includes("jumpToKnowledgeSource") || !script.includes("source-highlight") || !script.includes("data-mcp-summary") || !script.includes("data-mcp-server") || !script.includes("data-mcp-categories") || !script.includes("data-tools-summary") || !script.includes("data-tool-policy") || !script.includes("message-menu") || !script.includes("data-chat-inspect-run") || !script.includes("chat-replay-run") || !script.includes("renderChatInspector") || !script.includes("chat-composer-status") || !script.includes("resizeChatComposer") || !script.includes("loadChatAttachments") || !script.includes("chat-attachment-preview") || !script.includes("scrollChatTranscriptToBottom") || !script.includes("hashchange")) {
     throw new Error(`Unexpected home script response for ${scriptUrl}: ${scriptResponse.status}`);
   }
 }
@@ -490,6 +491,82 @@ async function assertMemory(url, searchUrl, actionUrl) {
   const approveBody = await approveResponse.json();
   if (!approveResponse.ok || approveBody.counts?.active !== 3 || approveBody.counts?.pending !== 0) {
     throw new Error(`Unexpected memory approve response for ${actionUrl}: ${approveResponse.status} ${JSON.stringify(approveBody)}`);
+  }
+}
+
+async function assertKnowledgeGraph(url, searchUrl, actionUrl, approvalsUrl, approvalActionUrl) {
+  const response = await fetch(url);
+  const body = await response.json();
+  if (!response.ok || body.ok !== true || body.counts?.entities !== 3 || body.counts?.relations !== 2 || body.counts?.pending !== 1 || body.entities?.length !== 3 || body.relations?.length !== 2 || body.pending?.length !== 1 || body.analysis?.checkedEntities !== 3 || typeof body.review?.score !== "number") {
+    throw new Error(`Unexpected knowledge graph response for ${url}: ${response.status} ${JSON.stringify(body)}`);
+  }
+  if (!body.relations?.some((relation) => relation.sourceName === "User" && relation.relationType === "works_on" && relation.targetName === "Bestie")) {
+    throw new Error(`Knowledge graph response missed seeded relation for ${url}: ${JSON.stringify(body)}`);
+  }
+  if (typeof body.trust?.averageScore !== "number" || !body.entities?.every((entity) => typeof entity.trust?.score === "number" && Array.isArray(entity.trust?.signals)) || !body.relations?.every((relation) => typeof relation.trust?.score === "number" && Array.isArray(relation.trust?.warnings))) {
+    throw new Error(`Knowledge graph response missed trust metrics for ${url}: ${JSON.stringify(body)}`);
+  }
+  if (!body.entities?.every((entity) => typeof entity.createdAt === "string" && typeof entity.updatedAt === "string") || !body.relations?.every((relation) => typeof relation.createdAt === "string" && typeof relation.updatedAt === "string")) {
+    throw new Error(`Knowledge graph response missed audit timestamps for ${url}: ${JSON.stringify(body)}`);
+  }
+  if (!body.entities?.every((entity) => Array.isArray(entity.auditTrail) && entity.auditTrail.some((event) => event.eventType === "created")) || !body.relations?.every((relation) => Array.isArray(relation.auditTrail) && relation.auditTrail.some((event) => event.eventType === "created"))) {
+    throw new Error(`Knowledge graph response missed audit trail events for ${url}: ${JSON.stringify(body)}`);
+  }
+
+  const searchResponse = await fetch(`${searchUrl}?q=${encodeURIComponent("Bestie UI")}`);
+  const searchBody = await searchResponse.json();
+  if (!searchResponse.ok || searchBody.query !== "Bestie UI" || !searchBody.entities?.some((entity) => entity.canonicalName === "Bestie UI") || !searchBody.relations?.some((relation) => relation.targetName === "Bestie UI")) {
+    throw new Error(`Unexpected knowledge graph search response for ${searchUrl}: ${searchResponse.status} ${JSON.stringify(searchBody)}`);
+  }
+
+  const relationId = body.relations?.find((relation) => relation.relationType === "includes")?.id;
+  const missingConfirmResponse = await fetch(actionUrl, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "update_relation", id: relationId, confidence: 0.55 }) });
+  const missingConfirmBody = await missingConfirmResponse.json();
+  if (missingConfirmResponse.status !== 400 || missingConfirmBody.code !== "UiKnowledgeGraphActionConfirmationRequired") {
+    throw new Error(`Unexpected graph action confirmation response for ${actionUrl}: ${missingConfirmResponse.status} ${JSON.stringify(missingConfirmBody)}`);
+  }
+
+  const actionResponse = await fetch(actionUrl, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "update_relation", id: relationId, confidence: 0.55, reason: "UI smoke reviewed relation confidence.", confirm: true }) });
+  const actionBody = await actionResponse.json();
+  if (!actionResponse.ok || actionBody.action !== "update_relation" || actionBody.actionStatus !== "queued" || typeof actionBody.approvalId !== "number") {
+    throw new Error(`Unexpected graph queued action response for ${actionUrl}: ${actionResponse.status} ${JSON.stringify(actionBody)}`);
+  }
+
+  const approvalsResponse = await fetch(approvalsUrl);
+  const approvalsBody = await approvalsResponse.json();
+  if (!approvalsResponse.ok || approvalsBody.count !== 1 || approvalsBody.approvals?.[0]?.id !== actionBody.approvalId || approvalsBody.approvals?.[0]?.channel !== "ui") {
+    throw new Error(`Unexpected graph approval response for ${approvalsUrl}: ${approvalsResponse.status} ${JSON.stringify(approvalsBody)}`);
+  }
+
+  const approveResponse = await fetch(approvalActionUrl, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "approve", id: actionBody.approvalId, confirm: true }) });
+  const approveBody = await approveResponse.json();
+  if (!approveResponse.ok || approveBody.execution?.status !== "executed" || approveBody.count !== 0) {
+    throw new Error(`Unexpected graph approval execution response for ${approvalActionUrl}: ${approveResponse.status} ${JSON.stringify(approveBody)}`);
+  }
+
+  const updatedResponse = await fetch(url);
+  const updatedBody = await updatedResponse.json();
+  const updatedRelation = updatedBody.relations?.find((relation) => relation.id === relationId);
+  if (!updatedResponse.ok || updatedRelation?.confidence !== 0.55) {
+    throw new Error(`Knowledge graph relation was not updated after approval for ${url}: ${updatedResponse.status} ${JSON.stringify(updatedBody)}`);
+  }
+
+  const entityId = updatedBody.entities?.find((entity) => entity.canonicalName === "Bestie UI")?.id;
+  const forgetEntityResponse = await fetch(actionUrl, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "forget_entity", id: entityId, reason: "UI smoke undo captured entity.", confirm: true }) });
+  const forgetEntityBody = await forgetEntityResponse.json();
+  if (!forgetEntityResponse.ok || forgetEntityBody.action !== "forget_entity" || forgetEntityBody.actionStatus !== "queued" || typeof forgetEntityBody.approvalId !== "number") {
+    throw new Error(`Unexpected graph entity forget response for ${actionUrl}: ${forgetEntityResponse.status} ${JSON.stringify(forgetEntityBody)}`);
+  }
+
+  const approveForgetResponse = await fetch(approvalActionUrl, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "approve", id: forgetEntityBody.approvalId, confirm: true }) });
+  const approveForgetBody = await approveForgetResponse.json();
+  if (!approveForgetResponse.ok || approveForgetBody.execution?.status !== "executed" || approveForgetBody.count !== 0) {
+    throw new Error(`Unexpected graph entity forget approval response for ${approvalActionUrl}: ${approveForgetResponse.status} ${JSON.stringify(approveForgetBody)}`);
+  }
+
+  const afterForgetBody = await fetch(url).then((result) => result.json());
+  if (afterForgetBody.entities?.some((entity) => entity.id === entityId)) {
+    throw new Error(`Knowledge graph entity was not forgotten after approval for ${url}: ${JSON.stringify(afterForgetBody)}`);
   }
 }
 

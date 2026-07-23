@@ -117,9 +117,9 @@ h1 { font-size: clamp(1.6rem, 4vw, 2.4rem); line-height: 1; margin: 0; }
 .pill-row { align-items: center; display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-start; min-width: 0; }
 .row span:first-child { align-items: center; display: inline-flex; gap: 8px; }
 .row { border-top: 1px solid rgba(238, 246, 237, 0.1); font: 0.88rem/1.35 "Trebuchet MS", Verdana, sans-serif; padding-top: 8px; }
-.action-row, .approval-row, .memory-row, .path-row, .tool-policy-row { align-items: center; border-top: 1px solid rgba(238, 246, 237, 0.1); display: grid; font: 0.88rem/1.35 "Trebuchet MS", Verdana, sans-serif; gap: 8px; grid-template-columns: minmax(0, 1fr) auto; padding-top: 8px; }
-.action-row span:last-child:not(.pill), .approval-row span:last-child:not(.pill), .memory-row span:last-child:not(.pill) { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
-.action-row strong, .approval-row strong, .memory-row strong, .tool-policy-row strong { font-weight: 800; }
+.action-row, .approval-row, .memory-row, .knowledge-row, .path-row, .tool-policy-row { align-items: center; border-top: 1px solid rgba(238, 246, 237, 0.1); display: grid; font: 0.88rem/1.35 "Trebuchet MS", Verdana, sans-serif; gap: 8px; grid-template-columns: minmax(0, 1fr) auto; padding-top: 8px; }
+.action-row span:last-child:not(.pill), .approval-row span:last-child:not(.pill), .memory-row span:last-child:not(.pill), .knowledge-row span:last-child:not(.pill) { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
+.action-row strong, .approval-row strong, .memory-row strong, .knowledge-row strong, .tool-policy-row strong { font-weight: 800; overflow-wrap: anywhere; }
 .tool-policy-select { align-items: end; display: grid; gap: 4px; min-width: 116px; text-transform: uppercase; }
 .tool-policy-select span { color: var(--muted); font-size: 0.62rem; }
 .tool-policy-select select { background: rgba(238, 246, 237, 0.08); border-color: rgba(238, 246, 237, 0.16); color: var(--ink); font-weight: 800; min-height: 32px; padding: 6px 28px 6px 8px; text-transform: uppercase; }
@@ -135,6 +135,42 @@ h1 { font-size: clamp(1.6rem, 4vw, 2.4rem); line-height: 1; margin: 0; }
 details.tool-section summary { cursor: pointer; }
 .cron-card { border-top: 1px solid rgba(238, 246, 237, 0.1); display: grid; gap: 8px; padding-top: 8px; }
 .cron-card .action-row { border-top: 0; padding-top: 0; }
+.knowledge-map-shell { min-height: min(66vh, 720px); position: relative; overflow: hidden; }
+.knowledge-map-toolbar { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; margin-bottom: 8px; }
+.knowledge-detail-layout { align-items: start; display: grid; gap: 12px; grid-template-columns: minmax(0, 1fr) minmax(250px, 0.42fr); }
+.knowledge-review-toolbar { display: grid; gap: 10px; margin-bottom: 12px; }
+.knowledge-canvas { background: rgba(8, 13, 11, 0.34); border: 1px solid rgba(238, 246, 237, 0.09); border-radius: 8px; min-height: min(66vh, 640px); overflow: hidden; padding: 10px; width: 100%; }
+.knowledge-cytoscape { height: min(66vh, 640px); min-height: 440px; outline: none; width: 100%; }
+.knowledge-cytoscape canvas { outline: none; }
+.knowledge-svg { display: block; height: min(48vh, 440px); min-height: 320px; width: 100%; }
+.knowledge-drawer { background: rgba(13, 20, 17, 0.96); border: 1px solid rgba(238, 246, 237, 0.12); border-radius: 8px; bottom: 10px; box-shadow: 0 18px 48px rgba(0, 0, 0, 0.34); display: grid; gap: 10px; max-width: min(420px, calc(100% - 20px)); overflow: hidden; padding: 12px; position: absolute; right: 10px; top: 52px; transform: translateX(calc(100% + 24px)); transition: transform 160ms ease, opacity 160ms ease; width: 390px; z-index: 4; opacity: 0; pointer-events: none; }
+.knowledge-map-shell[data-knowledge-drawer="list"] .knowledge-drawer, .knowledge-map-shell[data-knowledge-drawer="inspector"] .knowledge-drawer { opacity: 1; transform: translateX(0); }
+.knowledge-drawer-head { align-items: center; border-bottom: 1px solid rgba(238, 246, 237, 0.09); display: flex; gap: 10px; justify-content: space-between; padding-bottom: 8px; }
+.knowledge-drawer-view { min-height: 0; overflow: auto; }
+.knowledge-map-shell[data-knowledge-drawer="inspector"] .knowledge-drawer-list, .knowledge-map-shell[data-knowledge-drawer="list"] .knowledge-drawer-inspector, .knowledge-map-shell[data-knowledge-drawer="closed"] .knowledge-drawer-list { display: none; }
+.knowledge-edge, .knowledge-node, .knowledge-row[data-knowledge-select] { cursor: pointer; }
+.knowledge-edge line { stroke: rgba(238, 246, 237, 0.24); stroke-width: 1.4; }
+.knowledge-edge text { fill: #b7cabc; font: 700 11px "Trebuchet MS", Verdana, sans-serif; paint-order: stroke; stroke: rgba(8, 13, 11, 0.86); stroke-width: 4px; text-anchor: middle; }
+.knowledge-edge:focus line, .knowledge-edge.selected line { stroke: var(--gold); stroke-width: 2.6; }
+.knowledge-node circle { fill: rgba(94, 212, 196, 0.18); stroke: var(--teal); stroke-width: 2; }
+.knowledge-node.person circle { fill: rgba(224, 178, 87, 0.18); stroke: var(--gold); }
+.knowledge-node.project circle { fill: rgba(100, 212, 135, 0.18); stroke: var(--green); }
+.knowledge-node.preference circle { fill: rgba(240, 179, 93, 0.18); stroke: var(--amber); }
+.knowledge-node text { fill: var(--ink); font: 800 12px "Trebuchet MS", Verdana, sans-serif; text-anchor: middle; }
+.knowledge-node:focus circle, .knowledge-node.selected circle { stroke-width: 3.4; }
+.knowledge-row { background: rgba(8, 13, 11, 0.2); border-radius: 6px; padding: 8px; }
+.knowledge-row.selected { background: rgba(94, 212, 196, 0.12); border-color: rgba(94, 212, 196, 0.34); }
+.knowledge-inspector { background: rgba(8, 13, 11, 0.36); border: 1px solid rgba(238, 246, 237, 0.1); border-radius: 8px; display: grid; gap: 8px; max-height: none; overflow: visible; padding: 12px; }
+.knowledge-inspector .value { font-size: 1rem; line-height: 1.25; }
+.knowledge-timeline { background: rgba(238, 246, 237, 0.04); border: 1px solid rgba(238, 246, 237, 0.08); border-radius: 8px; display: grid; gap: 8px; padding: 10px; }
+.knowledge-timeline-row { display: grid; gap: 8px; grid-template-columns: 10px minmax(0, 1fr); }
+.knowledge-timeline-row .dot { background: rgba(238, 246, 237, 0.28); border-radius: 999px; height: 8px; margin-top: 5px; width: 8px; }
+.knowledge-timeline-row .dot.good { background: var(--green); }
+.knowledge-timeline-row .dot.warn { background: var(--amber); }
+.knowledge-timeline-row strong { font: 800 0.8rem/1.2 "Trebuchet MS", Verdana, sans-serif; }
+.knowledge-impact .row .pill, .knowledge-trust-details .row .pill { max-width: 100%; text-align: left; white-space: normal; }
+.knowledge-trust-row .pill { min-width: 48px; justify-content: center; }
+.inline-actions { justify-content: start; }
 .chat-layout { display: grid; gap: 10px; grid-template-columns: minmax(230px, 300px) minmax(0, 1fr) auto minmax(180px, 260px); height: min(62vh, 620px); min-height: 420px; }
 .chat-layout.chat-side-hidden { grid-template-columns: minmax(230px, 300px) minmax(0, 1fr) auto; }
 .chat-sessions, .chat-transcript, .chat-side { background: rgba(8, 13, 11, 0.34); border: 1px solid rgba(238, 246, 237, 0.08); border-radius: 8px; display: grid; gap: 8px; padding: 12px; }
@@ -156,6 +192,7 @@ details.tool-section summary { cursor: pointer; }
 .chat-bubble { border: 1px solid rgba(238, 246, 237, 0.1); border-radius: 8px; display: grid; font-family: var(--chat-font); gap: 8px; max-width: min(82%, 760px); padding: 12px 14px; }
 .chat-message.user .chat-bubble { background: rgba(230, 180, 84, 0.16); border-color: rgba(230, 180, 84, 0.28); }
 .chat-message.assistant .chat-bubble { background: rgba(94, 212, 196, 0.11); border-color: rgba(94, 212, 196, 0.22); }
+.chat-message.source-highlight .chat-bubble { border-color: rgba(230, 180, 84, 0.82); box-shadow: 0 0 0 2px rgba(230, 180, 84, 0.2), 0 12px 28px rgba(230, 180, 84, 0.12); }
 .chat-bubble-wrapper { display: grid; gap: 6px; align-items: start; }
 .chat-message.user .chat-bubble-wrapper { justify-items: end; }
 .chat-message.assistant .chat-bubble-wrapper { justify-items: start; }
@@ -317,6 +354,10 @@ dialog::backdrop { background: rgba(24, 35, 29, 0.44); }
   body.sidebar-compact nav a, body.sidebar-compact .sidebar-toggle { justify-content: start; padding: 9px 10px; }
   nav { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .chat-layout, .chat-layout.chat-side-hidden { grid-template-columns: 1fr; }
+  .knowledge-detail-layout { grid-template-columns: 1fr; }
+  .knowledge-drawer { top: 48px; width: 360px; }
+  .knowledge-cytoscape { height: 520px; min-height: 360px; }
+  .knowledge-svg { height: 360px; }
   .chat-layout { height: auto; max-height: none; }
   .chat-side-toggle { justify-content: center; position: static; writing-mode: horizontal-tb; }
   .chat-transcript { min-height: 360px; }
@@ -329,6 +370,12 @@ dialog::backdrop { background: rgba(24, 35, 29, 0.44); }
   .panel-head { display: grid; }
   .actions { justify-content: start; }
   .chat-composer { grid-template-columns: 1fr; }
+  .knowledge-canvas { min-height: 260px; }
+  .knowledge-cytoscape { height: 440px; min-height: 360px; }
+  .knowledge-drawer { bottom: 10px; left: 10px; max-height: min(58vh, 420px); max-width: none; right: 10px; top: auto; transform: translateY(calc(100% + 24px)); width: auto; }
+  .knowledge-map-shell[data-knowledge-drawer="list"] .knowledge-drawer, .knowledge-map-shell[data-knowledge-drawer="inspector"] .knowledge-drawer { transform: translateY(0); }
+  .knowledge-svg { height: 280px; min-height: 260px; }
+  .knowledge-row { grid-template-columns: 1fr; }
   .skills-rail-head, .skill-editor-head { display: grid; }
   .skill-editor-actions { justify-content: start; }
 }`;

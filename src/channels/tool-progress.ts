@@ -22,8 +22,11 @@ export function formatChannelToolProgress(activity: AgentToolActivity, agentName
   if (activity.toolName === "internal.read_logs") return `${agentName} is reading recent logs`;
   if (activity.toolName === "internal.list_memories") return `${agentName} is listing saved memories`;
   if (activity.toolName === "internal.search_memories") return `${agentName} is searching memories for${suffix}`;
+  if (activity.toolName === "internal.search_knowledge") return `${agentName} is searching knowledge for${suffix}`;
+  if (activity.toolName === "internal.inspect_entity") return `${agentName} is inspecting knowledge entity${suffix}`;
   if (activity.toolName === "internal.analyze_memories") return `${agentName} is analyzing saved memories`;
   if (activity.toolName === "internal.remember_memory") return `${agentName} is preparing a memory approval`;
+  if (activity.toolName === "internal.remember_knowledge") return `${agentName} is preparing a knowledge graph approval`;
   if (activity.toolName === "internal.delete_memory") return `${agentName} is deleting memory${suffix}`;
   if (activity.toolName === "internal.cleanup_memories") return `${agentName} is cleaning saved memories`;
   if (activity.toolName.startsWith("mcp.") || activity.toolName.includes("/")) return `${agentName} is using read tool${suffix}`;

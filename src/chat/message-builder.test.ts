@@ -3,7 +3,7 @@ import test from "node:test";
 
 import { appendConversationTurn, buildChatMessages } from "./message-builder.js";
 import type { ChatMessage } from "../llm/types.js";
-import type { StoredMemory } from "../memory/sqlite-store.js";
+import type { KnowledgeGraphSearchResult, StoredMemory } from "../memory/sqlite-store.js";
 
 function createStoredMemory(overrides: Partial<StoredMemory>): StoredMemory {
   return {
@@ -59,6 +59,76 @@ test("buildChatMessages includes approved active memory context", () => {
   assert.match(String(messages[1]?.content ?? ""), /#1 \[communication_preference\] User prefers concise replies/);
   assert.doesNotMatch(String(messages[1]?.content ?? ""), /Deleted memory/);
   assert.equal(messages.at(-1)?.content, "remember?");
+});
+
+test("buildChatMessages includes compact knowledge graph context", () => {
+  const graph: KnowledgeGraphSearchResult = {
+    query: "Bestie",
+    entities: [
+      { id: 1, canonicalName: "Bestie", kind: "project", aliases: ["Bestie Agent"], sensitivity: "normal", scope: "project", confidence: 0.9, status: "active", createdAt: "now", updatedAt: "now" },
+    ],
+    relations: [
+      {
+        id: 1,
+        sourceEntityId: 2,
+        relationType: "works_on",
+        targetEntityId: 1,
+        evidence: "User is building Bestie.",
+        sensitivity: "normal",
+        scope: "project",
+        confidence: 0.8,
+        status: "active",
+        createdAt: "now",
+        updatedAt: "now",
+        sourceEntity: { id: 2, canonicalName: "User", kind: "person", aliases: [], sensitivity: "normal", scope: "core", confidence: 1, status: "active", createdAt: "now", updatedAt: "now" },
+        targetEntity: { id: 1, canonicalName: "Bestie", kind: "project", aliases: ["Bestie Agent"], sensitivity: "normal", scope: "project", confidence: 0.9, status: "active", createdAt: "now", updatedAt: "now" },
+      },
+    ],
+  };
+
+  const messages = buildChatMessages("system prompt", [], "what about Bestie?", [], { knowledgeGraph: graph });
+  const graphContext = String(messages[1]?.content ?? "");
+
+  assert.match(graphContext, /Relevant approved local knowledge graph facts/);
+  assert.match(graphContext, /User --works_on--> Bestie/);
+  assert.match(graphContext, /\[project\] Bestie/);
+  assert.equal(messages.at(-1)?.content, "what about Bestie?");
+});
+
+test("buildChatMessages orders knowledge graph facts by trust and labels cautious facts", () => {
+  const graph: KnowledgeGraphSearchResult = {
+    query: "Bestie",
+    entities: [
+      { id: 1, canonicalName: "Old Guess", kind: "topic", aliases: [], sensitivity: "normal", scope: "project", confidence: 0.25, status: "active", createdAt: "2020-01-01T00:00:00.000Z", updatedAt: "2020-01-01T00:00:00.000Z" },
+      { id: 2, canonicalName: "Bestie Agent", kind: "project", aliases: [], sensitivity: "normal", scope: "project", confidence: 0.92, sourceMessageId: "ui-chat:1:message:2:run:3", status: "active", createdAt: "now", updatedAt: "now" },
+    ],
+    relations: [
+      {
+        id: 1,
+        sourceEntityId: 1,
+        relationType: "related_to",
+        targetEntityId: 2,
+        sensitivity: "normal",
+        scope: "project",
+        confidence: 0.3,
+        status: "active",
+        createdAt: "2020-01-01T00:00:00.000Z",
+        updatedAt: "2020-01-01T00:00:00.000Z",
+        sourceEntity: { id: 1, canonicalName: "Old Guess", kind: "topic", aliases: [], sensitivity: "normal", scope: "project", confidence: 0.25, status: "active", createdAt: "2020-01-01T00:00:00.000Z", updatedAt: "2020-01-01T00:00:00.000Z" },
+        targetEntity: { id: 2, canonicalName: "Bestie Agent", kind: "project", aliases: [], sensitivity: "normal", scope: "project", confidence: 0.92, sourceMessageId: "ui-chat:1:message:2:run:3", status: "active", createdAt: "now", updatedAt: "now" },
+      },
+    ],
+  };
+
+  const messages = buildChatMessages("system prompt", [], "what should I trust?", [], { knowledgeGraph: graph });
+  const graphContext = String(messages[1]?.content ?? "");
+  const entityLines = graphContext.split("\n").filter((line) => line.startsWith("- entity"));
+
+  assert.match(graphContext, /ordered by trust/);
+  assert.match(graphContext, /Bestie Agent \(trust:high:/);
+  assert.match(graphContext, /Old Guess \(trust:low:.*stale, use cautiously/);
+  assert.equal(entityLines[0]?.includes("Bestie Agent"), true);
+  assert.equal(entityLines[1]?.includes("Old Guess"), true);
 });
 
 test("buildChatMessages prioritizes important recent memories in context", () => {

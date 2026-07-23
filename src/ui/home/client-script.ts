@@ -24,6 +24,7 @@ const icons = {
 };
 const icon = (name) => '<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="' + icons[name] + '"/></svg>';
 const iconButton = (name, label, attrs) => '<button ' + attrs + ' type="button">' + icon(name) + '<span>' + escapeHtml(label) + '</span></button>';
+const actionDropdown = (actions) => '<details class="message-menu knowledge-action-menu"><summary aria-label="Actions" onclick="event.stopPropagation()">' + icon('dots') + '</summary><div class="message-menu-popover">' + actions.join('') + '</div></details>';
 const row = (label, value, tone) => '<div class="row"><span>' + icon(tone === "good" ? "check" : tone === "bad" ? "x" : "activity") + escapeHtml(label) + '</span><span class="pill ' + (tone ?? "") + '">' + escapeHtml(value) + '</span></div>';
 const option = (value, label, selected) => '<option value="' + escapeHtml(value) + '"' + (selected ? ' selected' : '') + '>' + escapeHtml(label) + '</option>';
 function renderMarkdown(value) {
@@ -272,12 +273,14 @@ function renderChatTranscript() {
   if (!state.chatHistory?.length) return '<div class="notice">No messages yet.</div>';
   return state.chatHistory.map((message, index) => {
     const messageId = Number(message.id ?? 0);
+    const runId = Number(message.runId ?? 0);
+    const highlighted = (messageId && Number(state.highlightChatMessageId ?? 0) === messageId) || (runId && Number(state.highlightChatRunId ?? 0) === runId);
     const actions = ['<button class="message-menu-item" data-chat-copy-message="' + index + '" type="button">' + icon("check") + '<span>Copy</span></button>'];
     if (messageId && message.role === "user") actions.push('<button class="message-menu-item" data-chat-retry-message="' + messageId + '" type="button">' + icon("refresh") + '<span>Retry</span></button>');
     if (message.runId && message.role === "assistant") actions.push('<button class="message-menu-item" data-chat-inspect-run="' + message.runId + '" type="button">' + icon("activity") + '<span>Inspect run</span></button>');
     if (messageId) actions.push('<button class="message-menu-item" data-chat-fork="' + messageId + '" type="button">' + icon("layers") + '<span>Fork</span></button>');
     const menu = '<details class="message-menu"><summary aria-label="Message actions">' + icon("dots") + '</summary><div class="message-menu-popover">' + actions.join("") + '</div></details>';
-    return '<div class="chat-message ' + escapeHtml(message.role) + '">' +
+    return '<div class="chat-message ' + escapeHtml(message.role) + (highlighted ? ' source-highlight' : '') + '"' + (messageId ? ' data-chat-message-id="' + escapeHtml(messageId) + '"' : '') + (runId ? ' data-chat-run-id="' + escapeHtml(runId) + '"' : '') + '>' +
       '<div class="chat-bubble-wrapper">' +
         '<div class="chat-bubble"><div class="chat-message-head"><strong>' + escapeHtml(chatDisplayName(message.role)) + '</strong>' + menu + '</div>' +
           '<div class="markdown-body">' + renderMarkdown(message.content) + '</div>' +
@@ -726,6 +729,10 @@ function createChatSession() {
 }
 
 function loadChatSession(id) {
+  return loadChatSessionWithTarget(id);
+}
+
+function loadChatSessionWithTarget(id, target) {
   fetch("/api/chat/session?id=" + encodeURIComponent(id))
     .then((response) => response.json())
     .then((result) => {
@@ -742,8 +749,33 @@ function loadChatSession(id) {
       renderChatBranchIntoPanel();
       renderChatTimelineIntoPanel();
       renderChatSessions();
+      if (target) focusChatSource(target);
     })
     .catch((error) => setValue("#chat-panel .value", error?.message ?? "Unable to load session."));
+}
+
+function focusChatSource(target) {
+  state.highlightChatMessageId = target.messageId;
+  state.highlightChatRunId = target.runId;
+  if (target.runId) state.selectedChatRunId = target.runId;
+  renderChatTranscriptIntoPanel();
+  renderChatInspectorIntoPanel();
+  renderChatTimelineIntoPanel();
+  const selector = target.messageId ? '[data-chat-message-id="' + target.messageId + '"]' : target.runId ? '[data-chat-run-id="' + target.runId + '"]' : undefined;
+  if (selector) document.querySelector(selector)?.scrollIntoView({ block: "center", behavior: "smooth" });
+  showToast("Opened graph source in chat.", "good");
+}
+
+function jumpToKnowledgeSource(source) {
+  if (!source?.chatSessionId) {
+    showToast("No chat source is linked to this graph item.", "warn");
+    return;
+  }
+  state.chatSideOpen = true;
+  localStorage.setItem("bestie.chatSideOpen", "1");
+  activatePanel("chat-panel");
+  history.replaceState(null, "", "#chat-panel");
+  loadChatSessionWithTarget(source.chatSessionId, { messageId: source.chatMessageId, runId: source.chatRunId });
 }
 
 function deleteActiveChatSession() {
@@ -1200,6 +1232,7 @@ function formatTimelineDetail(type, payload, event) {
   if (type === "approval_required") return [payload.category, payload.target, payload.proposedReason ?? payload.reason].filter(Boolean).join(" · ") || "Approval required";
   if (type === "approval_approved" || type === "approval_denied") return [payload.status, payload.message, payload.reason].filter(Boolean).join(" · ") || "Approval updated";
   if (type === "done") return [payload.status, payload.characters ? payload.characters + " chars" : undefined, payload.toolCalls ? payload.toolCalls + " tools" : undefined].filter(Boolean).join(" · ") || "Completed";
+  if (type === "memory_capture") return [payload.storedEntities ? payload.storedEntities + " entities" : undefined, payload.storedRelations ? payload.storedRelations + " relations" : undefined, payload.pending ? payload.pending + " pending" : undefined, payload.skipped ? payload.skipped + " skipped" : undefined].filter(Boolean).join(" · ") || "No graph changes";
   if (type === "error") return payload.message ?? payload.error ?? event.label ?? "Error";
   if (type === "thinking") return [payload.model, payload.memoryCount !== undefined ? payload.memoryCount + " memories" : undefined].filter(Boolean).join(" · ") || "Preparing context";
   if (type === "token") return payload.bytes ? payload.bytes + " bytes" : "Streaming";
@@ -1278,7 +1311,7 @@ function bindChatContinueControls() {
 }
 
 function timelineTone(type) {
-  return type === "done" || type === "tool_finish" || type === "approval_approved" ? "good" : type === "error" ? "bad" : type === "thinking" || type === "approval_required" || type === "cancelled" ? "warn" : "";
+  return type === "done" || type === "tool_finish" || type === "approval_approved" || type === "memory_capture" ? "good" : type === "error" ? "bad" : type === "thinking" || type === "approval_required" || type === "cancelled" ? "warn" : "";
 }
 
 function renderMetrics(status) {
@@ -1483,6 +1516,605 @@ function bindMemoryControls() {
   }));
 }
 
+function loadKnowledgeGraph() {
+  fetch("/api/knowledge-graph")
+    .then((response) => response.json())
+    .then((graph) => {
+      state.knowledgeGraph = graph;
+      renderKnowledgeGraphPanel(graph, "graph");
+    })
+    .catch(() => setValue("#knowledge-panel .value", "Unable to load graph."));
+}
+
+function renderKnowledgeGraphPanel(graph, mode) {
+  state.knowledgeGraph = graph;
+  state.knowledgeReviewPriority = state.knowledgeReviewPriority ?? "all";
+  state.knowledgeReviewAction = state.knowledgeReviewAction ?? "all";
+  state.knowledgeTrustFilter = state.knowledgeTrustFilter ?? "all";
+  state.knowledgeTrustSort = state.knowledgeTrustSort ?? "score";
+  state.knowledgeDrawer = state.knowledgeDrawer ?? "inspector";
+  setValue("#knowledge-panel .value", 'Entities ' + text(graph.counts?.entities) + ' / Relations ' + text(graph.counts?.relations) + ' / Score ' + text(graph.analysis?.score));
+  const entities = graph.entities ?? [];
+  const relations = graph.relations ?? [];
+  const pending = graph.pending ?? [];
+  const suggestions = filterKnowledgeReviewSuggestions(graph.review?.suggestions ?? []);
+  setBody("#knowledge-panel", [
+    '<div class="summary-strip"><span><strong>' + escapeHtml(graph.counts?.entities ?? 0) + '</strong><small>Entities</small></span><span><strong>' + escapeHtml(graph.counts?.relations ?? 0) + '</strong><small>Relations</small></span><span><strong>' + escapeHtml(graph.counts?.pending ?? 0) + '</strong><small>Pending</small></span><span><strong>' + escapeHtml(graph.trust?.averageScore ?? graph.analysis?.score ?? 100) + '</strong><small>Trust</small></span></div>',
+    '<div class="segmented" role="tablist" aria-label="Knowledge graph views"><button class="active" data-segment-target="knowledge-map" type="button">Map</button><button data-segment-target="knowledge-review" type="button">Review</button><button data-segment-target="knowledge-trust" type="button">Trust</button><button data-segment-target="knowledge-search-view" type="button">Search</button></div>',
+    '<div class="segment active" id="knowledge-map"><div class="knowledge-map-shell" data-knowledge-drawer="' + escapeHtml(state.knowledgeDrawer) + '"><div class="knowledge-map-toolbar"><button data-knowledge-drawer-open="list" type="button">' + icon("layers") + '<span>List</span></button><button data-knowledge-drawer-open="inspector" type="button">' + icon("sliders") + '<span>Inspector</span></button></div><div class="knowledge-canvas"><div id="knowledge-cytoscape" class="knowledge-cytoscape" role="img" aria-label="Knowledge graph map"></div></div><aside class="knowledge-drawer" aria-label="Knowledge graph drawer"><div class="knowledge-drawer-head"><div><div class="label" id="knowledge-drawer-title">' + escapeHtml(state.knowledgeDrawer === "list" ? "Graph items" : "Inspector") + '</div><div class="subvalue">' + escapeHtml(state.knowledgeDrawer === "list" ? "Entities and relations" : "Selected graph item") + '</div></div><button data-knowledge-drawer-close type="button" aria-label="Close">' + icon("x") + '</button></div><div class="knowledge-drawer-view knowledge-drawer-list"><div class="stack">' + (entities.slice(0, 12).map(renderKnowledgeEntity).join("") || row("Entities", "empty", "")) + (relations.slice(0, 12).map(renderKnowledgeRelation).join("")) + '</div></div><div class="knowledge-drawer-view knowledge-drawer-inspector"><div id="knowledge-inspector" class="knowledge-inspector">' + renderKnowledgeInspector(graph) + '</div></div></aside></div></div>',
+    '<div class="segment" id="knowledge-review">' + renderKnowledgeReviewControls(graph) + '<div class="knowledge-detail-layout"><div class="stack">' + (suggestions.map((suggestion) => renderKnowledgeSuggestion(suggestion, suggestion.index, graph)).join("") || row("Review", "clean for current filters", "good")) + renderKnowledgePendingReviewSection(pending) + '</div><div id="knowledge-review-inspector" class="knowledge-inspector">' + renderKnowledgeInspector(graph) + '</div></div></div>',
+    '<div class="segment" id="knowledge-trust">' + renderKnowledgeTrustDashboard(graph) + '</div>',
+    '<div class="segment" id="knowledge-search-view"><div class="control-grid"><input id="knowledge-search" placeholder="Search graph"><button id="knowledge-search-run" type="button">Search</button></div><div class="knowledge-detail-layout"><div id="knowledge-search-results" class="stack">' + (mode === "search" ? renderKnowledgeSearchResults(graph) : row("Search", "ready", "")) + '</div><div id="knowledge-search-inspector" class="knowledge-inspector">' + renderKnowledgeInspector(graph) + '</div></div></div>',
+  ].join(""));
+  bindKnowledgeGraphControls();
+  renderKnowledgeCytoscapeGraph(entities, relations);
+  if (mode === "search") activateSegment("#knowledge-panel", "knowledge-search-view");
+  if (mode === "review") activateSegment("#knowledge-panel", "knowledge-review");
+  if (mode === "trust") activateSegment("#knowledge-panel", "knowledge-trust");
+}
+
+function renderKnowledgeTrustDashboard(graph) {
+  const trust = graph.trust ?? {};
+  const items = getKnowledgeTrustItems(graph);
+  return '<div class="knowledge-review-toolbar"><div class="summary-strip"><span><strong>' + escapeHtml(trust.averageScore ?? 100) + '</strong><small>Average</small></span><span><strong>' + escapeHtml(trust.lowTrust ?? 0) + '</strong><small>Low trust</small></span><span><strong>' + escapeHtml(trust.stale ?? 0) + '</strong><small>Stale</small></span><span><strong>' + escapeHtml(trust.needsSource ?? 0) + '</strong><small>Needs source</small></span><span><strong>' + escapeHtml(trust.conflicting ?? 0) + '</strong><small>Conflicts</small></span></div><div class="control-grid"><select id="knowledge-trust-filter" aria-label="Trust filter">' + option("all", "All trust", state.knowledgeTrustFilter === "all") + option("low", "Low trust", state.knowledgeTrustFilter === "low") + option("stale", "Stale", state.knowledgeTrustFilter === "stale") + option("source", "Needs source", state.knowledgeTrustFilter === "source") + option("conflict", "Conflicting", state.knowledgeTrustFilter === "conflict") + '</select><select id="knowledge-trust-sort" aria-label="Trust sort">' + option("score", "Lowest trust first", state.knowledgeTrustSort === "score") + option("age", "Oldest first", state.knowledgeTrustSort === "age") + option("source", "Needs source first", state.knowledgeTrustSort === "source") + '</select></div></div><div class="knowledge-detail-layout"><div class="stack">' + (items.map(renderKnowledgeTrustRow).join("") || row("Trust", "clean for current filters", "good")) + '</div><div id="knowledge-trust-inspector" class="knowledge-inspector">' + renderKnowledgeInspector(graph) + '</div></div>';
+}
+
+function getKnowledgeTrustItems(graph) {
+  const entities = (graph.entities ?? []).map((entity) => ({ type: "entity", id: Number(entity.id), title: entity.canonicalName, detail: entity.kind + ' / ' + (entity.trust?.relationCount ?? 0) + ' relations', trust: entity.trust }));
+  const relations = (graph.relations ?? []).map((relation) => ({ type: "relation", id: Number(relation.id), title: relation.sourceName + ' --' + relation.relationType + '--> ' + relation.targetName, detail: 'relation / confidence ' + relation.confidence, trust: relation.trust }));
+  return [...entities, ...relations].filter((item) => {
+    if (state.knowledgeTrustFilter === "low") return item.trust?.level === "low";
+    if (state.knowledgeTrustFilter === "stale") return item.trust?.stale;
+    if (state.knowledgeTrustFilter === "source") return item.trust?.needsSource;
+    if (state.knowledgeTrustFilter === "conflict") return item.trust?.conflicting;
+    return true;
+  }).sort((left, right) => {
+    if (state.knowledgeTrustSort === "age") return Number(right.trust?.ageDays ?? 0) - Number(left.trust?.ageDays ?? 0);
+    if (state.knowledgeTrustSort === "source") return Number(Boolean(right.trust?.needsSource)) - Number(Boolean(left.trust?.needsSource)) || Number(left.trust?.score ?? 100) - Number(right.trust?.score ?? 100);
+    return Number(left.trust?.score ?? 100) - Number(right.trust?.score ?? 100);
+  });
+}
+
+function renderKnowledgeTrustRow(item) {
+  const trust = item.trust ?? { score: 100, level: "high", warnings: [], signals: [] };
+  const tone = trust.level === "high" ? "good" : trust.level === "low" ? "warn" : "";
+  const warnings = trust.warnings?.length ? trust.warnings.join(" / ") : trust.signals?.slice(0, 2).join(" / ");
+  return '<div class="knowledge-row knowledge-trust-row" data-knowledge-select="' + escapeHtml(item.type) + '" data-' + escapeHtml(item.type) + '-id="' + escapeHtml(item.id) + '"><div><strong>' + escapeHtml(item.type + ' #' + item.id + ' ' + item.title) + '</strong><div class="subvalue">' + escapeHtml(item.detail) + '</div><div class="subvalue">' + escapeHtml(warnings || "Trust signals available") + '</div></div><span><span class="pill ' + tone + '">' + escapeHtml(trust.score) + '</span><span class="pill ' + tone + '">' + escapeHtml(trust.level) + '</span></span></div>';
+}
+
+function renderKnowledgeReviewControls(graph) {
+  const suggestions = graph.review?.suggestions ?? [];
+  const high = suggestions.filter((suggestion) => suggestion.priority === "high").length;
+  const medium = suggestions.filter((suggestion) => suggestion.priority === "medium").length;
+  const low = suggestions.filter((suggestion) => suggestion.priority === "low").length;
+  const actions = [...new Set(suggestions.map((suggestion) => suggestion.action))].sort();
+  return '<div class="knowledge-review-toolbar"><div class="summary-strip"><span><strong>' + escapeHtml(graph.review?.issueCount ?? suggestions.length) + '</strong><small>Open issues</small></span><span><strong>' + escapeHtml(high) + '</strong><small>High</small></span><span><strong>' + escapeHtml(medium) + '</strong><small>Medium</small></span><span><strong>' + escapeHtml(low) + '</strong><small>Low</small></span></div><div class="control-grid"><select id="knowledge-review-priority" aria-label="Review priority filter">' + option("all", "All priorities", state.knowledgeReviewPriority === "all") + option("high", "High", state.knowledgeReviewPriority === "high") + option("medium", "Medium", state.knowledgeReviewPriority === "medium") + option("low", "Low", state.knowledgeReviewPriority === "low") + '</select><select id="knowledge-review-action" aria-label="Review action filter">' + option("all", "All actions", state.knowledgeReviewAction === "all") + actions.map((action) => option(action, formatKnowledgeReviewAction(action), state.knowledgeReviewAction === action)).join("") + '</select></div></div>';
+}
+
+function filterKnowledgeReviewSuggestions(suggestions) {
+  return suggestions.map((suggestion, index) => ({ ...suggestion, index })).filter((suggestion) => {
+    const priorityOk = !state.knowledgeReviewPriority || state.knowledgeReviewPriority === "all" || suggestion.priority === state.knowledgeReviewPriority;
+    const actionOk = !state.knowledgeReviewAction || state.knowledgeReviewAction === "all" || suggestion.action === state.knowledgeReviewAction;
+    return priorityOk && actionOk;
+  });
+}
+
+function renderKnowledgePendingReviewSection(pending) {
+  if (!pending.length || (state.knowledgeReviewAction !== "all" && state.knowledgeReviewAction !== "inspect_pending")) return "";
+  return '<div class="tool-section"><div class="label">Pending graph writes</div>' + pending.map(renderPendingKnowledgeItem).join("") + '</div>';
+}
+
+function renderKnowledgeGraphSvg(entities, relations) {
+  if (!entities.length && !relations.length) return '<div class="notice">No graph data yet.</div>';
+  const byId = new Map(entities.map((entity) => [Number(entity.id), entity]));
+  relations.forEach((relation) => {
+    if (!byId.has(Number(relation.sourceEntityId))) byId.set(Number(relation.sourceEntityId), { id: relation.sourceEntityId, canonicalName: relation.sourceName, kind: relation.sourceKind, confidence: relation.confidence });
+    if (!byId.has(Number(relation.targetEntityId))) byId.set(Number(relation.targetEntityId), { id: relation.targetEntityId, canonicalName: relation.targetName, kind: relation.targetKind, confidence: relation.confidence });
+  });
+  const nodes = [...byId.values()].slice(0, 24);
+  const nodeIds = new Set(nodes.map((node) => Number(node.id)));
+  const width = 760;
+  const height = 420;
+  const centerX = width / 2;
+  const centerY = height / 2;
+  const radius = Math.min(160, 62 + nodes.length * 6);
+  const positions = new Map(nodes.map((node, index) => {
+    const angle = nodes.length === 1 ? -Math.PI / 2 : (Math.PI * 2 * index) / nodes.length - Math.PI / 2;
+    return [Number(node.id), { x: centerX + Math.cos(angle) * radius, y: centerY + Math.sin(angle) * radius }];
+  }));
+  const edgeHtml = relations.filter((relation) => nodeIds.has(Number(relation.sourceEntityId)) && nodeIds.has(Number(relation.targetEntityId))).slice(0, 36).map((relation) => {
+    const source = positions.get(Number(relation.sourceEntityId));
+    const target = positions.get(Number(relation.targetEntityId));
+    if (!source || !target) return "";
+    const midX = (source.x + target.x) / 2;
+    const midY = (source.y + target.y) / 2;
+    return '<g class="knowledge-edge" tabindex="0" role="button" data-knowledge-select="relation" data-relation-id="' + escapeHtml(relation.id) + '"><line x1="' + source.x.toFixed(1) + '" y1="' + source.y.toFixed(1) + '" x2="' + target.x.toFixed(1) + '" y2="' + target.y.toFixed(1) + '"></line><text x="' + midX.toFixed(1) + '" y="' + midY.toFixed(1) + '">' + escapeHtml(relation.relationType) + '</text><title>Relation #' + escapeHtml(relation.id) + ' ' + escapeHtml(relation.sourceName) + ' -> ' + escapeHtml(relation.targetName) + '</title></g>';
+  }).join("");
+  const nodeHtml = nodes.map((node) => {
+    const point = positions.get(Number(node.id));
+    const tone = node.kind === "person" ? "person" : node.kind === "project" ? "project" : node.kind === "preference" ? "preference" : "topic";
+    return '<g class="knowledge-node ' + tone + '" tabindex="0" role="button" data-knowledge-select="entity" data-entity-id="' + escapeHtml(node.id) + '"><circle cx="' + point.x.toFixed(1) + '" cy="' + point.y.toFixed(1) + '" r="25"></circle><text x="' + point.x.toFixed(1) + '" y="' + (point.y + 4).toFixed(1) + '">#' + escapeHtml(node.id) + '</text><title>' + escapeHtml(node.canonicalName) + ' / ' + escapeHtml(node.kind) + '</title></g>';
+  }).join("");
+  return '<svg class="knowledge-svg" viewBox="0 0 ' + width + ' ' + height + '" role="img" aria-label="Knowledge graph map">' + edgeHtml + nodeHtml + '</svg>';
+}
+
+function renderKnowledgeCytoscapeGraph(entities, relations) {
+  const container = document.querySelector("#knowledge-cytoscape");
+  if (!container) return;
+  const graphElements = buildKnowledgeCytoscapeElements(entities, relations);
+  container.dataset.nodeCount = String(graphElements.nodeCount);
+  container.dataset.edgeCount = String(graphElements.edgeCount);
+  container.dataset.knowledgeGraphReady = "false";
+  if (!graphElements.elements.length) {
+    container.innerHTML = '<div class="notice">No graph data yet.</div>';
+    container.dataset.knowledgeGraphReady = "true";
+    return;
+  }
+  if (typeof window.cytoscape !== "function") {
+    container.innerHTML = renderKnowledgeGraphSvg(entities, relations);
+    container.dataset.knowledgeGraphReady = "fallback";
+    bindKnowledgeGraphInteractiveControls();
+    return;
+  }
+  container.innerHTML = "";
+  const cy = window.cytoscape({
+    container,
+    elements: graphElements.elements,
+    layout: { name: "cose", animate: false, fit: true, padding: 28, nodeRepulsion: 5200, idealEdgeLength: 128, edgeElasticity: 86, gravity: 0.28, numIter: 900 },
+    minZoom: 0.42,
+    maxZoom: 2.2,
+    wheelSensitivity: 0.18,
+    style: [
+      { selector: "node", style: { "background-color": "#5ed4c4", "border-color": "rgba(238, 246, 237, 0.78)", "border-width": 2, color: "#eef6ed", "font-family": "Trebuchet MS, Verdana, sans-serif", "font-size": 11, "font-weight": 800, height: "data(size)", label: "data(label)", "min-zoomed-font-size": 8, "overlay-opacity": 0, "text-background-color": "rgba(8, 13, 11, 0.82)", "text-background-opacity": 1, "text-background-padding": 3, "text-margin-y": 8, "text-valign": "bottom", width: "data(size)" } },
+      { selector: "node.person", style: { "background-color": "#e0b257" } },
+      { selector: "node.project", style: { "background-color": "#64d487" } },
+      { selector: "node.preference", style: { "background-color": "#f0b35d" } },
+      { selector: "node.topic", style: { "background-color": "#8aa8ff" } },
+      { selector: "edge", style: { "curve-style": "bezier", "font-family": "Trebuchet MS, Verdana, sans-serif", "font-size": 10, "font-weight": 800, label: "data(label)", "line-color": "rgba(238, 246, 237, 0.28)", opacity: "data(opacity)", "target-arrow-color": "rgba(238, 246, 237, 0.38)", "target-arrow-shape": "triangle", "text-background-color": "rgba(8, 13, 11, 0.88)", "text-background-opacity": 1, "text-background-padding": 2, "text-rotation": "autorotate", "text-wrap": "wrap", "width": "data(width)" } },
+      { selector: ":selected", style: { "border-color": "#e0b257", "border-width": 4, "line-color": "#e0b257", "target-arrow-color": "#e0b257", opacity: 1 } },
+    ],
+  });
+  cy.on("tap", "node", (event) => {
+    state.selectedKnowledge = { type: "entity", id: Number(event.target.data("entityId")) };
+    setKnowledgeDrawer("inspector");
+    renderKnowledgeInspectorTargets(state.knowledgeGraph);
+  });
+  cy.on("tap", "edge", (event) => {
+    state.selectedKnowledge = { type: "relation", id: Number(event.target.data("relationId")) };
+    setKnowledgeDrawer("inspector");
+    renderKnowledgeInspectorTargets(state.knowledgeGraph);
+  });
+  state.knowledgeCytoscape = cy;
+  window.__bestieKnowledgeGraph = { cy };
+  container.dataset.knowledgeGraphReady = "true";
+}
+
+function buildKnowledgeCytoscapeElements(entities, relations) {
+  const byId = new Map((entities ?? []).map((entity) => [Number(entity.id), entity]));
+  (relations ?? []).forEach((relation) => {
+    if (!byId.has(Number(relation.sourceEntityId))) byId.set(Number(relation.sourceEntityId), { id: relation.sourceEntityId, canonicalName: relation.sourceName, kind: relation.sourceKind, confidence: relation.confidence });
+    if (!byId.has(Number(relation.targetEntityId))) byId.set(Number(relation.targetEntityId), { id: relation.targetEntityId, canonicalName: relation.targetName, kind: relation.targetKind, confidence: relation.confidence });
+  });
+  const nodes = [...byId.values()].slice(0, 48);
+  const nodeIds = new Set(nodes.map((node) => Number(node.id)));
+  const nodeElements = nodes.map((node) => {
+    const confidence = Number(node.confidence ?? 0.7);
+    const kind = ["person", "project", "preference", "topic"].includes(node.kind) ? node.kind : "topic";
+    return { data: { id: "entity-" + node.id, entityId: Number(node.id), label: String(node.canonicalName ?? ("Entity " + node.id)), size: 30 + Math.round(Math.max(0, Math.min(1, confidence)) * 18) }, classes: kind };
+  });
+  const edgeElements = (relations ?? []).filter((relation) => nodeIds.has(Number(relation.sourceEntityId)) && nodeIds.has(Number(relation.targetEntityId))).slice(0, 80).map((relation) => {
+    const confidence = Math.max(0, Math.min(1, Number(relation.confidence ?? 0.55)));
+    return { data: { id: "relation-" + relation.id, source: "entity-" + relation.sourceEntityId, target: "entity-" + relation.targetEntityId, relationId: Number(relation.id), label: String(relation.relationType ?? "related"), opacity: 0.34 + confidence * 0.56, width: 1.2 + confidence * 2.4 } };
+  });
+  return { elements: [...nodeElements, ...edgeElements], nodeCount: nodeElements.length, edgeCount: edgeElements.length };
+}
+
+function renderKnowledgeEntity(entity) {
+  const aliases = entity.aliases?.length ? ' / aliases ' + entity.aliases.join(", ") : "";
+  return '<div class="knowledge-row" data-knowledge-select="entity" data-entity-id="' + escapeHtml(entity.id) + '"><div><strong>#' + escapeHtml(entity.id) + ' ' + escapeHtml(entity.canonicalName) + '</strong><div class="subvalue">' + escapeHtml(entity.kind + ' / scope ' + entity.scope + ' / confidence ' + entity.confidence + aliases) + '</div></div><span><span class="pill ' + (entity.sensitivity === "sensitive" ? "warn" : "good") + '">' + escapeHtml(entity.sensitivity) + '</span></span></div>';
+}
+
+function renderKnowledgeRelation(relation) {
+  const meta = 'scope ' + text(relation.scope) + ' / confidence ' + text(relation.confidence) + (relation.evidence ? ' / ' + relation.evidence : '');
+  const actions = [
+    iconButton("sliders", "Update", 'class="message-menu-item" data-knowledge-action="update_relation" data-relation-id="' + escapeHtml(relation.id) + '" data-confidence="' + escapeHtml(relation.confidence) + '"'),
+    iconButton("x", "Forget", 'class="message-menu-item" data-knowledge-action="forget_relation" data-relation-id="' + escapeHtml(relation.id) + '"'),
+  ];
+  return '<div class="knowledge-row" data-knowledge-select="relation" data-relation-id="' + escapeHtml(relation.id) + '"><div><strong>#' + escapeHtml(relation.id) + ' ' + escapeHtml(relation.sourceName) + ' --' + escapeHtml(relation.relationType) + '--> ' + escapeHtml(relation.targetName) + '</strong><div class="subvalue">' + escapeHtml(meta) + '</div></div><span><span class="pill ' + (relation.confidence >= 0.7 ? "good" : relation.confidence < 0.5 ? "warn" : "") + '">' + escapeHtml(relation.confidence) + '</span>' + actionDropdown(actions) + '</span></div>';
+}
+
+function renderKnowledgeSuggestion(suggestion, index, graph) {
+  const tone = suggestion.priority === "high" ? "warn" : suggestion.priority === "low" ? "" : "good";
+  return '<div class="knowledge-row" data-knowledge-select="suggestion" data-suggestion-index="' + escapeHtml(index ?? 0) + '"><div><strong>' + escapeHtml(suggestion.title) + '</strong><div>' + escapeHtml(suggestion.reason) + '</div><div class="subvalue">' + escapeHtml(suggestion.command) + '</div></div><span><span class="pill ' + tone + '">' + escapeHtml(suggestion.priority) + '</span>' + renderKnowledgeSuggestionActions(suggestion, graph) + '</span></div>';
+}
+
+function renderKnowledgeSuggestionActions(suggestion, graph) {
+  const target = getKnowledgeSuggestionTarget(suggestion);
+  const args = suggestion.toolCall?.arguments ?? {};
+  if (suggestion.action === "merge_entity" && args.primaryId && args.duplicateId) {
+    return iconButton("layers", "Merge", 'data-knowledge-action="merge_entity" data-primary-id="' + escapeHtml(args.primaryId) + '" data-duplicate-id="' + escapeHtml(args.duplicateId) + '" data-reason="' + escapeHtml(suggestion.reason) + '"');
+  }
+  if (suggestion.action === "inspect_pending" && target?.type === "pending") {
+    return iconButton("check", "Review", 'data-knowledge-jump-type="pending" data-knowledge-jump-id="' + escapeHtml(target.id) + '"');
+  }
+  if (suggestion.action === "inspect_low_confidence" && target?.type === "relation") {
+    const relation = (graph.relations ?? []).find((candidate) => Number(candidate.id) === Number(target.id));
+    return iconButton("sliders", "Update", 'data-knowledge-action="update_relation" data-relation-id="' + escapeHtml(target.id) + '" data-confidence="' + escapeHtml(relation?.confidence ?? 0.5) + '"');
+  }
+  if (target) {
+    return iconButton("activity", "Inspect", 'data-knowledge-jump-type="' + escapeHtml(target.type) + '" data-knowledge-jump-id="' + escapeHtml(target.id) + '"');
+  }
+  return "";
+}
+
+function getKnowledgeSuggestionTarget(suggestion) {
+  const args = suggestion.toolCall?.arguments ?? {};
+  if (args.primaryId) return { type: "entity", id: Number(args.primaryId) };
+  if (args.id) return { type: suggestion.action === "inspect_pending" ? "pending" : "entity", id: Number(args.id) };
+  const command = String([suggestion.command, suggestion.title].filter(Boolean).join(" "));
+  const pendingTitle = command.match(/pending\\s+graph\\s+item\\s+#?(\\d+)/i);
+  if (pendingTitle) return { type: "pending", id: Number(pendingTitle[1]) };
+  const pending = command.match(/pending\\s+inspect\\s+(\\d+)/);
+  if (pending) return { type: "pending", id: Number(pending[1]) };
+  const relation = command.match(/inspect\\s+relation\\s+(\\d+)/);
+  if (relation) return { type: "relation", id: Number(relation[1]) };
+  const entity = command.match(/inspect\\s+entity\\s+(\\d+)/);
+  if (entity) return { type: "entity", id: Number(entity[1]) };
+  return undefined;
+}
+
+function formatKnowledgeReviewAction(action) {
+  return String(action ?? "review").replace(/^inspect_/, "").replace(/_/g, " ");
+}
+
+function renderPendingKnowledgeItem(item) {
+  const meta = [item.reason, item.source, item.explicitConsent ? "explicit consent" : "needs review", item.createdAt].filter(Boolean).join(' / ');
+  return '<div class="knowledge-row" data-knowledge-select="pending" data-pending-id="' + escapeHtml(item.id) + '"><div><strong>Pending #' + escapeHtml(item.id) + '</strong><div>' + escapeHtml(item.payloadSummary) + '</div><div class="subvalue">' + escapeHtml(meta) + '</div></div><span><span class="pill warn">pending</span>' + iconButton("check", "Approve", 'data-knowledge-action="approve_pending" data-pending-id="' + escapeHtml(item.id) + '"') + iconButton("x", "Reject", 'data-knowledge-action="reject_pending" data-pending-id="' + escapeHtml(item.id) + '"') + '</span></div>';
+}
+
+function renderKnowledgeSearchResults(graph) {
+  const heading = row('Search results for "' + text(graph.query) + '"', (graph.relations?.length ?? 0) + ' relations / ' + (graph.entities?.length ?? 0) + ' entities', "");
+  const relations = (graph.relations ?? []).map(renderKnowledgeRelation);
+  const entities = (graph.entities ?? []).map(renderKnowledgeEntity);
+  const pending = (graph.pending ?? []).map(renderPendingKnowledgeItem);
+  return heading + ([...relations, ...entities, ...pending].join("") || row("Search", "no results", ""));
+}
+
+function bindKnowledgeGraphControls() {
+  document.querySelectorAll("#knowledge-panel [data-segment-target]").forEach((button) => button.addEventListener("click", () => activateSegment("#knowledge-panel", button.dataset.segmentTarget)));
+  document.querySelector("#knowledge-review-priority")?.addEventListener("change", (event) => {
+    state.knowledgeReviewPriority = event.target.value;
+    renderKnowledgeGraphPanel(state.knowledgeGraph ?? {}, "review");
+  });
+  document.querySelector("#knowledge-review-action")?.addEventListener("change", (event) => {
+    state.knowledgeReviewAction = event.target.value;
+    renderKnowledgeGraphPanel(state.knowledgeGraph ?? {}, "review");
+  });
+  document.querySelector("#knowledge-trust-filter")?.addEventListener("change", (event) => {
+    state.knowledgeTrustFilter = event.target.value;
+    renderKnowledgeGraphPanel(state.knowledgeGraph ?? {}, "trust");
+  });
+  document.querySelector("#knowledge-trust-sort")?.addEventListener("change", (event) => {
+    state.knowledgeTrustSort = event.target.value;
+    renderKnowledgeGraphPanel(state.knowledgeGraph ?? {}, "trust");
+  });
+  document.querySelector("#knowledge-search-run")?.addEventListener("click", () => {
+    const query = document.querySelector("#knowledge-search")?.value ?? "";
+    fetch("/api/knowledge-graph/search?q=" + encodeURIComponent(query))
+      .then((response) => response.json())
+      .then((graph) => {
+        setValue("#knowledge-panel .value", 'Search results for "' + query + '"');
+        renderKnowledgeGraphPanel(graph, "search");
+      })
+      .catch(() => setValue("#knowledge-panel .value", "Unable to search graph."));
+  });
+  bindKnowledgeGraphInteractiveControls();
+}
+
+function setKnowledgeDrawer(drawer) {
+  state.knowledgeDrawer = drawer === "list" || drawer === "inspector" ? drawer : "closed";
+  const shell = document.querySelector("#knowledge-map .knowledge-map-shell");
+  if (!shell) return;
+  shell.dataset.knowledgeDrawer = state.knowledgeDrawer;
+  const title = document.querySelector("#knowledge-drawer-title");
+  if (title) title.textContent = state.knowledgeDrawer === "list" ? "Graph items" : "Inspector";
+  state.knowledgeCytoscape?.resize();
+  state.knowledgeCytoscape?.fit(undefined, 28);
+}
+
+function bindKnowledgeGraphInteractiveControls() {
+  document.querySelectorAll("[data-knowledge-drawer-open]").forEach((button) => {
+    if (button.dataset.knowledgeDrawerBound === "true") return;
+    button.dataset.knowledgeDrawerBound = "true";
+    button.addEventListener("click", () => setKnowledgeDrawer(button.dataset.knowledgeDrawerOpen));
+  });
+  document.querySelectorAll("[data-knowledge-drawer-close]").forEach((button) => {
+    if (button.dataset.knowledgeDrawerBound === "true") return;
+    button.dataset.knowledgeDrawerBound = "true";
+    button.addEventListener("click", () => setKnowledgeDrawer("closed"));
+  });
+  document.querySelectorAll("[data-knowledge-jump-type]").forEach((button) => {
+    if (button.dataset.knowledgeJumpBound === "true") return;
+    button.dataset.knowledgeJumpBound = "true";
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      state.selectedKnowledge = { type: button.dataset.knowledgeJumpType, id: Number(button.dataset.knowledgeJumpId) };
+      setKnowledgeDrawer("inspector");
+      renderKnowledgeInspectorTargets(state.knowledgeGraph);
+    });
+  });
+  document.querySelectorAll("[data-knowledge-source-session]").forEach((button) => {
+    if (button.dataset.knowledgeSourceBound === "true") return;
+    button.dataset.knowledgeSourceBound = "true";
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      jumpToKnowledgeSource({
+        chatSessionId: Number(button.dataset.knowledgeSourceSession),
+        chatMessageId: Number(button.dataset.knowledgeSourceMessage || 0) || undefined,
+        chatRunId: Number(button.dataset.knowledgeSourceRun || 0) || undefined,
+      });
+    });
+  });
+  document.querySelectorAll("[data-knowledge-action]").forEach((button) => {
+    if (button.dataset.knowledgeActionBound === "true") return;
+    button.dataset.knowledgeActionBound = "true";
+    button.addEventListener("click", (event) => { event.stopPropagation(); runKnowledgeGraphAction(button); });
+  });
+  document.querySelectorAll("[data-knowledge-select]").forEach((element) => {
+    if (element.dataset.knowledgeSelectBound === "true") return;
+    element.dataset.knowledgeSelectBound = "true";
+    element.addEventListener("click", () => selectKnowledgeGraphItem(element));
+    element.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        selectKnowledgeGraphItem(element);
+      }
+    });
+  });
+}
+
+function selectKnowledgeGraphItem(element) {
+  const type = element.dataset.knowledgeSelect;
+  const id = type === "entity" ? Number(element.dataset.entityId) : type === "relation" ? Number(element.dataset.relationId) : type === "pending" ? Number(element.dataset.pendingId) : Number(element.dataset.suggestionIndex);
+  state.selectedKnowledge = { type, id };
+  setKnowledgeDrawer("inspector");
+  renderKnowledgeInspectorTargets(state.knowledgeGraph);
+}
+
+function renderKnowledgeInspectorTargets(graph) {
+  const html = renderKnowledgeInspector(graph ?? state.knowledgeGraph ?? {});
+  ["#knowledge-inspector", "#knowledge-review-inspector", "#knowledge-trust-inspector", "#knowledge-search-inspector"].forEach((selector) => {
+    const target = document.querySelector(selector);
+    if (target) target.innerHTML = html;
+  });
+  document.querySelectorAll("[data-knowledge-select]").forEach((element) => {
+    const type = element.dataset.knowledgeSelect;
+    const id = type === "entity" ? Number(element.dataset.entityId) : type === "relation" ? Number(element.dataset.relationId) : type === "pending" ? Number(element.dataset.pendingId) : Number(element.dataset.suggestionIndex);
+    element.classList.toggle("selected", state.selectedKnowledge?.type === type && Number(state.selectedKnowledge?.id) === id);
+  });
+  bindKnowledgeGraphInteractiveControls();
+}
+
+function renderKnowledgeInspector(graph) {
+  const selected = state.selectedKnowledge;
+  if (!selected) {
+    return '<div class="label">Inspector</div><div class="value">Select a graph item</div><p class="subvalue">Click a node, relation, review item, or pending graph write to inspect details.</p>';
+  }
+  if (selected.type === "entity") {
+    const entity = (graph.entities ?? []).find((candidate) => Number(candidate.id) === Number(selected.id));
+    if (!entity) return renderKnowledgeInspectorMissing();
+    const relations = (graph.relations ?? []).filter((relation) => Number(relation.sourceEntityId) === Number(entity.id) || Number(relation.targetEntityId) === Number(entity.id));
+    return '<div class="label">Entity</div><div class="value">#' + escapeHtml(entity.id) + ' ' + escapeHtml(entity.canonicalName) + '</div>'
+      + row("Kind", entity.kind, "")
+      + row("Scope", entity.scope, "")
+      + row("Confidence", entity.confidence, entity.confidence >= 0.7 ? "good" : entity.confidence < 0.5 ? "warn" : "")
+      + row("Sensitivity", entity.sensitivity, entity.sensitivity === "sensitive" ? "warn" : "good")
+      + '<div class="subvalue">Aliases: ' + escapeHtml(entity.aliases?.length ? entity.aliases.join(", ") : "none") + '</div>'
+      + '<div class="subvalue">Why this exists: ' + escapeHtml(makeEntityWhy(entity, relations)) + '</div>'
+      + renderKnowledgeTrustDetails(entity.trust)
+      + renderKnowledgeAuditTimeline(entity, [
+        { label: "Created", value: entity.createdAt },
+        { label: "Updated", value: entity.updatedAt },
+        { label: "Source", value: renderKnowledgeSource(entity) },
+        { label: "Review", value: relations.length ? relations.length + ' connected relations' : 'No active one-hop relations', tone: relations.length ? "good" : "warn" },
+      ])
+      + '<div class="actions inline-actions">' + renderKnowledgeSourceJump(entity) + iconButton("x", "Forget", 'data-knowledge-action="forget_entity" data-entity-id="' + escapeHtml(entity.id) + '"') + '</div>'
+      + '<div class="tool-section"><div class="label">Connected relations</div>' + (relations.slice(0, 6).map(renderKnowledgeRelation).join("") || row("Relations", "none", "")) + '</div>';
+  }
+  if (selected.type === "relation") {
+    const relation = (graph.relations ?? []).find((candidate) => Number(candidate.id) === Number(selected.id));
+    if (!relation) return renderKnowledgeInspectorMissing();
+    return '<div class="label">Relation</div><div class="value">#' + escapeHtml(relation.id) + ' ' + escapeHtml(relation.relationType) + '</div>'
+      + row("Source", '#' + relation.sourceEntityId + ' ' + relation.sourceName, "")
+      + row("Target", '#' + relation.targetEntityId + ' ' + relation.targetName, "")
+      + row("Scope", relation.scope, "")
+      + row("Confidence", relation.confidence, relation.confidence >= 0.7 ? "good" : relation.confidence < 0.5 ? "warn" : "")
+      + row("Sensitivity", relation.sensitivity, relation.sensitivity === "sensitive" ? "warn" : "good")
+      + '<div class="subvalue">Evidence: ' + escapeHtml(relation.evidence || "none") + '</div>'
+      + '<div class="subvalue">Why this exists: ' + escapeHtml(makeRelationWhy(relation)) + '</div>'
+      + renderKnowledgeTrustDetails(relation.trust)
+      + renderKnowledgeAuditTimeline(relation, [
+        { label: "Created", value: relation.createdAt },
+        { label: "Updated", value: relation.updatedAt },
+        { label: "Source", value: renderKnowledgeSource(relation) },
+        { label: "Review", value: relation.confidence < 0.5 ? "Low confidence" : relation.confidence >= 0.7 ? "High confidence" : "Medium confidence", tone: relation.confidence < 0.5 ? "warn" : "good" },
+      ])
+      + '<div class="actions inline-actions">' + renderKnowledgeSourceJump(relation) + iconButton("sliders", "Update", 'data-knowledge-action="update_relation" data-relation-id="' + escapeHtml(relation.id) + '" data-confidence="' + escapeHtml(relation.confidence) + '"') + iconButton("x", "Forget", 'data-knowledge-action="forget_relation" data-relation-id="' + escapeHtml(relation.id) + '"') + '</div>';
+  }
+  if (selected.type === "pending") {
+    const pending = (graph.pending ?? []).find((candidate) => Number(candidate.id) === Number(selected.id));
+    if (!pending) return renderKnowledgeInspectorMissing();
+    return '<div class="label">Pending graph write</div><div class="value">Pending #' + escapeHtml(pending.id) + '</div>'
+      + '<div class="subvalue">' + escapeHtml(pending.payloadSummary) + '</div>'
+      + row("Source", renderKnowledgeSource(pending), "")
+      + row("Consent", pending.explicitConsent ? "explicit" : "review", pending.explicitConsent ? "good" : "warn")
+      + '<div class="subvalue">Reason: ' + escapeHtml(pending.reason || "No reason provided.") + '</div>'
+      + '<div class="subvalue">Why this exists: Pending owner review before graph storage.</div>'
+      + renderKnowledgeAuditTimeline(pending, [
+        { label: "Queued", value: pending.createdAt },
+        { label: "Source", value: renderKnowledgeSource(pending) },
+        { label: "Policy", value: pending.explicitConsent ? "Explicit consent present" : "Approval required", tone: pending.explicitConsent ? "good" : "warn" },
+      ])
+      + '<div class="actions inline-actions">' + renderKnowledgeSourceJump(pending) + iconButton("check", "Approve", 'data-knowledge-action="approve_pending" data-pending-id="' + escapeHtml(pending.id) + '"') + iconButton("x", "Reject", 'data-knowledge-action="reject_pending" data-pending-id="' + escapeHtml(pending.id) + '"') + '</div>';
+  }
+  const suggestion = (graph.review?.suggestions ?? [])[Number(selected.id)];
+  if (!suggestion) return renderKnowledgeInspectorMissing();
+  const args = suggestion.toolCall?.arguments ?? {};
+  const mergeAction = suggestion.action === "merge_entity" && args.primaryId && args.duplicateId ? iconButton("layers", "Merge", 'data-knowledge-action="merge_entity" data-primary-id="' + escapeHtml(args.primaryId) + '" data-duplicate-id="' + escapeHtml(args.duplicateId) + '" data-reason="' + escapeHtml(suggestion.reason) + '"') : "";
+  const suggestionActions = mergeAction || renderKnowledgeSuggestionActions(suggestion, graph);
+  return '<div class="label">Review suggestion</div><div class="value">' + escapeHtml(suggestion.title) + '</div>'
+    + row("Priority", suggestion.priority, suggestion.priority === "high" ? "warn" : suggestion.priority === "medium" ? "good" : "")
+    + row("Action", suggestion.action, "")
+    + '<div class="subvalue">' + escapeHtml(suggestion.reason) + '</div>'
+    + '<div class="subvalue">Why this exists: Generated from the current graph hygiene analysis.</div>'
+    + '<div class="subvalue">Command: ' + escapeHtml(suggestion.command) + '</div>'
+    + renderKnowledgeSuggestionPreview(suggestion, graph)
+    + renderKnowledgeTimeline([
+      { label: "Generated", value: "Current review plan" },
+      { label: "Priority", value: suggestion.priority, tone: suggestion.priority === "high" ? "warn" : suggestion.priority === "medium" ? "good" : "" },
+      { label: "Tool", value: suggestion.toolCall?.tool ?? "inspect only" },
+    ])
+    + (suggestionActions ? '<div class="actions inline-actions">' + suggestionActions + '</div>' : '');
+}
+
+function renderKnowledgeInspectorMissing() {
+  return '<div class="label">Inspector</div><div class="value">Selection unavailable</div><p class="subvalue">The graph changed since this item was selected.</p>';
+}
+
+function renderKnowledgeTimeline(events) {
+  return '<div class="knowledge-timeline"><div class="label">Timeline</div>' + events.filter((event) => event.value !== undefined && event.value !== null && event.value !== "").map((event) => '<div class="knowledge-timeline-row"><span class="dot ' + (event.tone ?? "") + '"></span><div><strong>' + escapeHtml(event.label) + '</strong><div class="subvalue">' + escapeHtml(event.value) + '</div></div></div>').join("") + '</div>';
+}
+
+function renderKnowledgeAuditTimeline(item, fallbackEvents) {
+  const auditEvents = item.auditTrail ?? [];
+  if (!auditEvents.length) return renderKnowledgeTimeline(fallbackEvents);
+  return renderKnowledgeTimeline(auditEvents.map((event) => ({
+    label: event.eventType,
+    value: [event.createdAt, event.actor ? 'actor ' + event.actor : undefined, event.channel ? 'via ' + event.channel : undefined, event.reason, event.payloadSummary].filter(Boolean).join(' / '),
+    tone: event.eventType === "rejected" || event.eventType === "forgotten" ? "warn" : event.eventType === "created" || event.eventType === "approved" ? "good" : "",
+  })));
+}
+
+function renderKnowledgeSource(item) {
+  if (item.source?.label) return item.source.label;
+  if (item.sourceAttribution?.label) return item.sourceAttribution.label;
+  const parts = [];
+  if (item.sourceMemoryId !== undefined) parts.push('memory #' + item.sourceMemoryId);
+  if (item.sourceMessageId !== undefined) parts.push('message ' + item.sourceMessageId);
+  return parts.join(' / ') || "manual or inferred";
+}
+
+function renderKnowledgeSourceJump(item) {
+  const source = item.source?.kind === "ui_chat" ? item.source : item.sourceAttribution?.kind === "ui_chat" ? item.sourceAttribution : undefined;
+  if (!source?.chatSessionId) return "";
+  return iconButton("terminal", "Open source", 'data-knowledge-source-session="' + escapeHtml(source.chatSessionId) + '" data-knowledge-source-message="' + escapeHtml(source.chatMessageId ?? "") + '" data-knowledge-source-run="' + escapeHtml(source.chatRunId ?? "") + '"');
+}
+
+function renderKnowledgeTrustDetails(trust) {
+  if (!trust) return "";
+  const tone = trust.level === "high" ? "good" : trust.level === "low" ? "warn" : "";
+  return '<div class="tool-section knowledge-trust-details"><div class="label">Trust</div>'
+    + row("Score", trust.score + ' / ' + trust.level, tone)
+    + row("Source", trust.sourceKind + ' / quality ' + trust.sourceQuality, trust.needsSource ? "warn" : "good")
+    + row("Age", trust.ageDays + ' day' + (trust.ageDays === 1 ? "" : "s"), trust.stale ? "warn" : "good")
+    + row("Signals", (trust.signals ?? []).join(' / ') || "none", "")
+    + row("Warnings", (trust.warnings ?? []).join(' / ') || "none", trust.warnings?.length ? "warn" : "good")
+    + '</div>';
+}
+
+function renderKnowledgeSuggestionPreview(suggestion, graph) {
+  const target = getKnowledgeSuggestionTarget(suggestion);
+  let impact = "Inspect the highlighted graph item before changing stored knowledge.";
+  let safety = "No write occurs until you use an action and pass the confirmation or approval gate.";
+  if (suggestion.action === "merge_entity") {
+    const args = suggestion.toolCall?.arguments ?? {};
+    impact = 'Would merge duplicate entity #' + text(args.duplicateId) + ' into #' + text(args.primaryId) + ', preserving relations on the primary entity.';
+    safety = "Merge is permission-gated and can require approval based on local tool policy.";
+  } else if (suggestion.action === "inspect_pending") {
+    impact = 'Would review pending graph write #' + text(target?.id) + ' before approving or rejecting storage.';
+  } else if (suggestion.action === "inspect_low_confidence") {
+    const relation = (graph.relations ?? []).find((candidate) => Number(candidate.id) === Number(target?.id));
+    impact = relation ? 'Would update confidence or evidence for ' + relation.sourceName + ' --' + relation.relationType + '--> ' + relation.targetName + '.' : 'Would inspect a low-confidence relation before trusting it.';
+  } else if (suggestion.action === "inspect_conflict") {
+    impact = "Would inspect a conflicting relation pair before deciding which edge should remain trusted.";
+  } else if (suggestion.action === "inspect_orphan") {
+    impact = 'Would inspect orphan entity #' + text(target?.id) + ' and decide whether to connect, merge, or forget it.';
+  }
+  return '<div class="tool-section knowledge-impact"><div class="label">Impact preview</div>' + row("Target", target ? target.type + ' #' + target.id : "review item", "") + row("Change", impact, suggestion.priority === "high" ? "warn" : "") + row("Safety", safety, "good") + '</div>';
+}
+
+function makeEntityWhy(entity, relations) {
+  if (entity.sourceMemoryId !== undefined) return 'Linked to memory #' + entity.sourceMemoryId + '.';
+  if (entity.source?.kind === "ui_chat") return 'Captured from ' + entity.source.label + '.';
+  if (entity.sourceMessageId !== undefined) return 'Linked to ' + renderKnowledgeSource(entity) + '.';
+  if (relations.length) return 'Referenced by active graph relations.';
+  return 'Stored as a durable local graph entity.';
+}
+
+function makeRelationWhy(relation) {
+  if (relation.evidence) return relation.evidence;
+  if (relation.sourceMemoryId !== undefined) return 'Linked to memory #' + relation.sourceMemoryId + '.';
+  if (relation.source?.kind === "ui_chat") return 'Captured from ' + relation.source.label + '.';
+  if (relation.sourceMessageId !== undefined) return 'Linked to ' + renderKnowledgeSource(relation) + '.';
+  return 'Stored as an approved local graph relation.';
+}
+
+function runKnowledgeGraphAction(button) {
+  const action = button.dataset.knowledgeAction;
+  const body = { action, confirm: true };
+  let title = "Update knowledge graph?";
+  let message = action;
+  let beforeConfirm = Promise.resolve(true);
+  if (action === "merge_entity") {
+    body.primaryId = Number(button.dataset.primaryId);
+    body.duplicateId = Number(button.dataset.duplicateId);
+    body.reason = button.dataset.reason || "Merge duplicate graph entities from UI review.";
+    title = "Merge graph entities?";
+    message = '#' + body.primaryId + ' <- #' + body.duplicateId;
+  } else if (action === "forget_entity") {
+    body.id = Number(button.dataset.entityId);
+    body.reason = "Forget entity from Bestie UI graph review.";
+    title = "Forget graph entity?";
+    message = 'Entity #' + body.id;
+  } else if (action === "forget_relation") {
+    body.id = Number(button.dataset.relationId);
+    body.reason = "Forget relation from Bestie UI graph review.";
+    title = "Forget graph relation?";
+    message = 'Relation #' + body.id;
+  } else if (action === "update_relation") {
+    body.id = Number(button.dataset.relationId);
+    body.reason = "Update relation confidence from Bestie UI graph review.";
+    title = "Update relation confidence?";
+    message = 'Relation #' + body.id;
+    beforeConfirm = inputAction({ label: "Graph relation", title: "Confidence 0-1", message: "Set the reviewed relation confidence.", value: button.dataset.confidence ?? "0.7", confirmLabel: "Use value" }).then((value) => {
+      if (value === undefined) return false;
+      const confidence = Number(value);
+      if (!Number.isFinite(confidence) || confidence < 0 || confidence > 1) {
+        showToast("Confidence must be between 0 and 1.", "bad");
+        return false;
+      }
+      body.confidence = confidence;
+      return true;
+    });
+  } else if (action === "approve_pending" || action === "reject_pending") {
+    body.id = Number(button.dataset.pendingId);
+    title = action === "approve_pending" ? "Approve graph write?" : "Reject graph write?";
+    message = 'Pending #' + body.id;
+  } else {
+    showToast("Unknown graph action.", "bad");
+    return;
+  }
+  beforeConfirm.then((ready) => {
+    if (!ready) return undefined;
+    return requireConfirm(title, message, () => withLoading("#knowledge-panel .value", "Updating graph...", () => postJson("/api/knowledge-graph/action", body).then((result) => {
+      state.knowledgeGraph = result;
+      renderKnowledgeGraphPanel(result, "graph");
+      loadApprovals();
+      showToast(result.actionStatus === "queued" ? "Graph approval queued." : "Graph updated.", result.actionStatus === "queued" ? "warn" : "good");
+    })));
+  }).catch(() => setValue("#knowledge-panel .value", "Unable to update graph."));
+}
+
 function loadChannels() {
   const activeSegment = document.querySelector("#channel-panel .segment.active")?.id ?? "channel-daemons";
   fetch("/api/channels")
@@ -1605,8 +2237,16 @@ function bindApprovalControls() {
   document.querySelectorAll("[data-approval-action]").forEach((button) => button.addEventListener("click", () => {
     const action = button.dataset.approvalAction;
     const id = Number(button.dataset.approvalId);
-    requireConfirm((action === "approve" ? "Approve pending action?" : "Deny pending action?"), String(id), () => withLoading("#approvals-panel .value", "Updating approval...", () => postJson("/api/approvals/action", { action, id, confirm: true }).then(loadApprovals).then(() => showToast("Approval updated.", "good")))).catch(() => setValue("#approvals-panel .value", "Unable to update approval."));
+    submitApprovalDecision(action, id, String(id));
   }));
+}
+
+function submitApprovalDecision(action, id, message) {
+  return requireConfirm((action === "approve" ? "Approve pending action?" : "Deny pending action?"), message, () => withLoading("#approvals-panel .value", "Updating approval...", () => postJson("/api/approvals/action", { action, id, confirm: true }).then((result) => {
+    loadApprovals();
+    if (result.execution) loadKnowledgeGraph();
+    showToast(result.execution?.shortText ?? "Approval updated.", result.execution?.status === "invalid" ? "bad" : "good");
+  }))).catch(() => setValue("#approvals-panel .value", "Unable to update approval."));
 }
 
 function loadMcp() {
@@ -1869,6 +2509,7 @@ document.querySelector("#character-save")?.addEventListener("click", () => {
   requireConfirm("Save character files?", "This updates character.json and system-prompt.md.", () => withLoading("#character-panel .value", "Saving character...", () => putJson("/api/character", { characterText, promptText }).then(loadCharacter).then(() => showToast("Character saved.", "good")))).catch(() => setValue("#character-panel .value", "Unable to save character."));
 });
 document.querySelector("#memory-refresh")?.addEventListener("click", loadMemory);
+document.querySelector("#knowledge-refresh")?.addEventListener("click", loadKnowledgeGraph);
 document.querySelector("#channel-refresh")?.addEventListener("click", loadChannels);
 document.querySelector("#channel-stop-cron")?.addEventListener("click", () => requireConfirm("Stop cron daemon?", "This requests the local cron daemon to stop.", () => withLoading("#channel-panel .value", "Stopping cron...", () => postJson("/api/channels/action", { action: "daemon_stop", channel: "cron", confirm: true }).then((summary) => { setValue("#channel-panel .value", text(summary.messages?.[0] ?? "Cron daemon stop requested.")); loadChannels(); showToast("Cron stop requested.", "good"); }))).catch(() => setValue("#channel-panel .value", "Unable to stop cron daemon.")));
 document.querySelector("#cron-toggle")?.addEventListener("click", () => {
@@ -1899,7 +2540,7 @@ document.querySelector("#settings-tone")?.addEventListener("click", () => {
 
 function decideApproval(action) {
   if (!state.firstApproval) { setValue("#approvals-panel .value", "No pending approvals."); return; }
-  requireConfirm((action === "approve" ? "Approve pending action?" : "Deny pending action?"), state.firstApproval.action, () => withLoading("#approvals-panel .value", "Updating approval...", () => postJson("/api/approvals/action", { action, id: state.firstApproval.id, confirm: true }).then(loadApprovals).then(() => showToast("Approval updated.", "good")))).catch(() => setValue("#approvals-panel .value", "Unable to update approval."));
+  submitApprovalDecision(action, state.firstApproval.id, state.firstApproval.action);
 }
 
 loadStatus();
@@ -1908,6 +2549,7 @@ loadDoctor();
 loadProviders();
 loadCharacter();
 loadMemory();
+loadKnowledgeGraph();
 loadChannels();
 loadApprovals();
 loadMcp();

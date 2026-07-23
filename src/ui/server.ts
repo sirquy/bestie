@@ -1,5 +1,7 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
+import { createRequire } from "node:module";
 import type { AddressInfo } from "node:net";
+import { readFile } from "node:fs/promises";
 
 import { getUiApprovalsSummary, runUiApprovalAction } from "./api/approvals.js";
 import type { AgentToolActivity } from "../chat/mcp-tool-use.js";
@@ -8,6 +10,7 @@ import { getUiCharacterSummary, updateUiCharacter } from "./api/character.js";
 import { getUiChannelSummary, runUiChannelAction } from "./api/channels.js";
 import { createUiChatSession, deleteUiChatSession, exportUiChatSession, forkUiChatSession, getUiChatSessionEvents, getUiChatSessionMessages, getUiChatSessions, importUiChatSession, prepareUiChatRetry, prepareUiChatRunReplay, runUiChat, runUiChatContinue, searchUiChatSessions, updateUiChatSession } from "./api/chat.js";
 import { getUiDoctorSummary, runUiDoctorFix } from "./api/doctor.js";
+import { getUiKnowledgeGraphSummary, runUiKnowledgeGraphAction, searchUiKnowledgeGraph } from "./api/knowledge-graph.js";
 import { getUiMemorySummary, runUiMemoryAction, searchUiMemories } from "./api/memory.js";
 import { getUiMcpSummary } from "./api/mcp.js";
 import { getUiProviderSummary, runUiProviderTest, setUiProviderPrimary, setupUiProvider, updateUiProviderFallback } from "./api/providers.js";
@@ -17,6 +20,9 @@ import { getUiStatusSummary } from "./api/status.js";
 import { getUiToolsSummary, updateUiToolPolicy } from "./api/tools.js";
 import { HOME_PAGE_CLIENT_SCRIPT } from "./home/client-script.js";
 import { renderHomePage } from "./home-page.js";
+
+const require = createRequire(import.meta.url);
+const CYTOSCAPE_SCRIPT_PATH = require.resolve("cytoscape/dist/cytoscape.min.js");
 
 export interface UiServerOptions {
   host?: string;
@@ -82,6 +88,11 @@ async function handleRequestAsync(request: IncomingMessage, response: ServerResp
 
   if (method === "GET" && url.pathname === "/assets/home.js") {
     sendJavaScript(response, HOME_PAGE_CLIENT_SCRIPT);
+    return;
+  }
+
+  if (method === "GET" && url.pathname === "/assets/cytoscape.min.js") {
+    sendJavaScript(response, await readFile(CYTOSCAPE_SCRIPT_PATH, "utf8"));
     return;
   }
 
@@ -547,6 +558,42 @@ async function handleRequestAsync(request: IncomingMessage, response: ServerResp
     return;
   }
 
+  if (method === "GET" && url.pathname === "/api/knowledge-graph") {
+    sendJson(response, 200, await getUiKnowledgeGraphSummary());
+    return;
+  }
+
+  if (method === "GET" && url.pathname === "/api/knowledge-graph/search") {
+    sendJson(response, 200, await searchUiKnowledgeGraph(url.searchParams.get("q") ?? ""));
+    return;
+  }
+
+  if (method === "POST" && url.pathname === "/api/knowledge-graph/action") {
+    const body = await readJsonBody(request);
+    if (!isRecord(body) || !isUiKnowledgeGraphAction(body.action)) {
+      sendJson(response, 400, { ok: false, error: "Missing graph action merge_entity|forget_entity|forget_relation|update_relation|approve_pending|reject_pending.", code: "UiKnowledgeGraphInvalidActionRequest" });
+      return;
+    }
+    if (body.confirm !== true) {
+      sendJson(response, 400, { ok: false, error: "Knowledge graph actions require confirm=true.", code: "UiKnowledgeGraphActionConfirmationRequired" });
+      return;
+    }
+
+    sendJson(response, 200, await runUiKnowledgeGraphAction({
+      action: body.action,
+      confirm: true,
+      ...(typeof body.id === "number" ? { id: body.id } : {}),
+      ...(typeof body.primaryId === "number" ? { primaryId: body.primaryId } : {}),
+      ...(typeof body.duplicateId === "number" ? { duplicateId: body.duplicateId } : {}),
+      ...(typeof body.confidence === "number" ? { confidence: body.confidence } : {}),
+      ...(typeof body.evidence === "string" ? { evidence: body.evidence } : {}),
+      ...(body.scope === "core" || body.scope === "project" || body.scope === "session" ? { scope: body.scope } : {}),
+      ...(body.sensitivity === "normal" || body.sensitivity === "sensitive" ? { sensitivity: body.sensitivity } : {}),
+      ...(typeof body.reason === "string" ? { reason: body.reason } : {}),
+    }));
+    return;
+  }
+
   if (method === "POST" && url.pathname === "/api/memory/action") {
     const body = await readJsonBody(request);
     if (!isRecord(body) || (body.action !== "approve_pending" && body.action !== "reject_pending") || typeof body.id !== "number") {
@@ -696,6 +743,10 @@ function isUiDaemonChannel(value: unknown): value is "telegram" | "zalo" | "cron
 
 function isMemoryWritePolicy(value: unknown): value is "allow" | "ask" | "deny" {
   return value === "allow" || value === "ask" || value === "deny";
+}
+
+function isUiKnowledgeGraphAction(value: unknown): value is "merge_entity" | "forget_entity" | "forget_relation" | "update_relation" | "approve_pending" | "reject_pending" {
+  return value === "merge_entity" || value === "forget_entity" || value === "forget_relation" || value === "update_relation" || value === "approve_pending" || value === "reject_pending";
 }
 
 function sendJson(response: ServerResponse, statusCode: number, body: unknown): void {

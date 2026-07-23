@@ -11,6 +11,7 @@ import { calculateMemoryHygieneScore } from "../memory/hygiene-score.js";
 import { formatMemoryHygieneStatus } from "../memory/hygiene-status.js";
 import { formatMemoryHygieneTrendReport, recordMemoryHygieneSnapshot } from "../memory/hygiene-trend.js";
 import { getMemoryMaintenanceReportStatus, installMemoryMaintenanceReport, removeMemoryMaintenanceReport, runMemoryMaintenanceDigest } from "../memory/maintenance.js";
+import { runKnowledgeReasoningPass, type KnowledgeReasoningResult } from "../memory/knowledge-reasoning.js";
 import { runMemoryReasoningPass, type MemoryReasoningResult } from "../memory/reasoning.js";
 import { isMemoryScope, SqliteMemoryStore } from "../memory/sqlite-store.js";
 import { applyMemoryRebalancePlan, formatMemoryRebalanceApplyResult, formatMemoryRebalancePlan, planMemoryRebalance } from "../memory/rebalance.js";
@@ -266,8 +267,9 @@ export async function handleZaloUpdate(update: ZaloUpdate, options: ZaloUpdateHa
     const systemPrompt = await loadSystemPrompt(options.paths);
     const memories = await loadActiveMemories(options.paths);
     const recentTurns = await loadRecentZaloTurns(options.paths, zaloConfig.ownerUserId);
+    const knowledgeGraph = await loadRelevantKnowledgeGraph(options.paths, text);
     const runtimeContext = buildZaloRuntimeToolContext(incoming, zaloConfig.ownerUserId);
-    const messages = buildChatMessages(buildMcpToolSystemPrompt(systemPrompt, options.config, runtimeContext), recentTurns, text, memories, { memoryRetrievalPolicy: options.config.memory?.retrievalPolicy ?? "full" });
+    const messages = buildChatMessages(buildMcpToolSystemPrompt(systemPrompt, options.config, runtimeContext), recentTurns, text, memories, { memoryRetrievalPolicy: options.config.memory?.retrievalPolicy ?? "full", knowledgeGraph });
     const response = createChannelResponseController(adapter.outbound.createResponseAdapter(incoming.chatId));
     const assistantText = await completeWithAgentTools({
       config: options.config,
@@ -275,7 +277,12 @@ export async function handleZaloUpdate(update: ZaloUpdate, options: ZaloUpdateHa
       apiKey,
       messages,
       chatCompletion,
-      toolRunner: runAgentToolRequest,
+      toolRunner: async (toolOptions) => {
+        const result = await runAgentToolRequest(toolOptions);
+        await sendZaloMemoryApprovalIfNeeded(options.client, incoming.chatId, options.paths, zaloConfig.ownerUserId, toolOptions.request.tool, result);
+        await sendZaloKnowledgeApprovalIfNeeded(options.client, incoming.chatId, options.paths, zaloConfig.ownerUserId, toolOptions.request.tool, result);
+        return result;
+      },
       approver: createZaloPermissionApprover(options.client, incoming.chatId, options.paths),
       policy: ZALO_PERMISSION_POLICY,
       streamFinalResponse: true,
@@ -286,7 +293,9 @@ export async function handleZaloUpdate(update: ZaloUpdate, options: ZaloUpdateHa
     await response.replyFinal(assistantText);
     await persistZaloConversationTurn(options.paths, zaloConfig.ownerUserId, text, assistantText);
     const memoryReasoning = await runZaloMemoryReasoningPass({ config: options.config, paths: options.paths, apiKey, turn: { channel: "zalo", userId: zaloConfig.ownerUserId, userInput: text, assistantText }, chatCompletion });
+    const knowledgeReasoning = await runZaloKnowledgeReasoningPass({ config: options.config, paths: options.paths, apiKey, turn: { channel: "zalo", userId: zaloConfig.ownerUserId, userInput: text, assistantText }, chatCompletion });
     await sendZaloMemoryReasoningApprovalsIfNeeded(options.client, incoming.chatId, options.paths, zaloConfig.ownerUserId, memoryReasoning);
+    await sendZaloKnowledgeReasoningApprovalsIfNeeded(options.client, incoming.chatId, options.paths, zaloConfig.ownerUserId, knowledgeReasoning);
     await appendLog({ event: "zalo_chat_success", detail: { model: options.config.llm.primary } }, { paths: options.paths });
     return "replied";
   } catch (error) {
@@ -703,6 +712,16 @@ async function runZaloMemoryReasoningPass(options: Parameters<typeof runMemoryRe
   }
 }
 
+async function runZaloKnowledgeReasoningPass(options: Parameters<typeof runKnowledgeReasoningPass>[0]): Promise<KnowledgeReasoningResult> {
+  try {
+    return await runKnowledgeReasoningPass(options);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown knowledge reasoning error.";
+    await appendLog({ event: "knowledge_reasoning_failure", detail: { channel: "zalo", message } }, { paths: options.paths, knownSecrets: [options.apiKey] });
+    return { storedEntities: [], storedRelations: [], pending: [], skipped: [] };
+  }
+}
+
 async function sendZaloMemoryReasoningApprovalsIfNeeded(
   client: ZaloClient,
   chatId: string,
@@ -739,6 +758,123 @@ async function sendZaloMemoryReasoningApprovalsIfNeeded(
       ].filter(Boolean).join("\n")),
     );
   }
+}
+
+async function sendZaloKnowledgeReasoningApprovalsIfNeeded(
+  client: ZaloClient,
+  chatId: string,
+  paths: RuntimePaths,
+  ownerUserId: string,
+  result: KnowledgeReasoningResult,
+): Promise<void> {
+  for (const pending of result.pending) {
+    const store = await SqliteMemoryStore.open(paths);
+    let approvalId: number;
+
+    try {
+      approvalId = store.addPendingActionApproval({
+        channel: "zalo",
+        userId: ownerUserId,
+        category: "local_write",
+        action: "knowledge_approve",
+        target: `pending-knowledge:${pending.id}`,
+        reason: "Approve or deny a knowledge graph item inferred from the latest conversation.",
+        proposedReason: pending.reason ?? "Knowledge graph reasoning proposed this item.",
+      }).id;
+    } finally {
+      store.close();
+    }
+
+    await client.sendMessage(
+      chatId,
+      redactSecrets([
+        `Knowledge graph approval needed. Request: ${approvalId}`,
+        formatPendingKnowledgePayloadSummary(pending.payload),
+        pending.reason ? `Reason: ${pending.reason}` : undefined,
+        `Reply /approve ${approvalId} to save it or /deny ${approvalId} to reject it.`,
+      ].filter(Boolean).join("\n")),
+    );
+  }
+}
+
+async function sendZaloMemoryApprovalIfNeeded(
+  client: ZaloClient,
+  chatId: string,
+  paths: RuntimePaths,
+  ownerUserId: string,
+  toolName: string,
+  result: { ok: boolean; result?: unknown },
+): Promise<void> {
+  if (toolName !== "internal.remember_memory" || !result.ok || !isPendingToolResult(result.result)) {
+    return;
+  }
+
+  const store = await SqliteMemoryStore.open(paths);
+  let approvalId: number;
+  let content = "";
+  let type = "memory";
+
+  try {
+    const pending = store.getPendingMemoryById(result.result.id);
+    if (!pending) {
+      return;
+    }
+    content = pending.content;
+    type = pending.type;
+    approvalId = store.addPendingActionApproval({
+      channel: "zalo",
+      userId: ownerUserId,
+      category: "local_write",
+      action: "memory_approve",
+      target: `pending-memory:${pending.id}`,
+      reason: "Approve or deny model-requested memory write.",
+      proposedReason: pending.reason ?? "Memory write policy is ask.",
+      ttlMs: ZALO_ACTION_APPROVAL_TTL_MS,
+    }).id;
+  } finally {
+    store.close();
+  }
+
+  await client.sendMessage(chatId, [`Memory approval needed. Request: ${approvalId}`, `Type: ${type}`, `Content: ${content}`, `Reply /approve ${approvalId} to save it or /deny ${approvalId} to reject it.`].join("\n"));
+}
+
+async function sendZaloKnowledgeApprovalIfNeeded(
+  client: ZaloClient,
+  chatId: string,
+  paths: RuntimePaths,
+  ownerUserId: string,
+  toolName: string,
+  result: { ok: boolean; result?: unknown },
+): Promise<void> {
+  if (toolName !== "internal.remember_knowledge" || !result.ok || !isPendingToolResult(result.result)) {
+    return;
+  }
+
+  const store = await SqliteMemoryStore.open(paths);
+  let approvalId: number;
+  let summary = "Payload unavailable.";
+
+  try {
+    const pending = store.getPendingKnowledgeItem(result.result.id);
+    if (!pending) {
+      return;
+    }
+    summary = formatPendingKnowledgePayloadSummary(pending.payload);
+    approvalId = store.addPendingActionApproval({
+      channel: "zalo",
+      userId: ownerUserId,
+      category: "local_write",
+      action: "knowledge_approve",
+      target: `pending-knowledge:${pending.id}`,
+      reason: "Approve or deny model-requested knowledge graph write.",
+      proposedReason: pending.reason ?? "Knowledge graph write policy is ask.",
+      ttlMs: ZALO_ACTION_APPROVAL_TTL_MS,
+    }).id;
+  } finally {
+    store.close();
+  }
+
+  await client.sendMessage(chatId, [`Knowledge graph approval needed. Request: ${approvalId}`, summary, `Reply /approve ${approvalId} to save it or /deny ${approvalId} to reject it.`].join("\n"));
 }
 
 async function sendZaloTextChunks(client: ZaloClient, chatId: string, text: string): Promise<void> {
@@ -805,6 +941,19 @@ async function loadActiveMemories(paths: RuntimePaths): Promise<import("../memor
       return [];
     }
     return store.listActiveMemories();
+  } finally {
+    store.close();
+  }
+}
+
+async function loadRelevantKnowledgeGraph(paths: RuntimePaths, query: string): Promise<import("../memory/sqlite-store.js").KnowledgeGraphSearchResult | undefined> {
+  const store = await SqliteMemoryStore.open(paths);
+  try {
+    if (store.getMemoryState().paused) {
+      return undefined;
+    }
+    const graph = store.searchKnowledgeGraph(query, 12);
+    return graph.entities.length === 0 && graph.relations.length === 0 ? undefined : graph;
   } finally {
     store.close();
   }
@@ -1021,6 +1170,18 @@ async function readJsonResponse(response: Response): Promise<{ ok?: boolean; res
   } catch {
     return { ok: response.ok, description: response.statusText };
   }
+}
+
+function isPendingToolResult(value: unknown): value is { id: number; status: "pending" } {
+  return typeof value === "object" && value !== null && "id" in value && "status" in value && Number.isInteger((value as { id: unknown }).id) && (value as { status: unknown }).status === "pending";
+}
+
+function formatPendingKnowledgePayloadSummary(payload: unknown): string {
+  const text = JSON.stringify(payload);
+  if (!text) {
+    return "Payload: empty";
+  }
+  return `Payload: ${text.length > 500 ? `${text.slice(0, 497)}...` : text}`;
 }
 
 function sleep(ms: number): Promise<void> {

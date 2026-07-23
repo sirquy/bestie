@@ -31,7 +31,15 @@ test("buildMcpToolInstructions includes global tool selection guidance", () => {
   assert.match(instructions, /Tool selection guide/);
   assert.match(instructions, /Approved local memories may already be included/);
   assert.match(instructions, /do not call memory tools just to rediscover/);
-  assert.match(instructions, /Use memory tools only when the included memory context is missing or insufficient/);
+  assert.match(instructions, /Use memory and knowledge tools only when the included context is missing or insufficient/);
+  assert.match(instructions, /internal\.search_knowledge/);
+  assert.match(instructions, /internal\.analyze_knowledge/);
+  assert.match(instructions, /internal\.plan_knowledge_review/);
+  assert.match(instructions, /internal\.remember_knowledge/);
+  assert.match(instructions, /internal\.merge_knowledge_entities/);
+  assert.match(instructions, /internal\.forget_knowledge_entity/);
+  assert.match(instructions, /internal\.forget_knowledge_relation/);
+  assert.match(instructions, /internal\.update_knowledge_relation/);
   assert.match(instructions, /Use file tools for repo\/local context/);
   assert.match(instructions, /Use read_logs only for recent runtime behavior/);
   assert.match(instructions, /internal\.git_status/);
@@ -56,6 +64,23 @@ test("buildMcpToolInstructions includes global tool selection guidance", () => {
   assert.match(instructions, /do not merely explain the edit/);
   assert.doesNotMatch(instructions, /kling/i);
   assert.doesNotMatch(instructions, /KLING_/);
+});
+
+test("parseMcpToolRequest accepts knowledge relation review actions", () => {
+  assert.deepEqual(parseMcpToolRequest('{"tool":"internal.forget_knowledge_entity","arguments":{"id":4,"reason":"wrong entity"}}'), {
+    tool: "internal.forget_knowledge_entity",
+    arguments: { id: 4, reason: "wrong entity" },
+  });
+
+  assert.deepEqual(parseMcpToolRequest('{"tool":"internal.forget_knowledge_relation","arguments":{"id":4,"reason":"wrong relation"}}'), {
+    tool: "internal.forget_knowledge_relation",
+    arguments: { id: 4, reason: "wrong relation" },
+  });
+
+  assert.deepEqual(parseMcpToolRequest('{"tool":"internal.update_knowledge_relation","arguments":{"id":4,"confidence":0.72,"reason":"reviewed evidence"}}'), {
+    tool: "internal.update_knowledge_relation",
+    arguments: { id: 4, confidence: 0.72, reason: "reviewed evidence" },
+  });
 });
 
 test("buildMcpToolInstructions includes runtime channel context", () => {
@@ -115,6 +140,30 @@ test("parseMcpToolRequest accepts internal read tool requests", () => {
   assert.deepEqual(parseMcpToolRequest('{"tool":"internal.inspect_memory","arguments":{"id":1}}'), {
     tool: "internal.inspect_memory",
     arguments: { id: 1 },
+  });
+  assert.deepEqual(parseMcpToolRequest('{"tool":"internal.search_knowledge","arguments":{"query":"Bestie","limit":5}}'), {
+    tool: "internal.search_knowledge",
+    arguments: { query: "Bestie", limit: 5 },
+  });
+  assert.deepEqual(parseMcpToolRequest('{"tool":"internal.inspect_entity","arguments":{"id":1}}'), {
+    tool: "internal.inspect_entity",
+    arguments: { id: 1 },
+  });
+  assert.deepEqual(parseMcpToolRequest('{"tool":"internal.analyze_knowledge","arguments":{}}'), {
+    tool: "internal.analyze_knowledge",
+    arguments: {},
+  });
+  assert.deepEqual(parseMcpToolRequest('{"tool":"internal.plan_knowledge_review","arguments":{"limit":5}}'), {
+    tool: "internal.plan_knowledge_review",
+    arguments: { limit: 5 },
+  });
+  assert.deepEqual(parseMcpToolRequest('{"tool":"internal.remember_knowledge","arguments":{"entities":[{"name":"Bestie","kind":"project"}]}}'), {
+    tool: "internal.remember_knowledge",
+    arguments: { entities: [{ name: "Bestie", kind: "project" }] },
+  });
+  assert.deepEqual(parseMcpToolRequest('{"tool":"internal.merge_knowledge_entities","arguments":{"primaryId":2,"duplicateId":3,"reason":"same project"}}'), {
+    tool: "internal.merge_knowledge_entities",
+    arguments: { primaryId: 2, duplicateId: 3, reason: "same project" },
   });
   assert.deepEqual(parseMcpToolRequest('{"tool":"internal.plan_memory_hygiene","arguments":{}}'), {
     tool: "internal.plan_memory_hygiene",
@@ -890,6 +939,136 @@ test("runAgentToolRequest follows memory write policy for remember_memory", asyn
   }
 });
 
+test("runAgentToolRequest follows memory write policy for remember_knowledge", async () => {
+  const askPaths = await createTempPaths();
+  const allowPaths = await createTempPaths();
+  const denyPaths = await createTempPaths();
+  const payload = {
+    entities: [
+      { name: "User", kind: "person" },
+      { name: "Bestie", kind: "project", aliases: ["Bestie Agent"] },
+    ],
+    relations: [{ sourceName: "User", sourceKind: "person", type: "works_on", targetName: "Bestie", targetKind: "project", evidence: "User is building Bestie." }],
+  };
+
+  try {
+    const askResult = await runAgentToolRequest({
+      config: { ...createConfig(), memory: { writePolicy: "ask" }, mcp: undefined },
+      paths: askPaths,
+      request: { tool: "internal.remember_knowledge", arguments: payload },
+    });
+    assert.deepEqual(askResult, { ok: true, status: "pass", message: "Knowledge graph item pending approval.", result: { id: 1, status: "pending" } });
+
+    const allowResult = await runAgentToolRequest({
+      config: { ...createConfig(), memory: { writePolicy: "allow" }, mcp: undefined },
+      paths: allowPaths,
+      request: { tool: "internal.remember_knowledge", arguments: payload },
+    });
+    assert.deepEqual(allowResult, { ok: true, status: "pass", message: "Knowledge graph item stored.", result: { status: "stored", entityIds: [1, 2], relationIds: [1] } });
+
+    const denyResult = await runAgentToolRequest({
+      config: { ...createConfig(), memory: { writePolicy: "deny" }, mcp: undefined },
+      paths: denyPaths,
+      request: { tool: "internal.remember_knowledge", arguments: payload },
+    });
+    assert.equal(denyResult.ok, false);
+    assert.match(denyResult.message, /disabled by config/);
+  } finally {
+    await rm(askPaths.rootDir, { recursive: true, force: true });
+    await rm(allowPaths.rootDir, { recursive: true, force: true });
+    await rm(denyPaths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("runAgentToolRequest searches and inspects knowledge graph", async () => {
+  const paths = await createTempPaths();
+
+  try {
+    const store = await import("../memory/sqlite-store.js").then(({ SqliteMemoryStore }) => SqliteMemoryStore.open(paths));
+    try {
+      const user = store.upsertKnowledgeEntity({ canonicalName: "User", kind: "person" });
+      const bestie = store.upsertKnowledgeEntity({ canonicalName: "Bestie", kind: "project" });
+      store.upsertKnowledgeRelation({ sourceEntityId: user.id, relationType: "works_on", targetEntityId: bestie.id, evidence: "User is building Bestie." });
+    } finally {
+      store.close();
+    }
+
+    const search = await runAgentToolRequest({
+      config: { ...createConfig(), mcp: undefined },
+      paths,
+      request: { tool: "internal.search_knowledge", arguments: { query: "Bestie", limit: 10 } },
+    });
+    assert.equal(search.ok, true);
+    assert.match(JSON.stringify(search.result), /Bestie/);
+    assert.match(JSON.stringify(search.result), /works_on/);
+
+    const inspect = await runAgentToolRequest({
+      config: { ...createConfig(), mcp: undefined },
+      paths,
+      request: { tool: "internal.inspect_entity", arguments: { id: 2 } },
+    });
+    assert.equal(inspect.ok, true);
+    assert.match(JSON.stringify(inspect.result), /neighborhood/);
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("runAgentToolRequest analyzes knowledge graph hygiene", async () => {
+  const paths = await createTempPaths();
+
+  try {
+    const store = await import("../memory/sqlite-store.js").then(({ SqliteMemoryStore }) => SqliteMemoryStore.open(paths));
+    try {
+      const user = store.upsertKnowledgeEntity({ canonicalName: "User", kind: "person" });
+      const bestie = store.upsertKnowledgeEntity({ canonicalName: "Bestie", kind: "project", aliases: ["Bestie Agent"] });
+      store.upsertKnowledgeEntity({ canonicalName: "bestie-agent", kind: "project" });
+      store.upsertKnowledgeRelation({ sourceEntityId: user.id, relationType: "likes", targetEntityId: bestie.id });
+      store.upsertKnowledgeRelation({ sourceEntityId: user.id, relationType: "dislikes", targetEntityId: bestie.id });
+    } finally {
+      store.close();
+    }
+
+    const result = await runAgentToolRequest({
+      config: { ...createConfig(), mcp: undefined },
+      paths,
+      request: { tool: "internal.analyze_knowledge", arguments: {} },
+    });
+
+    assert.equal(result.ok, true);
+    assert.match(JSON.stringify(result.result), /mergeCandidates/);
+    assert.match(JSON.stringify(result.result), /conflictingRelations/);
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("runAgentToolRequest plans knowledge graph review suggestions", async () => {
+  const paths = await createTempPaths();
+
+  try {
+    const store = await import("../memory/sqlite-store.js").then(({ SqliteMemoryStore }) => SqliteMemoryStore.open(paths));
+    try {
+      store.upsertKnowledgeEntity({ canonicalName: "Bestie", kind: "project", aliases: ["Bestie Agent"] });
+      store.upsertKnowledgeEntity({ canonicalName: "bestie-agent", kind: "project" });
+    } finally {
+      store.close();
+    }
+
+    const result = await runAgentToolRequest({
+      config: { ...createConfig(), mcp: undefined },
+      paths,
+      request: { tool: "internal.plan_knowledge_review", arguments: { limit: 1 } },
+    });
+
+    assert.equal(result.ok, true);
+    assert.match(JSON.stringify(result.result), /merge_entity/);
+    assert.match(JSON.stringify(result.result), /bestie memory graph merge entity/);
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
 test("runAgentToolRequest searches active memories", async () => {
   const paths = await createTempPaths();
 
@@ -1254,6 +1433,158 @@ test("runAgentToolRequest blocks memory supersede when delete policy denies", as
 
     assert.equal(result.ok, false);
     assert.match(result.message, /Memory deletes are disabled by config/);
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("runAgentToolRequest merges knowledge entities when policy allows", async () => {
+  const paths = await createTempPaths();
+
+  try {
+    const store = await import("../memory/sqlite-store.js").then(({ SqliteMemoryStore }) => SqliteMemoryStore.open(paths));
+    try {
+      const user = store.upsertKnowledgeEntity({ canonicalName: "User", kind: "person" });
+      const bestie = store.upsertKnowledgeEntity({ canonicalName: "Bestie", kind: "project", aliases: ["Bestie Agent"] });
+      const duplicate = store.upsertKnowledgeEntity({ canonicalName: "bestie-agent", kind: "project" });
+      store.upsertKnowledgeRelation({ sourceEntityId: user.id, relationType: "works_on", targetEntityId: duplicate.id });
+    } finally {
+      store.close();
+    }
+
+    const result = await runAgentToolRequest({
+      config: { ...createConfig(), memory: { deletePolicy: "allow" }, mcp: undefined },
+      paths,
+      request: { tool: "internal.merge_knowledge_entities", arguments: { primaryId: 2, duplicateId: 3, reason: "same project alias" } },
+    });
+
+    assert.equal(result.ok, true);
+    assert.equal(result.message, "Knowledge entities merged.");
+    assert.match(JSON.stringify(result.result), /bestie-agent/);
+
+    const verifyStore = await import("../memory/sqlite-store.js").then(({ SqliteMemoryStore }) => SqliteMemoryStore.open(paths));
+    try {
+      assert.equal(verifyStore.getKnowledgeEntity(3), undefined);
+      assert.equal(verifyStore.searchKnowledgeGraph("works_on").relations[0]?.targetEntityId, 2);
+    } finally {
+      verifyStore.close();
+    }
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("runAgentToolRequest updates and forgets knowledge relations when policy allows", async () => {
+  const paths = await createTempPaths();
+
+  try {
+    const store = await import("../memory/sqlite-store.js").then(({ SqliteMemoryStore }) => SqliteMemoryStore.open(paths));
+    try {
+      const user = store.upsertKnowledgeEntity({ canonicalName: "User", kind: "person" });
+      const bestie = store.upsertKnowledgeEntity({ canonicalName: "Bestie", kind: "project" });
+      store.upsertKnowledgeRelation({ sourceEntityId: user.id, relationType: "works_on", targetEntityId: bestie.id, evidence: "Initial evidence.", confidence: 0.4 });
+    } finally {
+      store.close();
+    }
+
+    const updated = await runAgentToolRequest({
+      config: { ...createConfig(), memory: { deletePolicy: "allow" }, mcp: undefined },
+      paths,
+      request: { tool: "internal.update_knowledge_relation", arguments: { id: 1, evidence: "Reviewed evidence.", confidence: 0.72, scope: "project", sensitivity: "sensitive", reason: "reviewed relation metadata" } },
+    });
+
+    assert.equal(updated.ok, true);
+    assert.equal(updated.message, "Knowledge relation updated.");
+    assert.match(JSON.stringify(updated.result), /Reviewed evidence/);
+
+    const forgot = await runAgentToolRequest({
+      config: { ...createConfig(), memory: { deletePolicy: "allow" }, mcp: undefined },
+      paths,
+      request: { tool: "internal.forget_knowledge_relation", arguments: { id: 1, reason: "wrong relation" } },
+    });
+
+    assert.deepEqual(forgot.result, { id: 1, deleted: true });
+
+    const forgotEntity = await runAgentToolRequest({
+      config: { ...createConfig(), memory: { deletePolicy: "allow" }, mcp: undefined },
+      paths,
+      request: { tool: "internal.forget_knowledge_entity", arguments: { id: 1, reason: "wrong entity" } },
+    });
+
+    assert.deepEqual(forgotEntity.result, { id: 1, deleted: true });
+
+    const verifyStore = await import("../memory/sqlite-store.js").then(({ SqliteMemoryStore }) => SqliteMemoryStore.open(paths));
+    try {
+      assert.deepEqual(verifyStore.listKnowledgeRelations(), []);
+      assert.equal(verifyStore.getKnowledgeEntity(1), undefined);
+    } finally {
+      verifyStore.close();
+    }
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("runAgentToolRequest asks before merging knowledge entities when policy asks", async () => {
+  const paths = await createTempPaths();
+
+  try {
+    const result = await runAgentToolRequest({
+      config: { ...createConfig(), memory: { deletePolicy: "ask" }, mcp: undefined },
+      paths,
+      request: { tool: "internal.merge_knowledge_entities", arguments: { primaryId: 2, duplicateId: 3, reason: "same project alias" } },
+      approver: async (request, proposed) => {
+        assert.equal(request.action, "internal.merge_knowledge_entities");
+        assert.equal(request.category, "local_write");
+        assert.equal(request.payloadJson, JSON.stringify({ tool: "internal.merge_knowledge_entities", arguments: { primaryId: 2, duplicateId: 3, reason: "same project alias" } }));
+        assert.match(proposed.reason, /Local write actions require approval by default/);
+        return { approved: false, reason: "recorded graph merge approval" };
+      },
+    });
+
+    assert.equal(result.ok, false);
+    assert.match(result.message, /recorded graph merge approval/);
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("runAgentToolRequest asks before updating knowledge relations when policy asks", async () => {
+  const paths = await createTempPaths();
+
+  try {
+    const result = await runAgentToolRequest({
+      config: { ...createConfig(), memory: { deletePolicy: "ask" }, mcp: undefined },
+      paths,
+      request: { tool: "internal.update_knowledge_relation", arguments: { id: 4, confidence: 0.72, reason: "reviewed evidence" } },
+      approver: async (request, proposed) => {
+        assert.equal(request.action, "internal.update_knowledge_relation");
+        assert.equal(request.category, "local_write");
+        assert.equal(request.payloadJson, JSON.stringify({ tool: "internal.update_knowledge_relation", arguments: { id: 4, reason: "reviewed evidence", confidence: 0.72 } }));
+        assert.match(proposed.reason, /Local write actions require approval by default/);
+        return { approved: false, reason: "recorded relation update approval" };
+      },
+    });
+
+    assert.equal(result.ok, false);
+    assert.match(result.message, /recorded relation update approval/);
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("runAgentToolRequest blocks knowledge entity merge when delete policy denies", async () => {
+  const paths = await createTempPaths();
+
+  try {
+    const result = await runAgentToolRequest({
+      config: { ...createConfig(), memory: { deletePolicy: "deny" }, mcp: undefined },
+      paths,
+      request: { tool: "internal.merge_knowledge_entities", arguments: { primaryId: 2, duplicateId: 3, reason: "same project alias" } },
+    });
+
+    assert.equal(result.ok, false);
+    assert.match(result.message, /Knowledge graph write actions are disabled by memory\.deletePolicy/);
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
   }

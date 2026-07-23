@@ -2,6 +2,7 @@ import Database from "better-sqlite3";
 import { mkdir } from "node:fs/promises";
 
 import { getRuntimePaths, type RuntimePaths } from "../runtime/paths.js";
+import { evaluateKnowledgePayload, isKnowledgeEntityKind } from "./knowledge-policy.js";
 import { MEMORY_SCHEMA_SQL } from "./schema.js";
 
 export interface StoredMemory {
@@ -200,6 +201,136 @@ export interface NewMemoryHygieneSnapshot {
   staleMemories: number;
   conflictGroups: number;
   source?: string;
+}
+
+export type KnowledgeEntityKind = "person" | "project" | "preference" | "tool" | "skill" | "topic" | "organization" | "location" | "decision" | "concept";
+export type KnowledgeSensitivity = "normal" | "sensitive" | "secret";
+
+export interface KnowledgeEntity {
+  id: number;
+  canonicalName: string;
+  kind: KnowledgeEntityKind;
+  aliases: string[];
+  sensitivity: KnowledgeSensitivity;
+  scope: MemoryScope;
+  confidence: number;
+  sourceMemoryId?: number;
+  sourceMessageId?: string;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface KnowledgeRelation {
+  id: number;
+  sourceEntityId: number;
+  relationType: string;
+  targetEntityId: number;
+  evidence?: string;
+  sensitivity: KnowledgeSensitivity;
+  scope: MemoryScope;
+  confidence: number;
+  sourceMemoryId?: number;
+  sourceMessageId?: string;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface KnowledgeRelationWithEntities extends KnowledgeRelation {
+  sourceEntity: KnowledgeEntity;
+  targetEntity: KnowledgeEntity;
+}
+
+export type KnowledgeAuditSubjectType = "entity" | "relation" | "pending";
+
+export interface KnowledgeAuditEvent {
+  id: number;
+  subjectType: KnowledgeAuditSubjectType;
+  subjectId: number;
+  eventType: string;
+  actor?: string;
+  channel?: string;
+  reason?: string;
+  payloadSummary?: string;
+  createdAt: string;
+}
+
+interface NewKnowledgeAuditEvent {
+  subjectType: KnowledgeAuditSubjectType;
+  subjectId: number;
+  eventType: string;
+  actor?: string;
+  channel?: string;
+  reason?: string;
+  payloadSummary?: string;
+}
+
+export interface PendingKnowledgeItem {
+  id: number;
+  payload: unknown;
+  reason?: string;
+  source?: string;
+  explicitConsent: boolean;
+  createdAt: string;
+}
+
+export interface ApprovedKnowledgeItem {
+  entities: KnowledgeEntity[];
+  relations: KnowledgeRelation[];
+}
+
+export interface KnowledgeEntityMergeResult {
+  primary: KnowledgeEntity;
+  duplicate: KnowledgeEntity;
+  redirectedRelations: number;
+  mergedRelations: number;
+}
+
+export interface KnowledgeGraphSearchResult {
+  query: string;
+  entities: KnowledgeEntity[];
+  relations: KnowledgeRelationWithEntities[];
+}
+
+export interface NewKnowledgeEntity {
+  canonicalName: string;
+  kind: KnowledgeEntityKind;
+  aliases?: string[];
+  sensitivity?: KnowledgeSensitivity;
+  scope?: MemoryScope;
+  confidence?: number;
+  sourceMemoryId?: number;
+  sourceMessageId?: string;
+}
+
+export interface NewKnowledgeRelation {
+  sourceEntityId: number;
+  relationType: string;
+  targetEntityId: number;
+  evidence?: string;
+  sensitivity?: KnowledgeSensitivity;
+  scope?: MemoryScope;
+  confidence?: number;
+  sourceMemoryId?: number;
+  sourceMessageId?: string;
+}
+
+export interface KnowledgeRelationUpdate {
+  evidence?: string;
+  sensitivity?: KnowledgeSensitivity;
+  scope?: MemoryScope;
+  confidence?: number;
+}
+
+interface ParsedPendingKnowledgeRelation extends Omit<NewKnowledgeRelation, "sourceEntityId" | "targetEntityId" | "relationType"> {
+  sourceEntityId?: number;
+  sourceName?: string;
+  sourceKind?: KnowledgeEntityKind;
+  relationType: string;
+  targetEntityId?: number;
+  targetName?: string;
+  targetKind?: KnowledgeEntityKind;
 }
 
 export interface NewMemory {
@@ -671,6 +802,458 @@ export class SqliteMemoryStore {
           .all({ query: `%${escapeLike(normalizedQuery)}%`, limit }) as MemoryRow[]);
 
     return rows.map(mapMemoryRow);
+  }
+
+  upsertKnowledgeEntity(entity: NewKnowledgeEntity): KnowledgeEntity {
+    const canonicalName = normalizeKnowledgeName(entity.canonicalName);
+    if (!canonicalName) {
+      throw new Error("Knowledge entity canonicalName is required.");
+    }
+
+    const aliases = normalizeKnowledgeAliases(entity.aliases ?? []);
+    const existing = this.getKnowledgeEntityByName(canonicalName, entity.kind);
+    if (existing) {
+      const mergedAliases = normalizeKnowledgeAliases([...existing.aliases, ...aliases]);
+      this.db
+        .prepare(`
+          UPDATE knowledge_entities
+          SET aliases_json = @aliasesJson,
+              sensitivity = @sensitivity,
+              scope = @scope,
+              confidence = MAX(confidence, @confidence),
+              source_memory_id = COALESCE(source_memory_id, @sourceMemoryId),
+              source_message_id = COALESCE(source_message_id, @sourceMessageId),
+              status = 'active',
+              updated_at = CURRENT_TIMESTAMP
+          WHERE id = @id
+        `)
+      .run({
+        id: existing.id,
+        aliasesJson: JSON.stringify(mergedAliases),
+          sensitivity: maxKnowledgeSensitivity(existing.sensitivity, entity.sensitivity ?? "normal"),
+          scope: entity.scope ?? existing.scope,
+          confidence: clampKnowledgeConfidence(entity.confidence),
+          sourceMemoryId: entity.sourceMemoryId ?? null,
+          sourceMessageId: entity.sourceMessageId ?? null,
+        });
+      const updated = this.getKnowledgeEntity(existing.id)!;
+      this.addKnowledgeAuditEvent({ subjectType: "entity", subjectId: updated.id, eventType: "updated", actor: "system", reason: "Knowledge entity upsert refreshed an existing entity.", payloadSummary: summarizeKnowledgeEntityAudit(updated) });
+      return updated;
+    }
+
+    const result = this.db
+      .prepare(`
+        INSERT INTO knowledge_entities (canonical_name, kind, aliases_json, sensitivity, scope, confidence, source_memory_id, source_message_id)
+        VALUES (@canonicalName, @kind, @aliasesJson, @sensitivity, @scope, @confidence, @sourceMemoryId, @sourceMessageId)
+      `)
+      .run({
+        canonicalName,
+        kind: entity.kind,
+        aliasesJson: JSON.stringify(aliases),
+        sensitivity: entity.sensitivity ?? "normal",
+        scope: entity.scope ?? "core",
+        confidence: clampKnowledgeConfidence(entity.confidence),
+        sourceMemoryId: entity.sourceMemoryId ?? null,
+        sourceMessageId: entity.sourceMessageId ?? null,
+      });
+
+    const created = this.getKnowledgeEntity(Number(result.lastInsertRowid))!;
+    this.addKnowledgeAuditEvent({ subjectType: "entity", subjectId: created.id, eventType: "created", actor: "system", reason: "Knowledge entity was created.", payloadSummary: summarizeKnowledgeEntityAudit(created) });
+    return created;
+  }
+
+  upsertKnowledgeRelation(relation: NewKnowledgeRelation): KnowledgeRelation | undefined {
+    if (!this.getKnowledgeEntity(relation.sourceEntityId) || !this.getKnowledgeEntity(relation.targetEntityId)) {
+      return undefined;
+    }
+
+    const relationType = normalizeKnowledgeRelationType(relation.relationType);
+    if (!relationType) {
+      throw new Error("Knowledge relationType is required.");
+    }
+
+    const existing = this.getKnowledgeRelationByTriple(relation.sourceEntityId, relationType, relation.targetEntityId);
+    if (existing) {
+      this.db
+        .prepare(`
+          UPDATE knowledge_relations
+          SET evidence = COALESCE(@evidence, evidence),
+              sensitivity = @sensitivity,
+              scope = @scope,
+              confidence = MAX(confidence, @confidence),
+              source_memory_id = COALESCE(source_memory_id, @sourceMemoryId),
+              source_message_id = COALESCE(source_message_id, @sourceMessageId),
+              status = 'active',
+              updated_at = CURRENT_TIMESTAMP
+          WHERE id = @id
+        `)
+        .run({
+          id: existing.id,
+          evidence: relation.evidence?.trim() || null,
+          sensitivity: maxKnowledgeSensitivity(existing.sensitivity, relation.sensitivity ?? "normal"),
+          scope: relation.scope ?? existing.scope,
+          confidence: clampKnowledgeConfidence(relation.confidence),
+          sourceMemoryId: relation.sourceMemoryId ?? null,
+          sourceMessageId: relation.sourceMessageId ?? null,
+        });
+      const updated = this.getKnowledgeRelation(existing.id);
+      if (updated) {
+        this.addKnowledgeAuditEvent({ subjectType: "relation", subjectId: updated.id, eventType: "updated", actor: "system", reason: "Knowledge relation upsert refreshed an existing relation.", payloadSummary: summarizeKnowledgeRelationAudit(updated) });
+      }
+      return updated;
+    }
+
+    const result = this.db
+      .prepare(`
+        INSERT INTO knowledge_relations (source_entity_id, relation_type, target_entity_id, evidence, sensitivity, scope, confidence, source_memory_id, source_message_id)
+        VALUES (@sourceEntityId, @relationType, @targetEntityId, @evidence, @sensitivity, @scope, @confidence, @sourceMemoryId, @sourceMessageId)
+      `)
+      .run({
+        sourceEntityId: relation.sourceEntityId,
+        relationType,
+        targetEntityId: relation.targetEntityId,
+        evidence: relation.evidence?.trim() || null,
+        sensitivity: relation.sensitivity ?? "normal",
+        scope: relation.scope ?? "core",
+        confidence: clampKnowledgeConfidence(relation.confidence),
+        sourceMemoryId: relation.sourceMemoryId ?? null,
+        sourceMessageId: relation.sourceMessageId ?? null,
+      });
+
+    const created = this.getKnowledgeRelation(Number(result.lastInsertRowid));
+    if (created) {
+      this.addKnowledgeAuditEvent({ subjectType: "relation", subjectId: created.id, eventType: "created", actor: "system", reason: "Knowledge relation was created.", payloadSummary: summarizeKnowledgeRelationAudit(created) });
+    }
+    return created;
+  }
+
+  addPendingKnowledgeItem(item: { payload: unknown; reason?: string; source?: string; explicitConsent?: boolean }): PendingKnowledgeItem {
+    const result = this.db
+      .prepare("INSERT INTO pending_knowledge_items (payload_json, reason, source, explicit_consent) VALUES (@payloadJson, @reason, @source, @explicitConsent)")
+      .run({ payloadJson: JSON.stringify(item.payload), reason: item.reason ?? null, source: item.source ?? "manual", explicitConsent: item.explicitConsent ? 1 : 0 });
+
+    const pending = this.getPendingKnowledgeItem(Number(result.lastInsertRowid))!;
+    this.addKnowledgeAuditEvent({ subjectType: "pending", subjectId: pending.id, eventType: "queued", actor: "system", channel: pending.source, reason: pending.reason, payloadSummary: summarizePendingKnowledgeAudit(pending) });
+    return pending;
+  }
+
+  getPendingKnowledgeItem(id: number): PendingKnowledgeItem | undefined {
+    const row = this.db.prepare("SELECT * FROM pending_knowledge_items WHERE id = ?").get(id) as PendingKnowledgeItemRow | undefined;
+    return row ? mapPendingKnowledgeItemRow(row) : undefined;
+  }
+
+  listPendingKnowledgeItems(limit = 20): PendingKnowledgeItem[] {
+    const rows = this.db.prepare("SELECT * FROM pending_knowledge_items ORDER BY created_at DESC LIMIT ?").all(limit) as PendingKnowledgeItemRow[];
+    return rows.map(mapPendingKnowledgeItemRow);
+  }
+
+  approvePendingKnowledgeItem(id: number): ApprovedKnowledgeItem | undefined {
+    const pending = this.getPendingKnowledgeItem(id);
+    if (!pending) {
+      return undefined;
+    }
+
+    const parsed = parsePendingKnowledgePayload(pending.payload);
+    const transaction = this.db.transaction(() => {
+      const entities: KnowledgeEntity[] = [];
+      const relations: KnowledgeRelation[] = [];
+      const entityIdsByKey = new Map<string, number>();
+
+      for (const entity of parsed.entities) {
+        const stored = this.upsertKnowledgeEntity(entity);
+        entities.push(stored);
+        entityIdsByKey.set(knowledgeEntityKey(stored.canonicalName, stored.kind), stored.id);
+      }
+
+      for (const relation of parsed.relations) {
+        const sourceEntityId = relation.sourceEntityId ?? resolvePendingKnowledgeEntityId(this, entityIdsByKey, relation.sourceName, relation.sourceKind);
+        const targetEntityId = relation.targetEntityId ?? resolvePendingKnowledgeEntityId(this, entityIdsByKey, relation.targetName, relation.targetKind);
+        if (!sourceEntityId || !targetEntityId) {
+          continue;
+        }
+        const stored = this.upsertKnowledgeRelation({ ...relation, sourceEntityId, targetEntityId });
+        if (stored) {
+          relations.push(stored);
+        }
+      }
+
+      this.db.prepare("DELETE FROM pending_knowledge_items WHERE id = ?").run(id);
+      this.addKnowledgeAuditEvent({ subjectType: "pending", subjectId: id, eventType: "approved", actor: "owner", channel: pending.source, reason: pending.reason, payloadSummary: summarizePendingKnowledgeAudit(pending) });
+      for (const entity of entities) {
+        this.addKnowledgeAuditEvent({ subjectType: "entity", subjectId: entity.id, eventType: "approved", actor: "owner", channel: pending.source, reason: pending.reason, payloadSummary: summarizeKnowledgeEntityAudit(entity) });
+      }
+      for (const relation of relations) {
+        this.addKnowledgeAuditEvent({ subjectType: "relation", subjectId: relation.id, eventType: "approved", actor: "owner", channel: pending.source, reason: pending.reason, payloadSummary: summarizeKnowledgeRelationAudit(relation) });
+      }
+      return { entities, relations };
+    });
+
+    return transaction();
+  }
+
+  rejectPendingKnowledgeItem(id: number): boolean {
+    const pending = this.getPendingKnowledgeItem(id);
+    const rejected = this.db.prepare("DELETE FROM pending_knowledge_items WHERE id = ?").run(id).changes > 0;
+    if (rejected && pending) {
+      this.addKnowledgeAuditEvent({ subjectType: "pending", subjectId: id, eventType: "rejected", actor: "owner", channel: pending.source, reason: pending.reason, payloadSummary: summarizePendingKnowledgeAudit(pending) });
+    }
+    return rejected;
+  }
+
+  getKnowledgeEntity(id: number): KnowledgeEntity | undefined {
+    const row = this.db.prepare("SELECT * FROM knowledge_entities WHERE id = ? AND status = 'active'").get(id) as KnowledgeEntityRow | undefined;
+    return row ? mapKnowledgeEntityRow(row) : undefined;
+  }
+
+  getKnowledgeRelation(id: number): KnowledgeRelation | undefined {
+    const row = this.db.prepare("SELECT * FROM knowledge_relations WHERE id = ? AND status = 'active'").get(id) as KnowledgeRelationRow | undefined;
+    return row ? mapKnowledgeRelationRow(row) : undefined;
+  }
+
+  listKnowledgeEntities(options: { kind?: KnowledgeEntityKind; limit?: number } = {}): KnowledgeEntity[] {
+    const rows = options.kind
+      ? (this.db.prepare("SELECT * FROM knowledge_entities WHERE status = 'active' AND kind = ? ORDER BY updated_at DESC, id DESC LIMIT ?").all(options.kind, options.limit ?? 100) as KnowledgeEntityRow[])
+      : (this.db.prepare("SELECT * FROM knowledge_entities WHERE status = 'active' ORDER BY updated_at DESC, id DESC LIMIT ?").all(options.limit ?? 100) as KnowledgeEntityRow[]);
+    return rows.map(mapKnowledgeEntityRow);
+  }
+
+  listKnowledgeRelations(limit = 100): KnowledgeRelationWithEntities[] {
+    const rows = this.db
+      .prepare(`
+        SELECT relations.*,
+               source.id AS source_id, source.canonical_name AS source_canonical_name, source.kind AS source_kind, source.aliases_json AS source_aliases_json,
+               source.sensitivity AS source_sensitivity, source.scope AS source_scope, source.confidence AS source_confidence, source.source_memory_id AS source_source_memory_id,
+               source.source_message_id AS source_source_message_id, source.status AS source_status, source.created_at AS source_created_at, source.updated_at AS source_updated_at,
+               target.id AS target_id, target.canonical_name AS target_canonical_name, target.kind AS target_kind, target.aliases_json AS target_aliases_json,
+               target.sensitivity AS target_sensitivity, target.scope AS target_scope, target.confidence AS target_confidence, target.source_memory_id AS target_source_memory_id,
+               target.source_message_id AS target_source_message_id, target.status AS target_status, target.created_at AS target_created_at, target.updated_at AS target_updated_at
+        FROM knowledge_relations relations
+        JOIN knowledge_entities source ON source.id = relations.source_entity_id
+        JOIN knowledge_entities target ON target.id = relations.target_entity_id
+        WHERE relations.status = 'active' AND source.status = 'active' AND target.status = 'active'
+        ORDER BY relations.updated_at DESC, relations.id DESC
+        LIMIT ?
+      `)
+      .all(limit) as KnowledgeRelationJoinRow[];
+    return rows.map(mapKnowledgeRelationJoinRow);
+  }
+
+  getKnowledgeEntityNeighborhood(id: number, limit = 20): KnowledgeRelationWithEntities[] {
+    const rows = this.db
+      .prepare(`
+        SELECT relations.*,
+               source.id AS source_id, source.canonical_name AS source_canonical_name, source.kind AS source_kind, source.aliases_json AS source_aliases_json,
+               source.sensitivity AS source_sensitivity, source.scope AS source_scope, source.confidence AS source_confidence, source.source_memory_id AS source_source_memory_id,
+               source.source_message_id AS source_source_message_id, source.status AS source_status, source.created_at AS source_created_at, source.updated_at AS source_updated_at,
+               target.id AS target_id, target.canonical_name AS target_canonical_name, target.kind AS target_kind, target.aliases_json AS target_aliases_json,
+               target.sensitivity AS target_sensitivity, target.scope AS target_scope, target.confidence AS target_confidence, target.source_memory_id AS target_source_memory_id,
+               target.source_message_id AS target_source_message_id, target.status AS target_status, target.created_at AS target_created_at, target.updated_at AS target_updated_at
+        FROM knowledge_relations relations
+        JOIN knowledge_entities source ON source.id = relations.source_entity_id
+        JOIN knowledge_entities target ON target.id = relations.target_entity_id
+        WHERE relations.status = 'active' AND source.status = 'active' AND target.status = 'active'
+          AND (relations.source_entity_id = @id OR relations.target_entity_id = @id)
+        ORDER BY relations.confidence DESC, relations.updated_at DESC
+        LIMIT @limit
+      `)
+      .all({ id, limit }) as KnowledgeRelationJoinRow[];
+    return rows.map(mapKnowledgeRelationJoinRow);
+  }
+
+  searchKnowledgeGraph(query: string, limit = 20): KnowledgeGraphSearchResult {
+    const normalizedQuery = query.trim();
+    if (!normalizedQuery) {
+      return { query, entities: [], relations: [] };
+    }
+
+    const like = `%${escapeLike(normalizedQuery)}%`;
+    const entities = (this.db
+      .prepare(`
+        SELECT * FROM knowledge_entities
+        WHERE status = 'active'
+          AND (canonical_name LIKE @query ESCAPE '\\' OR kind LIKE @query ESCAPE '\\' OR aliases_json LIKE @query ESCAPE '\\')
+        ORDER BY confidence DESC, updated_at DESC
+        LIMIT @limit
+      `)
+      .all({ query: like, limit }) as KnowledgeEntityRow[]).map(mapKnowledgeEntityRow);
+
+    const relations = (this.db
+      .prepare(`
+        SELECT relations.*,
+               source.id AS source_id, source.canonical_name AS source_canonical_name, source.kind AS source_kind, source.aliases_json AS source_aliases_json,
+               source.sensitivity AS source_sensitivity, source.scope AS source_scope, source.confidence AS source_confidence, source.source_memory_id AS source_source_memory_id,
+               source.source_message_id AS source_source_message_id, source.status AS source_status, source.created_at AS source_created_at, source.updated_at AS source_updated_at,
+               target.id AS target_id, target.canonical_name AS target_canonical_name, target.kind AS target_kind, target.aliases_json AS target_aliases_json,
+               target.sensitivity AS target_sensitivity, target.scope AS target_scope, target.confidence AS target_confidence, target.source_memory_id AS target_source_memory_id,
+               target.source_message_id AS target_source_message_id, target.status AS target_status, target.created_at AS target_created_at, target.updated_at AS target_updated_at
+        FROM knowledge_relations relations
+        JOIN knowledge_entities source ON source.id = relations.source_entity_id
+        JOIN knowledge_entities target ON target.id = relations.target_entity_id
+        WHERE relations.status = 'active' AND source.status = 'active' AND target.status = 'active'
+          AND (relations.relation_type LIKE @query ESCAPE '\\' OR relations.evidence LIKE @query ESCAPE '\\' OR source.canonical_name LIKE @query ESCAPE '\\' OR target.canonical_name LIKE @query ESCAPE '\\')
+        ORDER BY relations.confidence DESC, relations.updated_at DESC
+        LIMIT @limit
+      `)
+      .all({ query: like, limit }) as KnowledgeRelationJoinRow[]).map(mapKnowledgeRelationJoinRow);
+
+    return { query: normalizedQuery, entities, relations };
+  }
+
+  forgetKnowledgeEntity(id: number): boolean {
+    const current = this.getKnowledgeEntity(id);
+    const result = this.db.prepare("UPDATE knowledge_entities SET status = 'deleted', updated_at = CURRENT_TIMESTAMP WHERE id = ? AND status = 'active'").run(id);
+    if (result.changes > 0 && current) {
+      this.addKnowledgeAuditEvent({ subjectType: "entity", subjectId: id, eventType: "forgotten", actor: "owner", reason: "Knowledge entity was forgotten.", payloadSummary: summarizeKnowledgeEntityAudit(current) });
+    }
+    return result.changes > 0;
+  }
+
+  forgetKnowledgeRelation(id: number): boolean {
+    const current = this.getKnowledgeRelation(id);
+    const result = this.db.prepare("UPDATE knowledge_relations SET status = 'deleted', updated_at = CURRENT_TIMESTAMP WHERE id = ? AND status = 'active'").run(id);
+    if (result.changes > 0 && current) {
+      this.addKnowledgeAuditEvent({ subjectType: "relation", subjectId: id, eventType: "forgotten", actor: "owner", reason: "Knowledge relation was forgotten.", payloadSummary: summarizeKnowledgeRelationAudit(current) });
+    }
+    return result.changes > 0;
+  }
+
+  updateKnowledgeRelation(id: number, update: KnowledgeRelationUpdate): KnowledgeRelation | undefined {
+    const current = this.getKnowledgeRelation(id);
+    if (!current) {
+      return undefined;
+    }
+
+    const hasEvidence = Object.prototype.hasOwnProperty.call(update, "evidence");
+    const hasSensitivity = update.sensitivity !== undefined;
+    const hasScope = update.scope !== undefined;
+    const hasConfidence = update.confidence !== undefined;
+    if (!hasEvidence && !hasSensitivity && !hasScope && !hasConfidence) {
+      return undefined;
+    }
+
+    this.db
+      .prepare(`
+        UPDATE knowledge_relations
+        SET evidence = @evidence,
+            sensitivity = @sensitivity,
+            scope = @scope,
+            confidence = @confidence,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = @id AND status = 'active'
+      `)
+      .run({
+        id,
+        evidence: hasEvidence ? update.evidence?.trim() || null : current.evidence ?? null,
+        sensitivity: update.sensitivity ?? current.sensitivity,
+        scope: update.scope ?? current.scope,
+        confidence: hasConfidence ? clampKnowledgeConfidence(update.confidence) : current.confidence,
+      });
+
+    const updated = this.getKnowledgeRelation(id);
+    if (updated) {
+      this.addKnowledgeAuditEvent({ subjectType: "relation", subjectId: id, eventType: "updated", actor: "owner", reason: "Knowledge relation metadata was updated.", payloadSummary: summarizeKnowledgeRelationAudit(updated) });
+    }
+    return updated;
+  }
+
+  mergeKnowledgeEntities(primaryId: number, duplicateId: number): KnowledgeEntityMergeResult | undefined {
+    if (primaryId === duplicateId) {
+      return undefined;
+    }
+
+    const primary = this.getKnowledgeEntity(primaryId);
+    const duplicate = this.getKnowledgeEntity(duplicateId);
+    if (!primary || !duplicate || primary.kind !== duplicate.kind) {
+      return undefined;
+    }
+
+    const transaction = this.db.transaction(() => {
+      const updatedPrimary = this.upsertKnowledgeEntity({
+        canonicalName: primary.canonicalName,
+        kind: primary.kind,
+        aliases: [...primary.aliases, duplicate.canonicalName, ...duplicate.aliases],
+        sensitivity: maxKnowledgeSensitivity(primary.sensitivity, duplicate.sensitivity),
+        scope: primary.scope,
+        confidence: Math.max(primary.confidence, duplicate.confidence),
+        sourceMemoryId: primary.sourceMemoryId ?? duplicate.sourceMemoryId,
+        sourceMessageId: primary.sourceMessageId ?? duplicate.sourceMessageId,
+      });
+
+      const duplicateRelations = this.getKnowledgeEntityNeighborhood(duplicateId, 10_000);
+      let redirectedRelations = 0;
+      let mergedRelations = 0;
+      for (const relation of duplicateRelations) {
+        const sourceEntityId = relation.sourceEntityId === duplicateId ? primaryId : relation.sourceEntityId;
+        const targetEntityId = relation.targetEntityId === duplicateId ? primaryId : relation.targetEntityId;
+        if (sourceEntityId === targetEntityId) {
+          if (this.forgetKnowledgeRelation(relation.id)) {
+            mergedRelations += 1;
+          }
+          continue;
+        }
+
+        const stored = this.upsertKnowledgeRelation({
+          sourceEntityId,
+          relationType: relation.relationType,
+          targetEntityId,
+          evidence: relation.evidence,
+          sensitivity: relation.sensitivity,
+          scope: relation.scope,
+          confidence: relation.confidence,
+          sourceMemoryId: relation.sourceMemoryId,
+          sourceMessageId: relation.sourceMessageId,
+        });
+        if (this.forgetKnowledgeRelation(relation.id)) {
+          redirectedRelations += stored?.id === relation.id ? 0 : 1;
+          if (stored && stored.id !== relation.id) {
+            mergedRelations += 1;
+          }
+        }
+      }
+
+      this.forgetKnowledgeEntity(duplicateId);
+      this.addKnowledgeAuditEvent({ subjectType: "entity", subjectId: primaryId, eventType: "merged", actor: "owner", reason: `Merged duplicate entity #${duplicateId} into #${primaryId}.`, payloadSummary: `redirected ${redirectedRelations}, merged ${mergedRelations}` });
+      this.addKnowledgeAuditEvent({ subjectType: "entity", subjectId: duplicateId, eventType: "merged_into", actor: "owner", reason: `Merged into entity #${primaryId}.`, payloadSummary: summarizeKnowledgeEntityAudit(duplicate) });
+      return { primary: updatedPrimary, duplicate, redirectedRelations, mergedRelations };
+    });
+
+    return transaction();
+  }
+
+  getKnowledgeGraphStats(): { entities: number; relations: number; pending: number } {
+    const entities = this.db.prepare("SELECT COUNT(*) AS count FROM knowledge_entities WHERE status = 'active'").get() as { count: number };
+    const relations = this.db.prepare("SELECT COUNT(*) AS count FROM knowledge_relations WHERE status = 'active'").get() as { count: number };
+    const pending = this.db.prepare("SELECT COUNT(*) AS count FROM pending_knowledge_items").get() as { count: number };
+    return { entities: entities.count, relations: relations.count, pending: pending.count };
+  }
+
+  listKnowledgeAuditEvents(subjectType: KnowledgeAuditSubjectType, subjectId: number, limit = 20): KnowledgeAuditEvent[] {
+    const rows = this.db
+      .prepare("SELECT * FROM knowledge_audit_events WHERE subject_type = ? AND subject_id = ? ORDER BY id DESC LIMIT ?")
+      .all(subjectType, subjectId, limit) as KnowledgeAuditEventRow[];
+    return rows.map(mapKnowledgeAuditEventRow);
+  }
+
+  private addKnowledgeAuditEvent(event: NewKnowledgeAuditEvent): KnowledgeAuditEvent {
+    const result = this.db
+      .prepare("INSERT INTO knowledge_audit_events (subject_type, subject_id, event_type, actor, channel, reason, payload_summary) VALUES (@subjectType, @subjectId, @eventType, @actor, @channel, @reason, @payloadSummary)")
+      .run({ subjectType: event.subjectType, subjectId: event.subjectId, eventType: event.eventType, actor: event.actor ?? "system", channel: event.channel ?? null, reason: event.reason ?? null, payloadSummary: event.payloadSummary ?? null });
+    const row = this.db.prepare("SELECT * FROM knowledge_audit_events WHERE id = ?").get(Number(result.lastInsertRowid)) as KnowledgeAuditEventRow;
+    return mapKnowledgeAuditEventRow(row);
+  }
+
+  private getKnowledgeEntityByName(canonicalName: string, kind: KnowledgeEntityKind): KnowledgeEntity | undefined {
+    const row = this.db
+      .prepare("SELECT * FROM knowledge_entities WHERE canonical_name = ? AND kind = ?")
+      .get(canonicalName, kind) as KnowledgeEntityRow | undefined;
+    return row ? mapKnowledgeEntityRow(row) : undefined;
+  }
+
+  private getKnowledgeRelationByTriple(sourceEntityId: number, relationType: string, targetEntityId: number): KnowledgeRelation | undefined {
+    const row = this.db
+      .prepare("SELECT * FROM knowledge_relations WHERE source_entity_id = ? AND relation_type = ? AND target_entity_id = ?")
+      .get(sourceEntityId, relationType, targetEntityId) as KnowledgeRelationRow | undefined;
+    return row ? mapKnowledgeRelationRow(row) : undefined;
   }
 
   // --- UI chat sessions ---
@@ -1272,6 +1855,85 @@ interface MemoryHygieneSnapshotRow {
   created_at: string;
 }
 
+interface KnowledgeEntityRow {
+  id: number;
+  canonical_name: string;
+  kind: KnowledgeEntityKind;
+  aliases_json: string | null;
+  sensitivity: KnowledgeSensitivity;
+  scope: string | null;
+  confidence: number | null;
+  source_memory_id: number | null;
+  source_message_id: string | null;
+  status: string;
+  created_at: string;
+  updated_at: string;
+}
+
+interface KnowledgeRelationRow {
+  id: number;
+  source_entity_id: number;
+  relation_type: string;
+  target_entity_id: number;
+  evidence: string | null;
+  sensitivity: KnowledgeSensitivity;
+  scope: string | null;
+  confidence: number | null;
+  source_memory_id: number | null;
+  source_message_id: string | null;
+  status: string;
+  created_at: string;
+  updated_at: string;
+}
+
+interface KnowledgeRelationJoinRow extends KnowledgeRelationRow {
+  source_id: number;
+  source_canonical_name: string;
+  source_kind: KnowledgeEntityKind;
+  source_aliases_json: string | null;
+  source_sensitivity: KnowledgeSensitivity;
+  source_scope: string | null;
+  source_confidence: number | null;
+  source_source_memory_id: number | null;
+  source_source_message_id: string | null;
+  source_status: string;
+  source_created_at: string;
+  source_updated_at: string;
+  target_id: number;
+  target_canonical_name: string;
+  target_kind: KnowledgeEntityKind;
+  target_aliases_json: string | null;
+  target_sensitivity: KnowledgeSensitivity;
+  target_scope: string | null;
+  target_confidence: number | null;
+  target_source_memory_id: number | null;
+  target_source_message_id: string | null;
+  target_status: string;
+  target_created_at: string;
+  target_updated_at: string;
+}
+
+interface PendingKnowledgeItemRow {
+  id: number;
+  payload_json: string;
+  reason: string | null;
+  source: string | null;
+  explicit_consent: number | null;
+  created_at: string;
+}
+
+interface KnowledgeAuditEventRow {
+  id: number;
+  subject_type: KnowledgeAuditSubjectType;
+  subject_id: number;
+  event_type: string;
+  actor: string | null;
+  channel: string | null;
+  reason: string | null;
+  payload_summary: string | null;
+  created_at: string;
+}
+
 function mapMemoryRow(row: MemoryRow): StoredMemory {
   return {
     id: row.id,
@@ -1360,6 +2022,113 @@ function mapMemoryHygieneSnapshotRow(row: MemoryHygieneSnapshotRow): MemoryHygie
     source: row.source,
     createdAt: row.created_at,
   };
+}
+
+function mapKnowledgeEntityRow(row: KnowledgeEntityRow): KnowledgeEntity {
+  return {
+    id: row.id,
+    canonicalName: row.canonical_name,
+    kind: row.kind,
+    aliases: parseStringArrayJson(row.aliases_json),
+    sensitivity: row.sensitivity,
+    scope: normalizeMemoryScope(row.scope),
+    confidence: row.confidence ?? 1,
+    sourceMemoryId: row.source_memory_id ?? undefined,
+    sourceMessageId: row.source_message_id ?? undefined,
+    status: row.status,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function mapKnowledgeRelationRow(row: KnowledgeRelationRow): KnowledgeRelation {
+  return {
+    id: row.id,
+    sourceEntityId: row.source_entity_id,
+    relationType: row.relation_type,
+    targetEntityId: row.target_entity_id,
+    evidence: row.evidence ?? undefined,
+    sensitivity: row.sensitivity,
+    scope: normalizeMemoryScope(row.scope),
+    confidence: row.confidence ?? 1,
+    sourceMemoryId: row.source_memory_id ?? undefined,
+    sourceMessageId: row.source_message_id ?? undefined,
+    status: row.status,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function mapKnowledgeRelationJoinRow(row: KnowledgeRelationJoinRow): KnowledgeRelationWithEntities {
+  return {
+    ...mapKnowledgeRelationRow(row),
+    sourceEntity: mapKnowledgeEntityRow({
+      id: row.source_id,
+      canonical_name: row.source_canonical_name,
+      kind: row.source_kind,
+      aliases_json: row.source_aliases_json,
+      sensitivity: row.source_sensitivity,
+      scope: row.source_scope,
+      confidence: row.source_confidence,
+      source_memory_id: row.source_source_memory_id,
+      source_message_id: row.source_source_message_id,
+      status: row.source_status,
+      created_at: row.source_created_at,
+      updated_at: row.source_updated_at,
+    }),
+    targetEntity: mapKnowledgeEntityRow({
+      id: row.target_id,
+      canonical_name: row.target_canonical_name,
+      kind: row.target_kind,
+      aliases_json: row.target_aliases_json,
+      sensitivity: row.target_sensitivity,
+      scope: row.target_scope,
+      confidence: row.target_confidence,
+      source_memory_id: row.target_source_memory_id,
+      source_message_id: row.target_source_message_id,
+      status: row.target_status,
+      created_at: row.target_created_at,
+      updated_at: row.target_updated_at,
+    }),
+  };
+}
+
+function mapPendingKnowledgeItemRow(row: PendingKnowledgeItemRow): PendingKnowledgeItem {
+  return {
+    id: row.id,
+    payload: parseJsonValue(row.payload_json),
+    reason: row.reason ?? undefined,
+    source: row.source ?? undefined,
+    explicitConsent: row.explicit_consent === 1,
+    createdAt: row.created_at,
+  };
+}
+
+function mapKnowledgeAuditEventRow(row: KnowledgeAuditEventRow): KnowledgeAuditEvent {
+  return {
+    id: row.id,
+    subjectType: row.subject_type,
+    subjectId: row.subject_id,
+    eventType: row.event_type,
+    actor: row.actor ?? undefined,
+    channel: row.channel ?? undefined,
+    reason: row.reason ?? undefined,
+    payloadSummary: row.payload_summary ?? undefined,
+    createdAt: row.created_at,
+  };
+}
+
+function summarizeKnowledgeEntityAudit(entity: KnowledgeEntity): string {
+  return `${entity.kind}:${entity.canonicalName} confidence ${entity.confidence}`;
+}
+
+function summarizeKnowledgeRelationAudit(relation: KnowledgeRelation): string {
+  return `${relation.sourceEntityId} --${relation.relationType}--> ${relation.targetEntityId} confidence ${relation.confidence}`;
+}
+
+function summarizePendingKnowledgeAudit(item: PendingKnowledgeItem): string {
+  const payload = JSON.stringify(item.payload);
+  return payload.length > 220 ? `${payload.slice(0, 217)}...` : payload;
 }
 
 function mapPendingMemoryRow(row: PendingMemoryRow): PendingMemory {
@@ -1467,6 +2236,179 @@ function normalizeMemoryFtsQuery(query: string): string {
     .join(" ");
 }
 
+function normalizeKnowledgeName(value: string): string {
+  return value.trim().replace(/\s+/g, " ");
+}
+
+function normalizeKnowledgeAliases(values: string[]): string[] {
+  const seen = new Set<string>();
+  const aliases: string[] = [];
+  for (const value of values) {
+    const alias = normalizeKnowledgeName(value);
+    const key = alias.toLocaleLowerCase();
+    if (!alias || seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    aliases.push(alias);
+  }
+  return aliases;
+}
+
+function normalizeKnowledgeRelationType(value: string): string {
+  return value.trim().toLocaleLowerCase().replace(/[^a-z0-9_]+/g, "_").replace(/^_+|_+$/g, "");
+}
+
+function parsePendingKnowledgePayload(payload: unknown): { entities: NewKnowledgeEntity[]; relations: ParsedPendingKnowledgeRelation[] } {
+  const policy = evaluateKnowledgePayload(payload);
+  if (policy.decision === "never" || policy.sensitivity === "secret") {
+    return { entities: [], relations: [] };
+  }
+
+  if (!isRecord(payload)) {
+    return { entities: [], relations: [] };
+  }
+
+  return {
+    entities: Array.isArray(payload.entities) ? payload.entities.flatMap(parsePendingKnowledgeEntity) : [],
+    relations: Array.isArray(payload.relations) ? payload.relations.flatMap(parsePendingKnowledgeRelation) : [],
+  };
+}
+
+function parsePendingKnowledgeEntity(value: unknown): NewKnowledgeEntity[] {
+  if (!isRecord(value)) {
+    return [];
+  }
+
+  const canonicalName = stringValue(value.canonicalName)?.trim() ?? stringValue(value.name)?.trim();
+  const kind = stringValue(value.kind);
+  const sensitivity = parseKnowledgeSensitivity(value.sensitivity);
+  if (!canonicalName || !isKnowledgeEntityKind(kind) || sensitivity === "secret") {
+    return [];
+  }
+
+  return [{
+    canonicalName,
+    kind,
+    aliases: Array.isArray(value.aliases) ? value.aliases.filter((alias): alias is string => typeof alias === "string") : undefined,
+    sensitivity,
+    scope: parseMemoryScope(value.scope),
+    confidence: numberValue(value.confidence),
+    sourceMemoryId: positiveIntegerValue(value.sourceMemoryId),
+    sourceMessageId: stringValue(value.sourceMessageId),
+  }];
+}
+
+function parsePendingKnowledgeRelation(value: unknown): ParsedPendingKnowledgeRelation[] {
+  if (!isRecord(value)) {
+    return [];
+  }
+
+  const relationType = stringValue(value.relationType)?.trim() ?? stringValue(value.type)?.trim();
+  const sourceKind = stringValue(value.sourceKind);
+  const targetKind = stringValue(value.targetKind);
+  const sensitivity = parseKnowledgeSensitivity(value.sensitivity);
+  if (!relationType || sensitivity === "secret") {
+    return [];
+  }
+
+  const relation: ParsedPendingKnowledgeRelation = {
+    sourceEntityId: positiveIntegerValue(value.sourceEntityId) ?? positiveIntegerValue(value.sourceId),
+    sourceName: stringValue(value.sourceName)?.trim(),
+    sourceKind: isKnowledgeEntityKind(sourceKind) ? sourceKind : undefined,
+    relationType,
+    targetEntityId: positiveIntegerValue(value.targetEntityId) ?? positiveIntegerValue(value.targetId),
+    targetName: stringValue(value.targetName)?.trim(),
+    targetKind: isKnowledgeEntityKind(targetKind) ? targetKind : undefined,
+    evidence: stringValue(value.evidence)?.trim(),
+    sensitivity,
+    scope: parseMemoryScope(value.scope),
+    confidence: numberValue(value.confidence),
+    sourceMemoryId: positiveIntegerValue(value.sourceMemoryId),
+    sourceMessageId: stringValue(value.sourceMessageId),
+  };
+
+  if ((!relation.sourceEntityId && (!relation.sourceName || !relation.sourceKind)) || (!relation.targetEntityId && (!relation.targetName || !relation.targetKind))) {
+    return [];
+  }
+  return [relation];
+}
+
+function resolvePendingKnowledgeEntityId(store: SqliteMemoryStore, entityIdsByKey: Map<string, number>, name: string | undefined, kind: KnowledgeEntityKind | undefined): number | undefined {
+  if (!name || !kind) {
+    return undefined;
+  }
+  const key = knowledgeEntityKey(name, kind);
+  const existingId = entityIdsByKey.get(key);
+  if (existingId) {
+    return existingId;
+  }
+  const entity = store.upsertKnowledgeEntity({ canonicalName: name, kind });
+  entityIdsByKey.set(knowledgeEntityKey(entity.canonicalName, entity.kind), entity.id);
+  return entity.id;
+}
+
+function knowledgeEntityKey(name: string, kind: KnowledgeEntityKind): string {
+  return `${kind}:${normalizeKnowledgeName(name).toLocaleLowerCase()}`;
+}
+
+function parseKnowledgeSensitivity(value: unknown): KnowledgeSensitivity | undefined {
+  return value === "normal" || value === "sensitive" || value === "secret" ? value : undefined;
+}
+
+function parseMemoryScope(value: unknown): MemoryScope | undefined {
+  const scope = typeof value === "string" ? value : undefined;
+  return isMemoryScope(scope) ? scope : undefined;
+}
+
+function stringValue(value: unknown): string | undefined {
+  return typeof value === "string" ? value : undefined;
+}
+
+function numberValue(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function positiveIntegerValue(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isInteger(value) && value > 0 ? value : undefined;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function clampKnowledgeConfidence(value: number | undefined): number {
+  if (value === undefined || Number.isNaN(value)) {
+    return 1;
+  }
+  return Math.min(Math.max(value, 0), 1);
+}
+
+function maxKnowledgeSensitivity(left: KnowledgeSensitivity, right: KnowledgeSensitivity): KnowledgeSensitivity {
+  const rank: Record<KnowledgeSensitivity, number> = { normal: 0, sensitive: 1, secret: 2 };
+  return rank[right] > rank[left] ? right : left;
+}
+
+function parseStringArrayJson(value: string | null): string[] {
+  if (!value) {
+    return [];
+  }
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+function parseJsonValue(value: string): unknown {
+  try {
+    return JSON.parse(value) as unknown;
+  } catch {
+    return { raw: value };
+  }
+}
+
 function applyMemoryMigrations(db: Database.Database): void {
   addColumnIfMissing(db, "memories", "source", "TEXT DEFAULT 'manual'");
   addColumnIfMissing(db, "memories", "explicit_consent", "INTEGER DEFAULT 0");
@@ -1494,6 +2436,81 @@ function applyMemoryMigrations(db: Database.Database): void {
       UNIQUE(source_memory_id, target_memory_id, kind)
     )
   `);
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS knowledge_entities (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      canonical_name TEXT NOT NULL,
+      kind TEXT NOT NULL,
+      aliases_json TEXT DEFAULT '[]',
+      sensitivity TEXT DEFAULT 'normal',
+      scope TEXT DEFAULT 'global',
+      confidence REAL DEFAULT 1.0,
+      source_memory_id INTEGER,
+      source_message_id TEXT,
+      status TEXT DEFAULT 'active',
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(canonical_name, kind),
+      FOREIGN KEY (source_memory_id) REFERENCES memories(id) ON DELETE SET NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS knowledge_relations (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      source_entity_id INTEGER NOT NULL,
+      relation_type TEXT NOT NULL,
+      target_entity_id INTEGER NOT NULL,
+      evidence TEXT,
+      sensitivity TEXT DEFAULT 'normal',
+      scope TEXT DEFAULT 'global',
+      confidence REAL DEFAULT 1.0,
+      source_memory_id INTEGER,
+      source_message_id TEXT,
+      status TEXT DEFAULT 'active',
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (source_entity_id) REFERENCES knowledge_entities(id) ON DELETE CASCADE,
+      FOREIGN KEY (target_entity_id) REFERENCES knowledge_entities(id) ON DELETE CASCADE,
+      FOREIGN KEY (source_memory_id) REFERENCES memories(id) ON DELETE SET NULL,
+      UNIQUE(source_entity_id, relation_type, target_entity_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS pending_knowledge_items (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      payload_json TEXT NOT NULL,
+      reason TEXT,
+      source TEXT DEFAULT 'manual',
+      explicit_consent INTEGER DEFAULT 0,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS knowledge_audit_events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      subject_type TEXT NOT NULL CHECK(subject_type IN ('entity', 'relation', 'pending')),
+      subject_id INTEGER NOT NULL,
+      event_type TEXT NOT NULL,
+      actor TEXT DEFAULT 'system',
+      channel TEXT,
+      reason TEXT,
+      payload_summary TEXT,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+  `);
+  addColumnIfMissing(db, "knowledge_entities", "aliases_json", "TEXT DEFAULT '[]'");
+  addColumnIfMissing(db, "knowledge_entities", "sensitivity", "TEXT DEFAULT 'normal'");
+  addColumnIfMissing(db, "knowledge_entities", "scope", "TEXT DEFAULT 'global'");
+  addColumnIfMissing(db, "knowledge_entities", "confidence", "REAL DEFAULT 1.0");
+  addColumnIfMissing(db, "knowledge_entities", "source_memory_id", "INTEGER");
+  addColumnIfMissing(db, "knowledge_entities", "source_message_id", "TEXT");
+  addColumnIfMissing(db, "knowledge_entities", "status", "TEXT DEFAULT 'active'");
+  addColumnIfMissing(db, "knowledge_relations", "evidence", "TEXT");
+  addColumnIfMissing(db, "knowledge_relations", "sensitivity", "TEXT DEFAULT 'normal'");
+  addColumnIfMissing(db, "knowledge_relations", "scope", "TEXT DEFAULT 'global'");
+  addColumnIfMissing(db, "knowledge_relations", "confidence", "REAL DEFAULT 1.0");
+  addColumnIfMissing(db, "knowledge_relations", "source_memory_id", "INTEGER");
+  addColumnIfMissing(db, "knowledge_relations", "source_message_id", "TEXT");
+  addColumnIfMissing(db, "knowledge_relations", "status", "TEXT DEFAULT 'active'");
+  addColumnIfMissing(db, "pending_knowledge_items", "source", "TEXT DEFAULT 'manual'");
+  addColumnIfMissing(db, "pending_knowledge_items", "explicit_consent", "INTEGER DEFAULT 0");
   db.exec(`
     CREATE TABLE IF NOT EXISTS memory_hygiene_snapshots (
       id INTEGER PRIMARY KEY AUTOINCREMENT,

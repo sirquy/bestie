@@ -62,6 +62,137 @@ test("main suppresses the banner for memory analyze JSON", async () => {
   }
 });
 
+test("memory graph CLI can add search and export graph items", async () => {
+  const homeDir = await mkdtemp(resolve(tmpdir(), "bestie-cli-index-test-"));
+
+  try {
+    await captureMain(["node", "bestie", "memory", "graph", "add", "entity", "person", "User"], { HOME: homeDir, BESTIE_NO_BANNER: "1" });
+    await captureMain(["node", "bestie", "memory", "graph", "add", "entity", "project", "Bestie"], { HOME: homeDir, BESTIE_NO_BANNER: "1" });
+    await captureMain(["node", "bestie", "memory", "graph", "add", "relation", "1", "works_on", "2", "User is building Bestie."], { HOME: homeDir, BESTIE_NO_BANNER: "1" });
+
+    const search = await captureMain(["node", "bestie", "memory", "graph", "search", "Bestie"], { HOME: homeDir, BESTIE_NO_BANNER: "1" });
+    assert.match(search.stdout, /Bestie/);
+    assert.match(search.stdout, /works_on/);
+
+    const exported = await captureMain(["node", "bestie", "memory", "graph", "export"], { HOME: homeDir, BESTIE_NO_BANNER: "1" });
+    const parsed = JSON.parse(exported.stdout) as { entities: unknown[]; relations: unknown[]; pending: unknown[] };
+    assert.equal(parsed.entities.length, 2);
+    assert.equal(parsed.relations.length, 1);
+    assert.deepEqual(parsed.pending, []);
+
+    const hygiene = await captureMain(["node", "bestie", "memory", "graph", "hygiene", "--json"], { HOME: homeDir, BESTIE_NO_BANNER: "1" });
+    const hygieneParsed = JSON.parse(hygiene.stdout) as { checkedEntities: number; checkedRelations: number; score: number };
+    assert.equal(hygieneParsed.checkedEntities, 2);
+    assert.equal(hygieneParsed.checkedRelations, 1);
+    assert.equal(hygieneParsed.score, 100);
+  } finally {
+    await rm(homeDir, { recursive: true, force: true });
+  }
+});
+
+test("memory graph CLI can update and forget relations", async () => {
+  const homeDir = await mkdtemp(resolve(tmpdir(), "bestie-cli-index-test-"));
+
+  try {
+    await captureMain(["node", "bestie", "memory", "graph", "add", "entity", "person", "User"], { HOME: homeDir, BESTIE_NO_BANNER: "1" });
+    await captureMain(["node", "bestie", "memory", "graph", "add", "entity", "project", "Bestie"], { HOME: homeDir, BESTIE_NO_BANNER: "1" });
+    await captureMain(["node", "bestie", "memory", "graph", "add", "relation", "1", "works_on", "2", "Initial evidence."], { HOME: homeDir, BESTIE_NO_BANNER: "1" });
+
+    const updated = await captureMain(["node", "bestie", "memory", "graph", "update", "relation", "1", "--confidence", "0.72", "--evidence", "Reviewed evidence.", "--scope", "project", "--sensitivity", "sensitive", "--yes"], { HOME: homeDir, BESTIE_NO_BANNER: "1" });
+    assert.match(updated.stdout, /Knowledge relation updated: #1/);
+    assert.match(updated.stdout, /Reviewed evidence/);
+    assert.match(updated.stdout, /"confidence": 0.72/);
+
+    const forgot = await captureMain(["node", "bestie", "memory", "graph", "forget", "relation", "1", "--yes"], { HOME: homeDir, BESTIE_NO_BANNER: "1" });
+    assert.match(forgot.stdout, /Knowledge relation forgotten: #1/);
+
+    const exported = await captureMain(["node", "bestie", "memory", "graph", "export"], { HOME: homeDir, BESTIE_NO_BANNER: "1" });
+    const parsed = JSON.parse(exported.stdout) as { relations: unknown[] };
+    assert.deepEqual(parsed.relations, []);
+  } finally {
+    await rm(homeDir, { recursive: true, force: true });
+  }
+});
+
+test("memory graph CLI can inspect approve and reject pending graph items", async () => {
+  const homeDir = await mkdtemp(resolve(tmpdir(), "bestie-cli-index-test-"));
+
+  try {
+    const paths = getRuntimePaths(homeDir);
+    const store = await SqliteMemoryStore.open(paths);
+    try {
+      store.addPendingKnowledgeItem({ payload: { entities: [{ name: "Bestie", kind: "project" }], relations: [] }, reason: "Needs graph approval.", source: "test" });
+      store.addPendingKnowledgeItem({ payload: { entities: [{ name: "Temporary", kind: "topic" }], relations: [] }, reason: "Reject me.", source: "test" });
+    } finally {
+      store.close();
+    }
+
+    const pending = await captureMain(["node", "bestie", "memory", "graph", "pending"], { HOME: homeDir, BESTIE_NO_BANNER: "1" });
+    assert.match(pending.stdout, /Pending Knowledge Graph Items/);
+    assert.match(pending.stdout, /Bestie/);
+
+    const inspected = await captureMain(["node", "bestie", "memory", "graph", "pending", "inspect", "1"], { HOME: homeDir, BESTIE_NO_BANNER: "1" });
+    assert.match(inspected.stdout, /Needs graph approval/);
+
+    const approved = await captureMain(["node", "bestie", "memory", "graph", "approve", "1"], { HOME: homeDir, BESTIE_NO_BANNER: "1" });
+    assert.match(approved.stdout, /Pending knowledge graph item approved/);
+
+    const rejected = await captureMain(["node", "bestie", "memory", "graph", "reject", "2"], { HOME: homeDir, BESTIE_NO_BANNER: "1" });
+    assert.match(rejected.stdout, /Pending knowledge graph item rejected/);
+
+    const exported = await captureMain(["node", "bestie", "memory", "graph", "export"], { HOME: homeDir, BESTIE_NO_BANNER: "1" });
+    const parsed = JSON.parse(exported.stdout) as { entities: Array<{ canonicalName: string }>; pending: unknown[] };
+    assert.deepEqual(parsed.entities.map((entity) => entity.canonicalName), ["Bestie"]);
+    assert.deepEqual(parsed.pending, []);
+  } finally {
+    await rm(homeDir, { recursive: true, force: true });
+  }
+});
+
+test("memory graph CLI reports duplicate candidates and merges entities", async () => {
+  const homeDir = await mkdtemp(resolve(tmpdir(), "bestie-cli-index-test-"));
+
+  try {
+    const paths = getRuntimePaths(homeDir);
+    const store = await SqliteMemoryStore.open(paths);
+    try {
+      const user = store.upsertKnowledgeEntity({ canonicalName: "User", kind: "person" });
+      const bestie = store.upsertKnowledgeEntity({ canonicalName: "Bestie", kind: "project", aliases: ["Bestie Agent"] });
+      const duplicate = store.upsertKnowledgeEntity({ canonicalName: "bestie-agent", kind: "project" });
+      store.upsertKnowledgeRelation({ sourceEntityId: user.id, relationType: "works_on", targetEntityId: duplicate.id });
+      store.upsertKnowledgeRelation({ sourceEntityId: user.id, relationType: "likes", targetEntityId: bestie.id });
+      store.upsertKnowledgeRelation({ sourceEntityId: user.id, relationType: "dislikes", targetEntityId: bestie.id });
+    } finally {
+      store.close();
+    }
+
+    const hygiene = await captureMain(["node", "bestie", "memory", "graph", "hygiene"], { HOME: homeDir, BESTIE_NO_BANNER: "1" });
+    assert.match(hygiene.stdout, /possible duplicate entity pair/);
+    assert.match(hygiene.stdout, /relation conflict/);
+
+    const review = await captureMain(["node", "bestie", "memory", "graph", "review", "--limit", "1"], { HOME: homeDir, BESTIE_NO_BANNER: "1" });
+    assert.match(review.stdout, /Knowledge Graph Review/);
+    assert.match(review.stdout, /Merge duplicate project entities/);
+    assert.match(review.stdout, /bestie memory graph merge entity (2 3|3 2) --yes/);
+
+    const reviewJson = await captureMain(["node", "bestie", "memory", "graph", "review", "--json", "--limit", "1"], { HOME: homeDir, BESTIE_NO_BANNER: "1" });
+    const reviewParsed = JSON.parse(reviewJson.stdout) as { plan: { suggestions: Array<{ action: string }> } };
+    assert.deepEqual(reviewParsed.plan.suggestions.map((suggestion) => suggestion.action), ["merge_entity"]);
+
+    const merged = await captureMain(["node", "bestie", "memory", "graph", "merge", "entity", "2", "3", "--yes"], { HOME: homeDir, BESTIE_NO_BANNER: "1" });
+    assert.match(merged.stdout, /Knowledge entity merged: #2 <- #3/);
+
+    const exported = await captureMain(["node", "bestie", "memory", "graph", "export"], { HOME: homeDir, BESTIE_NO_BANNER: "1" });
+    const parsed = JSON.parse(exported.stdout) as { entities: Array<{ id: number; aliases: string[] }>; relations: Array<{ targetEntityId: number }> };
+    assert.deepEqual(parsed.entities.map((entity) => entity.id), [2, 1]);
+    assert.deepEqual(parsed.entities.find((entity) => entity.id === 2)?.aliases, ["Bestie Agent", "bestie-agent"]);
+    assert.ok(parsed.relations.some((relation) => relation.targetEntityId === 2));
+    assert.equal(parsed.relations.some((relation) => relation.targetEntityId === 3), false);
+  } finally {
+    await rm(homeDir, { recursive: true, force: true });
+  }
+});
+
 test("memory cleanup dry-run JSON reports planned deletions", async () => {
   const homeDir = await mkdtemp(resolve(tmpdir(), "bestie-cli-index-test-"));
 

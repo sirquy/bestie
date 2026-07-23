@@ -1269,7 +1269,7 @@ test("handleTelegramUpdate lets the model queue memory through remember_memory",
     });
 
     assert.equal(result, "replied");
-    assert.equal(calls, 3);
+    assert.equal(calls, 4);
     assert.equal(sentMessages[0].text, "Miu is preparing a memory approval");
     assert.match(sentMessages[1].text, /Memory approval needed/);
     assert.match(sentMessages[1].text, /Content: reply bằng tiếng Việt/);
@@ -1643,6 +1643,9 @@ test("handleTelegramUpdate sends approval for reasoned memory candidates", async
       chatCompletion: async (_config, _apiKey, options) => {
         calls += 1;
         const systemText = String(options.messages[0]?.content ?? "");
+        if (systemText.includes("knowledge graph reasoning pass")) {
+          return '{"entities":[],"relations":[]}';
+        }
         return systemText.includes("memory reasoning pass")
           ? '{"candidates":[{"type":"project_context","content":"The project is called Bestie.","reason":"The user stated the project name.","confidence":0.9}]}'
           : '{"answer":"Noted."}';
@@ -1650,10 +1653,46 @@ test("handleTelegramUpdate sends approval for reasoned memory candidates", async
     });
 
     assert.equal(result, "replied");
-    assert.equal(calls, 2);
+    assert.equal(calls, 3);
     assert.equal(sentMessages[0]?.text, "Noted.");
     assert.match(sentMessages[1]?.text ?? "", /Memory approval needed/);
     assert.match(sentMessages[1]?.text ?? "", /Content: The project is called Bestie\./);
+    assert.deepEqual(sentMessages[1]?.options, {
+      replyMarkup: {
+        inline_keyboard: [[{ text: "Approve", callback_data: "approval:approve:1" }, { text: "Deny", callback_data: "approval:deny:1" }]],
+      },
+    });
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("handleTelegramUpdate sends approval for reasoned knowledge graph items", async () => {
+  const paths = await createTempPaths();
+  const sentMessages: Array<{ chatId: number; text: string; options?: unknown }> = [];
+  let calls = 0;
+
+  try {
+    await writeRuntimeFiles(paths);
+    const result = await handleTelegramUpdate(createTextUpdate("This project is called Bestie", 12345), {
+      config: { ...config, memory: { writePolicy: "ask" } },
+      paths,
+      client: createRecordingClient(sentMessages),
+      chatCompletion: async (_config, _apiKey, options) => {
+        calls += 1;
+        const systemText = String(options.messages[0]?.content ?? "");
+        if (systemText.includes("knowledge graph reasoning pass")) {
+          return '{"entities":[{"name":"Bestie","kind":"project","confidence":0.9}],"relations":[]}';
+        }
+        return systemText.includes("memory reasoning pass") ? '{"candidates":[]}' : '{"answer":"Noted."}';
+      },
+    });
+
+    assert.equal(result, "replied");
+    assert.equal(calls, 3);
+    assert.equal(sentMessages[0]?.text, "Noted.");
+    assert.match(sentMessages[1]?.text ?? "", /Knowledge graph approval needed/);
+    assert.match(sentMessages[1]?.text ?? "", /Bestie/);
     assert.deepEqual(sentMessages[1]?.options, {
       replyMarkup: {
         inline_keyboard: [[{ text: "Approve", callback_data: "approval:approve:1" }, { text: "Deny", callback_data: "approval:deny:1" }]],

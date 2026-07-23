@@ -37,8 +37,9 @@ const PANELS: HomePanel[] = [
   { id: "provider-panel", icon: "plug", nav: "Providers", title: "Provider Hub", subtitle: "Primary model, fallbacks, setup, and quick connection check.", actions: `${button("activity", "provider-test", "Test primary")}${button("refresh", "provider-refresh", "Refresh")}`, body: "Loading providers..." },
   { id: "character-panel", icon: "user", nav: "Character", title: "Character Studio", subtitle: "Edit character JSON and system prompt locally.", actions: `${button("check", "character-save", "Save character")}${button("refresh", "character-reload", "Reload")}`, body: "Loading character..." },
   { id: "memory-panel", icon: "database", nav: "Memory", title: "Memory Center", subtitle: "Search active memories and approve pending writes.", actions: button("refresh", "memory-refresh", "Refresh"), body: "Loading memory..." },
+  { id: "knowledge-panel", icon: "brain", nav: "Graph", title: "Knowledge Graph", subtitle: "Inspect local entities, relations, and graph review suggestions.", actions: button("refresh", "knowledge-refresh", "Refresh"), body: "Loading graph..." },
   { id: "channel-panel", icon: "globe", nav: "Channels", title: "Channel Hub", subtitle: "Telegram, Zalo, daemon state, and cron schedules.", actions: `${button("refresh", "channel-refresh", "Refresh")}${button("terminal", "channel-stop-cron", "Stop cron")}${button("activity", "cron-toggle", "Toggle first cron")}`, body: "Loading channels..." },
-  { id: "approvals-panel", icon: "key", nav: "Approvals", title: "Approvals", subtitle: "Pending permission decisions without executing payloads.", actions: `${button("refresh", "approvals-refresh", "Refresh")}${button("check", "approval-approve", "Approve first")}${button("shield", "approval-deny", "Deny first")}`, body: "Loading approvals..." },
+  { id: "approvals-panel", icon: "key", nav: "Approvals", title: "Approvals", subtitle: "Pending permission decisions with guarded execution for UI actions.", actions: `${button("refresh", "approvals-refresh", "Refresh")}${button("check", "approval-approve", "Approve first")}${button("shield", "approval-deny", "Deny first")}`, body: "Loading approvals..." },
   { id: "mcp-panel", icon: "brain", nav: "MCP", title: "MCP Hub", subtitle: "Configured servers, transports, auth metadata, and tools.", actions: button("refresh", "mcp-refresh", "Refresh"), body: "Loading MCP..." },
   { id: "tools-panel", icon: "terminal", nav: "Tools", title: "Tools & Permissions", subtitle: "Internal tool policies and workspace boundaries.", actions: button("refresh", "tools-refresh", "Refresh"), body: "Loading tools..." },
   { id: "skills-panel", icon: "layers", nav: "Skills", title: "Quản lý Skills", subtitle: "Create, edit, inspect, and delete local .bestie skills.", actions: `${button("layers", "skill-new", "New skill")}${button("check", "skill-save", "Save skill")}${button("refresh", "skills-refresh", "Refresh")}`, body: "Loading skills..." },
@@ -113,6 +114,7 @@ export function renderHomePage(): string {
         <div id="command-palette-list" class="palette-list"></div>
       </form>
     </dialog>
+    <script src="/assets/cytoscape.min.js"></script>
     <script src="/assets/home.js"></script>
   </body>
 </html>`;

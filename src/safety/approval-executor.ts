@@ -27,6 +27,10 @@ export async function executeApprovedAction(store: SqliteMemoryStore, approval: 
     return executePendingMemoryApproval(store, approval, decision);
   }
 
+  if (approval.target?.startsWith("pending-knowledge:")) {
+    return executePendingKnowledgeApproval(store, approval, decision);
+  }
+
   if (approval.payloadJson && options?.config && options.paths) {
     return executeInternalToolApproval(store, approval, decision, { config: options.config, paths: options.paths });
   }
@@ -103,4 +107,28 @@ function executePendingMemoryApproval(store: SqliteMemoryStore, approval: Pendin
   return rejected
     ? { status: "denied", shortText: "Memory denied.", message: `Memory request denied: ${pendingMemoryId}.` }
     : { status: "invalid", shortText: "Pending memory not found.", message: `Approval ${approval.status}: ${approval.id}, but pending memory ${pendingMemoryId} was not found.` };
+}
+
+function executePendingKnowledgeApproval(store: SqliteMemoryStore, approval: PendingActionApproval, decision: ApprovalDecision): ApprovalExecutionResult {
+  const pendingKnowledgeId = Number(approval.target?.slice("pending-knowledge:".length));
+
+  if (!Number.isInteger(pendingKnowledgeId)) {
+    return { status: "invalid", shortText: "Invalid pending knowledge target.", message: `Approval ${approval.status}: ${approval.id}. Invalid pending knowledge target.` };
+  }
+
+  if (decision === "approve") {
+    if (!store.markActionApprovalExecuted(approval.id)) {
+      return { status: "invalid", shortText: "Approval already executed.", message: `Approval ${approval.id} was already executed or is no longer approved.` };
+    }
+
+    const approved = store.approvePendingKnowledgeItem(pendingKnowledgeId);
+    return approved
+      ? { status: "executed", shortText: "Knowledge graph saved.", message: `Knowledge graph approved and saved: ${approved.entities.length} entities, ${approved.relations.length} relations.` }
+      : { status: "invalid", shortText: "Pending knowledge graph item not found.", message: `Approval ${approval.status}: ${approval.id}, but pending knowledge graph item ${pendingKnowledgeId} was not found.` };
+  }
+
+  const rejected = store.rejectPendingKnowledgeItem(pendingKnowledgeId);
+  return rejected
+    ? { status: "denied", shortText: "Knowledge graph denied.", message: `Knowledge graph request denied: ${pendingKnowledgeId}.` }
+    : { status: "invalid", shortText: "Pending knowledge graph item not found.", message: `Approval ${approval.status}: ${approval.id}, but pending knowledge graph item ${pendingKnowledgeId} was not found.` };
 }

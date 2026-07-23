@@ -50,6 +50,48 @@ test("executeApprovedAction denies pending memory", async () => {
   }
 });
 
+test("executeApprovedAction approves pending knowledge graph items", async () => {
+  const paths = await createTempPaths();
+  const store = await SqliteMemoryStore.open(paths);
+
+  try {
+    const pending = store.addPendingKnowledgeItem({ payload: { entities: [{ name: "Bestie", kind: "project" }], relations: [] }, source: "agent-tool" });
+    const approval = store.addPendingActionApproval({ channel: "telegram", category: "local_write", action: "knowledge_approve", target: `pending-knowledge:${pending.id}` });
+    const approved = store.approvePendingActionApproval(approval.id);
+
+    assert.ok(approved);
+    const result = await executeApprovedAction(store, approved, "approve");
+
+    assert.deepEqual(result, { status: "executed", shortText: "Knowledge graph saved.", message: "Knowledge graph approved and saved: 1 entities, 0 relations." });
+    assert.deepEqual(store.listKnowledgeEntities().map((entity) => entity.canonicalName), ["Bestie"]);
+    assert.deepEqual(store.listPendingKnowledgeItems(), []);
+  } finally {
+    store.close();
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("executeApprovedAction denies pending knowledge graph items", async () => {
+  const paths = await createTempPaths();
+  const store = await SqliteMemoryStore.open(paths);
+
+  try {
+    const pending = store.addPendingKnowledgeItem({ payload: { entities: [{ name: "Temporary", kind: "topic" }], relations: [] }, source: "agent-tool" });
+    const approval = store.addPendingActionApproval({ channel: "telegram", category: "local_write", action: "knowledge_approve", target: `pending-knowledge:${pending.id}` });
+    const denied = store.denyPendingActionApproval(approval.id);
+
+    assert.ok(denied);
+    const result = await executeApprovedAction(store, denied, "deny");
+
+    assert.deepEqual(result, { status: "denied", shortText: "Knowledge graph denied.", message: "Knowledge graph request denied: 1." });
+    assert.deepEqual(store.listKnowledgeEntities(), []);
+    assert.deepEqual(store.listPendingKnowledgeItems(), []);
+  } finally {
+    store.close();
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
 test("executeApprovedAction returns unsupported for actions without executors", async () => {
   const paths = await createTempPaths();
   const store = await SqliteMemoryStore.open(paths);
@@ -108,6 +150,66 @@ test("executeApprovedAction executes stored internal tool payloads", async () =>
     assert.equal(result.status, "executed");
     assert.match(result.message, /Executed internal\.write_file/);
     assert.equal(await readFile(resolve(paths.workspaceDir, "note.txt"), "utf8"), "approved\n");
+  } finally {
+    store.close();
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("executeApprovedAction executes approved knowledge graph merge payloads", async () => {
+  const paths = await createTempPaths();
+  const store = await SqliteMemoryStore.open(paths);
+
+  try {
+    store.upsertKnowledgeEntity({ canonicalName: "Bestie", kind: "project", aliases: ["Bestie Agent"] });
+    store.upsertKnowledgeEntity({ canonicalName: "bestie-agent", kind: "project" });
+    const approval = store.addPendingActionApproval({
+      channel: "telegram",
+      category: "local_write",
+      action: "internal.merge_knowledge_entities",
+      target: "entity #1 <- #2",
+      payloadJson: JSON.stringify({ tool: "internal.merge_knowledge_entities", arguments: { primaryId: 1, duplicateId: 2, reason: "same project alias" } }),
+    });
+    const approved = store.approvePendingActionApproval(approval.id);
+
+    assert.ok(approved);
+    const result = await executeApprovedAction(store, approved, "approve", { config: createConfig(), paths });
+
+    assert.equal(result.status, "executed");
+    assert.match(result.message, /Executed internal\.merge_knowledge_entities/);
+    assert.equal(store.getKnowledgeEntity(2), undefined);
+    assert.deepEqual(store.getKnowledgeEntity(1)?.aliases, ["Bestie Agent", "bestie-agent"]);
+  } finally {
+    store.close();
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("executeApprovedAction executes approved knowledge relation review payloads", async () => {
+  const paths = await createTempPaths();
+  const store = await SqliteMemoryStore.open(paths);
+
+  try {
+    const user = store.upsertKnowledgeEntity({ canonicalName: "User", kind: "person" });
+    const bestie = store.upsertKnowledgeEntity({ canonicalName: "Bestie", kind: "project" });
+    store.upsertKnowledgeRelation({ sourceEntityId: user.id, relationType: "works_on", targetEntityId: bestie.id, evidence: "Initial evidence.", confidence: 0.4 });
+    const approval = store.addPendingActionApproval({
+      channel: "telegram",
+      category: "local_write",
+      action: "internal.update_knowledge_relation",
+      target: "relation #1",
+      payloadJson: JSON.stringify({ tool: "internal.update_knowledge_relation", arguments: { id: 1, confidence: 0.72, evidence: "Reviewed evidence.", reason: "reviewed relation metadata" } }),
+    });
+    const approved = store.approvePendingActionApproval(approval.id);
+
+    assert.ok(approved);
+    const result = await executeApprovedAction(store, approved, "approve", { config: createConfig(), paths });
+
+    assert.equal(result.status, "executed");
+    assert.match(result.message, /Executed internal\.update_knowledge_relation/);
+    const relation = store.getKnowledgeRelation(1);
+    assert.equal(relation?.confidence, 0.72);
+    assert.equal(relation?.evidence, "Reviewed evidence.");
   } finally {
     store.close();
     await rm(paths.rootDir, { recursive: true, force: true });

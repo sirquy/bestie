@@ -8,10 +8,11 @@ import { appendLog } from "../runtime/logger.js";
 import type { RuntimePaths } from "../runtime/paths.js";
 import type { ChatCompletionOptions, ChatMessage } from "../llm/types.js";
 import { reviewActionPermission, type PermissionApprover, type PermissionPolicy } from "../safety/permission-policy.js";
+import { evaluateKnowledgePayload, isKnowledgeEntityKind } from "../memory/knowledge-policy.js";
 import { evaluateMemoryCandidate, type MemoryType } from "../memory/policy.js";
-import { SqliteMemoryStore } from "../memory/sqlite-store.js";
+import { SqliteMemoryStore, type KnowledgeEntityKind, type KnowledgeSensitivity, type MemoryScope } from "../memory/sqlite-store.js";
 import { applyPatchTool, editLocalFileTool, execLocalTool, listProcessesTool, writeLocalFileTool } from "../tools/local-action-tools.js";
-import { analyzeMemoriesTool, inspectMemoryTool, listActiveMemoriesTool, listLocalFilesTool, planMemoryHygieneTool, planMemoryRebalanceTool, readGitDiffTool, readGitLogTool, readGitStatusTool, readLocalFileTool, readManyLocalFilesTool, readMarkdownBundleTool, readMemoryHygieneTrendTool, readRecentAppLogsTool, searchLocalFilesTool, searchMemoriesTool, type MemoryAnalysisMode } from "../tools/local-read-tools.js";
+import { analyzeKnowledgeGraphTool, analyzeMemoriesTool, inspectKnowledgeEntityTool, inspectMemoryTool, listActiveMemoriesTool, listLocalFilesTool, planKnowledgeGraphReviewTool, planMemoryHygieneTool, planMemoryRebalanceTool, readGitDiffTool, readGitLogTool, readGitStatusTool, readLocalFileTool, readManyLocalFilesTool, readMarkdownBundleTool, readMemoryHygieneTrendTool, readRecentAppLogsTool, searchKnowledgeGraphTool, searchLocalFilesTool, searchMemoriesTool, type MemoryAnalysisMode } from "../tools/local-read-tools.js";
 import { readUrlTool } from "../tools/web-read-tools.js";
 import { addCronScheduleTool, listCronSchedulesTool, removeCronScheduleTool, toggleCronScheduleTool } from "../tools/cron-tools.js";
 
@@ -57,7 +58,7 @@ export interface McpToolRequest {
 }
 
 export interface InternalToolRequest {
-  tool: "internal.read_file" | "internal.read_many_files" | "internal.read_markdown_bundle" | "internal.list_files" | "internal.search_files" | "internal.read_logs" | "internal.read_url" | "internal.git_status" | "internal.git_diff" | "internal.git_log" | "internal.mcp_list_servers" | "internal.mcp_list_tools" | "internal.mcp_discover_oauth" | "internal.mcp_prepare_server_config" | "internal.mcp_apply_server_config" | "internal.write_file" | "internal.edit_file" | "internal.apply_patch" | "internal.exec" | "internal.list_processes" | "internal.spawn_subagent" | "internal.list_memories" | "internal.search_memories" | "internal.inspect_memory" | "internal.analyze_memories" | "internal.plan_memory_hygiene" | "internal.plan_memory_rebalance" | "internal.memory_hygiene_trend" | "internal.remember_memory" | "internal.delete_memory" | "internal.cleanup_memories" | "internal.supersede_memory" | "internal.add_cron_schedule" | "internal.list_cron_schedules" | "internal.remove_cron_schedule" | "internal.toggle_cron_schedule";
+  tool: "internal.read_file" | "internal.read_many_files" | "internal.read_markdown_bundle" | "internal.list_files" | "internal.search_files" | "internal.read_logs" | "internal.read_url" | "internal.git_status" | "internal.git_diff" | "internal.git_log" | "internal.mcp_list_servers" | "internal.mcp_list_tools" | "internal.mcp_discover_oauth" | "internal.mcp_prepare_server_config" | "internal.mcp_apply_server_config" | "internal.write_file" | "internal.edit_file" | "internal.apply_patch" | "internal.exec" | "internal.list_processes" | "internal.spawn_subagent" | "internal.list_memories" | "internal.search_memories" | "internal.inspect_memory" | "internal.search_knowledge" | "internal.inspect_entity" | "internal.analyze_knowledge" | "internal.plan_knowledge_review" | "internal.remember_knowledge" | "internal.merge_knowledge_entities" | "internal.forget_knowledge_entity" | "internal.forget_knowledge_relation" | "internal.update_knowledge_relation" | "internal.analyze_memories" | "internal.plan_memory_hygiene" | "internal.plan_memory_rebalance" | "internal.memory_hygiene_trend" | "internal.remember_memory" | "internal.delete_memory" | "internal.cleanup_memories" | "internal.supersede_memory" | "internal.add_cron_schedule" | "internal.list_cron_schedules" | "internal.remove_cron_schedule" | "internal.toggle_cron_schedule";
   arguments: Record<string, unknown>;
 }
 
@@ -285,6 +286,15 @@ export function buildMcpToolInstructions(config: AppConfig, runtimeContext?: str
     'internal.list_memories {}',
     'internal.search_memories {"query":"memory search text"}',
     'internal.inspect_memory {"id":1}',
+    'internal.search_knowledge {"query":"Bestie or a topic","limit":10}',
+    'internal.inspect_entity {"id":1,"limit":20}',
+    'internal.analyze_knowledge {}',
+    'internal.plan_knowledge_review {"limit":5}',
+    'internal.remember_knowledge {"entities":[{"name":"Bestie","kind":"project","aliases":["Bestie Agent"],"confidence":0.9}],"relations":[{"sourceName":"User","sourceKind":"person","type":"works_on","targetName":"Bestie","targetKind":"project","evidence":"User is building Bestie.","confidence":0.8}]}',
+    'internal.merge_knowledge_entities {"primaryId":2,"duplicateId":3,"reason":"why these entities represent the same thing"}',
+    'internal.forget_knowledge_entity {"id":4,"reason":"why this entity is wrong, stale, duplicate, or unsafe to keep"}',
+    'internal.forget_knowledge_relation {"id":4,"reason":"why this relation is wrong, stale, duplicate, or unsafe to keep"}',
+    'internal.update_knowledge_relation {"id":4,"confidence":0.72,"evidence":"short evidence for the corrected relation","reason":"why this metadata update is needed"}',
     'internal.analyze_memories {"mode":"all|duplicates|stale|conflicts"}',
     'internal.plan_memory_hygiene {}',
     'internal.plan_memory_rebalance {}',
@@ -298,7 +308,7 @@ export function buildMcpToolInstructions(config: AppConfig, runtimeContext?: str
     'internal.toggle_cron_schedule {"schedule_id":1,"enabled":true}',
   ];
 
-  return `Available internal tools:${contextSection}\n- ${tools.join("\n- ")}${mcpSection}\n\nTool selection guide:\n- Answer directly only when the request does not depend on local files, logs, repo contents, git state, HTTP(S) links, configured MCP data, MCP server discovery, or making a requested local change.\n- Approved local memories may already be included in the conversation as system context. Use that memory context directly when it answers the user; do not call memory tools just to rediscover information already shown there.\n${CRON_SCHEDULE_PROMPT_GUIDANCE}\n- If the user gives an MCP server link, MCP docs link, or asks to install/connect/configure an MCP server, do the setup yourself through tools. Do not tell the user to edit config.json, run bestie mcp commands, manually classify tools, restart/reload Bestie, or discover auth endpoints themselves. Only ask the user for account-consent actions, the returned auth code/result, or missing provider facts that cannot be discovered from the URL/docs.\n- Use MCP tools/configuration in this order when the user asks to install, discover, login, or configure an MCP service: read service docs with read_url when needed, inspect existing config with mcp_list_servers, then prefer internal.exec command bestie args ["mcp","add","server-name","--url","https://provider.example/mcp","--oauth-client-id","client-id"] for URL-based servers. The add command discovers OAuth metadata when possible and saves config without guessing auth URLs. If the user only provides a docs page, read it first, extract the real MCP endpoint/client id from that page, then run bestie mcp add yourself. Use mcp_discover_oauth, mcp_prepare_server_config, and mcp_apply_server_config only when docs require custom config not covered by bestie mcp add. OAuth config should include tokenUrl when available; without tokenUrl, bestie mcp login can generate the authorization URL but cannot exchange the returned code. If the server auth is oauth, run internal.exec with command bestie and args ["mcp","login","server-name"] after config is saved; use only the generated login command output URL in the final answer and ask the user to log in/approve. OAuth metadata authorization_endpoint or config auth.authorizationUrl is not a clickable user auth URL; never send it to the user as the authorization URL unless it already includes OAuth query parameters such as client_id, response_type, redirect_uri, state, and code_challenge. After the user sends the auth code, run internal.exec with command bestie and args ["mcp","login","server-name","--code","<code>"], then use mcp_list_tools with connect=true to verify discovery and auto-classify annotated tools. Do not guess auth URLs by hand; let bestie mcp login generate PKCE/state URLs. Do not put raw secrets in config; use env var names via env, headersEnv, or auth.envVar.\n- Use memory tools only when the included memory context is missing or insufficient, when the user explicitly asks to search/list/inspect memories, when saving a durable memory, when cleaning stale/incorrect/duplicate memories, or when checking whether core/project/session scopes need rebalancing.\n- Use file tools for repo/local context: read_file for a known path, list_files to inspect a directory, search_files to discover likely paths, read_many_files for a small known set, read_markdown_bundle for repo/docs summaries. If the user asks you to edit a known config or project file, read the file if needed, then use edit_file/write_file/apply_patch; do not merely explain the edit unless the tool is denied or unavailable.\n- Generic list/search requests such as "list files" or internal.list_files with path "." inspect the agent workspace, defaulting to .bestie/workspace. Use an explicit project path such as "src", "docs", or an absolute project root path when the user asks to inspect repository files.\n- Relative read_file/read_many_files/read_markdown_bundle paths resolve from the project root. Relative write/edit/exec paths resolve from the agent workspace to avoid polluting the project root.\n- Absolute paths outside the project root and agent workspace are allowed only when covered by workspace.externalPaths in config.\n- Use read_logs only for recent runtime behavior, failures, diagnostics, or debugging questions.\n- Use read_url when the user gives an HTTP(S) link whose page content is needed, such as MCP setup docs, package pages, or install instructions; it obeys internalTools.policies and may require approval.\n- Use git tools for repository state questions: git_status for changed files, git_diff for current or staged patches, git_log for recent commits.\n- Use internal.mcp_list_servers when the user asks what MCP servers are configured or available. Use internal.mcp_list_tools when the user asks what a configured MCP server can do, or before claiming a remote MCP server has no tools.\n- Use write/edit/apply_patch/exec/process tools when the user asks you to change files, update config, run validation, commit changes, or inspect running processes; these tools obey internalTools.policies and may require approval.\n- Use configured MCP read tools only for external configured data that internal local tools cannot provide. If a server has discovered tools but no configured tool categories, explain that discovery works but tool execution still needs allowlisted categories.\n\nTool-use rule:\n- When asked for a tool decision, reply with exactly one JSON object and no extra text.\n- Use {"answer":"..."} only when no tool is needed by the selection guide.\n- If a listed tool is needed, reply with that executable tool JSON immediately and nothing else. Do not put prose before or after tool JSON.\n- After any empty, denied, or failed result, either try one clearly useful adjacent tool call or answer transparently that the data was not found/available. Do not invent missing facts.\n- Internal examples: {"tool":"internal.mcp_list_servers","arguments":{}} or {"tool":"internal.mcp_list_tools","arguments":{"server":"composio","connect":true}}\n- MCP example: {"tool":"mcp.read","server":"server-name","name":"tool-name","arguments":{}}\n- Do not invent shell command JSON, cmd fields, workdir fields, bash commands, sed, cat, rg, terminal actions, or non-git patch markers. Only the tool schemas above can be executed. internal.apply_patch requires a git apply compatible diff, not *** Begin Patch format.\n- The runtime can execute multiple tool calls in sequence, then show you each result so you can continue or answer the user.`;
+  return `Available internal tools:${contextSection}\n- ${tools.join("\n- ")}${mcpSection}\n\nTool selection guide:\n- Answer directly only when the request does not depend on local files, logs, repo contents, git state, HTTP(S) links, configured MCP data, MCP server discovery, or making a requested local change.\n- Approved local memories may already be included in the conversation as system context. Use that memory context directly when it answers the user; do not call memory tools just to rediscover information already shown there.\n${CRON_SCHEDULE_PROMPT_GUIDANCE}\n- If the user gives an MCP server link, MCP docs link, or asks to install/connect/configure an MCP server, do the setup yourself through tools. Do not tell the user to edit config.json, run bestie mcp commands, manually classify tools, restart/reload Bestie, or discover auth endpoints themselves. Only ask the user for account-consent actions, the returned auth code/result, or missing provider facts that cannot be discovered from the URL/docs.\n- Use MCP tools/configuration in this order when the user asks to install, discover, login, or configure an MCP service: read service docs with read_url when needed, inspect existing config with mcp_list_servers, then prefer internal.exec command bestie args ["mcp","add","server-name","--url","https://provider.example/mcp","--oauth-client-id","client-id"] for URL-based servers. The add command discovers OAuth metadata when possible and saves config without guessing auth URLs. If the user only provides a docs page, read it first, extract the real MCP endpoint/client id from that page, then run bestie mcp add yourself. Use mcp_discover_oauth, mcp_prepare_server_config, and mcp_apply_server_config only when docs require custom config not covered by bestie mcp add. OAuth config should include tokenUrl when available; without tokenUrl, bestie mcp login can generate the authorization URL but cannot exchange the returned code. If the server auth is oauth, run internal.exec with command bestie and args ["mcp","login","server-name"] after config is saved; use only the generated login command output URL in the final answer and ask the user to log in/approve. OAuth metadata authorization_endpoint or config auth.authorizationUrl is not a clickable user auth URL; never send it to the user as the authorization URL unless it already includes OAuth query parameters such as client_id, response_type, redirect_uri, state, and code_challenge. After the user sends the auth code, run internal.exec with command bestie and args ["mcp","login","server-name","--code","<code>"], then use mcp_list_tools with connect=true to verify discovery and auto-classify annotated tools. Do not guess auth URLs by hand; let bestie mcp login generate PKCE/state URLs. Do not put raw secrets in config; use env var names via env, headersEnv, or auth.envVar.\n- Use memory and knowledge tools only when the included context is missing or insufficient, when the user explicitly asks to search/list/inspect memories or graph knowledge, when saving durable memory/knowledge, when cleaning stale/incorrect/duplicate memories, or when checking whether core/project/session scopes need rebalancing.\n- Use file tools for repo/local context: read_file for a known path, list_files to inspect a directory, search_files to discover likely paths, read_many_files for a small known set, read_markdown_bundle for repo/docs summaries. If the user asks you to edit a known config or project file, read the file if needed, then use edit_file/write_file/apply_patch; do not merely explain the edit unless the tool is denied or unavailable.\n- Generic list/search requests such as "list files" or internal.list_files with path "." inspect the agent workspace, defaulting to .bestie/workspace. Use an explicit project path such as "src", "docs", or an absolute project root path when the user asks to inspect repository files.\n- Relative read_file/read_many_files/read_markdown_bundle paths resolve from the project root. Relative write/edit/exec paths resolve from the agent workspace to avoid polluting the project root.\n- Absolute paths outside the project root and agent workspace are allowed only when covered by workspace.externalPaths in config.\n- Use read_logs only for recent runtime behavior, failures, diagnostics, or debugging questions.\n- Use read_url when the user gives an HTTP(S) link whose page content is needed, such as MCP setup docs, package pages, or install instructions; it obeys internalTools.policies and may require approval.\n- Use git tools for repository state questions: git_status for changed files, git_diff for current or staged patches, git_log for recent commits.\n- Use internal.mcp_list_servers when the user asks what MCP servers are configured or available. Use internal.mcp_list_tools when the user asks what a configured MCP server can do, or before claiming a remote MCP server has no tools.\n- Use write/edit/apply_patch/exec/process tools when the user asks you to change files, update config, run validation, commit changes, or inspect running processes; these tools obey internalTools.policies and may require approval.\n- Use configured MCP read tools only for external configured data that internal local tools cannot provide. If a server has discovered tools but no configured tool categories, explain that discovery works but tool execution still needs allowlisted categories.\n\nTool-use rule:\n- When asked for a tool decision, reply with exactly one JSON object and no extra text.\n- Use {"answer":"..."} only when no tool is needed by the selection guide.\n- If a listed tool is needed, reply with that executable tool JSON immediately and nothing else. Do not put prose before or after tool JSON.\n- After any empty, denied, or failed result, either try one clearly useful adjacent tool call or answer transparently that the data was not found/available. Do not invent missing facts.\n- Internal examples: {"tool":"internal.mcp_list_servers","arguments":{}} or {"tool":"internal.mcp_list_tools","arguments":{"server":"composio","connect":true}}\n- MCP example: {"tool":"mcp.read","server":"server-name","name":"tool-name","arguments":{}}\n- Do not invent shell command JSON, cmd fields, workdir fields, bash commands, sed, cat, rg, terminal actions, or non-git patch markers. Only the tool schemas above can be executed. internal.apply_patch requires a git apply compatible diff, not *** Begin Patch format.\n- The runtime can execute multiple tool calls in sequence, then show you each result so you can continue or answer the user.`;
 }
 
 export function buildAgentToolDecisionMessage(): string {
@@ -486,6 +496,38 @@ export function formatToolActivityLabel(request: AgentToolRequest): string {
 
   if (request.tool === "internal.inspect_memory") {
     return `memory #${numberArg(args.id) ?? "?"}`;
+  }
+
+  if (request.tool === "internal.search_knowledge") {
+    return stringArg(args.query) ?? "knowledge graph";
+  }
+
+  if (request.tool === "internal.inspect_entity") {
+    return `entity #${numberArg(args.id) ?? "?"}`;
+  }
+
+  if (request.tool === "internal.analyze_knowledge") {
+    return "knowledge graph hygiene";
+  }
+
+  if (request.tool === "internal.plan_knowledge_review") {
+    return "knowledge graph review plan";
+  }
+
+  if (request.tool === "internal.remember_knowledge") {
+    return "knowledge graph";
+  }
+
+  if (request.tool === "internal.merge_knowledge_entities") {
+    return `entity #${numberArg(args.primaryId) ?? "?"} <- #${numberArg(args.duplicateId) ?? "?"}`;
+  }
+
+  if (request.tool === "internal.forget_knowledge_entity") {
+    return `entity #${numberArg(args.id) ?? "?"}`;
+  }
+
+  if (request.tool === "internal.forget_knowledge_relation" || request.tool === "internal.update_knowledge_relation") {
+    return `relation #${numberArg(args.id) ?? "?"}`;
   }
 
   if (request.tool === "internal.cleanup_memories") {
@@ -731,8 +773,52 @@ export async function runAgentToolRequest(options: RunAgentToolRequestOptions): 
     return { ok: result.allowed && result.memory !== undefined, status: result.allowed && result.memory !== undefined ? "pass" : "fail", message: result.memory ? result.reason : "Active memory not found.", result: { memory: result.memory } };
   }
 
+  if (options.request.tool === "internal.search_knowledge") {
+    const query = stringArg(args.query);
+    if (!query) return { ok: false, status: "fail", message: "internal.search_knowledge requires arguments.query." };
+    const result = await searchKnowledgeGraphTool({ paths: options.paths, query, limit: numberArg(args.limit), approver: options.approver, policy: options.policy });
+    return { ok: result.allowed, status: result.allowed ? "pass" : "fail", message: result.reason, result: result.graph };
+  }
+
+  if (options.request.tool === "internal.inspect_entity") {
+    const id = numberArg(args.id);
+    if (!id) return { ok: false, status: "fail", message: "internal.inspect_entity requires arguments.id." };
+    const result = await inspectKnowledgeEntityTool({ paths: options.paths, id, limit: numberArg(args.limit), approver: options.approver, policy: options.policy });
+    return { ok: result.allowed && result.entity !== undefined, status: result.allowed && result.entity !== undefined ? "pass" : "fail", message: result.entity ? result.reason : "Active knowledge entity not found.", result: { entity: result.entity, neighborhood: result.neighborhood } };
+  }
+
+  if (options.request.tool === "internal.analyze_knowledge") {
+    const result = await analyzeKnowledgeGraphTool({ paths: options.paths, approver: options.approver, policy: options.policy });
+    return { ok: result.allowed, status: result.allowed ? "pass" : "fail", message: result.reason, result: result.analysis };
+  }
+
+  if (options.request.tool === "internal.plan_knowledge_review") {
+    const result = await planKnowledgeGraphReviewTool({ paths: options.paths, limit: numberArg(args.limit), approver: options.approver, policy: options.policy });
+    return { ok: result.allowed, status: result.allowed ? "pass" : "fail", message: result.reason, result: { analysis: result.analysis, plan: result.plan } };
+  }
+
   if (options.request.tool === "internal.remember_memory") {
     return rememberMemoryTool(options.config, options.paths, args);
+  }
+
+  if (options.request.tool === "internal.remember_knowledge") {
+    return rememberKnowledgeTool(options.config, options.paths, args);
+  }
+
+  if (options.request.tool === "internal.merge_knowledge_entities") {
+    return mergeKnowledgeEntitiesTool(options, args);
+  }
+
+  if (options.request.tool === "internal.forget_knowledge_entity") {
+    return forgetKnowledgeEntityTool(options, args);
+  }
+
+  if (options.request.tool === "internal.forget_knowledge_relation") {
+    return forgetKnowledgeRelationTool(options, args);
+  }
+
+  if (options.request.tool === "internal.update_knowledge_relation") {
+    return updateKnowledgeRelationTool(options, args);
   }
 
   if (options.request.tool === "internal.delete_memory") {
@@ -795,7 +881,7 @@ export async function runAgentToolRequest(options: RunAgentToolRequestOptions): 
 }
 
 export function isInternalToolName(value: string): value is InternalToolRequest["tool"] {
-  return ["internal.read_file", "internal.read_many_files", "internal.read_markdown_bundle", "internal.list_files", "internal.search_files", "internal.read_logs", "internal.read_url", "internal.git_status", "internal.git_diff", "internal.git_log", "internal.mcp_list_servers", "internal.mcp_list_tools", "internal.mcp_discover_oauth", "internal.mcp_prepare_server_config", "internal.mcp_apply_server_config", "internal.write_file", "internal.edit_file", "internal.apply_patch", "internal.exec", "internal.list_processes", "internal.spawn_subagent", "internal.list_memories", "internal.search_memories", "internal.inspect_memory", "internal.analyze_memories", "internal.plan_memory_hygiene", "internal.plan_memory_rebalance", "internal.memory_hygiene_trend", "internal.remember_memory", "internal.delete_memory", "internal.cleanup_memories", "internal.supersede_memory", "internal.add_cron_schedule", "internal.list_cron_schedules", "internal.remove_cron_schedule", "internal.toggle_cron_schedule"].includes(value);
+  return ["internal.read_file", "internal.read_many_files", "internal.read_markdown_bundle", "internal.list_files", "internal.search_files", "internal.read_logs", "internal.read_url", "internal.git_status", "internal.git_diff", "internal.git_log", "internal.mcp_list_servers", "internal.mcp_list_tools", "internal.mcp_discover_oauth", "internal.mcp_prepare_server_config", "internal.mcp_apply_server_config", "internal.write_file", "internal.edit_file", "internal.apply_patch", "internal.exec", "internal.list_processes", "internal.spawn_subagent", "internal.list_memories", "internal.search_memories", "internal.inspect_memory", "internal.search_knowledge", "internal.inspect_entity", "internal.analyze_knowledge", "internal.plan_knowledge_review", "internal.remember_knowledge", "internal.merge_knowledge_entities", "internal.forget_knowledge_entity", "internal.forget_knowledge_relation", "internal.update_knowledge_relation", "internal.analyze_memories", "internal.plan_memory_hygiene", "internal.plan_memory_rebalance", "internal.memory_hygiene_trend", "internal.remember_memory", "internal.delete_memory", "internal.cleanup_memories", "internal.supersede_memory", "internal.add_cron_schedule", "internal.list_cron_schedules", "internal.remove_cron_schedule", "internal.toggle_cron_schedule"].includes(value);
 }
 
 async function runSubagentTool(options: RunAgentToolRequestOptions, args: Record<string, unknown>): Promise<McpToolCallResult> {
@@ -1314,6 +1400,154 @@ async function supersedeMemoryTool(options: RunAgentToolRequestOptions, args: Re
   }
 }
 
+async function mergeKnowledgeEntitiesTool(options: RunAgentToolRequestOptions, args: Record<string, unknown>): Promise<McpToolCallResult> {
+  const primaryId = numberArg(args.primaryId);
+  const duplicateId = numberArg(args.duplicateId);
+  const reason = stringArg(args.reason)?.trim();
+
+  if (!primaryId || !duplicateId) {
+    return { ok: false, status: "fail", message: "internal.merge_knowledge_entities requires arguments.primaryId and arguments.duplicateId." };
+  }
+
+  if (!reason) {
+    return { ok: false, status: "fail", message: "internal.merge_knowledge_entities requires arguments.reason." };
+  }
+
+  const permission = await reviewKnowledgeGraphWritePermission(options, "internal.merge_knowledge_entities", `entity #${primaryId} <- #${duplicateId}`, reason, { primaryId, duplicateId, reason });
+  if (permission.decision !== "allow") {
+    return { ok: false, status: "fail", message: `Knowledge graph merge denied: ${permission.reason}` };
+  }
+
+  const store = await SqliteMemoryStore.open(options.paths);
+  try {
+    if (store.getMemoryState().paused) {
+      return { ok: false, status: "fail", message: "Memory is paused." };
+    }
+    const result = store.mergeKnowledgeEntities(primaryId, duplicateId);
+    return {
+      ok: result !== undefined,
+      status: result ? "pass" : "fail",
+      message: result ? "Knowledge entities merged." : "Could not merge knowledge entities. Make sure both ids are active entities with the same kind.",
+      result: result ? { primary: result.primary, duplicate: result.duplicate, redirectedRelations: result.redirectedRelations, mergedRelations: result.mergedRelations } : { primaryId, duplicateId, merged: false },
+    };
+  } finally {
+    store.close();
+  }
+}
+
+async function forgetKnowledgeEntityTool(options: RunAgentToolRequestOptions, args: Record<string, unknown>): Promise<McpToolCallResult> {
+  const id = numberArg(args.id);
+  const reason = stringArg(args.reason)?.trim();
+
+  if (!id) {
+    return { ok: false, status: "fail", message: "internal.forget_knowledge_entity requires arguments.id." };
+  }
+
+  if (!reason) {
+    return { ok: false, status: "fail", message: "internal.forget_knowledge_entity requires arguments.reason." };
+  }
+
+  const permission = await reviewKnowledgeGraphWritePermission(options, "internal.forget_knowledge_entity", `entity #${id}`, reason, { id, reason });
+  if (permission.decision !== "allow") {
+    return { ok: false, status: "fail", message: `Knowledge graph entity forget denied: ${permission.reason}` };
+  }
+
+  const store = await SqliteMemoryStore.open(options.paths);
+  try {
+    if (store.getMemoryState().paused) {
+      return { ok: false, status: "fail", message: "Memory is paused." };
+    }
+    const deleted = store.forgetKnowledgeEntity(id);
+    return { ok: deleted, status: deleted ? "pass" : "fail", message: deleted ? "Knowledge entity forgotten." : "Active knowledge entity not found.", result: { id, deleted } };
+  } finally {
+    store.close();
+  }
+}
+
+async function forgetKnowledgeRelationTool(options: RunAgentToolRequestOptions, args: Record<string, unknown>): Promise<McpToolCallResult> {
+  const id = numberArg(args.id);
+  const reason = stringArg(args.reason)?.trim();
+
+  if (!id) {
+    return { ok: false, status: "fail", message: "internal.forget_knowledge_relation requires arguments.id." };
+  }
+
+  if (!reason) {
+    return { ok: false, status: "fail", message: "internal.forget_knowledge_relation requires arguments.reason." };
+  }
+
+  const permission = await reviewKnowledgeGraphWritePermission(options, "internal.forget_knowledge_relation", `relation #${id}`, reason, { id, reason });
+  if (permission.decision !== "allow") {
+    return { ok: false, status: "fail", message: `Knowledge graph relation forget denied: ${permission.reason}` };
+  }
+
+  const store = await SqliteMemoryStore.open(options.paths);
+  try {
+    if (store.getMemoryState().paused) {
+      return { ok: false, status: "fail", message: "Memory is paused." };
+    }
+    const deleted = store.forgetKnowledgeRelation(id);
+    return { ok: deleted, status: deleted ? "pass" : "fail", message: deleted ? "Knowledge relation forgotten." : "Active knowledge relation not found.", result: { id, deleted } };
+  } finally {
+    store.close();
+  }
+}
+
+async function updateKnowledgeRelationTool(options: RunAgentToolRequestOptions, args: Record<string, unknown>): Promise<McpToolCallResult> {
+  const id = numberArg(args.id);
+  const reason = stringArg(args.reason)?.trim();
+  const hasEvidence = Object.prototype.hasOwnProperty.call(args, "evidence");
+  const evidence = hasEvidence ? stringArg(args.evidence) : undefined;
+  const confidence = typeof args.confidence === "number" && Number.isFinite(args.confidence) ? args.confidence : undefined;
+  const scope = memoryScopeArg(args.scope);
+  const sensitivity = knowledgeSensitivityArg(args.sensitivity);
+
+  if (!id) {
+    return { ok: false, status: "fail", message: "internal.update_knowledge_relation requires arguments.id." };
+  }
+
+  if (!reason) {
+    return { ok: false, status: "fail", message: "internal.update_knowledge_relation requires arguments.reason." };
+  }
+
+  if (hasEvidence && evidence === undefined) {
+    return { ok: false, status: "fail", message: "internal.update_knowledge_relation arguments.evidence must be a string." };
+  }
+
+  if (args.confidence !== undefined && (confidence === undefined || confidence < 0 || confidence > 1)) {
+    return { ok: false, status: "fail", message: "internal.update_knowledge_relation arguments.confidence must be a number between 0 and 1." };
+  }
+
+  if (args.scope !== undefined && !scope) {
+    return { ok: false, status: "fail", message: "internal.update_knowledge_relation arguments.scope must be core, project, or session." };
+  }
+
+  if (args.sensitivity !== undefined && (!sensitivity || sensitivity === "secret")) {
+    return { ok: false, status: "fail", message: "internal.update_knowledge_relation arguments.sensitivity must be normal or sensitive." };
+  }
+
+  if (!hasEvidence && confidence === undefined && scope === undefined && sensitivity === undefined) {
+    return { ok: false, status: "fail", message: "internal.update_knowledge_relation requires at least one of evidence, confidence, scope, or sensitivity." };
+  }
+
+  const payload = { id, reason, ...(hasEvidence ? { evidence } : {}), ...(confidence === undefined ? {} : { confidence }), ...(scope === undefined ? {} : { scope }), ...(sensitivity === undefined ? {} : { sensitivity }) };
+  const permission = await reviewKnowledgeGraphWritePermission(options, "internal.update_knowledge_relation", `relation #${id}`, reason, payload);
+  if (permission.decision !== "allow") {
+    return { ok: false, status: "fail", message: `Knowledge graph relation update denied: ${permission.reason}` };
+  }
+
+  const store = await SqliteMemoryStore.open(options.paths);
+  try {
+    if (store.getMemoryState().paused) {
+      return { ok: false, status: "fail", message: "Memory is paused." };
+    }
+    const relation = store.updateKnowledgeRelation(id, { ...(hasEvidence ? { evidence } : {}), confidence, scope, sensitivity });
+    return { ok: relation !== undefined, status: relation ? "pass" : "fail", message: relation ? "Knowledge relation updated." : "Active knowledge relation not found.", result: relation ? { relation } : { id, updated: false } };
+  } finally {
+    store.close();
+  }
+}
+
 async function reviewMemoryDeletePermission(
   options: RunAgentToolRequestOptions,
   toolName: "internal.delete_memory" | "internal.cleanup_memories" | "internal.supersede_memory",
@@ -1335,6 +1569,42 @@ async function reviewMemoryDeletePermission(
   }
   if (deletePolicy === "allow") {
     return { decision: "allow", reason: "Memory delete policy allows this action." };
+  }
+
+  return reviewActionPermission(
+    {
+      category: "local_write",
+      action: toolName,
+      target,
+      reason,
+      trusted: false,
+      payloadJson: JSON.stringify({ tool: toolName, arguments: payload }),
+    },
+    { paths: options.paths, approver: options.approver, policy: { allowTrustedRead: false, allowLocalWrite: false } },
+  );
+}
+
+async function reviewKnowledgeGraphWritePermission(
+  options: RunAgentToolRequestOptions,
+  toolName: "internal.merge_knowledge_entities" | "internal.forget_knowledge_entity" | "internal.forget_knowledge_relation" | "internal.update_knowledge_relation",
+  target: string,
+  reason: string,
+  payload: Record<string, unknown>,
+): Promise<Awaited<ReturnType<typeof reviewActionPermission>>> {
+  const configured = options.config.internalTools?.policies?.[toolName];
+  if (configured === "deny") {
+    return { decision: "deny", reason: `${toolName} is denied by config.` };
+  }
+  if (configured === "allow") {
+    return { decision: "allow", reason: `${toolName} is allowed by config.` };
+  }
+
+  const deletePolicy = options.config.memory?.deletePolicy ?? "ask";
+  if (deletePolicy === "deny") {
+    return { decision: "deny", reason: "Knowledge graph write actions are disabled by memory.deletePolicy." };
+  }
+  if (deletePolicy === "allow") {
+    return { decision: "allow", reason: "Memory delete policy allows this graph write action." };
   }
 
   return reviewActionPermission(
@@ -1390,8 +1660,193 @@ async function rememberMemoryTool(config: AppConfig, paths: RuntimePaths, args: 
   }
 }
 
+async function rememberKnowledgeTool(config: AppConfig, paths: RuntimePaths, args: Record<string, unknown>): Promise<McpToolCallResult> {
+  const entities = knowledgeEntitiesArg(args.entities);
+  const relations = knowledgeRelationsArg(args.relations);
+
+  if (entities.length === 0 && relations.length === 0) {
+    return { ok: false, status: "fail", message: "internal.remember_knowledge requires arguments.entities or arguments.relations." };
+  }
+
+  const sensitivity = knowledgeSensitivityArg(args.sensitivity) ?? maxPayloadSensitivity([...entities, ...relations]);
+  const policy = evaluateKnowledgePayload({ entities, relations }, sensitivity, booleanArg(args.explicitConsent));
+  if (policy.decision === "never" || policy.sensitivity === "secret") {
+    return { ok: false, status: "fail", message: policy.reason };
+  }
+
+  const store = await SqliteMemoryStore.open(paths);
+  try {
+    if (store.getMemoryState().paused) {
+      return { ok: false, status: "fail", message: "Memory is paused." };
+    }
+
+    const writePolicy = config.memory?.writePolicy ?? "ask";
+    if (writePolicy === "deny") {
+      return { ok: false, status: "fail", message: "Knowledge graph writes are disabled by config." };
+    }
+
+    if (writePolicy === "ask" || policy.decision === "pending") {
+      const pending = store.addPendingKnowledgeItem({ payload: { entities, relations }, reason: policy.reason, source: "agent-tool", explicitConsent: booleanArg(args.explicitConsent) });
+      return { ok: true, status: "pass", message: "Knowledge graph item pending approval.", result: { id: pending.id, status: "pending" } };
+    }
+
+    const storedEntities = [];
+    const entityIdsByKey = new Map<string, number>();
+    for (const entity of entities) {
+      const stored = store.upsertKnowledgeEntity({
+        canonicalName: entity.name,
+        kind: entity.kind,
+        aliases: entity.aliases,
+        sensitivity: entity.sensitivity ?? policy.sensitivity,
+        scope: entity.scope,
+        confidence: entity.confidence,
+      });
+      storedEntities.push(stored);
+      entityIdsByKey.set(knowledgeEntityKey(stored.canonicalName, stored.kind), stored.id);
+    }
+
+    const storedRelations = [];
+    for (const relation of relations) {
+      const sourceEntityId = relation.sourceId ?? resolveKnowledgeEntityId(store, entityIdsByKey, relation.sourceName, relation.sourceKind);
+      const targetEntityId = relation.targetId ?? resolveKnowledgeEntityId(store, entityIdsByKey, relation.targetName, relation.targetKind);
+      if (!sourceEntityId || !targetEntityId) {
+        continue;
+      }
+      const stored = store.upsertKnowledgeRelation({
+        sourceEntityId,
+        relationType: relation.type,
+        targetEntityId,
+        evidence: relation.evidence,
+        sensitivity: relation.sensitivity ?? policy.sensitivity,
+        scope: relation.scope,
+        confidence: relation.confidence,
+      });
+      if (stored) {
+        storedRelations.push(stored);
+      }
+    }
+
+    return { ok: true, status: "pass", message: "Knowledge graph item stored.", result: { status: "stored", entityIds: storedEntities.map((entity) => entity.id), relationIds: storedRelations.map((relation) => relation.id) } };
+  } finally {
+    store.close();
+  }
+}
+
 function isMemoryType(value: string): value is MemoryType {
   return ["preference", "communication_preference", "user_fact", "project_context", "durable_decision", "sensitive_personal", "one_off"].includes(value);
+}
+
+interface KnowledgeEntityToolInput {
+  name: string;
+  kind: KnowledgeEntityKind;
+  aliases?: string[];
+  sensitivity?: KnowledgeSensitivity;
+  scope?: MemoryScope;
+  confidence?: number;
+}
+
+interface KnowledgeRelationToolInput {
+  sourceId?: number;
+  sourceName?: string;
+  sourceKind?: KnowledgeEntityKind;
+  type: string;
+  targetId?: number;
+  targetName?: string;
+  targetKind?: KnowledgeEntityKind;
+  evidence?: string;
+  sensitivity?: KnowledgeSensitivity;
+  scope?: MemoryScope;
+  confidence?: number;
+}
+
+function knowledgeEntitiesArg(value: unknown): KnowledgeEntityToolInput[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.flatMap((item) => {
+    if (!isRecord(item)) {
+      return [];
+    }
+    const name = stringArg(item.name)?.trim();
+    const kind = stringArg(item.kind);
+    if (!name || !isKnowledgeEntityKind(kind)) {
+      return [];
+    }
+    return [{
+      name,
+      kind,
+      aliases: arrayOfStringsArg(item.aliases),
+      sensitivity: knowledgeSensitivityArg(item.sensitivity),
+      scope: memoryScopeArg(item.scope),
+      confidence: numberArg(item.confidence),
+    }];
+  });
+}
+
+function knowledgeRelationsArg(value: unknown): KnowledgeRelationToolInput[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.flatMap((item) => {
+    if (!isRecord(item)) {
+      return [];
+    }
+    const type = stringArg(item.type)?.trim() ?? stringArg(item.relationType)?.trim();
+    if (!type) {
+      return [];
+    }
+    const sourceKind = stringArg(item.sourceKind);
+    const targetKind = stringArg(item.targetKind);
+    return [{
+      sourceId: numberArg(item.sourceId),
+      sourceName: stringArg(item.sourceName)?.trim(),
+      sourceKind: isKnowledgeEntityKind(sourceKind) ? sourceKind : undefined,
+      type,
+      targetId: numberArg(item.targetId),
+      targetName: stringArg(item.targetName)?.trim(),
+      targetKind: isKnowledgeEntityKind(targetKind) ? targetKind : undefined,
+      evidence: stringArg(item.evidence)?.trim(),
+      sensitivity: knowledgeSensitivityArg(item.sensitivity),
+      scope: memoryScopeArg(item.scope),
+      confidence: numberArg(item.confidence),
+    }];
+  });
+}
+
+function resolveKnowledgeEntityId(store: SqliteMemoryStore, entityIdsByKey: Map<string, number>, name: string | undefined, kind: KnowledgeEntityKind | undefined): number | undefined {
+  if (!name || !kind) {
+    return undefined;
+  }
+  const key = knowledgeEntityKey(name, kind);
+  const existingId = entityIdsByKey.get(key);
+  if (existingId) {
+    return existingId;
+  }
+  const entity = store.upsertKnowledgeEntity({ canonicalName: name, kind });
+  entityIdsByKey.set(knowledgeEntityKey(entity.canonicalName, entity.kind), entity.id);
+  return entity.id;
+}
+
+function knowledgeEntityKey(name: string, kind: KnowledgeEntityKind): string {
+  return `${kind}:${name.trim().replace(/\s+/g, " ").toLocaleLowerCase()}`;
+}
+
+function knowledgeSensitivityArg(value: unknown): KnowledgeSensitivity | undefined {
+  return value === "normal" || value === "sensitive" || value === "secret" ? value : undefined;
+}
+
+function memoryScopeArg(value: unknown): MemoryScope | undefined {
+  return value === "core" || value === "project" || value === "session" ? value : undefined;
+}
+
+function maxPayloadSensitivity(items: Array<{ sensitivity?: KnowledgeSensitivity }>): KnowledgeSensitivity {
+  if (items.some((item) => item.sensitivity === "secret")) {
+    return "secret";
+  }
+  if (items.some((item) => item.sensitivity === "sensitive")) {
+    return "sensitive";
+  }
+  return "normal";
 }
 
 function stringArg(value: unknown): string | undefined {

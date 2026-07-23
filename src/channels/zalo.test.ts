@@ -504,6 +504,37 @@ test("handleZaloUpdate sends memory approval prompts for reasoned Zalo memories"
   }
 });
 
+test("handleZaloUpdate sends knowledge graph approval prompts for reasoned Zalo items", async () => {
+  const paths = await createTempPaths();
+  const sent: Array<{ chatId: string; text: string }> = [];
+  let callCount = 0;
+
+  try {
+    await writeRuntimeFiles(paths);
+    const result = await handleZaloUpdate(
+      { update_id: 1, message: { from: { id: "owner-1" }, chat: { id: "chat-1" }, text: "This repo is called Bestie." } },
+      {
+        config: { ...config, memory: { writePolicy: "ask" } },
+        paths,
+        client: createRecordingClient(sent),
+        chatCompletion: async () => {
+          callCount += 1;
+          if (callCount === 1) return '{"answer":"Noted."}';
+          if (callCount === 2) return '{"candidates":[]}';
+          return '{"entities":[{"name":"Bestie","kind":"project","confidence":0.95}],"relations":[]}';
+        },
+      },
+    );
+
+    assert.equal(result, "replied");
+    assert.match(sent.at(-1)?.text ?? "", /Knowledge graph approval needed\. Request: \d+/);
+    assert.match(sent.at(-1)?.text ?? "", /Bestie/);
+    assert.match(sent.at(-1)?.text ?? "", /Reply \/approve \d+ to save it or \/deny \d+ to reject it\./);
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
 test("handleZaloUpdate uses friendly tool progress labels", async () => {
   const paths = await createTempPaths();
   const sent: Array<{ chatId: string; text: string }> = [];

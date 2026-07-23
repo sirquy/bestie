@@ -175,6 +175,151 @@ test("SqliteMemoryStore uses full-text memory search and keeps the index synchro
   }
 });
 
+test("SqliteMemoryStore stores and searches knowledge graph entities and relations", async () => {
+  const paths = await createTempPaths();
+  const store = await SqliteMemoryStore.open(paths);
+
+  try {
+    const memory = store.addMemory({ type: "project_context", content: "User is building Bestie with SQLite memory." });
+    const user = store.upsertKnowledgeEntity({ canonicalName: "User", kind: "person", aliases: ["Boss"], sourceMemoryId: memory.id, confidence: 0.8 });
+    const bestie = store.upsertKnowledgeEntity({ canonicalName: "Bestie", kind: "project", aliases: ["Bestie Agent"], sourceMemoryId: memory.id, confidence: 0.7 });
+    const duplicate = store.upsertKnowledgeEntity({ canonicalName: "Bestie", kind: "project", aliases: ["bestie agent", "Local Bestie"], confidence: 0.9 });
+
+    assert.equal(duplicate.id, bestie.id);
+    assert.equal(duplicate.confidence, 0.9);
+    assert.deepEqual(duplicate.aliases, ["Bestie Agent", "Local Bestie"]);
+
+    const relation = store.upsertKnowledgeRelation({ sourceEntityId: user.id, relationType: "works on", targetEntityId: bestie.id, evidence: "User is building Bestie.", sourceMemoryId: memory.id, confidence: 0.75 });
+    const relationAgain = store.upsertKnowledgeRelation({ sourceEntityId: user.id, relationType: "works_on", targetEntityId: bestie.id, confidence: 0.85 });
+
+    assert.equal(relationAgain?.id, relation?.id);
+    assert.equal(relationAgain?.confidence, 0.85);
+    assert.deepEqual(store.listKnowledgeAuditEvents("entity", bestie.id).map((event) => event.eventType), ["updated", "created"]);
+    assert.deepEqual(store.listKnowledgeAuditEvents("relation", relation!.id).map((event) => event.eventType), ["updated", "created"]);
+    assert.deepEqual(store.searchKnowledgeGraph("Bestie").entities.map((entity) => entity.canonicalName), ["Bestie"]);
+    assert.deepEqual(store.searchKnowledgeGraph("works").relations.map((item) => `${item.sourceEntity.canonicalName}:${item.relationType}:${item.targetEntity.canonicalName}`), ["User:works_on:Bestie"]);
+    assert.deepEqual(store.getKnowledgeEntityNeighborhood(bestie.id).map((item) => item.relationType), ["works_on"]);
+    assert.deepEqual(store.getKnowledgeGraphStats(), { entities: 2, relations: 1, pending: 0 });
+  } finally {
+    store.close();
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("SqliteMemoryStore handles pending and deleted knowledge graph items", async () => {
+  const paths = await createTempPaths();
+  const store = await SqliteMemoryStore.open(paths);
+
+  try {
+    const pending = store.addPendingKnowledgeItem({ payload: { entity: "Sensitive" }, reason: "Needs approval.", source: "test", explicitConsent: true });
+    assert.deepEqual(store.getPendingKnowledgeItem(pending.id)?.payload, { entity: "Sensitive" });
+    assert.equal(store.listPendingKnowledgeItems().length, 1);
+    assert.equal(store.rejectPendingKnowledgeItem(pending.id), true);
+    assert.deepEqual(store.listKnowledgeAuditEvents("pending", pending.id).map((event) => event.eventType), ["rejected", "queued"]);
+    assert.equal(store.rejectPendingKnowledgeItem(pending.id), false);
+
+    const first = store.upsertKnowledgeEntity({ canonicalName: "User", kind: "person" });
+    const second = store.upsertKnowledgeEntity({ canonicalName: "Bestie", kind: "project" });
+    const relation = store.upsertKnowledgeRelation({ sourceEntityId: first.id, relationType: "works_on", targetEntityId: second.id });
+
+    assert.equal(store.forgetKnowledgeRelation(relation!.id), true);
+    assert.equal(store.listKnowledgeAuditEvents("relation", relation!.id)[0]?.eventType, "forgotten");
+    assert.deepEqual(store.listKnowledgeRelations(), []);
+    assert.equal(store.forgetKnowledgeEntity(first.id), true);
+    assert.equal(store.listKnowledgeAuditEvents("entity", first.id)[0]?.eventType, "forgotten");
+    assert.deepEqual(store.searchKnowledgeGraph("User").entities, []);
+  } finally {
+    store.close();
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("SqliteMemoryStore updates knowledge relation review metadata", async () => {
+  const paths = await createTempPaths();
+  const store = await SqliteMemoryStore.open(paths);
+
+  try {
+    const user = store.upsertKnowledgeEntity({ canonicalName: "User", kind: "person" });
+    const bestie = store.upsertKnowledgeEntity({ canonicalName: "Bestie", kind: "project" });
+    const relation = store.upsertKnowledgeRelation({ sourceEntityId: user.id, relationType: "works_on", targetEntityId: bestie.id, evidence: "Initial evidence.", confidence: 0.4 });
+
+    assert.ok(relation);
+    const updated = store.updateKnowledgeRelation(relation.id, { evidence: "Reviewed evidence.", confidence: 1.3, scope: "project", sensitivity: "sensitive" });
+
+    assert.equal(updated?.evidence, "Reviewed evidence.");
+    assert.equal(updated?.confidence, 1);
+    assert.equal(updated?.scope, "project");
+    assert.equal(updated?.sensitivity, "sensitive");
+    assert.equal(store.listKnowledgeAuditEvents("relation", relation.id)[0]?.eventType, "updated");
+
+    const cleared = store.updateKnowledgeRelation(relation.id, { evidence: "" });
+    assert.equal(cleared?.evidence, undefined);
+    assert.equal(store.updateKnowledgeRelation(404, { confidence: 0.5 }), undefined);
+  } finally {
+    store.close();
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("SqliteMemoryStore approves pending knowledge graph items", async () => {
+  const paths = await createTempPaths();
+  const store = await SqliteMemoryStore.open(paths);
+
+  try {
+    const pending = store.addPendingKnowledgeItem({
+      payload: {
+        entities: [
+          { name: "User", kind: "person", aliases: ["Boss"], confidence: 0.8 },
+          { name: "Bestie", kind: "project", aliases: ["Bestie Agent"], confidence: 0.9 },
+        ],
+        relations: [
+          { sourceName: "User", sourceKind: "person", type: "works_on", targetName: "Bestie", targetKind: "project", evidence: "User is building Bestie.", confidence: 0.85 },
+        ],
+      },
+      reason: "Needs approval.",
+      source: "test",
+    });
+
+    const approved = store.approvePendingKnowledgeItem(pending.id);
+
+    assert.equal(approved?.entities.length, 2);
+    assert.equal(approved?.relations.length, 1);
+    assert.deepEqual(store.listKnowledgeAuditEvents("pending", pending.id).map((event) => event.eventType), ["approved", "queued"]);
+    assert.equal(store.listKnowledgeAuditEvents("entity", approved!.entities[0]!.id)[0]?.eventType, "approved");
+    assert.equal(store.getPendingKnowledgeItem(pending.id), undefined);
+    assert.deepEqual(store.searchKnowledgeGraph("Bestie").entities.map((entity) => entity.canonicalName), ["Bestie"]);
+    assert.deepEqual(store.searchKnowledgeGraph("works").relations.map((relation) => relation.relationType), ["works_on"]);
+  } finally {
+    store.close();
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("SqliteMemoryStore merges duplicate knowledge entities", async () => {
+  const paths = await createTempPaths();
+  const store = await SqliteMemoryStore.open(paths);
+
+  try {
+    const user = store.upsertKnowledgeEntity({ canonicalName: "User", kind: "person" });
+    const bestie = store.upsertKnowledgeEntity({ canonicalName: "Bestie", kind: "project", aliases: ["Bestie Agent"], confidence: 0.7 });
+    const duplicate = store.upsertKnowledgeEntity({ canonicalName: "Bestie-Agent", kind: "project", aliases: ["Local Bestie"], confidence: 0.9 });
+    store.upsertKnowledgeRelation({ sourceEntityId: user.id, relationType: "works_on", targetEntityId: duplicate.id, evidence: "Duplicate target." });
+
+    const result = store.mergeKnowledgeEntities(bestie.id, duplicate.id);
+
+    assert.equal(result?.primary.id, bestie.id);
+    assert.equal(store.getKnowledgeEntity(duplicate.id), undefined);
+    assert.equal(store.listKnowledgeAuditEvents("entity", bestie.id)[0]?.eventType, "merged");
+    assert.equal(store.listKnowledgeAuditEvents("entity", duplicate.id)[0]?.eventType, "merged_into");
+    assert.deepEqual(store.getKnowledgeEntity(bestie.id)?.aliases, ["Bestie Agent", "Bestie-Agent", "Local Bestie"]);
+    assert.deepEqual(store.searchKnowledgeGraph("works_on").relations.map((relation) => `${relation.sourceEntityId}:${relation.targetEntityId}`), [`${user.id}:${bestie.id}`]);
+    assert.equal(store.mergeKnowledgeEntities(bestie.id, user.id), undefined);
+  } finally {
+    store.close();
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
 test("SqliteMemoryStore updateMemoryContent edits active memories only", async () => {
   const paths = await createTempPaths();
   const store = await SqliteMemoryStore.open(paths);

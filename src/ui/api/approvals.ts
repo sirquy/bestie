@@ -1,9 +1,11 @@
 import { access } from "node:fs/promises";
 
 import { SqliteMemoryStore, type PendingActionApproval } from "../../memory/sqlite-store.js";
+import { executeApprovedAction, type ApprovalExecutionResult } from "../../safety/approval-executor.js";
+import { loadConfig } from "../../runtime/config.js";
 import { getRuntimePaths, type RuntimePaths } from "../../runtime/paths.js";
 
-const APPROVAL_CHANNELS = ["telegram", "zalo", "ui-chat"] as const;
+const APPROVAL_CHANNELS = ["telegram", "zalo", "ui", "ui-chat"] as const;
 
 export interface UiApprovalsSummary {
   ok: true;
@@ -22,6 +24,7 @@ export interface UiApprovalActionOptions {
 export interface UiApprovalActionResult extends UiApprovalsSummary {
   action: UiApprovalActionOptions["action"];
   approval: UiPendingActionApproval;
+  execution?: ApprovalExecutionResult;
 }
 
 interface UiPendingActionApproval {
@@ -76,10 +79,15 @@ export async function runUiApprovalAction(options: UiApprovalActionOptions): Pro
       store.addUiChatEvent(chatSessionId, options.action === "approve" ? "approval_approved" : "approval_denied", options.action === "approve" ? "Approval ready to continue" : "Approval denied", JSON.stringify({ approvalId: approval.id, action: approval.action, target: approval.target }));
     }
 
+    const execution = approval.channel === "ui" && options.action === "approve" && approval.payloadJson
+      ? await executeApprovedAction(store, approval, "approve", { config: await loadConfig(paths), paths })
+      : undefined;
+
     return {
       ...(await getUiApprovalsSummary(paths)),
       action: options.action,
       approval: toUiApproval(approval),
+      ...(execution === undefined ? {} : { execution }),
     };
   } finally {
     store.close();

@@ -35,7 +35,7 @@ const TEST_CONFIG = {
           provider: "openai-compatible",
           mode: "api-key" as const,
           baseUrl: "http://localhost:1/v1",
-          apiKeyEnv: "OPENAI_API_KEY",
+          apiKeyEnv: "BESTIE_TEST_MISSING_OPENAI_API_KEY",
         },
       },
       modelCatalog: {
@@ -143,7 +143,7 @@ test("CronExecutor notifies when a due job fails", async () => {
     assert.equal(notifications.length, 1);
     assert.equal(notifications[0].status, "error");
     assert.equal(notifications[0].name, "Notify failure");
-    assert.match(notifications[0].error ?? "", /Thiếu API key cho OPENAI_API_KEY/);
+    assert.match(notifications[0].error ?? "", /Thiếu API key cho BESTIE_TEST_MISSING_OPENAI_API_KEY/);
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
   }
@@ -176,7 +176,7 @@ test("CronExecutor notification failures do not fail the cron job", async () => 
     const verifyStore = await SqliteMemoryStore.open(paths);
     const [schedule] = verifyStore.listCronSchedules();
     assert.equal(schedule.lastResult, "error");
-    assert.match(schedule.lastError ?? "", /Thiếu API key cho OPENAI_API_KEY/);
+    assert.match(schedule.lastError ?? "", /Thiếu API key cho BESTIE_TEST_MISSING_OPENAI_API_KEY/);
     verifyStore.close();
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });

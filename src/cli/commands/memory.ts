@@ -1,5 +1,6 @@
 import { evaluateMemoryCandidate, type MemoryType } from "../../memory/policy.js";
-import { isMemoryScope, SqliteMemoryStore, type PendingMemory, type StoredMemory, type StoredMessageRole } from "../../memory/sqlite-store.js";
+import { analyzeKnowledgeGraph, planKnowledgeGraphReview, type KnowledgeGraphAnalysis, type KnowledgeGraphReviewPlan } from "../../memory/knowledge-governance.js";
+import { isMemoryScope, SqliteMemoryStore, type KnowledgeEntity, type KnowledgeEntityKind, type KnowledgeRelationWithEntities, type KnowledgeSensitivity, type PendingKnowledgeItem, type PendingMemory, type StoredMemory, type StoredMessageRole } from "../../memory/sqlite-store.js";
 import { isMemoryRetrievalPolicy, setMemoryRetrievalPolicy } from "../../memory/governance.js";
 import { buildMemoryHygieneDoctorReport, fixMemoryHygieneDoctorIssues, formatMemoryHygieneDoctorFixes, formatMemoryHygieneDoctorReport } from "../../memory/hygiene-doctor.js";
 import { calculateMemoryHygieneScore } from "../../memory/hygiene-score.js";
@@ -25,6 +26,21 @@ const allowedTypes = new Set<MemoryType>([
   "secret",
   "one_off",
 ]);
+
+const allowedKnowledgeEntityKinds = new Set<KnowledgeEntityKind>([
+  "person",
+  "project",
+  "preference",
+  "tool",
+  "skill",
+  "topic",
+  "organization",
+  "location",
+  "decision",
+  "concept",
+]);
+
+const allowedKnowledgeSensitivities = new Set<KnowledgeSensitivity>(["normal", "sensitive"]);
 
 interface MemoryCleanupPlan {
   checked: number;
@@ -70,6 +86,11 @@ export async function runMemoryCommand(argv: string[] = process.argv): Promise<v
 
   if (subcommand === "summary") {
     await showMemorySummary();
+    return;
+  }
+
+  if (subcommand === "graph") {
+    await runMemoryGraphCommand(argv);
     return;
   }
 
@@ -189,7 +210,7 @@ export async function runMemoryCommand(argv: string[] = process.argv): Promise<v
   }
 
   console.error(`Unknown memory command: ${subcommand}`);
-  console.error("Usage: bestie memory status | pause | resume | list | tiers | rebalance [--dry-run|--apply] [--yes] [--json] | summary | search <query> | analyze [--mode all|duplicates|stale|conflicts] [--json] | hygiene [status|trend|doctor|--apply] [--fix] [--yes] [--json] | digest | cleanup --dry-run|--apply [--yes] [--json] | maintenance install|status|remove [--channel telegram:<id>|zalo:<id>] [--schedule <cron>] | add <type> <content> | inspect <id> | edit <id> <content> | forget <id> | messages [--limit <n>] [--role user|assistant|system] | messages search <query> [--limit <n>] [--role user|assistant|system] | export | clear --yes | pending [--limit <n>] | pending search <query> [--limit <n>] | pending inspect <id> | approve <id> | reject <id> | reject-all --yes");
+  console.error("Usage: bestie memory status | pause | resume | list | tiers | rebalance [--dry-run|--apply] [--yes] [--json] | summary | graph status|search|entities|relations|analyze|review|inspect|add|merge|forget|export | search <query> | analyze [--mode all|duplicates|stale|conflicts] [--json] | hygiene [status|trend|doctor|--apply] [--fix] [--yes] [--json] | digest | cleanup --dry-run|--apply [--yes] [--json] | maintenance install|status|remove [--channel telegram:<id>|zalo:<id>] [--schedule <cron>] | add <type> <content> | inspect <id> | edit <id> <content> | forget <id> | messages [--limit <n>] [--role user|assistant|system] | messages search <query> [--limit <n>] [--role user|assistant|system] | export | clear --yes | pending [--limit <n>] | pending search <query> [--limit <n>] | pending inspect <id> | approve <id> | reject <id> | reject-all --yes");
   process.exitCode = 1;
 }
 
@@ -277,6 +298,655 @@ async function showMemorySummary(): Promise<void> {
       deletePolicy: config.memory?.deletePolicy ?? "ask",
       retrievalPolicy: config.memory?.retrievalPolicy ?? "full",
     }));
+  } finally {
+    store.close();
+  }
+}
+
+async function runMemoryGraphCommand(argv: string[]): Promise<void> {
+  const action = argv[4] ?? "status";
+
+  if (action === "status") {
+    await showKnowledgeGraphStatus();
+    return;
+  }
+
+  if (action === "search") {
+    await searchKnowledgeGraph(argv);
+    return;
+  }
+
+  if (action === "entities") {
+    await listKnowledgeEntities(argv);
+    return;
+  }
+
+  if (action === "relations") {
+    await listKnowledgeRelations(argv);
+    return;
+  }
+
+  if (action === "analyze" || action === "hygiene") {
+    await analyzeKnowledgeGraphCommand(argv);
+    return;
+  }
+
+  if (action === "review" || action === "plan") {
+    await reviewKnowledgeGraphCommand(argv);
+    return;
+  }
+
+  if (action === "inspect") {
+    await inspectKnowledgeGraphItem(argv);
+    return;
+  }
+
+  if (action === "add") {
+    await addKnowledgeGraphItem(argv);
+    return;
+  }
+
+  if (action === "forget" || action === "delete") {
+    await forgetKnowledgeGraphItem(argv);
+    return;
+  }
+
+  if (action === "update" || action === "edit") {
+    await updateKnowledgeGraphItem(argv);
+    return;
+  }
+
+  if (action === "merge") {
+    await mergeKnowledgeGraphItem(argv);
+    return;
+  }
+
+  if (action === "export") {
+    await exportKnowledgeGraph();
+    return;
+  }
+
+  if (action === "pending") {
+    if (argv[5] === "inspect") {
+      await inspectPendingKnowledgeGraphItem(argv);
+      return;
+    }
+
+    await listPendingKnowledgeGraphItems(argv);
+    return;
+  }
+
+  if (action === "approve") {
+    await approvePendingKnowledgeGraphItem(argv);
+    return;
+  }
+
+  if (action === "reject") {
+    await rejectPendingKnowledgeGraphItem(argv);
+    return;
+  }
+
+  if (action === "reject-all") {
+    await rejectAllPendingKnowledgeGraphItems(argv);
+    return;
+  }
+
+  console.error(`Unknown memory graph command: ${action}`);
+  console.error("Usage: bestie memory graph status | search <query> | entities [--kind <kind>] | relations | analyze|hygiene [--json] | review [--json] [--limit <n>] | inspect entity|relation <id> | add entity <kind> <name> | add relation <sourceId> <type> <targetId> [evidence] | update relation <id> [--confidence <n>] [--evidence <text>] [--scope core|project|session] [--sensitivity normal|sensitive] --yes | merge entity <primaryId> <duplicateId> --yes | forget entity|relation <id> | export | pending [--limit <n>] | pending inspect <id> | approve <id> | reject <id> | reject-all --yes");
+  process.exitCode = 1;
+}
+
+async function showKnowledgeGraphStatus(): Promise<void> {
+  const store = await SqliteMemoryStore.open();
+  try {
+    const stats = store.getKnowledgeGraphStats();
+    console.log(title("Knowledge Graph"));
+    console.log(rule());
+    console.log(`${badge("ACTIVE", "green")} ${stats.entities} entities, ${stats.relations} relations`);
+    if (stats.pending > 0) {
+      console.log(`${badge("PENDING", "yellow")} ${stats.pending} pending graph item(s)`);
+    }
+    console.log(`Next: bestie memory graph search <query>`);
+  } finally {
+    store.close();
+  }
+}
+
+async function searchKnowledgeGraph(argv: string[]): Promise<void> {
+  const query = argv.slice(5).join(" ").trim();
+  if (!query) {
+    console.error("Usage: bestie memory graph search <query>");
+    process.exitCode = 1;
+    return;
+  }
+
+  const store = await SqliteMemoryStore.open();
+  try {
+    const result = store.searchKnowledgeGraph(query);
+    if (result.entities.length === 0 && result.relations.length === 0) {
+      console.log(`${badge("INFO", "blue")} No matching knowledge graph items.`);
+      return;
+    }
+
+    console.log(title(`Knowledge Graph Matches (${result.entities.length} entities, ${result.relations.length} relations)`));
+    console.log(rule());
+    for (const entity of result.entities) {
+      console.log(formatKnowledgeEntityLine(entity));
+    }
+    for (const relation of result.relations) {
+      console.log(formatKnowledgeRelationLine(relation));
+    }
+  } finally {
+    store.close();
+  }
+}
+
+async function listKnowledgeEntities(argv: string[]): Promise<void> {
+  const kind = parseKnowledgeKindFlag(argv);
+  if (kind === false) {
+    return;
+  }
+
+  const store = await SqliteMemoryStore.open();
+  try {
+    const entities = store.listKnowledgeEntities({ kind, limit: 100 });
+    if (entities.length === 0) {
+      console.log(`${badge("INFO", "blue")} No active knowledge entities${kind ? ` of kind ${kind}` : ""}.`);
+      return;
+    }
+
+    console.log(title(`Knowledge Entities (${entities.length})`));
+    console.log(rule());
+    for (const entity of entities) {
+      console.log(formatKnowledgeEntityLine(entity));
+    }
+  } finally {
+    store.close();
+  }
+}
+
+async function listKnowledgeRelations(argv: string[]): Promise<void> {
+  const limit = parseLimitFlag(argv) ?? 100;
+  const store = await SqliteMemoryStore.open();
+  try {
+    const relations = store.listKnowledgeRelations(limit);
+    if (relations.length === 0) {
+      console.log(`${badge("INFO", "blue")} No active knowledge relations.`);
+      return;
+    }
+
+    console.log(title(`Knowledge Relations (${relations.length})`));
+    console.log(rule());
+    for (const relation of relations) {
+      console.log(formatKnowledgeRelationLine(relation));
+    }
+  } finally {
+    store.close();
+  }
+}
+
+async function analyzeKnowledgeGraphCommand(argv: string[]): Promise<void> {
+  const json = argv.includes("--json");
+  const store = await SqliteMemoryStore.open();
+  try {
+    const analysis = analyzeKnowledgeGraph({
+      entities: store.listKnowledgeEntities({ limit: 10_000 }),
+      relations: store.listKnowledgeRelations(10_000),
+      pending: store.listPendingKnowledgeItems(10_000),
+    });
+
+    if (json) {
+      console.log(JSON.stringify(analysis, null, 2));
+      return;
+    }
+
+    console.log(formatKnowledgeGraphAnalysis(analysis));
+  } finally {
+    store.close();
+  }
+}
+
+async function reviewKnowledgeGraphCommand(argv: string[]): Promise<void> {
+  const json = argv.includes("--json");
+  const limit = parseLimitFlag(argv) ?? 10;
+  const store = await SqliteMemoryStore.open();
+  try {
+    const analysis = analyzeKnowledgeGraph({
+      entities: store.listKnowledgeEntities({ limit: 10_000 }),
+      relations: store.listKnowledgeRelations(10_000),
+      pending: store.listPendingKnowledgeItems(10_000),
+    });
+    const plan = planKnowledgeGraphReview(analysis, limit);
+
+    if (json) {
+      console.log(JSON.stringify({ analysis, plan }, null, 2));
+      return;
+    }
+
+    console.log(formatKnowledgeGraphReviewPlan(plan));
+  } finally {
+    store.close();
+  }
+}
+
+function formatKnowledgeGraphReviewPlan(plan: KnowledgeGraphReviewPlan): string {
+  const lines = [
+    title("Knowledge Graph Review"),
+    rule(),
+    `${badge(plan.score >= 80 ? "OK" : plan.score >= 60 ? "REVIEW" : "RISK", plan.score >= 80 ? "green" : "yellow")} Score ${plan.score}/100; ${plan.issueCount} issue(s)`,
+  ];
+
+  if (plan.suggestions.length === 0) {
+    lines.push(`${badge("CLEAN", "green")} No graph review suggestions.`);
+    return lines.join("\n");
+  }
+
+  for (const [index, suggestion] of plan.suggestions.entries()) {
+    lines.push(`${index + 1}. ${badge(suggestion.priority.toUpperCase(), suggestion.priority === "high" ? "yellow" : "cyan")} ${suggestion.title}`);
+    lines.push(`   ${suggestion.reason}`);
+    lines.push(`   Next: ${suggestion.command}`);
+  }
+  if (plan.nextCommand) {
+    lines.push(`${badge("NEXT", "cyan")} ${plan.nextCommand}`);
+  }
+  return lines.join("\n");
+}
+
+function formatKnowledgeGraphAnalysis(analysis: KnowledgeGraphAnalysis): string {
+  const lines = [
+    title("Knowledge Graph Hygiene"),
+    rule(),
+    `${badge(analysis.score >= 80 ? "OK" : analysis.score >= 60 ? "REVIEW" : "RISK", analysis.score >= 80 ? "green" : "yellow")} Score ${analysis.score}/100`,
+    `Checked: ${analysis.checkedEntities} entities, ${analysis.checkedRelations} relations`,
+  ];
+
+  if (analysis.orphanEntities.length === 0 && analysis.lowConfidenceRelations.length === 0 && analysis.mergeCandidates.length === 0 && analysis.conflictingRelations.length === 0 && analysis.pendingItems.length === 0) {
+    lines.push(`${badge("CLEAN", "green")} No graph hygiene issues found.`);
+    return lines.join("\n");
+  }
+
+  if (analysis.mergeCandidates.length > 0) {
+    lines.push(`${badge("MERGE", "yellow")} ${analysis.mergeCandidates.length} possible duplicate entity pair(s).`);
+    for (const candidate of analysis.mergeCandidates.slice(0, 10)) {
+      lines.push(`   #${candidate.primaryId} ${candidate.primaryName} <- #${candidate.duplicateId} ${candidate.duplicateName} [${candidate.kind}] ${dim(candidate.reason)}`);
+    }
+  }
+
+  if (analysis.conflictingRelations.length > 0) {
+    lines.push(`${badge("CONFLICT", "yellow")} ${analysis.conflictingRelations.length} relation conflict(s) need review.`);
+    for (const conflict of analysis.conflictingRelations.slice(0, 10)) {
+      lines.push(`   #${conflict.relationIds.join("/#")} ${conflict.source} -> ${conflict.target} types ${conflict.types.join(" vs ")} ${dim(conflict.reason)}`);
+    }
+  }
+
+  if (analysis.pendingItems.length > 0) {
+    lines.push(`${badge("PENDING", "yellow")} ${analysis.pendingItems.length} graph item(s) need review.`);
+    for (const item of analysis.pendingItems.slice(0, 10)) {
+      lines.push(`   #${item.id}${item.reason ? ` ${dim(item.reason)}` : ""}`);
+    }
+  }
+
+  if (analysis.orphanEntities.length > 0) {
+    lines.push(`${badge("ORPHAN", "yellow")} ${analysis.orphanEntities.length} entity/entities have no relations.`);
+    for (const entity of analysis.orphanEntities.slice(0, 10)) {
+      lines.push(`   #${entity.id} [${entity.kind}] ${entity.name} ${dim(entity.reason)}`);
+    }
+  }
+
+  if (analysis.lowConfidenceRelations.length > 0) {
+    lines.push(`${badge("LOW", "yellow")} ${analysis.lowConfidenceRelations.length} low-confidence relation(s).`);
+    for (const relation of analysis.lowConfidenceRelations.slice(0, 10)) {
+      lines.push(`   #${relation.id} ${relation.relation} confidence ${relation.confidence} ${dim(relation.reason)}`);
+    }
+  }
+
+  lines.push(`Next: bestie memory graph merge entity <primaryId> <duplicateId> --yes or bestie memory graph inspect relation <id>`);
+  return lines.join("\n");
+}
+
+async function inspectKnowledgeGraphItem(argv: string[]): Promise<void> {
+  const kind = argv[5];
+  const id = parsePositiveId(argv[6]);
+  if (!id) {
+    return;
+  }
+
+  const store = await SqliteMemoryStore.open();
+  try {
+    if (kind === "entity") {
+      const entity = store.getKnowledgeEntity(id);
+      if (!entity) {
+        console.log(`${badge("INFO", "blue")} No active knowledge entity found for id ${id}.`);
+        return;
+      }
+      console.log(title(`Knowledge Entity #${entity.id}`));
+      console.log(rule());
+      console.log(JSON.stringify({ ...entity, neighborhood: store.getKnowledgeEntityNeighborhood(entity.id) }, null, 2));
+      return;
+    }
+
+    if (kind === "relation") {
+      const relation = store.listKnowledgeRelations(1000).find((item) => item.id === id);
+      if (!relation) {
+        console.log(`${badge("INFO", "blue")} No active knowledge relation found for id ${id}.`);
+        return;
+      }
+      console.log(title(`Knowledge Relation #${relation.id}`));
+      console.log(rule());
+      console.log(JSON.stringify(relation, null, 2));
+      return;
+    }
+
+    console.error("Usage: bestie memory graph inspect entity|relation <id>");
+    process.exitCode = 1;
+  } finally {
+    store.close();
+  }
+}
+
+async function addKnowledgeGraphItem(argv: string[]): Promise<void> {
+  const kind = argv[5];
+  const store = await SqliteMemoryStore.open();
+  try {
+    if (store.getMemoryState().paused) {
+      console.log(`${badge("PAUSED", "yellow")} Memory is paused. Run \`bestie memory resume\` before adding graph items.`);
+      return;
+    }
+
+    if (kind === "entity") {
+      const entityKind = argv[6];
+      const name = argv.slice(7).join(" ").trim();
+      if (!isKnowledgeEntityKind(entityKind) || !name) {
+        console.error("Usage: bestie memory graph add entity <kind> <name>");
+        console.error(`Kinds: ${Array.from(allowedKnowledgeEntityKinds).join(", ")}`);
+        process.exitCode = 1;
+        return;
+      }
+      const entity = store.upsertKnowledgeEntity({ kind: entityKind, canonicalName: name });
+      console.log(`${badge("STORED", "green")} Knowledge entity stored: #${entity.id}`);
+      console.log(formatKnowledgeEntityLine(entity));
+      return;
+    }
+
+    if (kind === "relation") {
+      const sourceEntityId = Number(argv[6]);
+      const relationType = argv[7];
+      const targetEntityId = Number(argv[8]);
+      const evidence = argv.slice(9).join(" ").trim();
+      if (!Number.isInteger(sourceEntityId) || sourceEntityId <= 0 || !relationType || !Number.isInteger(targetEntityId) || targetEntityId <= 0) {
+        console.error("Usage: bestie memory graph add relation <sourceId> <type> <targetId> [evidence]");
+        process.exitCode = 1;
+        return;
+      }
+      const relation = store.upsertKnowledgeRelation({ sourceEntityId, relationType, targetEntityId, evidence });
+      if (!relation) {
+        console.log(`${badge("INFO", "blue")} Source or target entity not found.`);
+        return;
+      }
+      console.log(`${badge("STORED", "green")} Knowledge relation stored: #${relation.id}`);
+      return;
+    }
+
+    console.error("Usage: bestie memory graph add entity <kind> <name> | relation <sourceId> <type> <targetId> [evidence]");
+    process.exitCode = 1;
+  } finally {
+    store.close();
+  }
+}
+
+async function forgetKnowledgeGraphItem(argv: string[]): Promise<void> {
+  const kind = argv[5];
+  const id = parsePositiveId(argv[6]);
+  if (!id) {
+    return;
+  }
+
+  const deletePolicy = await loadMemoryDeletePolicy();
+  if (deletePolicy === "deny") {
+    console.log(`${badge("DENIED", "red")} memory.deletePolicy is deny. No graph item was deleted.`);
+    process.exitCode = 1;
+    return;
+  }
+  if (deletePolicy === "ask" && !argv.includes("--yes")) {
+    console.log(`${badge("CONFIRM", "yellow")} Re-run with \`bestie memory graph forget ${kind} ${id} --yes\` to confirm.`);
+    process.exitCode = 1;
+    return;
+  }
+
+  const store = await SqliteMemoryStore.open();
+  try {
+    const deleted = kind === "entity" ? store.forgetKnowledgeEntity(id) : kind === "relation" ? store.forgetKnowledgeRelation(id) : undefined;
+    if (deleted === undefined) {
+      console.error("Usage: bestie memory graph forget entity|relation <id> [--yes]");
+      process.exitCode = 1;
+      return;
+    }
+    if (!deleted) {
+      console.log(`${badge("INFO", "blue")} No active knowledge ${kind} found for id ${id}.`);
+      return;
+    }
+    console.log(`${badge("FORGOT", "green")} Knowledge ${kind} forgotten: #${id}`);
+  } finally {
+    store.close();
+  }
+}
+
+async function updateKnowledgeGraphItem(argv: string[]): Promise<void> {
+  const kind = argv[5];
+  const id = parsePositiveId(argv[6]);
+  if (kind !== "relation" || !id) {
+    console.error("Usage: bestie memory graph update relation <id> [--confidence <n>] [--evidence <text>] [--scope core|project|session] [--sensitivity normal|sensitive] --yes");
+    process.exitCode = 1;
+    return;
+  }
+
+  const confidence = parseConfidenceFlag(argv);
+  if (confidence === false) return;
+  const evidence = parseTextFlag(argv, "--evidence");
+  if (evidence === false) return;
+  const scope = parseScopeFlag(argv);
+  if (scope === false) return;
+  const sensitivity = parseKnowledgeSensitivityFlag(argv);
+  if (sensitivity === false) return;
+
+  if (confidence === undefined && evidence === undefined && scope === undefined && sensitivity === undefined) {
+    console.error("Provide at least one of --confidence, --evidence, --scope, or --sensitivity.");
+    process.exitCode = 1;
+    return;
+  }
+
+  const deletePolicy = await loadMemoryDeletePolicy();
+  if (deletePolicy === "deny") {
+    console.log(`${badge("DENIED", "red")} memory.deletePolicy is deny. No graph relation was updated.`);
+    process.exitCode = 1;
+    return;
+  }
+  if (deletePolicy === "ask" && !argv.includes("--yes")) {
+    console.log(`${badge("CONFIRM", "yellow")} Re-run with \`bestie memory graph update relation ${id} --yes\` plus the same update flags to confirm.`);
+    process.exitCode = 1;
+    return;
+  }
+
+  const store = await SqliteMemoryStore.open();
+  try {
+    if (store.getMemoryState().paused) {
+      console.log(`${badge("PAUSED", "yellow")} Memory is paused. Run \`bestie memory resume\` before updating graph relations.`);
+      return;
+    }
+
+    const relation = store.updateKnowledgeRelation(id, { confidence, evidence, scope, sensitivity });
+    if (!relation) {
+      console.log(`${badge("INFO", "blue")} No active knowledge relation found for id ${id}.`);
+      return;
+    }
+    console.log(`${badge("UPDATED", "green")} Knowledge relation updated: #${id}`);
+    console.log(JSON.stringify(relation, null, 2));
+  } finally {
+    store.close();
+  }
+}
+
+async function mergeKnowledgeGraphItem(argv: string[]): Promise<void> {
+  const kind = argv[5];
+  const primaryId = parsePositiveId(argv[6]);
+  const duplicateId = parsePositiveId(argv[7]);
+  if (kind !== "entity" || !primaryId || !duplicateId) {
+    console.error("Usage: bestie memory graph merge entity <primaryId> <duplicateId> --yes");
+    process.exitCode = 1;
+    return;
+  }
+
+  const deletePolicy = await loadMemoryDeletePolicy();
+  if (deletePolicy === "deny") {
+    console.log(`${badge("DENIED", "red")} memory.deletePolicy is deny. No graph entity was merged.`);
+    process.exitCode = 1;
+    return;
+  }
+  if (deletePolicy === "ask" && !argv.includes("--yes")) {
+    console.log(`${badge("CONFIRM", "yellow")} Re-run with \`bestie memory graph merge entity ${primaryId} ${duplicateId} --yes\` to confirm.`);
+    process.exitCode = 1;
+    return;
+  }
+
+  const store = await SqliteMemoryStore.open();
+  try {
+    if (store.getMemoryState().paused) {
+      console.log(`${badge("PAUSED", "yellow")} Memory is paused. Run \`bestie memory resume\` before merging graph entities.`);
+      return;
+    }
+
+    const result = store.mergeKnowledgeEntities(primaryId, duplicateId);
+    if (!result) {
+      console.log(`${badge("INFO", "blue")} Could not merge graph entities. Check that both ids are active entities with the same kind.`);
+      return;
+    }
+
+    console.log(`${badge("MERGED", "green")} Knowledge entity merged: #${result.primary.id} <- #${result.duplicate.id}`);
+    console.log(formatKnowledgeEntityLine(result.primary));
+    console.log(`${badge("RELATIONS", "cyan")} redirected ${result.redirectedRelations}, merged ${result.mergedRelations}`);
+  } finally {
+    store.close();
+  }
+}
+
+async function exportKnowledgeGraph(): Promise<void> {
+  const store = await SqliteMemoryStore.open();
+  try {
+    console.log(JSON.stringify({
+      entities: store.listKnowledgeEntities({ limit: 10_000 }),
+      relations: store.listKnowledgeRelations(10_000),
+      pending: store.listPendingKnowledgeItems(10_000),
+    }, null, 2));
+  } finally {
+    store.close();
+  }
+}
+
+async function listPendingKnowledgeGraphItems(argv: string[]): Promise<void> {
+  const limit = parseLimitOption(argv, 20);
+  if (!limit) {
+    return;
+  }
+
+  const store = await SqliteMemoryStore.open();
+  try {
+    const pending = store.listPendingKnowledgeItems(limit);
+    if (pending.length === 0) {
+      console.log(`${badge("INFO", "blue")} No pending knowledge graph items.`);
+      return;
+    }
+
+    console.log(title(`Pending Knowledge Graph Items (${pending.length})`));
+    console.log(rule());
+    for (const item of pending) {
+      console.log(formatPendingKnowledgeGraphBlock(item));
+    }
+    console.log(`${badge("NEXT", "cyan")} Approve with \`bestie memory graph approve <id>\` or reject with \`bestie memory graph reject <id>\`. Inspect details with \`bestie memory graph pending inspect <id>\`.`);
+  } finally {
+    store.close();
+  }
+}
+
+async function inspectPendingKnowledgeGraphItem(argv: string[]): Promise<void> {
+  const id = parsePositiveId(argv[6]);
+  if (!id) {
+    return;
+  }
+
+  const store = await SqliteMemoryStore.open();
+  try {
+    const item = store.getPendingKnowledgeItem(id);
+    if (!item) {
+      console.log(`${badge("INFO", "blue")} No pending knowledge graph item found for id ${id}.`);
+      return;
+    }
+    console.log(JSON.stringify(item, null, 2));
+  } finally {
+    store.close();
+  }
+}
+
+async function approvePendingKnowledgeGraphItem(argv: string[]): Promise<void> {
+  const id = parsePositiveId(argv[5]);
+  if (!id) {
+    return;
+  }
+
+  const store = await SqliteMemoryStore.open();
+  try {
+    if (store.getMemoryState().paused) {
+      console.log(`${badge("PAUSED", "yellow")} Memory is paused. Run \`bestie memory resume\` before approving pending knowledge graph items.`);
+      return;
+    }
+
+    const approved = store.approvePendingKnowledgeItem(id);
+    if (!approved) {
+      console.log(`${badge("INFO", "blue")} No pending knowledge graph item found for id ${id}.`);
+      return;
+    }
+
+    console.log(`${badge("APPROVED", "green")} Pending knowledge graph item approved: ${id}`);
+    console.log(`${badge("STORED", "green")} ${approved.entities.length} entities, ${approved.relations.length} relations`);
+  } finally {
+    store.close();
+  }
+}
+
+async function rejectPendingKnowledgeGraphItem(argv: string[]): Promise<void> {
+  const id = parsePositiveId(argv[5]);
+  if (!id) {
+    return;
+  }
+
+  const store = await SqliteMemoryStore.open();
+  try {
+    const rejected = store.rejectPendingKnowledgeItem(id);
+    if (!rejected) {
+      console.log(`${badge("INFO", "blue")} No pending knowledge graph item found for id ${id}.`);
+      return;
+    }
+    console.log(`${badge("REJECTED", "green")} Pending knowledge graph item rejected: ${id}`);
+  } finally {
+    store.close();
+  }
+}
+
+async function rejectAllPendingKnowledgeGraphItems(argv: string[]): Promise<void> {
+  if (!argv.includes("--yes")) {
+    console.log("Pending knowledge graph items not rejected. Re-run with `bestie memory graph reject-all --yes` to clear the graph pending queue.");
+    process.exitCode = 1;
+    return;
+  }
+
+  const store = await SqliteMemoryStore.open();
+  try {
+    let rejectedCount = 0;
+    for (const item of store.listPendingKnowledgeItems(10_000)) {
+      if (store.rejectPendingKnowledgeItem(item.id)) {
+        rejectedCount += 1;
+      }
+    }
+    console.log(`${badge("REJECTED", "green")} Pending knowledge graph items rejected: ${rejectedCount}`);
   } finally {
     store.close();
   }
@@ -1164,6 +1834,114 @@ async function rejectPendingMemory(argv: string[]): Promise<void> {
 
 function formatActiveMemoryLine(memory: StoredMemory): string {
   return `${badge(memory.type.toUpperCase(), "cyan")} #${memory.id} scope ${memory.scope} importance ${memory.importance} ${dim(`${memory.sensitivity}; updated ${memory.updatedAt}`)} ${memory.content}`;
+}
+
+function formatKnowledgeEntityLine(entity: KnowledgeEntity): string {
+  const aliases = entity.aliases.length > 0 ? ` aliases ${entity.aliases.join(", ")}` : "";
+  return `${badge(entity.kind.toUpperCase(), "cyan")} #${entity.id} scope ${entity.scope} confidence ${entity.confidence} ${dim(`${entity.sensitivity}; updated ${entity.updatedAt}`)} ${entity.canonicalName}${aliases}`;
+}
+
+function formatKnowledgeRelationLine(relation: KnowledgeRelationWithEntities): string {
+  const evidence = relation.evidence ? ` ${dim(relation.evidence)}` : "";
+  return `${badge("RELATION", "cyan")} #${relation.id} ${relation.sourceEntity.canonicalName} --${relation.relationType}--> ${relation.targetEntity.canonicalName} confidence ${relation.confidence}${evidence}`;
+}
+
+function formatPendingKnowledgeGraphBlock(item: PendingKnowledgeItem): string {
+  const payload = JSON.stringify(item.payload);
+  const preview = payload.length > 220 ? `${payload.slice(0, 217)}...` : payload;
+  return [
+    `${badge("PENDING", "yellow")} #${item.id} ${dim(`source ${item.source ?? "unknown"}; created ${item.createdAt}`)}`,
+    item.reason ? `   Reason: ${item.reason}` : undefined,
+    `   Payload: ${preview}`,
+  ].filter(Boolean).join("\n");
+}
+
+function isKnowledgeEntityKind(value: string | undefined): value is KnowledgeEntityKind {
+  return value !== undefined && allowedKnowledgeEntityKinds.has(value as KnowledgeEntityKind);
+}
+
+function parseKnowledgeKindFlag(argv: string[]): KnowledgeEntityKind | undefined | false {
+  const index = argv.indexOf("--kind");
+  if (index === -1) {
+    return undefined;
+  }
+  const kind = argv[index + 1];
+  if (!isKnowledgeEntityKind(kind)) {
+    console.error(`--kind must be one of: ${Array.from(allowedKnowledgeEntityKinds).join(", ")}`);
+    process.exitCode = 1;
+    return false;
+  }
+  return kind;
+}
+
+function parseLimitFlag(argv: string[]): number | undefined {
+  const index = argv.indexOf("--limit");
+  if (index === -1) {
+    return undefined;
+  }
+  const value = Number(argv[index + 1]);
+  if (!Number.isInteger(value) || value <= 0) {
+    console.error("--limit must be a positive integer.");
+    process.exitCode = 1;
+    return undefined;
+  }
+  return value;
+}
+
+function parseConfidenceFlag(argv: string[]): number | undefined | false {
+  const index = argv.indexOf("--confidence");
+  if (index === -1) {
+    return undefined;
+  }
+  const value = Number(argv[index + 1]);
+  if (!Number.isFinite(value) || value < 0 || value > 1) {
+    console.error("--confidence must be a number between 0 and 1.");
+    process.exitCode = 1;
+    return false;
+  }
+  return value;
+}
+
+function parseTextFlag(argv: string[], flag: string): string | undefined | false {
+  const index = argv.indexOf(flag);
+  if (index === -1) {
+    return undefined;
+  }
+  const value = argv[index + 1];
+  if (value === undefined || value.startsWith("--")) {
+    console.error(`${flag} requires a value.`);
+    process.exitCode = 1;
+    return false;
+  }
+  return value;
+}
+
+function parseScopeFlag(argv: string[]): "core" | "project" | "session" | undefined | false {
+  const index = argv.indexOf("--scope");
+  if (index === -1) {
+    return undefined;
+  }
+  const value = argv[index + 1];
+  if (!isMemoryScope(value)) {
+    console.error("--scope must be core, project, or session.");
+    process.exitCode = 1;
+    return false;
+  }
+  return value;
+}
+
+function parseKnowledgeSensitivityFlag(argv: string[]): KnowledgeSensitivity | undefined | false {
+  const index = argv.indexOf("--sensitivity");
+  if (index === -1) {
+    return undefined;
+  }
+  const value = argv[index + 1];
+  if (!allowedKnowledgeSensitivities.has(value as KnowledgeSensitivity)) {
+    console.error(`--sensitivity must be one of: ${Array.from(allowedKnowledgeSensitivities).join(", ")}`);
+    process.exitCode = 1;
+    return false;
+  }
+  return value as KnowledgeSensitivity;
 }
 
 function formatPendingMemoryBlock(memory: PendingMemory): string {
