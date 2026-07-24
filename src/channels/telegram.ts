@@ -44,7 +44,7 @@ import { buildChannelAttachmentPreview, type AttachmentContentParser } from "./a
 import { ProviderAuthError, ProviderFallbackError, ProviderNetworkError, ProviderRateLimitError, ProviderResponseError, ProviderTimeoutError } from "../llm/errors.js";
 import type { ChannelIncomingMessage, ChannelOutboundAdapter, ChannelRuntimeAdapter } from "./adapter.js";
 import { createChannelActivityController } from "./activity.js";
-import { applyMemoryHygienePlanForChannel, formatMemoryAnalysisReport, formatMemoryCleanupDryRunReport, formatMemoryGovernanceStatus, formatMemoryHygieneReport, formatMemoryInspect, formatMemoryMaintenanceInstalled, formatMemoryMaintenanceRemoved, formatMemoryMaintenanceStatus, formatMemoryRetrievalPolicyUpdated } from "./memory-commands.js";
+import { applyMemoryHygienePlanForChannel, formatMemoryAnalysisReport, formatMemoryCleanupDryRunReport, formatMemoryGovernanceStatus, formatMemoryHygieneReport, formatMemoryInspect, formatMemoryMaintenanceInstalled, formatMemoryMaintenanceRemoved, formatMemoryMaintenanceStatus, formatMemoryRetrievalPolicyUpdated, formatPendingKnowledgeSanitizeResult } from "./memory-commands.js";
 import { buildChannelAttachmentPrompt } from "./attachment-prompt.js";
 import { processChannelAttachment } from "./attachment-pipeline.js";
 import { buildChannelVisionAttachment, type ChannelVisionAttachment } from "./attachment-vision.js";
@@ -53,7 +53,6 @@ import {
   applyChannelAttachmentRetention,
   buildChannelAttachmentPath,
   assertChannelAttachmentDownloadAllowed,
-  assertChannelAttachmentMimeAllowed,
   downloadChannelAttachmentBytes,
   formatChannelTranscriptLabel,
   isAudioAttachmentKind,
@@ -174,7 +173,6 @@ interface TelegramAttachmentPolicy {
   transcriptionPolicy: "allow" | "deny";
   transcriptionMaxBytes: number;
   deleteAfterProcessingKinds: TelegramAttachmentKind[];
-  allowedMimeTypes?: string[];
 }
 
 export interface TelegramAttachmentTranscriptionInput {
@@ -1069,7 +1067,7 @@ function isTelegramMessageNotModifiedError(error: unknown): boolean {
   return message.includes("message is not modified");
 }
 
-function splitTelegramMessageText(text: string): string[] {
+export function splitTelegramMessageText(text: string): string[] {
   if (text.length <= TELEGRAM_MESSAGE_CHUNK_LIMIT) {
     return [text];
   }
@@ -1252,7 +1250,6 @@ async function saveTelegramAttachment(attachment: TelegramAttachmentSummary, upd
 
 function validateTelegramAttachmentPolicy(attachment: TelegramAttachmentSummary, policy: TelegramAttachmentPolicy): void {
   assertChannelAttachmentDownloadAllowed({ downloadPolicy: policy.downloadPolicy, message: "Attachment downloads are disabled by config." });
-  assertChannelAttachmentMimeAllowed({ mimeType: attachment.mimeType, allowedMimeTypes: policy.allowedMimeTypes, message: "This attachment MIME type is not allowed by config." });
 }
 
 function telegramAttachmentDownloadMessages(policy: TelegramAttachmentPolicy): Parameters<typeof downloadChannelAttachmentBytes>[0]["messages"] {
@@ -1307,7 +1304,6 @@ function getTelegramAttachmentPolicy(config: AppConfig): TelegramAttachmentPolic
     transcriptionPolicy: configured?.transcriptionPolicy ?? "deny",
     transcriptionMaxBytes: configured?.transcriptionMaxBytes ?? TELEGRAM_ATTACHMENT_TRANSCRIPTION_MAX_BYTES,
     deleteAfterProcessingKinds: configured?.deleteAfterProcessingKinds ?? [],
-    allowedMimeTypes: configured?.allowedMimeTypes,
   };
 }
 
@@ -1781,6 +1777,18 @@ async function handleTelegramSlashCommand(text: string, chatId: number, options:
     }
   }
 
+  if (memoryCommand?.startsWith("graph_pending_sanitize:")) {
+    const id = Number(memoryCommand.split(":")[1]);
+    const store = await SqliteMemoryStore.open(options.paths);
+
+    try {
+      await sendTelegramTextChunks(options.client, chatId, formatPendingKnowledgeSanitizeResult(id, store.sanitizePendingKnowledgeItem(id), "/memory graph"));
+      return true;
+    } finally {
+      store.close();
+    }
+  }
+
   if (memoryCommand === "pause" || memoryCommand === "resume") {
     const paused = memoryCommand === "pause";
     const store = await SqliteMemoryStore.open(options.paths);
@@ -1853,7 +1861,7 @@ function formatPendingKnowledgePayloadSummary(payload: unknown): string {
   return `Payload: ${text.length > 500 ? `${text.slice(0, 497)}...` : text}`;
 }
 
-function parseTelegramMemoryCommand(text: string): "list" | "tiers" | "rebalance" | "rebalance_apply" | "rebalance_apply_confirm" | "summary" | "digest" | "pending" | `pending_inspect:${number}` | "pause" | "resume" | "analyze" | "cleanup_dry_run" | "hygiene" | "hygiene_status" | "hygiene_trend" | "hygiene_doctor" | "hygiene_apply" | "hygiene_apply_confirm" | "governance_status" | `governance_policy:${string}` | `pin:${number}` | `unpin:${number}` | `scope:${string}` | `inspect:${number}` | `move:${number}:${string}` | `supersede:${number}:${number}` | "maintenance:install" | "maintenance:status" | "maintenance:remove" | undefined {
+function parseTelegramMemoryCommand(text: string): "list" | "tiers" | "rebalance" | "rebalance_apply" | "rebalance_apply_confirm" | "summary" | "digest" | "pending" | `pending_inspect:${number}` | `graph_pending_sanitize:${number}` | "pause" | "resume" | "analyze" | "cleanup_dry_run" | "hygiene" | "hygiene_status" | "hygiene_trend" | "hygiene_doctor" | "hygiene_apply" | "hygiene_apply_confirm" | "governance_status" | `governance_policy:${string}` | `pin:${number}` | `unpin:${number}` | `scope:${string}` | `inspect:${number}` | `move:${number}:${string}` | `supersede:${number}:${number}` | "maintenance:install" | "maintenance:status" | "maintenance:remove" | undefined {
   if (text === "/memory" || text === "/memory list" || text === "/memory status") {
     return "list";
   }
@@ -1967,6 +1975,11 @@ function parseTelegramMemoryCommand(text: string): "list" | "tiers" | "rebalance
   const pendingInspectMatch = text.match(/^\/memory pending inspect (\d+)$/);
   if (pendingInspectMatch) {
     return `pending_inspect:${Number(pendingInspectMatch[1])}`;
+  }
+
+  const graphPendingSanitizeMatch = text.match(/^\/(?:memory graph|graph) pending sanitize (\d+)$/);
+  if (graphPendingSanitizeMatch) {
+    return `graph_pending_sanitize:${Number(graphPendingSanitizeMatch[1])}`;
   }
 
   if (text === "/memory pause" || text === "/pause_memory" || text === "/pause-memory") {

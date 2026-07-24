@@ -371,7 +371,6 @@ function enableVoiceAttachmentConfig(attachments: NonNullable<NonNullable<NonNul
     transcriptionPolicy: "allow" as const,
     transcriptionMaxBytes: attachments?.transcriptionMaxBytes ?? 10_485_760,
     deleteAfterProcessingKinds: mergeUnique([...(attachments?.deleteAfterProcessingKinds ?? []), "voice", "audio"]),
-    allowedMimeTypes: mergeUnique([...(attachments?.allowedMimeTypes ?? []), "audio/*"]),
   };
 }
 

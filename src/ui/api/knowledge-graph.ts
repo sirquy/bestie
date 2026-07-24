@@ -34,7 +34,7 @@ export interface UiKnowledgeGraphSearchResult extends UiKnowledgeGraphSummary {
   query: string;
 }
 
-export type UiKnowledgeGraphAction = "merge_entity" | "forget_entity" | "forget_relation" | "update_relation" | "approve_pending" | "reject_pending";
+export type UiKnowledgeGraphAction = "merge_entity" | "forget_entity" | "forget_relation" | "update_relation" | "approve_pending" | "reject_pending" | "sanitize_pending";
 
 export interface UiKnowledgeGraphActionOptions {
   action: UiKnowledgeGraphAction;
@@ -170,7 +170,7 @@ export async function runUiKnowledgeGraphAction(options: UiKnowledgeGraphActionO
   }
 
   const paths = options.paths ?? getRuntimePaths();
-  if (options.action === "approve_pending" || options.action === "reject_pending") {
+  if (options.action === "approve_pending" || options.action === "reject_pending" || options.action === "sanitize_pending") {
     const id = positiveInteger(options.id, "Pending knowledge id");
     const store = await SqliteMemoryStore.open(paths);
     try {
@@ -180,13 +180,22 @@ export async function runUiKnowledgeGraphAction(options: UiKnowledgeGraphActionO
       if (options.action === "approve_pending") {
         const approved = store.approvePendingKnowledgeItem(id);
         if (!approved) throw new Error(`Pending knowledge graph item not found: ${id}`);
+        if (approved.status === "blocked") {
+          throw new Error(`Pending knowledge graph item blocked: ${approved.explanation ?? approved.reason}`);
+        }
+      } else if (options.action === "sanitize_pending") {
+        const sanitized = store.sanitizePendingKnowledgeItem(id);
+        if (!sanitized) throw new Error(`Pending knowledge graph item not found: ${id}`);
+        if (sanitized.status === "blocked") {
+          throw new Error(`Pending knowledge graph item could not be sanitized: ${sanitized.explanation ?? sanitized.reason}`);
+        }
       } else if (!store.rejectPendingKnowledgeItem(id)) {
         throw new Error(`Pending knowledge graph item not found: ${id}`);
       }
     } finally {
       store.close();
     }
-    return { ...(await getUiKnowledgeGraphSummary(paths)), action: options.action, actionStatus: "executed", message: options.action === "approve_pending" ? "Pending graph item approved." : "Pending graph item rejected." };
+    return { ...(await getUiKnowledgeGraphSummary(paths)), action: options.action, actionStatus: "executed", message: options.action === "approve_pending" ? "Pending graph item approved." : options.action === "sanitize_pending" ? "Pending graph item sanitized." : "Pending graph item rejected." };
   }
 
   const request = buildGraphToolRequest(options);

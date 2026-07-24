@@ -32,7 +32,7 @@ test("readUrlTool obeys deny ask and allow policies", async () => {
   }
 });
 
-test("readUrlTool rejects non-http urls and truncates content", async () => {
+test("readUrlTool rejects non-http urls and only truncates when maxBytes is positive", async () => {
   const paths = await createTempPaths();
   const server = await createTestServer("abcdef");
 
@@ -45,6 +45,27 @@ test("readUrlTool rejects non-http urls and truncates content", async () => {
     assert.equal(truncated.allowed, true);
     assert.equal(truncated.content, "abc");
     assert.equal(truncated.truncated, true);
+
+    const full = await readUrlTool({ config: createConfig({ "internal.read_url": "allow" }), paths, url: server.url, maxBytes: 0 });
+    assert.equal(full.allowed, true);
+    assert.equal(full.content, "abcdef");
+    assert.equal(full.truncated, false);
+  } finally {
+    await server.close();
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("readUrlTool reads full content by default", async () => {
+  const paths = await createTempPaths();
+  const body = "x".repeat(160 * 1024);
+  const server = await createTestServer(body);
+
+  try {
+    const result = await readUrlTool({ config: createConfig({ "internal.read_url": "allow" }), paths, url: server.url });
+    assert.equal(result.allowed, true);
+    assert.equal(result.content, body);
+    assert.equal(result.truncated, false);
   } finally {
     await server.close();
     await rm(paths.rootDir, { recursive: true, force: true });

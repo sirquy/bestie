@@ -7,9 +7,9 @@
 
 ## Goals
 
-1. Agent có thể CRUD cron jobs qua internal tools (tương tự cách agent dùng `internal.write_file`, `internal.read_file`...)
+1. Agent có thể quản lý cron jobs qua internal tools (tương tự cách agent dùng `internal.write_file`, `internal.read_file`...)
 2. Cron executor chạy nền, trigger đúng lịch, gửi kết quả vào **isolated chat context** (context riêng, không làm phiền user)
-3. User có thể xem/quản lý cron jobs qua CLI (`bestie cron list|add|remove|logs`)
+3. User có thể xem/quản lý cron jobs qua CLI (`bestie cron list|add|update|trigger|remove|toggle|logs`) và slash command channel (`/cron list|update|trigger|delete`)
 
 ---
 
@@ -72,7 +72,7 @@ CREATE TABLE IF NOT EXISTS cron_logs (
   started_at TEXT NOT NULL DEFAULT (datetime('now')),
   finished_at TEXT,
   result TEXT,                           -- "ok" | "error"
-  output TEXT,                           -- agent response text (truncated to 2000 chars)
+  output TEXT,                           -- full agent response text
   error TEXT,
   FOREIGN KEY (schedule_id) REFERENCES cron_schedules(id) ON DELETE CASCADE
 );
@@ -80,7 +80,7 @@ CREATE TABLE IF NOT EXISTS cron_logs (
 
 ---
 
-## 2. Cron Tools (Agent CRUD)
+## 2. Cron Tools (Agent Management)
 
 File: `src/tools/cron-tools.ts`
 
@@ -92,7 +92,7 @@ interface AddCronScheduleArgs {
   schedule_type: "interval" | "cron_expr" | "once";
   schedule_value: string;          // "30m" | "0 8 * * *" | "2026-07-16T08:00:00Z"
   prompt: string;                  // what the agent should do
-  channel?: string;                // "telegram" | "zalo" | undefined
+  channel?: string;                // "telegram:<userId>" | "zalo:<userId>" | undefined
 }
 ```
 
@@ -130,6 +130,33 @@ interface ListCronScheduleResult {
 
 ### 2.3 `internal.remove_cron_schedule`
 
+### 2.3 `internal.update_cron_schedule`
+
+```typescript
+interface UpdateCronScheduleArgs {
+  schedule_id: number;
+  name?: string;
+  schedule_type?: "interval" | "cron_expr" | "once";
+  schedule_value?: string;
+  prompt?: string;
+  channel?: string | null;         // "telegram:<userId>" | "zalo:<userId>" | "" | null
+  enabled?: boolean;
+}
+```
+
+Behavior:
+- Partial update: omitted fields keep the existing schedule value.
+- `channel: ""` or `channel: null` clears the report destination.
+- `name`, `schedule_value`, and `prompt` must be non-empty if provided.
+- `schedule_type` must be one of `interval`, `cron_expr`, or `once` if provided.
+- `schedule_value` is revalidated when either `schedule_type` or `schedule_value` changes.
+- `next_run_at` is recomputed only when schedule timing changes; changing name, prompt, channel, or enabled preserves the existing next run.
+- `prompt` must remain the standalone future task for the isolated cron runner, not the scheduling confirmation message.
+
+Return: `{ ok: true, status: "pass", result: { scheduleId, name, scheduleType, scheduleValue, prompt, channel, enabled, nextRunAt } }`
+
+### 2.4 `internal.remove_cron_schedule`
+
 ```typescript
 interface RemoveCronScheduleArgs {
   schedule_id: number;
@@ -138,7 +165,7 @@ interface RemoveCronScheduleArgs {
 
 Return: `{ allowed: true, reason: "", removed: true }`
 
-### 2.4 `internal.toggle_cron_schedule`
+### 2.5 `internal.toggle_cron_schedule`
 
 ```typescript
 interface ToggleCronScheduleArgs {
@@ -149,9 +176,21 @@ interface ToggleCronScheduleArgs {
 
 Return: `{ allowed: true, reason: "", enabled: boolean }`
 
+### 2.6 `internal.trigger_cron_schedule`
+
+```typescript
+interface TriggerCronScheduleArgs {
+  schedule_id: number;
+}
+```
+
+Runs an existing schedule immediately through `CronExecutor.runScheduleNow(schedule_id)`. This uses the schedule's stored prompt and destination, records the normal cron execution result/logs, and does not change the schedule definition by itself.
+
+Return: `{ ok: true, status: "pass", message: "Cron schedule <id> triggered." }`
+
 ### Permission
 
-All cron tools classified as `"local_write"` — the agent can call them freely when `internalTools.policies.local_write` is `"allow"` (default). No external action or destructive classification needed since cron jobs don't directly send messages.
+All cron tools classified through internal tool policy. Schedule creation/update/removal/toggle are local writes. `internal.trigger_cron_schedule` can run the stored task immediately and may send a report to the configured channel, so agents should only call it when the user asks to run an existing cron job now.
 
 ---
 
@@ -163,8 +202,10 @@ Add to the union type:
 ```typescript
 | { tool: "internal.add_cron_schedule"; arguments: AddCronScheduleArgs }
 | { tool: "internal.list_cron_schedules"; arguments: Record<string, never> }
+| { tool: "internal.update_cron_schedule"; arguments: UpdateCronScheduleArgs }
 | { tool: "internal.remove_cron_schedule"; arguments: RemoveCronScheduleArgs }
 | { tool: "internal.toggle_cron_schedule"; arguments: ToggleCronScheduleArgs }
+| { tool: "internal.trigger_cron_schedule"; arguments: TriggerCronScheduleArgs }
 ```
 
 ### 3.2 Dispatcher (`runAgentToolRequest`)
@@ -177,11 +218,17 @@ if (options.request.tool === "internal.add_cron_schedule") {
 if (options.request.tool === "internal.list_cron_schedules") {
   return listCronSchedulesTool(options);
 }
+if (options.request.tool === "internal.update_cron_schedule") {
+  return updateCronScheduleTool(options.request.arguments, options);
+}
 if (options.request.tool === "internal.remove_cron_schedule") {
   return removeCronScheduleTool(options.request.arguments, options);
 }
 if (options.request.tool === "internal.toggle_cron_schedule") {
   return toggleCronScheduleTool(options.request.arguments, options);
+}
+if (options.request.tool === "internal.trigger_cron_schedule") {
+  return triggerCronScheduleTool(options.request.arguments, options);
 }
 ```
 
@@ -193,8 +240,10 @@ Add cron tool descriptions to the system prompt section:
 
 - `internal.add_cron_schedule`: Create a scheduled task. schedule_type: "interval" (e.g. "30m", "1h", "2d"), "cron_expr" (5-field cron), or "once" (ISO timestamp). prompt: what to do. channel: optional output target.
 - `internal.list_cron_schedules`: List all scheduled tasks.
+- `internal.update_cron_schedule`: Partially update an existing scheduled task by ID. Recompute next run only when schedule timing changes.
 - `internal.remove_cron_schedule`: Remove a scheduled task by ID.
 - `internal.toggle_cron_schedule`: Enable/disable a scheduled task.
+- `internal.trigger_cron_schedule`: Run an existing scheduled task immediately by ID.
 ```
 
 ---
@@ -382,15 +431,30 @@ File: `src/cli/commands/cron.ts`
 └────┴──────────────┴────────────┴──────────┴─────────────────┴──────────┘
 ```
 
-### 6.2 `bestie cron add --name "Morning brief" --schedule "0 8 * * *" --prompt "Review my pending tasks" --channel telegram`
+### 6.2 `bestie cron add --name "Morning brief" --type cron_expr --schedule "0 8 * * *" --prompt "Review my pending tasks" --channel telegram:<userId>`
 
-### 6.3 `bestie cron remove <id>`
+### 6.3 `bestie cron update <id> [--name ...] [--type interval|cron_expr|once] [--schedule ...] [--prompt ...] [--channel telegram:<userId>|zalo:<userId>|none] [--enable|--disable]`
 
-### 6.4 `bestie cron toggle <id>`
+Partial update. Omitted fields keep their existing values; timing changes recompute `next_run_at`.
 
-### 6.5 `bestie cron logs [id]`
+### 6.4 `bestie cron trigger <id>`
+
+Run a stored schedule immediately through the cron executor.
+
+### 6.5 `bestie cron remove <id>`
+
+### 6.6 `bestie cron toggle <id>`
+
+### 6.7 `bestie cron logs [id]`
 
 Show recent cron execution logs.
+
+### 6.8 Channel slash commands
+
+- `/cron list` lists schedules reporting to the current chat.
+- `/cron update <id> [--name ...] [--type interval|cron_expr|once] [--schedule ...] [--prompt ...] [--channel current|none] [--enable|--disable]` updates a schedule owned by the current chat.
+- `/cron trigger <id>` runs a schedule owned by the current chat immediately.
+- `/cron delete <id>` removes a schedule owned by the current chat.
 
 ---
 
@@ -444,7 +508,7 @@ Show recent cron execution logs.
 10. Tests for executor + isolated chat
 
 ### Phase 4: CLI
-11. Create `src/cli/commands/cron.ts` — list/add/remove/toggle/logs
+11. Create `src/cli/commands/cron.ts` — list/add/update/trigger/remove/toggle/logs
 12. Register in `command-specs.ts`
 13. Doctor integration
 

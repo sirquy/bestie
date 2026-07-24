@@ -95,6 +95,18 @@ async function assertKnowledgePanel(page, url) {
   await page.selectOption("#knowledge-motion", "subtle");
   const motionState = await page.evaluate(() => ({ value: document.querySelector("#knowledge-motion")?.value, stored: JSON.parse(localStorage.getItem("bestie.knowledgeMapPreferences.v1") || "{}").motion, canvases: document.querySelectorAll("#knowledge-cytoscape canvas").length, nodes: window.__bestieKnowledgeGraph.cy.nodes().length }));
   if (motionState.value !== "subtle" || motionState.stored !== "subtle" || motionState.canvases < 1 || motionState.nodes < 1) throw new Error(`Knowledge graph motion control did not persist cleanly: ${JSON.stringify(motionState)}`);
+  const ambientNodeBefore = await page.evaluate(() => {
+    const node = window.__bestieKnowledgeGraph.cy.nodes().not(".filtered")[0];
+    return node.position();
+  });
+  await page.waitForFunction((before) => {
+    const node = window.__bestieKnowledgeGraph.cy.nodes().not(".filtered")[0];
+    const position = node.position();
+    return Math.abs(position.x - before.x) + Math.abs(position.y - before.y) > 1.5;
+  }, ambientNodeBefore, { timeout: 8000 });
+  await page.selectOption("#knowledge-motion", "off");
+  await page.waitForFunction(() => JSON.parse(localStorage.getItem("bestie.knowledgeMapPreferences.v1") || "{}").motion === "off");
+  await page.selectOption("#knowledge-motion", "subtle");
   await page.click('#knowledge-panel [data-knowledge-overlay-toggle]');
   await page.waitForSelector('#knowledge-map .knowledge-map-shell[data-knowledge-overlay="collapsed"]');
   const collapsedOverlay = await page.locator("#knowledge-map .knowledge-map-overlay").evaluate((element) => {
@@ -365,6 +377,23 @@ async function assertChatPanel(page, url, homeDir) {
   });
   if (chatComfort.bubbleGap < 8 || chatComfort.bubblePaddingTop < 12 || chatComfort.markdownLineHeight < 22 || chatComfort.transcriptGap < 10) {
     throw new Error(`Chat reading comfort styles regressed: ${JSON.stringify(chatComfort)}`);
+  }
+  const bubbleContainment = await page.locator("#chat-transcript").evaluate((transcript) => {
+    const longText = "x".repeat(220);
+    const element = document.createElement("div");
+    element.className = "chat-message assistant";
+    element.innerHTML = '<div class="chat-bubble-wrapper"><div class="chat-bubble"><div class="chat-message-head"><strong>Bestie</strong></div><div class="markdown-body"><p>' + longText + '</p><p><code>' + longText + '</code></p><div class="code-block"><pre><code>' + longText + '</code></pre></div></div></div></div>';
+    transcript.appendChild(element);
+    const transcriptRect = transcript.getBoundingClientRect();
+    const bubble = element.querySelector(".chat-bubble");
+    const bubbleRect = bubble.getBoundingClientRect();
+    const children = [...bubble.querySelectorAll(".markdown-body, p, p code, .code-block, pre")].map((child) => child.getBoundingClientRect());
+    const outside = children.filter((rect) => rect.left < bubbleRect.left - 1 || rect.right > bubbleRect.right + 1 || rect.right > transcriptRect.right + 1).length;
+    element.remove();
+    return { bubbleRight: bubbleRect.right, bubbleLeft: bubbleRect.left, transcriptRight: transcriptRect.right, outside, bubbleWidth: bubbleRect.width, transcriptWidth: transcriptRect.width };
+  });
+  if (bubbleContainment.outside || bubbleContainment.bubbleRight > bubbleContainment.transcriptRight + 1 || bubbleContainment.bubbleWidth > bubbleContainment.transcriptWidth) {
+    throw new Error(`Chat bubble content escaped its container: ${JSON.stringify(bubbleContainment)}`);
   }
   const scrollState = await page.locator("#chat-transcript").evaluate((element) => { element.scrollTop = element.scrollHeight; return { top: element.scrollTop, max: element.scrollHeight - element.clientHeight }; });
   if (scrollState.max > 0 && scrollState.max - scrollState.top > 2) throw new Error(`Chat transcript did not auto-scroll to bottom: ${JSON.stringify(scrollState)}`);

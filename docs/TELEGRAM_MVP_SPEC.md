@@ -81,8 +81,7 @@ Telegram config stays non-secret in `.bestie/config.json`:
       "visionMaxBytes": 4194304,
       "transcriptionPolicy": "deny",
       "transcriptionMaxBytes": 10485760,
-      "deleteAfterProcessingKinds": [],
-      "allowedMimeTypes": ["text/*", "application/json"]
+      "deleteAfterProcessingKinds": []
     }
   }
 }
@@ -112,7 +111,7 @@ For the current local Vietnamese voice runbook, see [Telegram Voice Local Mode](
 Rules:
 
 - Never print or log the bot token.
-- `attachments` is optional. Defaults are `downloadPolicy: allow`, `maxBytes: 20971520`, `previewMaxBytes: 16384`, `parseMaxBytes: 5242880`, `visionPolicy: deny`, `visionMaxBytes: 4194304`, `transcriptionPolicy: deny`, `transcriptionMaxBytes: 10485760`, and no MIME allowlist. Set `downloadPolicy` to `deny` to disable attachment downloads, set `allowedMimeTypes` to restrict saved attachment types, lower `parseMaxBytes` to skip expensive text extraction for larger files, set `visionPolicy` to `allow` only when the configured model/provider supports image inputs, or set `transcriptionPolicy` to `allow` only when a top-level `transcription` provider is configured. OpenAI-compatible transcription requires `BESTIE_TRANSCRIPTION_API_KEY`; local-whisper requires the local binary and model file.
+- `attachments` is optional. Defaults are `downloadPolicy: allow`, `maxBytes: 20971520`, `previewMaxBytes: 16384`, `parseMaxBytes: 5242880`, `visionPolicy: deny`, `visionMaxBytes: 4194304`, `transcriptionPolicy: deny`, `transcriptionMaxBytes: 10485760`, and no MIME or extension allowlist. Set `downloadPolicy` to `deny` to disable attachment downloads, lower `parseMaxBytes` to skip expensive text extraction for larger files, set `visionPolicy` to `allow` only when the configured model/provider supports image inputs, or set `transcriptionPolicy` to `allow` only when a top-level `transcription` provider is configured. OpenAI-compatible transcription requires `BESTIE_TRANSCRIPTION_API_KEY`; local-whisper requires the local binary and model file.
 - Set `deleteAfterProcessingKinds` to kinds such as `["voice", "audio"]` to remove downloaded attachment files after parsing/transcription/vision processing completes. The model still receives available previews/transcripts, but the prompt will not advertise a retained local path for deleted files.
 - Use `bestie tools attachments cleanup --older-than 7d --kinds voice,audio` to preview old Telegram attachment cleanup, then add `--confirm` to delete matched files. This covers older files that predate retention policy changes.
 - Text, PDF, and DOCX attachments get bounded text previews when they are within `parseMaxBytes`. Photos, image documents, and static image stickers are attached to the model only when `visionPolicy` is `allow` and the saved bytes are within `visionMaxBytes`. Voice/audio attachments get bounded transcripts only when `transcriptionPolicy` is `allow`, a transcriber is configured, and the saved bytes are within `transcriptionMaxBytes`. Other downloaded files are saved locally and described to the agent as untrusted external content.

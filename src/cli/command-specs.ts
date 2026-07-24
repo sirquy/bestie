@@ -67,6 +67,8 @@ Tùy chọn UI:
 Tùy chọn cron:
   list           Liệt kê toàn bộ lịch cron
   add            Tạo lịch cron mới (interactive hoặc dùng --name --type --schedule --prompt)
+  update <id>    Cập nhật lịch cron theo ID
+  trigger <id>   Chạy ngay một lịch cron theo ID
   remove <id>    Xóa lịch cron theo ID
   toggle <id>    Bật/tắt một lịch cron
   logs [id]      Xem log chạy cron gần đây
@@ -162,6 +164,8 @@ export const cliCommandSpecs: CliCommandSpec[] = [
     children: [
       { name: "list", description: "Liệt kê toàn bộ lịch cron", handler: runCronCommand },
       { name: "add", description: "Tạo lịch cron", handler: runCronCommand },
+      { name: "update <id>", description: "Cập nhật lịch cron", handler: runCronCommand },
+      { name: "trigger <id>", description: "Chạy ngay lịch cron", handler: runCronCommand },
       { name: "remove <id>", description: "Xóa lịch cron", handler: runCronCommand },
       { name: "toggle <id>", description: "Bật/tắt lịch cron", handler: runCronCommand },
       { name: "logs [id]", description: "Xem log chạy cron", handler: runCronCommand },

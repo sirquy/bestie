@@ -220,6 +220,55 @@ test("CronExecutor reports to schedule channel destination", async () => {
   }
 });
 
+test("CronExecutor keeps long successful reports untruncated and chunks channel delivery", async () => {
+  const paths = await createTempPaths();
+  const requests: Array<{ url: string; body: string }> = [];
+  const originalFetch = globalThis.fetch;
+  const longOutput = `${"full cron report\n".repeat(260)}END_OF_FULL_CRON_REPORT`;
+
+  try {
+    globalThis.fetch = (async (url, init) => {
+      requests.push({ url: String(url), body: String(init?.body ?? "") });
+      return new Response(JSON.stringify({ ok: true, result: { message_id: requests.length } }), { status: 200, headers: { "content-type": "application/json" } });
+    }) as typeof fetch;
+    await mkdir(paths.appDir, { recursive: true });
+    await writeEnvFile({ BESTIE_TELEGRAM_BOT_TOKEN: "telegram-token", BESTIE_ZALO_BOT_TOKEN: "zalo-token" }, paths);
+
+    const store = await SqliteMemoryStore.open(paths);
+    const schedule = store.addCronSchedule({
+      name: "Long report",
+      scheduleType: "once",
+      scheduleValue: new Date(Date.now() - 60_000).toISOString(),
+      prompt: "Write a long report",
+      channel: "zalo:b66e0333b96650380977",
+      nextRunAt: new Date(Date.now() - 60_000).toISOString(),
+    });
+    store.close();
+
+    const executor = new CronExecutor({
+      config: CHANNEL_CONFIG,
+      paths,
+      tickIntervalMs: 100,
+      isolatedChatRunner: async () => longOutput,
+    });
+    await executor.tick();
+
+    const verifyStore = await SqliteMemoryStore.open(paths);
+    const [log] = verifyStore.listCronLogs(schedule.id);
+    assert.equal(log.output, longOutput);
+    verifyStore.close();
+
+    assert.ok(requests.length > 1, "Expected long cron report to be sent in chunks.");
+    const deliveredText = requests.map((request) => JSON.parse(request.body).text as string).join("");
+    assert.match(deliveredText, /^Test: Cron job succeeded/);
+    assert.match(deliveredText, /END_OF_FULL_CRON_REPORT/);
+    assert.doesNotMatch(deliveredText, /\.\.\.$/);
+  } finally {
+    globalThis.fetch = originalFetch;
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
 test("CronExecutor sends memory hygiene regression alert once per snapshot", async () => {
   const paths = await createTempPaths();
   const alerts: Array<{ message: string; latestSnapshotId: number }> = [];

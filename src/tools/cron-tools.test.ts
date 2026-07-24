@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import test from "node:test";
 
-import { addCronScheduleTool, listCronSchedulesTool, removeCronScheduleTool, toggleCronScheduleTool } from "./cron-tools.js";
+import { addCronScheduleTool, listCronSchedulesTool, removeCronScheduleTool, toggleCronScheduleTool, triggerCronScheduleTool, updateCronScheduleTool } from "./cron-tools.js";
 import { getRuntimePaths, type RuntimePaths } from "../runtime/paths.js";
 
 async function createTempPaths(): Promise<RuntimePaths> {
@@ -185,6 +185,75 @@ test("removeCronScheduleTool removes a schedule", async () => {
     const listResult = await listCronSchedulesTool({ config: TEST_CONFIG, paths });
     const data = listResult.result as { schedules: unknown[] };
     assert.equal(data.schedules.length, 0);
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("updateCronScheduleTool partially updates a schedule and preserves next run when schedule is unchanged", async () => {
+  const paths = await createTempPaths();
+  try {
+    const addResult = await addCronScheduleTool(
+      { name: "Original", schedule_type: "interval", schedule_value: "1h", prompt: "Original task", channel: "telegram:12345" },
+      { config: TEST_CONFIG, paths },
+    );
+    const scheduleId = (addResult.result as Record<string, number>).scheduleId;
+    const originalNextRunAt = String((addResult.result as Record<string, unknown>).nextRunAt);
+
+    const updateResult = await updateCronScheduleTool(
+      { schedule_id: scheduleId, name: "Updated", prompt: "Updated standalone task", channel: "" },
+      { config: TEST_CONFIG, paths },
+    );
+
+    assert.equal(updateResult.ok, true);
+    const updated = updateResult.result as Record<string, unknown>;
+    assert.equal(updated.name, "Updated");
+    assert.equal(updated.prompt, "Updated standalone task");
+    assert.equal(updated.channel, undefined);
+    assert.equal(updated.scheduleType, "interval");
+    assert.equal(updated.scheduleValue, "1h");
+    assert.equal(updated.nextRunAt, originalNextRunAt);
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("updateCronScheduleTool validates and recomputes changed schedules", async () => {
+  const paths = await createTempPaths();
+  try {
+    const addResult = await addCronScheduleTool(
+      { name: "Original", schedule_type: "interval", schedule_value: "1h", prompt: "Original task" },
+      { config: TEST_CONFIG, paths },
+    );
+    const scheduleId = (addResult.result as Record<string, number>).scheduleId;
+
+    const badResult = await updateCronScheduleTool({ schedule_id: scheduleId, schedule_value: "bad" }, { config: TEST_CONFIG, paths });
+    assert.equal(badResult.ok, false);
+    assert.match(badResult.message ?? "", /Invalid schedule/);
+
+    const goodResult = await updateCronScheduleTool({ schedule_id: scheduleId, schedule_value: "2h", enabled: false }, { config: TEST_CONFIG, paths });
+    assert.equal(goodResult.ok, true);
+    const updated = goodResult.result as Record<string, unknown>;
+    assert.equal(updated.scheduleValue, "2h");
+    assert.equal(updated.enabled, false);
+    assert.notEqual(updated.nextRunAt, (addResult.result as Record<string, unknown>).nextRunAt);
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("triggerCronScheduleTool runs a schedule by id", async () => {
+  const paths = await createTempPaths();
+  try {
+    let triggeredId: number | undefined;
+    const result = await triggerCronScheduleTool(
+      { schedule_id: 42 },
+      { config: TEST_CONFIG, paths, runScheduleNow: async (scheduleId) => { triggeredId = scheduleId; } },
+    );
+
+    assert.equal(result.ok, true);
+    assert.equal(triggeredId, 42);
+    assert.match(result.message ?? "", /triggered/);
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
   }

@@ -18,7 +18,6 @@ export interface ReadUrlResult {
   truncated: boolean;
 }
 
-const MAX_READ_URL_BYTES = 128 * 1024;
 const MAX_READ_URL_TIMEOUT_MS = 15_000;
 
 export async function readUrlTool(options: WebReadToolOptions & { url: string; maxBytes?: number; timeoutMs?: number }): Promise<ReadUrlResult> {
@@ -30,7 +29,7 @@ export async function readUrlTool(options: WebReadToolOptions & { url: string; m
   const permission = await reviewWebToolPermission(options, "internal.read_url", url.toString(), "Read a web page requested by the agent.");
   if (!permission.allowed) return { ...permission, url: url.toString(), truncated: false };
 
-  const maxBytes = Math.min(Math.max(options.maxBytes ?? MAX_READ_URL_BYTES, 1), MAX_READ_URL_BYTES);
+  const maxBytes = normalizeMaxBytes(options.maxBytes);
   const timeoutMs = Math.min(Math.max(options.timeoutMs ?? 10_000, 1), MAX_READ_URL_TIMEOUT_MS);
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -60,6 +59,14 @@ export async function readUrlTool(options: WebReadToolOptions & { url: string; m
   } finally {
     clearTimeout(timer);
   }
+}
+
+function normalizeMaxBytes(maxBytes: number | undefined): number | undefined {
+  if (maxBytes === undefined || maxBytes <= 0) {
+    return undefined;
+  }
+
+  return Math.max(Math.floor(maxBytes), 1);
 }
 
 async function reviewWebToolPermission(options: WebReadToolOptions, toolName: string, target: string, reason: string): Promise<{ allowed: boolean; reason: string }> {
@@ -92,7 +99,11 @@ function parseHttpUrl(value: string): URL | undefined {
   }
 }
 
-function truncateUtf8(value: string, maxBytes: number): { content: string; truncated: boolean } {
+function truncateUtf8(value: string, maxBytes: number | undefined): { content: string; truncated: boolean } {
+  if (maxBytes === undefined) {
+    return { content: value, truncated: false };
+  }
+
   const buffer = Buffer.from(value, "utf8");
   if (buffer.length <= maxBytes) {
     return { content: value, truncated: false };

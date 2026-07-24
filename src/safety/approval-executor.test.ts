@@ -71,6 +71,36 @@ test("executeApprovedAction approves pending knowledge graph items", async () =>
   }
 });
 
+test("executeApprovedAction reports blocked pending knowledge approval", async () => {
+  const paths = await createTempPaths();
+  const store = await SqliteMemoryStore.open(paths);
+
+  try {
+    const pending = store.addPendingKnowledgeItem({
+      payload: {
+        entities: [{ name: "Integration credential", kind: "concept" }],
+        relations: [{ sourceName: "Integration credential", sourceKind: "concept", type: "contains", targetName: "Token", targetKind: "concept", evidence: "api_key: sk-secret1234567890" }],
+      },
+      source: "agent-tool",
+    });
+    const approval = store.addPendingActionApproval({ channel: "telegram", category: "local_write", action: "knowledge_approve", target: `pending-knowledge:${pending.id}` });
+    const approved = store.approvePendingActionApproval(approval.id);
+
+    assert.ok(approved);
+    const result = await executeApprovedAction(store, approved, "approve");
+
+    assert.equal(result.status, "invalid");
+    assert.equal(result.shortText, "Knowledge graph blocked.");
+    assert.match(result.message, /API key field/);
+    assert.match(result.message, /No graph fact was stored/);
+    assert.ok(store.getPendingKnowledgeItem(pending.id));
+    assert.deepEqual(store.listKnowledgeEntities(), []);
+  } finally {
+    store.close();
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
 test("executeApprovedAction denies pending knowledge graph items", async () => {
   const paths = await createTempPaths();
   const store = await SqliteMemoryStore.open(paths);

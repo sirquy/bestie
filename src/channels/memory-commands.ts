@@ -1,5 +1,5 @@
 import type { AnalyzeMemoriesResult, MemoryHygienePlanResult } from "../tools/local-read-tools.js";
-import type { CronSchedule, StoredMemory } from "../memory/sqlite-store.js";
+import type { CronSchedule, PendingKnowledgeSanitizeResult, StoredMemory } from "../memory/sqlite-store.js";
 import type { MemoryRetrievalPolicy } from "../runtime/config.js";
 import { SqliteMemoryStore } from "../memory/sqlite-store.js";
 import type { MemoryDeletePolicy } from "../runtime/config.js";
@@ -188,6 +188,28 @@ export function formatMemoryInspect(memory: StoredMemory): string {
     `Updated: ${memory.updatedAt}`,
     "Content:",
     memory.content,
+  ].filter(Boolean).join("\n");
+}
+
+export function formatPendingKnowledgeSanitizeResult(id: number, result: PendingKnowledgeSanitizeResult | undefined, commandPrefix = "/memory graph"): string {
+  if (!result) {
+    return `No pending knowledge graph item found for id ${id}.`;
+  }
+
+  if (result.status === "blocked") {
+    return [
+      `Pending knowledge graph item could not be sanitized: #${id}`,
+      `Reason: ${result.explanation ?? result.reason}`,
+      `Next: reject with ${commandPrefix} reject ${id} or recreate it with sanitized evidence.`,
+    ].join("\n");
+  }
+
+  const removed = result.previousDiagnostics?.blockedBy.length ? `Removed policy flags: ${result.previousDiagnostics.blockedBy.join(", ")}` : undefined;
+
+  return [
+    `Pending knowledge graph item sanitized: #${id}`,
+    removed,
+    `Next: approve with ${commandPrefix} approve ${id}.`,
   ].filter(Boolean).join("\n");
 }
 

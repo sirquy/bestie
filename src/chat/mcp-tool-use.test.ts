@@ -56,7 +56,10 @@ test("buildMcpToolInstructions includes global tool selection guidance", () => {
   assert.match(instructions, /use only the generated login command output URL/);
   assert.match(instructions, /code_challenge/);
   assert.match(instructions, /core\/project\/session scopes need rebalancing/);
-  assert.match(instructions, /add_cron_schedule prompt must be the future task itself/);
+  assert.match(instructions, /creating or updating a cron schedule/);
+  assert.match(instructions, /internal\.update_cron_schedule/);
+  assert.match(instructions, /internal\.trigger_cron_schedule/);
+  assert.match(instructions, /Use update_cron_schedule for changing an existing schedule/);
   assert.match(instructions, /Never store your current reply, a success message, the schedule ID, next_run_at/);
   assert.match(instructions, /Use git tools for repository state questions/);
   assert.match(instructions, /MCP server discovery/);
@@ -100,6 +103,21 @@ test("buildAgentToolResultMessage guides empty and failed internal tool results"
   assert.match(empty, /Do not claim the data exists/);
   assert.match(failed, /did not succeed/);
   assert.match(failed, /Do not invent the missing data/);
+});
+
+test("buildAgentToolResultMessage explains blocked knowledge policy diagnostics", () => {
+  const message = buildAgentToolResultMessage("internal.remember_knowledge", {
+    ok: false,
+    status: "fail",
+    message: "Secrets, tokens, passwords, and payment details must never be stored in the knowledge graph.",
+    result: { status: "blocked", diagnostics: { blockedBy: ["payment_card_like", "api_key_assignment"] } },
+  });
+
+  assert.match(message, /payment card details/);
+  assert.match(message, /an API key field/);
+  assert.match(message, /no knowledge graph fact was stored/);
+  assert.match(message, /do not reveal or repeat the sensitive value/);
+  assert.match(message, /sanitized evidence/);
 });
 
 test("buildToolResultMessage keeps path recovery and grounded answer guidance", () => {
@@ -977,6 +995,84 @@ test("runAgentToolRequest follows memory write policy for remember_knowledge", a
     await rm(askPaths.rootDir, { recursive: true, force: true });
     await rm(allowPaths.rootDir, { recursive: true, force: true });
     await rm(denyPaths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("runAgentToolRequest allows legal numeric evidence in remember_knowledge", async () => {
+  const paths = await createTempPaths();
+
+  try {
+    const result = await runAgentToolRequest({
+      config: { ...createConfig(), memory: { writePolicy: "allow" }, mcp: undefined },
+      paths,
+      request: {
+        tool: "internal.remember_knowledge",
+        arguments: {
+          entities: [
+            { name: "Nghị định 168/2024/NĐ-CP", kind: "concept" },
+            { name: "Lỗi vượt đèn đỏ", kind: "concept" },
+          ],
+          relations: [{ sourceName: "Nghị định 168/2024/NĐ-CP", sourceKind: "concept", type: "sets_fine_for", targetName: "Lỗi vượt đèn đỏ", targetKind: "concept", evidence: "Điều 6 khoản 9 quy định mức phạt 18.000.000 - 20.000.000 đồng; văn bản số 168/2024/NĐ-CP có hiệu lực từ 01/01/2025.", confidence: 0.82 }],
+        },
+      },
+    });
+
+    assert.equal(result.ok, true);
+    assert.equal(result.message, "Knowledge graph item stored.");
+    assert.deepEqual(result.result, { status: "stored", entityIds: [1, 2], relationIds: [1] });
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("runAgentToolRequest blocks payment card evidence in remember_knowledge", async () => {
+  const paths = await createTempPaths();
+
+  try {
+    const result = await runAgentToolRequest({
+      config: { ...createConfig(), memory: { writePolicy: "allow" }, mcp: undefined },
+      paths,
+      request: {
+        tool: "internal.remember_knowledge",
+        arguments: {
+          entities: [
+            { name: "Payment note", kind: "concept" },
+            { name: "User", kind: "person" },
+          ],
+          relations: [{ sourceName: "User", sourceKind: "person", type: "mentions", targetName: "Payment note", targetKind: "concept", evidence: "Card number 4111 1111 1111 1111 should never be stored." }],
+        },
+      },
+    });
+
+    assert.equal(result.ok, false);
+    assert.match(result.message, /payment details must never be stored/i);
+    assert.deepEqual(result.result, { status: "blocked", diagnostics: { blockedBy: ["payment_card_like"] } });
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("runAgentToolRequest returns knowledge policy diagnostics without echoing secret values", async () => {
+  const paths = await createTempPaths();
+
+  try {
+    const result = await runAgentToolRequest({
+      config: { ...createConfig(), memory: { writePolicy: "allow" }, mcp: undefined },
+      paths,
+      request: {
+        tool: "internal.remember_knowledge",
+        arguments: {
+          entities: [{ name: "Integration credential", kind: "concept" }],
+          relations: [{ sourceName: "Integration credential", sourceKind: "concept", type: "contains", targetName: "Token", targetKind: "concept", evidence: "api_key: sk-secret1234567890" }],
+        },
+      },
+    });
+
+    assert.equal(result.ok, false);
+    assert.deepEqual(result.result, { status: "blocked", diagnostics: { blockedBy: ["api_key_assignment", "openai_key"] } });
+    assert.doesNotMatch(JSON.stringify(result), /sk-secret1234567890/);
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
   }
 });
 

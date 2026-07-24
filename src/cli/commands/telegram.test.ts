@@ -395,7 +395,7 @@ test("runVoiceCommand setup-local writes wrapper and local transcription config"
     });
     assert.equal(config.channels?.telegram?.attachments?.transcriptionPolicy, "allow");
     assert.deepEqual(config.channels?.telegram?.attachments?.deleteAfterProcessingKinds, ["voice", "audio"]);
-    assert.deepEqual(config.channels?.telegram?.attachments?.allowedMimeTypes, ["text/*", "audio/*"]);
+    assert.deepEqual(config.channels?.telegram?.attachments?.allowedMimeTypes, ["text/*"]);
     assert.ok(output.some((line) => line.includes("Giọng nói local Bestie")));
     assert.ok(output.some((line) => line.includes("Đã lưu cấu hình giọng nói local")));
     assert.ok(output.some((line) => line.includes("Ngôn ngữ") && line.includes("vi")));
@@ -529,7 +529,7 @@ test("runVoiceCommand setup-elevenlabs writes speech config and API key env", as
     assert.equal(config.channels?.telegram?.voiceReplyCooldownMs, 30_000);
     assert.equal(config.channels?.telegram?.attachments?.transcriptionPolicy, "allow");
     assert.deepEqual(config.channels?.telegram?.attachments?.deleteAfterProcessingKinds, ["voice", "audio"]);
-    assert.deepEqual(config.channels?.telegram?.attachments?.allowedMimeTypes, ["audio/*"]);
+    assert.equal(config.channels?.telegram?.attachments?.allowedMimeTypes, undefined);
     assert.match(envText, /OPENAI_API_KEY="sk-test"/);
     assert.match(envText, /ELEVENLABS_API_KEY="elevenlabs-secret-token"/);
     assert.ok(output.some((line) => line.includes("Giọng nói ElevenLabs cho Bestie")));

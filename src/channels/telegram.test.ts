@@ -12,6 +12,7 @@ import { writeConfig } from "../runtime/config.js";
 import { writeEnvFile } from "../runtime/env.js";
 import { appendLog } from "../runtime/logger.js";
 import type { RuntimePaths } from "../runtime/paths.js";
+import { handleCronChannelCommand } from "../cron/channel-commands.js";
 import { ProviderFallbackError, ProviderResponseError, ProviderTimeoutError } from "../llm/errors.js";
 import { SqliteMemoryStore } from "../memory/sqlite-store.js";
 import { runAgentToolRequest } from "../chat/mcp-tool-use.js";
@@ -670,10 +671,11 @@ test("handleTelegramUpdate replies clearly when attachment downloads are disable
   }
 });
 
-test("handleTelegramUpdate replies clearly when attachment MIME type is denied", async () => {
+test("handleTelegramUpdate accepts attachments even when legacy allowedMimeTypes is configured", async () => {
   const paths = await createTempPaths();
   const sentMessages: Array<{ chatId: number; text: string }> = [];
   let getFileCalled = false;
+  let requestMessages: unknown;
 
   try {
     await writeRuntimeFiles(paths);
@@ -688,11 +690,19 @@ test("handleTelegramUpdate replies clearly when attachment MIME type is denied",
         },
         downloadFile: async () => new TextEncoder().encode("%PDF"),
       },
+      chatCompletion: async (_config, _apiKey, options) => {
+        requestMessages = options.messages;
+        const systemText = String(options.messages[0]?.content ?? "");
+        return systemText.includes("memory reasoning pass") ? '{"candidates":[]}' : '{"answer":"Đã nhận file PDF."}';
+      },
     });
 
     assert.equal(result, "replied");
-    assert.equal(getFileCalled, false);
-    assert.deepEqual(sentMessages, [{ chatId: 777, text: "This attachment MIME type is not allowed by config." }]);
+    assert.equal(getFileCalled, true);
+    assert.equal(sentMessages.at(-1)?.text, "Đã nhận file PDF.");
+    assert.match(JSON.stringify(requestMessages), /Kind: document/);
+    assert.match(JSON.stringify(requestMessages), /MIME type: application\/pdf/);
+    assert.match(JSON.stringify(requestMessages), /Local path:/);
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
   }
@@ -1194,6 +1204,47 @@ test("handleTelegramUpdate lists and inspects pending memories from Telegram", a
   }
 });
 
+test("handleTelegramUpdate sanitizes pending knowledge graph items from Telegram", async () => {
+  const paths = await createTempPaths();
+  const sentMessages: Array<{ chatId: number; text: string }> = [];
+
+  try {
+    await writeRuntimeFiles(paths);
+    const store = await SqliteMemoryStore.open(paths);
+    let pendingId: number;
+    try {
+      pendingId = store.addPendingKnowledgeItem({
+        payload: {
+          entities: [
+            { name: "Integration credential", kind: "concept" },
+            { name: "Bestie", kind: "project" },
+          ],
+          relations: [{ sourceName: "Bestie", sourceKind: "project", type: "mentions", targetName: "Integration credential", targetKind: "concept", evidence: "api_key: sk-secret1234567890 was found in docs and should be removed." }],
+        },
+        reason: "Needs approval.",
+        source: "test",
+      }).id;
+    } finally {
+      store.close();
+    }
+
+    await handleTelegramUpdate(createTextUpdate(`/memory graph pending sanitize ${pendingId}`, 12345), { config, paths, client: createRecordingClient(sentMessages) });
+
+    assert.match(sentMessages[0].text, new RegExp(`Pending knowledge graph item sanitized: #${pendingId}`));
+    assert.match(sentMessages[0].text, new RegExp(`/memory graph approve ${pendingId}`));
+    assert.doesNotMatch(sentMessages[0].text, /sk-secret1234567890/);
+
+    const verifyStore = await SqliteMemoryStore.open(paths);
+    try {
+      assert.doesNotMatch(JSON.stringify(verifyStore.getPendingKnowledgeItem(pendingId)?.payload), /sk-secret1234567890|api_key/);
+    } finally {
+      verifyStore.close();
+    }
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
 test("handleTelegramUpdate lists pending action approvals with readable decisions", async () => {
   const paths = await createTempPaths();
   const sentMessages: Array<{ chatId: number; text: string }> = [];
@@ -1602,6 +1653,7 @@ test("handleTelegramUpdate sends owner text to the LLM and replies", async () =>
 test("handleTelegramUpdate manages cron schedules for the current chat", async () => {
   const paths = await createTempPaths();
   const sentMessages: Array<{ chatId: number; text: string }> = [];
+  let triggeredId: number | undefined;
 
   try {
     await writeRuntimeFiles(paths);
@@ -1611,11 +1663,28 @@ test("handleTelegramUpdate manages cron schedules for the current chat", async (
     store.close();
 
     await handleTelegramUpdate(createTextUpdate("/cron list", 12345), { config, paths, client: createRecordingClient(sentMessages) });
+    await handleTelegramUpdate(createTextUpdate(`/cron update ${own.id} --name "Mine updated" --schedule 2h --prompt "Updated task" --disable`, 12345), { config, paths, client: createRecordingClient(sentMessages) });
+    await handleCronChannelCommand({
+      text: `/cron trigger ${own.id}`,
+      paths,
+      channel: "telegram",
+      userId: "777",
+      sendMessage: (message) => {
+        sentMessages.push({ chatId: 777, text: message });
+        return Promise.resolve();
+      },
+      triggerSchedule: async (scheduleId) => { triggeredId = scheduleId; },
+    });
     await handleTelegramUpdate(createTextUpdate(`/cron delete ${own.id}`, 12345), { config, paths, client: createRecordingClient(sentMessages) });
 
     assert.match(sentMessages[0].text, /#\d+ Mine/);
     assert.doesNotMatch(sentMessages[0].text, /Other/);
-    assert.match(sentMessages[1].text, new RegExp(`Cron schedule ${own.id} deleted\\.`));
+    assert.match(sentMessages[1].text, /Cron schedule \d+ updated\./);
+    assert.match(sentMessages[1].text, /Mine updated/);
+    assert.match(sentMessages[2].text, /Triggering cron schedule/);
+    assert.match(sentMessages[3].text, /triggered/);
+    assert.equal(triggeredId, own.id);
+    assert.match(sentMessages[4].text, new RegExp(`Cron schedule ${own.id} deleted\\.`));
 
     const verifyStore = await SqliteMemoryStore.open(paths);
     try {

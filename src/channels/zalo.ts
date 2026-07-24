@@ -27,7 +27,7 @@ import { analyzeMemoriesTool, planMemoryHygieneTool, readMemoryHygieneTrendTool 
 import type { PermissionApprover, PermissionPolicy } from "../safety/permission-policy.js";
 import type { ChannelIncomingMessage, ChannelOutboundAdapter, ChannelRuntimeAdapter } from "./adapter.js";
 import { createChannelActivityController } from "./activity.js";
-import { applyMemoryHygienePlanForChannel, formatMemoryAnalysisReport, formatMemoryCleanupDryRunReport, formatMemoryGovernanceStatus, formatMemoryHygieneReport, formatMemoryInspect, formatMemoryMaintenanceInstalled, formatMemoryMaintenanceRemoved, formatMemoryMaintenanceStatus, formatMemoryRetrievalPolicyUpdated } from "./memory-commands.js";
+import { applyMemoryHygienePlanForChannel, formatMemoryAnalysisReport, formatMemoryCleanupDryRunReport, formatMemoryGovernanceStatus, formatMemoryHygieneReport, formatMemoryInspect, formatMemoryMaintenanceInstalled, formatMemoryMaintenanceRemoved, formatMemoryMaintenanceStatus, formatMemoryRetrievalPolicyUpdated, formatPendingKnowledgeSanitizeResult } from "./memory-commands.js";
 import { ZALO_CHANNEL, formatChannelHelpCommands } from "./registry.js";
 import { createChannelResponseController } from "./response-controller.js";
 import { formatChannelToolProgress, shouldShowToolProgress } from "./tool-progress.js";
@@ -664,6 +664,17 @@ async function handleZaloSlashCommand(text: string, chatId: string, options: Zal
     }
   }
 
+  if (memoryCommand?.startsWith("graph_pending_sanitize:")) {
+    const id = Number(memoryCommand.split(":")[1]);
+    const store = await SqliteMemoryStore.open(options.paths);
+    try {
+      await sendZaloTextChunks(options.client, chatId, formatPendingKnowledgeSanitizeResult(id, store.sanitizePendingKnowledgeItem(id), "/memory graph"));
+      return true;
+    } finally {
+      store.close();
+    }
+  }
+
   if (memoryCommand === "pause" || memoryCommand === "resume") {
     const paused = memoryCommand === "pause";
     const store = await SqliteMemoryStore.open(options.paths);
@@ -883,7 +894,7 @@ async function sendZaloTextChunks(client: ZaloClient, chatId: string, text: stri
   }
 }
 
-function splitZaloMessageText(text: string): string[] {
+export function splitZaloMessageText(text: string): string[] {
   if (text.length <= ZALO_MESSAGE_MAX_CHARS) {
     return [text];
   }
@@ -1070,12 +1081,16 @@ function parseZaloApprovalDecision(text: string): { decision: "approve" | "deny"
   return match ? { decision: match[1] as "approve" | "deny", id: Number(match[2]) } : undefined;
 }
 
-function parseZaloMemoryCommand(text: string): "list" | "tiers" | "rebalance" | "rebalance_apply" | "rebalance_apply_confirm" | "summary" | "digest" | "pending" | "pause" | "resume" | "analyze" | "cleanup_dry_run" | "hygiene" | "hygiene_status" | "hygiene_trend" | "hygiene_doctor" | "hygiene_apply" | "hygiene_apply_confirm" | "governance_status" | `governance_policy:${string}` | `pin:${number}` | `unpin:${number}` | `scope:${string}` | `inspect:${number}` | `move:${number}:${string}` | `supersede:${number}:${number}` | "maintenance:install" | "maintenance:status" | "maintenance:remove" | undefined {
+function parseZaloMemoryCommand(text: string): "list" | "tiers" | "rebalance" | "rebalance_apply" | "rebalance_apply_confirm" | "summary" | "digest" | "pending" | `graph_pending_sanitize:${number}` | "pause" | "resume" | "analyze" | "cleanup_dry_run" | "hygiene" | "hygiene_status" | "hygiene_trend" | "hygiene_doctor" | "hygiene_apply" | "hygiene_apply_confirm" | "governance_status" | `governance_policy:${string}` | `pin:${number}` | `unpin:${number}` | `scope:${string}` | `inspect:${number}` | `move:${number}:${string}` | `supersede:${number}:${number}` | "maintenance:install" | "maintenance:status" | "maintenance:remove" | undefined {
   if (text === "/memory" || text === "/memory list" || text === "/memory status") {
     return "list";
   }
   if (text === "/memory pending") {
     return "pending";
+  }
+  const graphPendingSanitizeMatch = text.match(/^\/(?:memory graph|graph) pending sanitize (\d+)$/);
+  if (graphPendingSanitizeMatch) {
+    return `graph_pending_sanitize:${Number(graphPendingSanitizeMatch[1])}`;
   }
   if (text === "/memory tiers") {
     return "tiers";

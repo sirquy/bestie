@@ -8,15 +8,15 @@ import { appendLog } from "../runtime/logger.js";
 import type { RuntimePaths } from "../runtime/paths.js";
 import type { ChatCompletionOptions, ChatMessage } from "../llm/types.js";
 import { reviewActionPermission, type PermissionApprover, type PermissionPolicy } from "../safety/permission-policy.js";
-import { evaluateKnowledgePayload, isKnowledgeEntityKind } from "../memory/knowledge-policy.js";
+import { evaluateKnowledgePayload, explainKnowledgePolicyDiagnostics, isKnowledgeEntityKind, type KnowledgePolicyDiagnostics } from "../memory/knowledge-policy.js";
 import { evaluateMemoryCandidate, type MemoryType } from "../memory/policy.js";
 import { SqliteMemoryStore, type KnowledgeEntityKind, type KnowledgeSensitivity, type MemoryScope } from "../memory/sqlite-store.js";
 import { applyPatchTool, editLocalFileTool, execLocalTool, listProcessesTool, writeLocalFileTool } from "../tools/local-action-tools.js";
 import { analyzeKnowledgeGraphTool, analyzeMemoriesTool, inspectKnowledgeEntityTool, inspectMemoryTool, listActiveMemoriesTool, listLocalFilesTool, planKnowledgeGraphReviewTool, planMemoryHygieneTool, planMemoryRebalanceTool, readGitDiffTool, readGitLogTool, readGitStatusTool, readLocalFileTool, readManyLocalFilesTool, readMarkdownBundleTool, readMemoryHygieneTrendTool, readRecentAppLogsTool, searchKnowledgeGraphTool, searchLocalFilesTool, searchMemoriesTool, type MemoryAnalysisMode } from "../tools/local-read-tools.js";
 import { readUrlTool } from "../tools/web-read-tools.js";
-import { addCronScheduleTool, listCronSchedulesTool, removeCronScheduleTool, toggleCronScheduleTool } from "../tools/cron-tools.js";
+import { addCronScheduleTool, listCronSchedulesTool, removeCronScheduleTool, toggleCronScheduleTool, triggerCronScheduleTool, updateCronScheduleTool } from "../tools/cron-tools.js";
 
-const CRON_SCHEDULE_PROMPT_GUIDANCE = '- When creating a cron schedule, the add_cron_schedule prompt must be the future task itself, written as a standalone instruction the isolated cron runner can execute later. Never store your current reply, a success message, the schedule ID, next_run_at, or text like "I created the schedule" in the prompt. For example, if the user asks "check YouTube and summarize every day at 17:00", store a prompt like "Check the configured YouTube channel for new content and summarize the findings for the user." Then, after the tool succeeds, answer the user with the schedule confirmation separately.';
+const CRON_SCHEDULE_PROMPT_GUIDANCE = '- When creating or updating a cron schedule, the cron prompt must be the future task itself, written as a standalone instruction the isolated cron runner can execute later. Never store your current reply, a success message, the schedule ID, next_run_at, or text like "I created the schedule" in the prompt. For example, if the user asks "check YouTube and summarize every day at 17:00", store a prompt like "Check the configured YouTube channel for new content and summarize the findings for the user." Then, after the tool succeeds, answer the user with the schedule confirmation separately. Use update_cron_schedule for changing an existing schedule and trigger_cron_schedule only when the user wants to run an existing cron job now.';
 
 export type AgentToolRunner = (options: RunAgentToolRequestOptions) => Promise<McpToolCallResult>;
 export type AgentToolChatCompletionRunner = (config: AppConfig, apiKey: string, options: ChatCompletionOptions) => Promise<string>;
@@ -58,7 +58,7 @@ export interface McpToolRequest {
 }
 
 export interface InternalToolRequest {
-  tool: "internal.read_file" | "internal.read_many_files" | "internal.read_markdown_bundle" | "internal.list_files" | "internal.search_files" | "internal.read_logs" | "internal.read_url" | "internal.git_status" | "internal.git_diff" | "internal.git_log" | "internal.mcp_list_servers" | "internal.mcp_list_tools" | "internal.mcp_discover_oauth" | "internal.mcp_prepare_server_config" | "internal.mcp_apply_server_config" | "internal.write_file" | "internal.edit_file" | "internal.apply_patch" | "internal.exec" | "internal.list_processes" | "internal.spawn_subagent" | "internal.list_memories" | "internal.search_memories" | "internal.inspect_memory" | "internal.search_knowledge" | "internal.inspect_entity" | "internal.analyze_knowledge" | "internal.plan_knowledge_review" | "internal.remember_knowledge" | "internal.merge_knowledge_entities" | "internal.forget_knowledge_entity" | "internal.forget_knowledge_relation" | "internal.update_knowledge_relation" | "internal.analyze_memories" | "internal.plan_memory_hygiene" | "internal.plan_memory_rebalance" | "internal.memory_hygiene_trend" | "internal.remember_memory" | "internal.delete_memory" | "internal.cleanup_memories" | "internal.supersede_memory" | "internal.add_cron_schedule" | "internal.list_cron_schedules" | "internal.remove_cron_schedule" | "internal.toggle_cron_schedule";
+  tool: "internal.read_file" | "internal.read_many_files" | "internal.read_markdown_bundle" | "internal.list_files" | "internal.search_files" | "internal.read_logs" | "internal.read_url" | "internal.git_status" | "internal.git_diff" | "internal.git_log" | "internal.mcp_list_servers" | "internal.mcp_list_tools" | "internal.mcp_discover_oauth" | "internal.mcp_prepare_server_config" | "internal.mcp_apply_server_config" | "internal.write_file" | "internal.edit_file" | "internal.apply_patch" | "internal.exec" | "internal.list_processes" | "internal.spawn_subagent" | "internal.list_memories" | "internal.search_memories" | "internal.inspect_memory" | "internal.search_knowledge" | "internal.inspect_entity" | "internal.analyze_knowledge" | "internal.plan_knowledge_review" | "internal.remember_knowledge" | "internal.merge_knowledge_entities" | "internal.forget_knowledge_entity" | "internal.forget_knowledge_relation" | "internal.update_knowledge_relation" | "internal.analyze_memories" | "internal.plan_memory_hygiene" | "internal.plan_memory_rebalance" | "internal.memory_hygiene_trend" | "internal.remember_memory" | "internal.delete_memory" | "internal.cleanup_memories" | "internal.supersede_memory" | "internal.add_cron_schedule" | "internal.list_cron_schedules" | "internal.update_cron_schedule" | "internal.remove_cron_schedule" | "internal.toggle_cron_schedule" | "internal.trigger_cron_schedule";
   arguments: Record<string, unknown>;
 }
 
@@ -268,7 +268,7 @@ export function buildMcpToolInstructions(config: AppConfig, runtimeContext?: str
     'internal.list_files {"path":"optional/path","limit":50}',
     'internal.search_files {"query":"*.log","path":"optional/path","limit":20}',
     'internal.read_logs {"lines":40}',
-    'internal.read_url {"url":"https://example.com/mcp-docs","maxBytes":131072,"timeoutMs":10000}',
+    'internal.read_url {"url":"https://example.com/mcp-docs","maxBytes":0,"timeoutMs":10000}',
     'internal.git_status {"path":"optional/repo/path"}',
     'internal.git_diff {"path":"optional/repo/path","staged":false,"maxBytes":98304}',
     'internal.git_log {"path":"optional/repo/path","limit":10}',
@@ -304,8 +304,10 @@ export function buildMcpToolInstructions(config: AppConfig, runtimeContext?: str
     'internal.supersede_memory {"oldId":1,"newId":2,"reason":"why the old memory is replaced by the new memory"}',
     'internal.add_cron_schedule {"name":"job name","schedule_type":"interval|cron_expr|once","schedule_value":"30m | 0 8 * * * | 2026-12-25T08:00:00Z","prompt":"self-contained task to perform when triggered, not the scheduling confirmation","channel":"optional telegram:<userId>|zalo:<userId> destination for completion report"}',
     'internal.list_cron_schedules {}',
+    'internal.update_cron_schedule {"schedule_id":1,"name":"optional new name","schedule_type":"interval|cron_expr|once","schedule_value":"optional new schedule value","prompt":"optional updated standalone future task","channel":"optional telegram:<userId>|zalo:<userId>|empty to clear","enabled":true}',
     'internal.remove_cron_schedule {"schedule_id":1}',
     'internal.toggle_cron_schedule {"schedule_id":1,"enabled":true}',
+    'internal.trigger_cron_schedule {"schedule_id":1}',
   ];
 
   return `Available internal tools:${contextSection}\n- ${tools.join("\n- ")}${mcpSection}\n\nTool selection guide:\n- Answer directly only when the request does not depend on local files, logs, repo contents, git state, HTTP(S) links, configured MCP data, MCP server discovery, or making a requested local change.\n- Approved local memories may already be included in the conversation as system context. Use that memory context directly when it answers the user; do not call memory tools just to rediscover information already shown there.\n${CRON_SCHEDULE_PROMPT_GUIDANCE}\n- If the user gives an MCP server link, MCP docs link, or asks to install/connect/configure an MCP server, do the setup yourself through tools. Do not tell the user to edit config.json, run bestie mcp commands, manually classify tools, restart/reload Bestie, or discover auth endpoints themselves. Only ask the user for account-consent actions, the returned auth code/result, or missing provider facts that cannot be discovered from the URL/docs.\n- Use MCP tools/configuration in this order when the user asks to install, discover, login, or configure an MCP service: read service docs with read_url when needed, inspect existing config with mcp_list_servers, then prefer internal.exec command bestie args ["mcp","add","server-name","--url","https://provider.example/mcp","--oauth-client-id","client-id"] for URL-based servers. The add command discovers OAuth metadata when possible and saves config without guessing auth URLs. If the user only provides a docs page, read it first, extract the real MCP endpoint/client id from that page, then run bestie mcp add yourself. Use mcp_discover_oauth, mcp_prepare_server_config, and mcp_apply_server_config only when docs require custom config not covered by bestie mcp add. OAuth config should include tokenUrl when available; without tokenUrl, bestie mcp login can generate the authorization URL but cannot exchange the returned code. If the server auth is oauth, run internal.exec with command bestie and args ["mcp","login","server-name"] after config is saved; use only the generated login command output URL in the final answer and ask the user to log in/approve. OAuth metadata authorization_endpoint or config auth.authorizationUrl is not a clickable user auth URL; never send it to the user as the authorization URL unless it already includes OAuth query parameters such as client_id, response_type, redirect_uri, state, and code_challenge. After the user sends the auth code, run internal.exec with command bestie and args ["mcp","login","server-name","--code","<code>"], then use mcp_list_tools with connect=true to verify discovery and auto-classify annotated tools. Do not guess auth URLs by hand; let bestie mcp login generate PKCE/state URLs. Do not put raw secrets in config; use env var names via env, headersEnv, or auth.envVar.\n- Use memory and knowledge tools only when the included context is missing or insufficient, when the user explicitly asks to search/list/inspect memories or graph knowledge, when saving durable memory/knowledge, when cleaning stale/incorrect/duplicate memories, or when checking whether core/project/session scopes need rebalancing.\n- Use file tools for repo/local context: read_file for a known path, list_files to inspect a directory, search_files to discover likely paths, read_many_files for a small known set, read_markdown_bundle for repo/docs summaries. If the user asks you to edit a known config or project file, read the file if needed, then use edit_file/write_file/apply_patch; do not merely explain the edit unless the tool is denied or unavailable.\n- Generic list/search requests such as "list files" or internal.list_files with path "." inspect the agent workspace, defaulting to .bestie/workspace. Use an explicit project path such as "src", "docs", or an absolute project root path when the user asks to inspect repository files.\n- Relative read_file/read_many_files/read_markdown_bundle paths resolve from the project root. Relative write/edit/exec paths resolve from the agent workspace to avoid polluting the project root.\n- Absolute paths outside the project root and agent workspace are allowed only when covered by workspace.externalPaths in config.\n- Use read_logs only for recent runtime behavior, failures, diagnostics, or debugging questions.\n- Use read_url when the user gives an HTTP(S) link whose page content is needed, such as MCP setup docs, package pages, or install instructions; it obeys internalTools.policies and may require approval.\n- Use git tools for repository state questions: git_status for changed files, git_diff for current or staged patches, git_log for recent commits.\n- Use internal.mcp_list_servers when the user asks what MCP servers are configured or available. Use internal.mcp_list_tools when the user asks what a configured MCP server can do, or before claiming a remote MCP server has no tools.\n- Use write/edit/apply_patch/exec/process tools when the user asks you to change files, update config, run validation, commit changes, or inspect running processes; these tools obey internalTools.policies and may require approval.\n- Use configured MCP read tools only for external configured data that internal local tools cannot provide. If a server has discovered tools but no configured tool categories, explain that discovery works but tool execution still needs allowlisted categories.\n\nTool-use rule:\n- When asked for a tool decision, reply with exactly one JSON object and no extra text.\n- Use {"answer":"..."} only when no tool is needed by the selection guide.\n- If a listed tool is needed, reply with that executable tool JSON immediately and nothing else. Do not put prose before or after tool JSON.\n- After any empty, denied, or failed result, either try one clearly useful adjacent tool call or answer transparently that the data was not found/available. Do not invent missing facts.\n- Internal examples: {"tool":"internal.mcp_list_servers","arguments":{}} or {"tool":"internal.mcp_list_tools","arguments":{"server":"composio","connect":true}}\n- MCP example: {"tool":"mcp.read","server":"server-name","name":"tool-name","arguments":{}}\n- Do not invent shell command JSON, cmd fields, workdir fields, bash commands, sed, cat, rg, terminal actions, or non-git patch markers. Only the tool schemas above can be executed. internal.apply_patch requires a git apply compatible diff, not *** Begin Patch format.\n- The runtime can execute multiple tool calls in sequence, then show you each result so you can continue or answer the user.`;
@@ -331,6 +333,11 @@ export function buildAgentToolResultMessage(toolName: string, toolResult: McpToo
 }
 
 function buildToolResultGuidance(toolName: string, toolResult: McpToolCallResult): string {
+  const knowledgePolicyGuidance = buildKnowledgePolicyGuidance(toolName, toolResult);
+  if (knowledgePolicyGuidance) {
+    return knowledgePolicyGuidance;
+  }
+
   const recoveryHint = buildToolResultRecoveryHint(toolName, toolResult);
   if (recoveryHint) {
     return recoveryHint;
@@ -345,6 +352,18 @@ function buildToolResultGuidance(toolName: string, toolResult: McpToolCallResult
   }
 
   return "Ground the next step in this tool result. If the result answers the original user request, return an answer now. If the original user request still has required files, edits, commands, or other actions remaining, call the next needed tool instead of answering as if the task is complete. Do not add facts that are not supported by the result or prior conversation.";
+}
+
+function buildKnowledgePolicyGuidance(toolName: string, toolResult: McpToolCallResult): string | undefined {
+  if (toolName !== "internal.remember_knowledge" || toolResult.ok || !isRecord(toolResult.result) || toolResult.result.status !== "blocked") {
+    return undefined;
+  }
+
+  const diagnostics = isRecord(toolResult.result.diagnostics) && Array.isArray(toolResult.result.diagnostics.blockedBy)
+    ? { blockedBy: toolResult.result.diagnostics.blockedBy.filter((value): value is KnowledgePolicyDiagnostics["blockedBy"][number] => typeof value === "string") }
+    : undefined;
+  const explanation = explainKnowledgePolicyDiagnostics(diagnostics);
+  return `${explanation ?? "Blocked because the payload looks like it contains secret-like content."} Tell the user that no knowledge graph fact was stored, do not reveal or repeat the sensitive value, and suggest retrying with sanitized evidence if the fact itself is still useful.`;
 }
 
 function stableToolRequestSignature(request: AgentToolRequest): string {
@@ -869,6 +888,10 @@ export async function runAgentToolRequest(options: RunAgentToolRequestOptions): 
     return listCronSchedulesTool({ config: options.config, paths: options.paths });
   }
 
+  if (options.request.tool === "internal.update_cron_schedule") {
+    return updateCronScheduleTool(options.request.arguments, { config: options.config, paths: options.paths });
+  }
+
   if (options.request.tool === "internal.remove_cron_schedule") {
     return removeCronScheduleTool(options.request.arguments, { config: options.config, paths: options.paths });
   }
@@ -877,11 +900,15 @@ export async function runAgentToolRequest(options: RunAgentToolRequestOptions): 
     return toggleCronScheduleTool(options.request.arguments, { config: options.config, paths: options.paths });
   }
 
+  if (options.request.tool === "internal.trigger_cron_schedule") {
+    return triggerCronScheduleTool(options.request.arguments, { config: options.config, paths: options.paths, apiKey: options.apiKey });
+  }
+
   return { ok: false, status: "fail", message: `Unsupported internal tool: ${options.request.tool}` };
 }
 
 export function isInternalToolName(value: string): value is InternalToolRequest["tool"] {
-  return ["internal.read_file", "internal.read_many_files", "internal.read_markdown_bundle", "internal.list_files", "internal.search_files", "internal.read_logs", "internal.read_url", "internal.git_status", "internal.git_diff", "internal.git_log", "internal.mcp_list_servers", "internal.mcp_list_tools", "internal.mcp_discover_oauth", "internal.mcp_prepare_server_config", "internal.mcp_apply_server_config", "internal.write_file", "internal.edit_file", "internal.apply_patch", "internal.exec", "internal.list_processes", "internal.spawn_subagent", "internal.list_memories", "internal.search_memories", "internal.inspect_memory", "internal.search_knowledge", "internal.inspect_entity", "internal.analyze_knowledge", "internal.plan_knowledge_review", "internal.remember_knowledge", "internal.merge_knowledge_entities", "internal.forget_knowledge_entity", "internal.forget_knowledge_relation", "internal.update_knowledge_relation", "internal.analyze_memories", "internal.plan_memory_hygiene", "internal.plan_memory_rebalance", "internal.memory_hygiene_trend", "internal.remember_memory", "internal.delete_memory", "internal.cleanup_memories", "internal.supersede_memory", "internal.add_cron_schedule", "internal.list_cron_schedules", "internal.remove_cron_schedule", "internal.toggle_cron_schedule"].includes(value);
+  return ["internal.read_file", "internal.read_many_files", "internal.read_markdown_bundle", "internal.list_files", "internal.search_files", "internal.read_logs", "internal.read_url", "internal.git_status", "internal.git_diff", "internal.git_log", "internal.mcp_list_servers", "internal.mcp_list_tools", "internal.mcp_discover_oauth", "internal.mcp_prepare_server_config", "internal.mcp_apply_server_config", "internal.write_file", "internal.edit_file", "internal.apply_patch", "internal.exec", "internal.list_processes", "internal.spawn_subagent", "internal.list_memories", "internal.search_memories", "internal.inspect_memory", "internal.search_knowledge", "internal.inspect_entity", "internal.analyze_knowledge", "internal.plan_knowledge_review", "internal.remember_knowledge", "internal.merge_knowledge_entities", "internal.forget_knowledge_entity", "internal.forget_knowledge_relation", "internal.update_knowledge_relation", "internal.analyze_memories", "internal.plan_memory_hygiene", "internal.plan_memory_rebalance", "internal.memory_hygiene_trend", "internal.remember_memory", "internal.delete_memory", "internal.cleanup_memories", "internal.supersede_memory", "internal.add_cron_schedule", "internal.list_cron_schedules", "internal.update_cron_schedule", "internal.remove_cron_schedule", "internal.toggle_cron_schedule", "internal.trigger_cron_schedule"].includes(value);
 }
 
 async function runSubagentTool(options: RunAgentToolRequestOptions, args: Record<string, unknown>): Promise<McpToolCallResult> {
@@ -1671,7 +1698,7 @@ async function rememberKnowledgeTool(config: AppConfig, paths: RuntimePaths, arg
   const sensitivity = knowledgeSensitivityArg(args.sensitivity) ?? maxPayloadSensitivity([...entities, ...relations]);
   const policy = evaluateKnowledgePayload({ entities, relations }, sensitivity, booleanArg(args.explicitConsent));
   if (policy.decision === "never" || policy.sensitivity === "secret") {
-    return { ok: false, status: "fail", message: policy.reason };
+    return { ok: false, status: "fail", message: policy.reason, result: { status: "blocked", diagnostics: policy.diagnostics } };
   }
 
   const store = await SqliteMemoryStore.open(paths);

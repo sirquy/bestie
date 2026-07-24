@@ -107,8 +107,7 @@ Use this non-secret config shape in `.bestie/config.json`:
         "visionMaxBytes": 4194304,
         "transcriptionPolicy": "allow",
         "transcriptionMaxBytes": 10485760,
-        "deleteAfterProcessingKinds": ["voice", "audio"],
-        "allowedMimeTypes": ["text/*", "application/json", "image/*", "video/*", "audio/*", "sticker/*", "application/pdf", "application/zip"]
+        "deleteAfterProcessingKinds": ["voice", "audio"]
       }
     }
   }

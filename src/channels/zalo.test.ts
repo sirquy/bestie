@@ -5,6 +5,7 @@ import { resolve } from "node:path";
 import test from "node:test";
 
 import { ProviderResponseError } from "../llm/errors.js";
+import { handleCronChannelCommand } from "../cron/channel-commands.js";
 import { SqliteMemoryStore } from "../memory/sqlite-store.js";
 import type { AppConfig } from "../runtime/config.js";
 import { writeEnvFile } from "../runtime/env.js";
@@ -149,9 +150,55 @@ test("handleZaloUpdate replies to owner help command", async () => {
   assert.match(sent[0]?.text ?? "", /\/memory pending/);
 });
 
+test("handleZaloUpdate sanitizes pending knowledge graph items from Zalo", async () => {
+  const paths = await createTempPaths();
+  const sent: Array<{ chatId: string; text: string }> = [];
+
+  try {
+    await writeRuntimeFiles(paths);
+    const store = await SqliteMemoryStore.open(paths);
+    let pendingId: number;
+    try {
+      pendingId = store.addPendingKnowledgeItem({
+        payload: {
+          entities: [
+            { name: "Integration credential", kind: "concept" },
+            { name: "Bestie", kind: "project" },
+          ],
+          relations: [{ sourceName: "Bestie", sourceKind: "project", type: "mentions", targetName: "Integration credential", targetKind: "concept", evidence: "api_key: sk-secret1234567890 was found in docs and should be removed." }],
+        },
+        reason: "Needs approval.",
+        source: "test",
+      }).id;
+    } finally {
+      store.close();
+    }
+
+    const result = await handleZaloUpdate(
+      { update_id: 1, message: { from: { id: "owner-1" }, chat: { id: "chat-1" }, text: `/graph pending sanitize ${pendingId}` } },
+      { config, paths, client: createRecordingClient(sent) },
+    );
+
+    assert.equal(result, "replied");
+    assert.match(sent[0]?.text ?? "", new RegExp(`Pending knowledge graph item sanitized: #${pendingId}`));
+    assert.match(sent[0]?.text ?? "", new RegExp(`/memory graph approve ${pendingId}`));
+    assert.doesNotMatch(sent[0]?.text ?? "", /sk-secret1234567890/);
+
+    const verifyStore = await SqliteMemoryStore.open(paths);
+    try {
+      assert.doesNotMatch(JSON.stringify(verifyStore.getPendingKnowledgeItem(pendingId)?.payload), /sk-secret1234567890|api_key/);
+    } finally {
+      verifyStore.close();
+    }
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
 test("handleZaloUpdate manages cron schedules for the current chat", async () => {
   const paths = await createTempPaths();
   const sent: Array<{ chatId: string; text: string }> = [];
+  let triggeredId: number | undefined;
 
   try {
     await writeRuntimeFiles(paths);
@@ -161,11 +208,28 @@ test("handleZaloUpdate manages cron schedules for the current chat", async () =>
     store.close();
 
     await handleZaloUpdate({ update_id: 1, message: { from: { id: "owner-1" }, chat: { id: "chat-1" }, text: "/cron list" } }, { config, paths, client: createRecordingClient(sent) });
-    await handleZaloUpdate({ update_id: 2, message: { from: { id: "owner-1" }, chat: { id: "chat-1" }, text: `/cron delete ${own.id}` } }, { config, paths, client: createRecordingClient(sent) });
+    await handleZaloUpdate({ update_id: 2, message: { from: { id: "owner-1" }, chat: { id: "chat-1" }, text: `/cron update ${own.id} --name "Zalo updated" --schedule 2h --prompt "Updated task" --disable` } }, { config, paths, client: createRecordingClient(sent) });
+    await handleCronChannelCommand({
+      text: `/cron trigger ${own.id}`,
+      paths,
+      channel: "zalo",
+      userId: "chat-1",
+      sendMessage: (message) => {
+        sent.push({ chatId: "chat-1", text: message });
+        return Promise.resolve();
+      },
+      triggerSchedule: async (scheduleId) => { triggeredId = scheduleId; },
+    });
+    await handleZaloUpdate({ update_id: 3, message: { from: { id: "owner-1" }, chat: { id: "chat-1" }, text: `/cron delete ${own.id}` } }, { config, paths, client: createRecordingClient(sent) });
 
     assert.match(sent[0].text, /#\d+ Zalo mine/);
     assert.doesNotMatch(sent[0].text, /Zalo other/);
-    assert.match(sent[1].text, new RegExp(`Cron schedule ${own.id} deleted\\.`));
+    assert.match(sent[1].text, /Cron schedule \d+ updated\./);
+    assert.match(sent[1].text, /Zalo updated/);
+    assert.match(sent[2].text, /Triggering cron schedule/);
+    assert.match(sent[3].text, /triggered/);
+    assert.equal(triggeredId, own.id);
+    assert.match(sent[4].text, new RegExp(`Cron schedule ${own.id} deleted\\.`));
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
   }

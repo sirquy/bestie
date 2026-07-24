@@ -38,7 +38,7 @@ export function planMemoryRebalance(memories: StoredMemory[]): MemoryRebalancePl
       reason: explainScopeRecommendation(memory, recommendedScope),
       reviewOnly,
     }];
-  });
+  }).sort((left, right) => left.id - right.id);
 
   return {
     checked: memories.length,

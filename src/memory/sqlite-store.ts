@@ -2,7 +2,7 @@ import Database from "better-sqlite3";
 import { mkdir } from "node:fs/promises";
 
 import { getRuntimePaths, type RuntimePaths } from "../runtime/paths.js";
-import { evaluateKnowledgePayload, isKnowledgeEntityKind } from "./knowledge-policy.js";
+import { evaluateKnowledgePayload, explainKnowledgePolicyDiagnostics, isKnowledgeEntityKind, type KnowledgePolicyDiagnostics } from "./knowledge-policy.js";
 import { MEMORY_SCHEMA_SQL } from "./schema.js";
 
 export interface StoredMemory {
@@ -276,9 +276,27 @@ export interface PendingKnowledgeItem {
 }
 
 export interface ApprovedKnowledgeItem {
+  status: "approved";
   entities: KnowledgeEntity[];
   relations: KnowledgeRelation[];
 }
+
+export interface BlockedPendingKnowledgeItem {
+  status: "blocked";
+  reason: string;
+  diagnostics?: KnowledgePolicyDiagnostics;
+  explanation?: string;
+}
+
+export type PendingKnowledgeApprovalResult = ApprovedKnowledgeItem | BlockedPendingKnowledgeItem;
+
+export interface SanitizedPendingKnowledgeItem {
+  status: "sanitized";
+  item: PendingKnowledgeItem;
+  previousDiagnostics?: KnowledgePolicyDiagnostics;
+}
+
+export type PendingKnowledgeSanitizeResult = SanitizedPendingKnowledgeItem | BlockedPendingKnowledgeItem;
 
 export interface KnowledgeEntityMergeResult {
   primary: KnowledgeEntity;
@@ -947,10 +965,23 @@ export class SqliteMemoryStore {
     return rows.map(mapPendingKnowledgeItemRow);
   }
 
-  approvePendingKnowledgeItem(id: number): ApprovedKnowledgeItem | undefined {
+  approvePendingKnowledgeItem(id: number): PendingKnowledgeApprovalResult | undefined {
     const pending = this.getPendingKnowledgeItem(id);
     if (!pending) {
       return undefined;
+    }
+
+    const policy = evaluateKnowledgePayload(pending.payload, "normal", pending.explicitConsent);
+    if (policy.decision === "never" || policy.sensitivity === "secret") {
+      const explanation = explainKnowledgePolicyDiagnostics(policy.diagnostics);
+      const blocked: BlockedPendingKnowledgeItem = {
+        status: "blocked",
+        reason: policy.reason,
+        ...(policy.diagnostics ? { diagnostics: policy.diagnostics } : {}),
+        ...(explanation ? { explanation } : {}),
+      };
+      this.addKnowledgeAuditEvent({ subjectType: "pending", subjectId: id, eventType: "blocked", actor: "system", channel: pending.source, reason: blocked.explanation ?? blocked.reason, payloadSummary: summarizePendingKnowledgeAudit(pending) });
+      return blocked;
     }
 
     const parsed = parsePendingKnowledgePayload(pending.payload);
@@ -985,10 +1016,41 @@ export class SqliteMemoryStore {
       for (const relation of relations) {
         this.addKnowledgeAuditEvent({ subjectType: "relation", subjectId: relation.id, eventType: "approved", actor: "owner", channel: pending.source, reason: pending.reason, payloadSummary: summarizeKnowledgeRelationAudit(relation) });
       }
-      return { entities, relations };
+      return { status: "approved" as const, entities, relations };
     });
 
     return transaction();
+  }
+
+  sanitizePendingKnowledgeItem(id: number): PendingKnowledgeSanitizeResult | undefined {
+    const pending = this.getPendingKnowledgeItem(id);
+    if (!pending) {
+      return undefined;
+    }
+
+    const previousPolicy = evaluateKnowledgePayload(pending.payload, "normal", pending.explicitConsent);
+    const sanitizedPayload = sanitizeKnowledgePayload(pending.payload);
+    const policy = evaluateKnowledgePayload(sanitizedPayload, "normal", pending.explicitConsent);
+    if (policy.decision === "never" || policy.sensitivity === "secret") {
+      const explanation = explainKnowledgePolicyDiagnostics(policy.diagnostics);
+      const blocked: BlockedPendingKnowledgeItem = {
+        status: "blocked",
+        reason: policy.reason,
+        ...(policy.diagnostics ? { diagnostics: policy.diagnostics } : {}),
+        ...(explanation ? { explanation } : {}),
+      };
+      this.addKnowledgeAuditEvent({ subjectType: "pending", subjectId: id, eventType: "sanitize_blocked", actor: "owner", channel: pending.source, reason: blocked.explanation ?? blocked.reason, payloadSummary: summarizePendingKnowledgeAudit(pending) });
+      return blocked;
+    }
+
+    const reason = appendPendingKnowledgeReason(pending.reason, "Sanitized by owner: removed secret-like values from the payload.");
+    this.db.prepare("UPDATE pending_knowledge_items SET payload_json = ?, reason = ? WHERE id = ?").run(JSON.stringify(sanitizedPayload), reason, id);
+    this.addKnowledgeAuditEvent({ subjectType: "pending", subjectId: id, eventType: "sanitized", actor: "owner", channel: pending.source, reason, payloadSummary: summarizePendingKnowledgeAudit({ ...pending, payload: sanitizedPayload, reason }) });
+    return {
+      status: "sanitized",
+      item: this.getPendingKnowledgeItem(id)!,
+      ...(previousPolicy.diagnostics ? { previousDiagnostics: previousPolicy.diagnostics } : {}),
+    };
   }
 
   rejectPendingKnowledgeItem(id: number): boolean {
@@ -2257,6 +2319,59 @@ function normalizeKnowledgeAliases(values: string[]): string[] {
 
 function normalizeKnowledgeRelationType(value: string): string {
   return value.trim().toLocaleLowerCase().replace(/[^a-z0-9_]+/g, "_").replace(/^_+|_+$/g, "");
+}
+
+function sanitizeKnowledgePayload(payload: unknown): unknown {
+  if (typeof payload === "string") {
+    return sanitizeKnowledgeString(payload);
+  }
+  if (Array.isArray(payload)) {
+    return payload.map(sanitizeKnowledgePayload);
+  }
+  if (isRecord(payload)) {
+    const entries = Object.entries(payload).map(([key, value], index) => {
+      const sanitizedKey = /password|api[_ -]?key|token|secret/i.test(key) ? `redactedField${index + 1}` : key;
+      return [sanitizedKey, sanitizeKnowledgePayload(value)];
+    });
+    return Object.fromEntries(entries);
+  }
+  return payload;
+}
+
+function sanitizeKnowledgeString(value: string): string {
+  let sanitized = value
+    .replace(/\b(?:password|api[_ -]?key|token|secret)\s*[:=]\s*"?[^",\s}]+"?/gi, "[REDACTED SECRET-LIKE VALUE]")
+    .replace(/sk-[A-Za-z0-9_-]{12,}/g, "[REDACTED SECRET-LIKE VALUE]")
+    .replace(/Bearer\s+[A-Za-z0-9._~+/=-]+/gi, "Bearer [REDACTED]")
+    .replace(/\b(?=[A-Za-z0-9]{32,}\b)(?=[A-Za-z0-9]*\d)[A-Za-z0-9]+\b/g, "[REDACTED SECRET-LIKE VALUE]");
+
+  const paymentCandidates = sanitized.match(/(?<!\d)(?:\d[ -]?){13,19}(?!\d)/g) ?? [];
+  for (const candidate of paymentCandidates) {
+    const digits = candidate.replace(/\D/g, "");
+    if (digits.length >= 13 && digits.length <= 19 && !/^(\d)\1+$/.test(digits) && passesPendingKnowledgeLuhnCheck(digits)) {
+      sanitized = sanitized.split(candidate).join("[REDACTED PAYMENT DETAILS]");
+    }
+  }
+  return sanitized;
+}
+
+function passesPendingKnowledgeLuhnCheck(digits: string): boolean {
+  let sum = 0;
+  let doubleDigit = false;
+  for (let index = digits.length - 1; index >= 0; index -= 1) {
+    let digit = Number(digits[index]);
+    if (doubleDigit) {
+      digit *= 2;
+      if (digit > 9) digit -= 9;
+    }
+    sum += digit;
+    doubleDigit = !doubleDigit;
+  }
+  return sum % 10 === 0;
+}
+
+function appendPendingKnowledgeReason(current: string | undefined, addition: string): string {
+  return current ? `${current} ${addition}` : addition;
 }
 
 function parsePendingKnowledgePayload(payload: unknown): { entities: NewKnowledgeEntity[]; relations: ParsedPendingKnowledgeRelation[] } {

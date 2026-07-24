@@ -304,7 +304,7 @@ function loadChat() {
   setValue("#chat-panel .value", state.activeChatSession ? 'Session #' + state.activeChatSession.id : "Ready");
   setBody("#chat-panel", [
     '<div class="chat-layout ' + (state.chatSideOpen ? '' : 'chat-side-hidden') + '"><aside class="chat-sessions"><div class="chat-session-tools"><strong>Sessions</strong><span><button id="chat-new-session" type="button" title="New chat" aria-label="New chat">' + icon("check") + '</button><button id="chat-rename-session" type="button" title="Rename chat" aria-label="Rename chat">' + icon("refresh") + '</button><button id="chat-export-session" type="button" title="Export chat" aria-label="Export chat">' + icon("cloud") + '</button><button id="chat-import-session" type="button" title="Import chat" aria-label="Import chat">' + icon("database") + '</button><button id="chat-delete-session" type="button" title="Delete chat" aria-label="Delete chat">' + icon("x") + '</button></span></div><div class="chat-search"><input id="chat-session-search" placeholder="Search" value="' + escapeHtml(state.chatSearchQuery ?? "") + '"><select id="chat-session-filter"><option value="all">All</option><option value="approval">Approval</option><option value="cancelled">Cancelled</option><option value="error">Error</option><option value="fork">Fork</option><option value="retry">Retry</option></select></div><div id="chat-session-list" class="stack">' + row("Sessions", "loading", "") + '</div></aside><div id="chat-transcript" class="chat-transcript">' + renderChatTranscript() + '</div><button id="chat-side-toggle" class="chat-side-toggle" type="button" aria-expanded="' + (state.chatSideOpen ? 'true' : 'false') + '">' + icon("sliders") + '<span>' + (state.chatSideOpen ? 'Hide' : 'Details') + '</span></button><aside class="chat-side"><div class="summary-strip"><span><strong>Tools</strong><small>agent loop</small></span><span><strong>Memory</strong><small>optional</small></span><span><strong>Fallbacks</strong><small>provider aware</small></span></div><div id="chat-inspector" class="tool-section"><div class="label">Run inspector</div>' + renderChatInspector() + '</div><div id="chat-preferences" class="tool-section"><div class="label">Preferences</div>' + renderChatPreferences() + '</div><div id="chat-branch" class="tool-section"><div class="label">Branches</div>' + renderChatBranchNavigator() + '</div><div id="chat-timeline" class="tool-section"><div class="label">Run timeline</div>' + renderChatTimeline() + '</div></aside></div>',
-    '<form id="chat-form" class="chat-composer"><div class="composer-field"><div class="composer-toolbar"><span id="chat-composer-status">Ready</span><span id="chat-composer-context">Tools + Memory</span></div><textarea id="chat-input" placeholder="Nhắn với Bestie..." spellcheck="false" rows="1"></textarea><input id="chat-attachment-input" type="file" accept=".txt,.md,.markdown,.json,.csv,text/*,application/json" multiple hidden><div id="chat-attachment-preview" class="attachment-preview"></div><div class="composer-tools"><button id="chat-attach" type="button">' + icon("clip") + '<span>Attach</span></button><button id="chat-context" type="button">' + icon("sliders") + '<span>Context</span></button></div></div><button type="submit" data-chat-send>' + icon("check") + '<span>Send</span></button><button id="chat-stop" type="button" disabled>' + icon("square") + '<span>Stop</span></button></form>',
+    '<form id="chat-form" class="chat-composer"><div class="composer-field"><div class="composer-toolbar"><span id="chat-composer-status">Ready</span><span id="chat-composer-context">Tools + Memory</span></div><textarea id="chat-input" placeholder="Nhắn với Bestie..." spellcheck="false" rows="1"></textarea><input id="chat-attachment-input" type="file" multiple hidden><div id="chat-attachment-preview" class="attachment-preview"></div><div class="composer-tools"><button id="chat-attach" type="button">' + icon("clip") + '<span>Attach</span></button><button id="chat-context" type="button">' + icon("sliders") + '<span>Context</span></button></div></div><button type="submit" data-chat-send>' + icon("check") + '<span>Send</span></button><button id="chat-stop" type="button" disabled>' + icon("square") + '<span>Stop</span></button></form>',
   ].join(""));
   bindChatControls();
   const filter = document.querySelector("#chat-session-filter");
@@ -1750,6 +1750,7 @@ function renderKnowledgeGraphSvg(entities, relations) {
 function renderKnowledgeCytoscapeGraph(entities, relations) {
   const container = document.querySelector("#knowledge-cytoscape");
   if (!container) return;
+  stopKnowledgeAmbientMotion();
   const graphElements = buildKnowledgeCytoscapeElements(entities, relations);
   container.dataset.nodeCount = String(graphElements.nodeCount);
   container.dataset.edgeCount = String(graphElements.edgeCount);
@@ -1784,7 +1785,7 @@ function renderKnowledgeCytoscapeGraph(entities, relations) {
       { selector: ".filtered", style: { display: "none" } },
       { selector: ".dimmed", style: { opacity: 0.14 } },
       { selector: "node.highlighted", style: { "border-color": "#e0b257", "border-width": 4 } },
-      { selector: "edge.highlighted", style: { "line-color": "#e0b257", "target-arrow-color": "#e0b257", opacity: 1, width: 3.8 } },
+      { selector: "edge.highlighted", style: { "line-color": "#e0b257", "target-arrow-color": "#e0b257", opacity: 1, width: 2.2 } },
       { selector: ":selected", style: { "border-color": "#e0b257", "border-width": 4, "line-color": "#e0b257", "target-arrow-color": "#e0b257", opacity: 1 } },
     ],
   });
@@ -1815,10 +1816,12 @@ function renderKnowledgeCytoscapeGraph(entities, relations) {
       applyKnowledgeGraphFilters();
     }
   });
+  ["drag", "pan", "zoom", "grab", "free", "tapstart"].forEach((eventName) => cy.on(eventName, () => { state.knowledgeLastGraphInteraction = Date.now(); }));
   state.knowledgeCytoscape = cy;
   window.__bestieKnowledgeGraph = { cy, select: selectKnowledgeGraphById };
   applyKnowledgeGraphFilters();
   applyKnowledgeGraphSelectionHighlight();
+  startKnowledgeAmbientMotion(cy);
   container.dataset.knowledgeGraphReady = "true";
 }
 
@@ -1831,14 +1834,22 @@ function buildKnowledgeCytoscapeElements(entities, relations) {
   const nodes = [...byId.values()].slice(0, 48);
   const nodeIds = new Set(nodes.map((node) => Number(node.id)));
   if ((state.knowledgeClusterBy ?? "none") !== "none") return buildKnowledgeClusterElements(nodes, relations ?? [], nodeIds);
+  const relationCounts = new Map();
+  (relations ?? []).forEach((relation) => {
+    relationCounts.set(Number(relation.sourceEntityId), (relationCounts.get(Number(relation.sourceEntityId)) ?? 0) + 1);
+    relationCounts.set(Number(relation.targetEntityId), (relationCounts.get(Number(relation.targetEntityId)) ?? 0) + 1);
+  });
   const nodeElements = nodes.map((node) => {
     const confidence = Number(node.confidence ?? 0.7);
     const kind = ["person", "project", "preference", "topic"].includes(node.kind) ? node.kind : "topic";
-    return { data: { id: "entity-" + node.id, entityId: Number(node.id), kind, scope: String(node.scope ?? "session"), trust: String(node.trust?.level ?? "medium"), label: String(node.canonicalName ?? ("Entity " + node.id)), searchText: [node.canonicalName, node.kind, node.scope, ...(node.aliases ?? [])].join(" "), size: 30 + Math.round(Math.max(0, Math.min(1, confidence)) * 18) }, classes: kind };
+    const relationCount = relationCounts.get(Number(node.id)) ?? Number(node.trust?.relationCount ?? 0);
+    const trustBonus = node.trust?.level === "high" ? 4 : node.trust?.level === "low" ? -2 : 1;
+    const size = Math.max(24, Math.min(58, 25 + Math.min(22, relationCount * 5) + Math.round(Math.max(0, Math.min(1, confidence)) * 7) + trustBonus));
+    return { data: { id: "entity-" + node.id, entityId: Number(node.id), kind, scope: String(node.scope ?? "session"), trust: String(node.trust?.level ?? "medium"), relationCount, label: String(node.canonicalName ?? ("Entity " + node.id)), searchText: [node.canonicalName, node.kind, node.scope, ...(node.aliases ?? [])].join(" "), size }, classes: kind };
   });
   const edgeElements = (relations ?? []).filter((relation) => nodeIds.has(Number(relation.sourceEntityId)) && nodeIds.has(Number(relation.targetEntityId))).slice(0, 80).map((relation) => {
     const confidence = Math.max(0, Math.min(1, Number(relation.confidence ?? 0.55)));
-    return { data: { id: "relation-" + relation.id, source: "entity-" + relation.sourceEntityId, target: "entity-" + relation.targetEntityId, relationId: Number(relation.id), kind: "relation", scope: String(relation.scope ?? "session"), trust: String(relation.trust?.level ?? "medium"), confidence, label: String(relation.relationType ?? "related"), searchText: [relation.sourceName, relation.relationType, relation.targetName, relation.scope, relation.evidence].join(" "), opacity: 0.34 + confidence * 0.56, width: 1.2 + confidence * 2.4 } };
+    return { data: { id: "relation-" + relation.id, source: "entity-" + relation.sourceEntityId, target: "entity-" + relation.targetEntityId, relationId: Number(relation.id), kind: "relation", scope: String(relation.scope ?? "session"), trust: String(relation.trust?.level ?? "medium"), confidence, label: String(relation.relationType ?? "related"), searchText: [relation.sourceName, relation.relationType, relation.targetName, relation.scope, relation.evidence].join(" "), opacity: 0.32 + confidence * 0.52, width: 0.45 + confidence * 0.95 } };
   });
   return { elements: [...nodeElements, ...edgeElements], nodeCount: nodeElements.length, edgeCount: edgeElements.length };
 }
@@ -1879,7 +1890,7 @@ function buildKnowledgeClusterElements(nodes, relations, nodeIds) {
   });
   const edgeElements = [...edges.entries()].slice(0, 80).map(([id, edge]) => {
     const confidence = edge.count ? edge.confidence / edge.count : 0.55;
-    return { data: { id: "cluster-edge-" + id.replace(/[^a-z0-9_-]/gi, "-"), source: edge.source, target: edge.target, kind: "relation", scope: edge.scopes.size === 1 ? [...edge.scopes][0] : "cluster", trust: edge.trusts.size === 1 ? [...edge.trusts][0] : "medium", confidence, label: edge.count + " relations", opacity: 0.28 + Math.min(0.6, confidence * 0.5), width: 1.6 + Math.min(4, edge.count * 0.8) } };
+    return { data: { id: "cluster-edge-" + id.replace(/[^a-z0-9_-]/gi, "-"), source: edge.source, target: edge.target, kind: "relation", scope: edge.scopes.size === 1 ? [...edge.scopes][0] : "cluster", trust: edge.trusts.size === 1 ? [...edge.trusts][0] : "medium", confidence, label: edge.count + " relations", opacity: 0.26 + Math.min(0.56, confidence * 0.46), width: 0.75 + Math.min(1.8, edge.count * 0.35) } };
   });
   return { elements: [...nodeElements, ...edgeElements], nodeCount: nodeElements.length, edgeCount: edgeElements.length };
 }
@@ -1944,7 +1955,7 @@ function formatKnowledgeReviewAction(action) {
 
 function renderPendingKnowledgeItem(item) {
   const meta = [item.reason, item.source, item.explicitConsent ? "explicit consent" : "needs review", item.createdAt].filter(Boolean).join(' / ');
-  return '<div class="knowledge-row" data-knowledge-select="pending" data-pending-id="' + escapeHtml(item.id) + '"><div><strong>Pending #' + escapeHtml(item.id) + '</strong><div>' + escapeHtml(item.payloadSummary) + '</div><div class="subvalue">' + escapeHtml(meta) + '</div></div><span><span class="pill warn">pending</span>' + iconButton("check", "Approve", 'data-knowledge-action="approve_pending" data-pending-id="' + escapeHtml(item.id) + '"') + iconButton("x", "Reject", 'data-knowledge-action="reject_pending" data-pending-id="' + escapeHtml(item.id) + '"') + '</span></div>';
+  return '<div class="knowledge-row" data-knowledge-select="pending" data-pending-id="' + escapeHtml(item.id) + '"><div><strong>Pending #' + escapeHtml(item.id) + '</strong><div>' + escapeHtml(item.payloadSummary) + '</div><div class="subvalue">' + escapeHtml(meta) + '</div></div><span><span class="pill warn">pending</span>' + iconButton("sliders", "Sanitize", 'data-knowledge-action="sanitize_pending" data-pending-id="' + escapeHtml(item.id) + '"') + iconButton("check", "Approve", 'data-knowledge-action="approve_pending" data-pending-id="' + escapeHtml(item.id) + '"') + iconButton("x", "Reject", 'data-knowledge-action="reject_pending" data-pending-id="' + escapeHtml(item.id) + '"') + '</span></div>';
 }
 
 function renderKnowledgeSearchResults(graph) {
@@ -2190,6 +2201,40 @@ function knowledgeMotionEnabled() {
   return state.knowledgeMotion !== "off" && !window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
 }
 
+function startKnowledgeAmbientMotion(cy) {
+  stopKnowledgeAmbientMotion();
+  if (!cy || !knowledgeMotionEnabled()) return;
+  const token = (state.knowledgeAmbientMotionToken ?? 0) + 1;
+  state.knowledgeAmbientMotionToken = token;
+  cy.nodes().forEach((node) => node.scratch("knowledgeAmbientBase", { ...node.position() }));
+  let index = 0;
+  const tick = () => {
+    if (state.knowledgeAmbientMotionToken !== token || state.knowledgeCytoscape !== cy || !knowledgeMotionEnabled()) return;
+    if (Date.now() - Number(state.knowledgeLastGraphInteraction ?? 0) < 1800) {
+      state.knowledgeAmbientMotionTimer = window.setTimeout(tick, 1600);
+      return;
+    }
+    const phase = index % 4;
+    index += 1;
+    cy.nodes().not(".filtered").slice(0, 48).forEach((node, nodeIndex) => {
+      const base = node.scratch("knowledgeAmbientBase") ?? node.position();
+      const angle = ((nodeIndex % 11) / 11) * Math.PI * 2 + phase * 0.72;
+      const radius = 2.8 + (nodeIndex % 4) * 0.9;
+      node.stop(true, false);
+      node.animate({ position: { x: base.x + Math.cos(angle) * radius, y: base.y + Math.sin(angle) * radius } }, { duration: 1800, easing: "ease-in-out-cubic" });
+    });
+    state.knowledgeAmbientMotionTimer = window.setTimeout(tick, 2800);
+  };
+  state.knowledgeAmbientMotionTimer = window.setTimeout(tick, 900);
+}
+
+function stopKnowledgeAmbientMotion() {
+  state.knowledgeAmbientMotionToken = (state.knowledgeAmbientMotionToken ?? 0) + 1;
+  if (state.knowledgeAmbientMotionTimer) window.clearTimeout(state.knowledgeAmbientMotionTimer);
+  state.knowledgeAmbientMotionTimer = undefined;
+  state.knowledgeCytoscape?.nodes?.().stop(true, false);
+}
+
 function knowledgeGraphLayoutOptions(padding) {
   return { name: "cose", animate: false, fit: true, padding, nodeRepulsion: 5200, idealEdgeLength: 128, edgeElasticity: 86, gravity: 0.28, numIter: 900 };
 }
@@ -2316,6 +2361,8 @@ function bindKnowledgeGraphInteractiveControls() {
       state.knowledgeActiveView = "custom";
       syncKnowledgeMapControls();
       state.knowledgeCytoscape?.layout(knowledgeGraphLayoutOptions(32)).run();
+      if (knowledgeMotionEnabled()) startKnowledgeAmbientMotion(state.knowledgeCytoscape);
+      else stopKnowledgeAmbientMotion();
       saveKnowledgeMapPreferences();
     });
   });
@@ -2599,7 +2646,7 @@ function renderKnowledgeInspector(graph) {
         { label: "Source", value: renderKnowledgeSource(pending) },
         { label: "Policy", value: pending.explicitConsent ? "Explicit consent present" : "Approval required", tone: pending.explicitConsent ? "good" : "warn" },
       ])
-      + '<div class="actions inline-actions">' + renderKnowledgeSourceJump(pending) + iconButton("check", "Approve", 'data-knowledge-action="approve_pending" data-pending-id="' + escapeHtml(pending.id) + '"') + iconButton("x", "Reject", 'data-knowledge-action="reject_pending" data-pending-id="' + escapeHtml(pending.id) + '"') + '</div>';
+      + '<div class="actions inline-actions">' + renderKnowledgeSourceJump(pending) + iconButton("sliders", "Sanitize", 'data-knowledge-action="sanitize_pending" data-pending-id="' + escapeHtml(pending.id) + '"') + iconButton("check", "Approve", 'data-knowledge-action="approve_pending" data-pending-id="' + escapeHtml(pending.id) + '"') + iconButton("x", "Reject", 'data-knowledge-action="reject_pending" data-pending-id="' + escapeHtml(pending.id) + '"') + '</div>';
   }
   const suggestion = (graph.review?.suggestions ?? [])[Number(selected.id)];
   if (!suggestion) return renderKnowledgeInspectorMissing();
@@ -2740,9 +2787,9 @@ function runKnowledgeGraphAction(button) {
       body.confidence = confidence;
       return true;
     });
-  } else if (action === "approve_pending" || action === "reject_pending") {
+  } else if (action === "approve_pending" || action === "reject_pending" || action === "sanitize_pending") {
     body.id = Number(button.dataset.pendingId);
-    title = action === "approve_pending" ? "Approve graph write?" : "Reject graph write?";
+    title = action === "approve_pending" ? "Approve graph write?" : action === "sanitize_pending" ? "Sanitize graph write?" : "Reject graph write?";
     message = 'Pending #' + body.id;
   } else {
     showToast("Unknown graph action.", "bad");

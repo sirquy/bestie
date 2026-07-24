@@ -52,9 +52,13 @@ Graph writes follow `memory.writePolicy`:
 - `ask`: queues graph payloads in `pending_knowledge_items`.
 - `deny`: rejects graph writes and skips reasoning writes.
 
-Secret-like payloads are always rejected. Sensitive payloads are queued unless explicit consent is provided and policy allows storage.
+Secret-like payloads are always rejected. Blocked `internal.remember_knowledge` calls return `result.status = "blocked"` and `result.diagnostics.blockedBy` reason codes, for example `payment_card_like`, `api_key_assignment`, `token_assignment`, `openai_key`, or `explicit_secret_sensitivity`; diagnostics must not include the matched secret value. Chat tool-result guidance uses those diagnostics to explain that no graph fact was stored and to suggest retrying with sanitized evidence instead of repeating the sensitive value. Sensitive payloads are queued unless explicit consent is provided and policy allows storage.
 
 Pending graph items can be reviewed from CLI or owner channels. Telegram and Zalo create approval requests for `internal.remember_knowledge` and post-turn knowledge reasoning; approving stores valid entities/relations and denying deletes the pending item.
+
+If a pending graph payload is later blocked by the current knowledge policy during approval, approval returns a blocked/invalid result with diagnostics, keeps the pending item for owner review, and stores no graph entities or relations. The owner can reject the old pending item or recreate it with sanitized evidence.
+
+Owners can sanitize a blocked pending graph item with `bestie memory graph pending sanitize <id>`, owner-channel slash commands `/memory graph pending sanitize <id>` or `/graph pending sanitize <id>`, or the UI `sanitize_pending` action. Sanitization redacts secret-like values from the pending payload, keeps durable non-secret entities/relations intact when possible, records a `sanitized` audit event, and lets the owner approve the same pending item after policy validation passes. If automatic sanitization cannot produce an allowed payload, the pending item is kept unchanged and the owner should reject or recreate it manually.
 
 Agent-assisted graph cleanup is allowed only through the same safety gates. `internal.analyze_knowledge` and `internal.plan_knowledge_review` are trusted read-only tools. `internal.plan_knowledge_review` converts raw hygiene analysis into prioritized review suggestions with safe next commands/tool calls. `internal.merge_knowledge_entities`, `internal.forget_knowledge_relation`, and `internal.update_knowledge_relation` are local write actions governed by `memory.deletePolicy`, per-tool `internalTools.policies`, and channel/terminal approval when policy asks.
 

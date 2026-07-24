@@ -371,6 +371,10 @@ async function runMemoryGraphCommand(argv: string[]): Promise<void> {
       await inspectPendingKnowledgeGraphItem(argv);
       return;
     }
+    if (argv[5] === "sanitize") {
+      await sanitizePendingKnowledgeGraphItem(argv);
+      return;
+    }
 
     await listPendingKnowledgeGraphItems(argv);
     return;
@@ -392,7 +396,7 @@ async function runMemoryGraphCommand(argv: string[]): Promise<void> {
   }
 
   console.error(`Unknown memory graph command: ${action}`);
-  console.error("Usage: bestie memory graph status | search <query> | entities [--kind <kind>] | relations | analyze|hygiene [--json] | review [--json] [--limit <n>] | inspect entity|relation <id> | add entity <kind> <name> | add relation <sourceId> <type> <targetId> [evidence] | update relation <id> [--confidence <n>] [--evidence <text>] [--scope core|project|session] [--sensitivity normal|sensitive] --yes | merge entity <primaryId> <duplicateId> --yes | forget entity|relation <id> | export | pending [--limit <n>] | pending inspect <id> | approve <id> | reject <id> | reject-all --yes");
+  console.error("Usage: bestie memory graph status | search <query> | entities [--kind <kind>] | relations | analyze|hygiene [--json] | review [--json] [--limit <n>] | inspect entity|relation <id> | add entity <kind> <name> | add relation <sourceId> <type> <targetId> [evidence] | update relation <id> [--confidence <n>] [--evidence <text>] [--scope core|project|session] [--sensitivity normal|sensitive] --yes | merge entity <primaryId> <duplicateId> --yes | forget entity|relation <id> | export | pending [--limit <n>] | pending inspect <id> | pending sanitize <id> | approve <id> | reject <id> | reject-all --yes");
   process.exitCode = 1;
 }
 
@@ -886,6 +890,42 @@ async function inspectPendingKnowledgeGraphItem(argv: string[]): Promise<void> {
   }
 }
 
+async function sanitizePendingKnowledgeGraphItem(argv: string[]): Promise<void> {
+  const id = parsePositiveId(argv[6]);
+  if (!id) {
+    return;
+  }
+
+  const store = await SqliteMemoryStore.open();
+  try {
+    if (store.getMemoryState().paused) {
+      console.log(`${badge("PAUSED", "yellow")} Memory is paused. Run \`bestie memory resume\` before sanitizing pending knowledge graph items.`);
+      return;
+    }
+
+    const sanitized = store.sanitizePendingKnowledgeItem(id);
+    if (!sanitized) {
+      console.log(`${badge("INFO", "blue")} No pending knowledge graph item found for id ${id}.`);
+      return;
+    }
+    if (sanitized.status === "blocked") {
+      console.log(`${badge("BLOCKED", "red")} Pending knowledge graph item could not be sanitized automatically.`);
+      console.log(`${badge("WHY", "yellow")} ${sanitized.explanation ?? sanitized.reason}`);
+      console.log(`${badge("NEXT", "cyan")} Reject with \`bestie memory graph reject ${id}\` or recreate the item manually with sanitized evidence.`);
+      return;
+    }
+
+    console.log(`${badge("SANITIZED", "green")} Pending knowledge graph item sanitized: ${id}`);
+    if (sanitized.previousDiagnostics?.blockedBy.length) {
+      console.log(`${badge("REMOVED", "cyan")} ${sanitized.previousDiagnostics.blockedBy.join(", ")}`);
+    }
+    console.log(formatPendingKnowledgeGraphBlock(sanitized.item));
+    console.log(`${badge("NEXT", "cyan")} Approve with \`bestie memory graph approve ${id}\` or inspect with \`bestie memory graph pending inspect ${id}\`.`);
+  } finally {
+    store.close();
+  }
+}
+
 async function approvePendingKnowledgeGraphItem(argv: string[]): Promise<void> {
   const id = parsePositiveId(argv[5]);
   if (!id) {
@@ -902,6 +942,12 @@ async function approvePendingKnowledgeGraphItem(argv: string[]): Promise<void> {
     const approved = store.approvePendingKnowledgeItem(id);
     if (!approved) {
       console.log(`${badge("INFO", "blue")} No pending knowledge graph item found for id ${id}.`);
+      return;
+    }
+    if (approved.status === "blocked") {
+      console.log(`${badge("BLOCKED", "red")} Pending knowledge graph item was not stored.`);
+      console.log(`${badge("WHY", "yellow")} ${approved.explanation ?? approved.reason}`);
+      console.log(`${badge("NEXT", "cyan")} Reject with \`bestie memory graph reject ${id}\` or recreate the item with sanitized evidence.`);
       return;
     }
 

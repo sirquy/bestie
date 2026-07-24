@@ -2,7 +2,7 @@ import { stdout as output } from "node:process";
 
 import { loadConfig } from "../../runtime/config.js";
 import { getRuntimePaths, type RuntimePaths } from "../../runtime/paths.js";
-import { SqliteMemoryStore } from "../../memory/sqlite-store.js";
+import { SqliteMemoryStore, type CronSchedule } from "../../memory/sqlite-store.js";
 import { CronExecutor } from "../../cron/executor.js";
 import { isCronReportDestination } from "../../cron/channel-commands.js";
 import { computeNextRun, validateSchedule } from "../../cron/scheduler.js";
@@ -44,8 +44,18 @@ export async function runCronCommand(optionsOrArgv: string[] | CronCommandOption
     return;
   }
 
+  if (subcommand === "update" || subcommand === "edit") {
+    await runCronUpdate(argv, paths, writeLine);
+    return;
+  }
+
   if (subcommand === "toggle") {
     await runCronToggle(argv, paths, writeLine);
+    return;
+  }
+
+  if (subcommand === "trigger" || subcommand === "run-now") {
+    await runCronTrigger(argv, paths, writeLine);
     return;
   }
 
@@ -70,6 +80,8 @@ function printCronHelp(writeLine: (message: string) => void): void {
 Usage:
   bestie cron list           Liệt kê toàn bộ lịch cron
   bestie cron add            Tạo lịch cron mới (interactive)
+  bestie cron update <id>    Cập nhật lịch cron theo ID
+  bestie cron trigger <id>   Chạy ngay một lịch cron theo ID
   bestie cron remove <id>    Xóa lịch cron theo ID
   bestie cron toggle <id>    Bật/tắt một lịch cron
   bestie cron logs [id]      Xem log chạy cron gần đây
@@ -227,6 +239,65 @@ async function runCronRemove(argv: string[], paths: RuntimePaths, writeLine: (me
   }
 }
 
+async function runCronUpdate(argv: string[], paths: RuntimePaths, writeLine: (message: string) => void): Promise<void> {
+  const id = Number(argv[4]);
+
+  if (!Number.isFinite(id) || id <= 0) {
+    writeLine(`${badge("FAIL", "red")} Cách dùng: bestie cron update <id> [--name ...] [--type interval|cron_expr|once] [--schedule ...] [--prompt ...] [--channel telegram:<userId>|zalo:<userId>|none] [--enable|--disable]`);
+    process.exitCode = 1;
+    return;
+  }
+
+  const config = await loadConfig(paths);
+  const args = parseArgs(argv.slice(5));
+  const store = await SqliteMemoryStore.open(paths);
+
+  try {
+    const existing = store.getCronSchedule(id);
+    const update = buildCronUpdate(existing, args, config.agent.timeZone);
+    if (update.kind === "invalid") {
+      writeLine(`${badge("FAIL", "red")} ${update.message}`);
+      process.exitCode = 1;
+      return;
+    }
+
+    const schedule = store.updateCronSchedule(id, update.schedule);
+    writeLine(`${badge("OK", "green")} Đã cập nhật lịch cron ${id}.`);
+    writeLine(`  Tên: ${schedule.name}`);
+    writeLine(`  Lịch: ${schedule.scheduleType} ${schedule.scheduleValue}`);
+    writeLine(`  Kênh: ${schedule.channel ?? "—"}`);
+    writeLine(`  Trạng thái: ${schedule.enabled ? "bật" : "tắt"}`);
+    writeLine(`  Lần chạy tới: ${schedule.nextRunAt ? formatLocalTime(schedule.nextRunAt, config.agent.timeZone) : "(không có)"}${update.scheduleChanged ? " (đã tính lại)" : ""}`);
+  } catch {
+    writeLine(`${badge("FAIL", "red")} Không tìm thấy lịch cron ${id}.`);
+    process.exitCode = 1;
+  } finally {
+    store.close();
+  }
+}
+
+async function runCronTrigger(argv: string[], paths: RuntimePaths, writeLine: (message: string) => void): Promise<void> {
+  const id = Number(argv[4]);
+
+  if (!Number.isFinite(id) || id <= 0) {
+    writeLine(`${badge("FAIL", "red")} Cách dùng: bestie cron trigger <id>`);
+    process.exitCode = 1;
+    return;
+  }
+
+  const config = await loadConfig(paths);
+  const executor = new CronExecutor({ config, paths });
+  writeLine(`Đang trigger lịch cron ${id}...`);
+  try {
+    await executor.runScheduleNow(id);
+    writeLine(`${badge("OK", "green")} Đã trigger lịch cron ${id}.`);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "unknown error";
+    writeLine(`${badge("FAIL", "red")} Không trigger được lịch cron ${id}: ${message}`);
+    process.exitCode = 1;
+  }
+}
+
 async function runCronToggle(argv: string[], paths: RuntimePaths, writeLine: (message: string) => void): Promise<void> {
   const id = Number(argv[4]);
 
@@ -281,6 +352,19 @@ function parseArgs(args: string[]): Record<string, string> {
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
+    if (arg === "--enable") {
+      result[arg] = "true";
+      continue;
+    }
+    if (arg === "--disable") {
+      result[arg] = "true";
+      continue;
+    }
+    if (arg.startsWith("--") && arg.includes("=")) {
+      const separator = arg.indexOf("=");
+      result[arg.slice(0, separator)] = arg.slice(separator + 1);
+      continue;
+    }
     if (arg.startsWith("--") && i + 1 < args.length && !args[i + 1].startsWith("--")) {
       result[arg] = args[i + 1];
       i++;
@@ -288,6 +372,48 @@ function parseArgs(args: string[]): Record<string, string> {
   }
 
   return result;
+}
+
+type CronUpdateResult =
+  | { kind: "valid"; schedule: Parameters<SqliteMemoryStore["updateCronSchedule"]>[1]; scheduleChanged: boolean }
+  | { kind: "invalid"; message: string };
+
+function buildCronUpdate(existing: CronSchedule, args: Record<string, string>, timeZone?: string): CronUpdateResult {
+  const name = args["--name"] === undefined ? existing.name : args["--name"].trim();
+  const scheduleType = args["--type"] === undefined ? existing.scheduleType : args["--type"].trim();
+  const scheduleValue = args["--schedule"] === undefined ? existing.scheduleValue : args["--schedule"].trim();
+  const prompt = args["--prompt"] === undefined ? existing.prompt : args["--prompt"].trim();
+  const channel = args["--channel"] === undefined ? existing.channel : normalizeCliChannel(args["--channel"]);
+  const enabled = args["--enable"] ? true : args["--disable"] ? false : existing.enabled;
+
+  if (!name) return { kind: "invalid", message: "--name không được rỗng." };
+  if (!scheduleType || !VALID_SCHEDULE_TYPES.includes(scheduleType)) return { kind: "invalid", message: "--type phải là interval, cron_expr, hoặc once." };
+  if (!scheduleValue) return { kind: "invalid", message: "--schedule không được rỗng." };
+  if (!prompt) return { kind: "invalid", message: "--prompt không được rỗng." };
+  if (channel !== undefined && !isCronReportDestination(channel)) return { kind: "invalid", message: "--channel phải là telegram:<userId>, zalo:<userId>, none, hoặc clear." };
+
+  const scheduleChanged = scheduleType !== existing.scheduleType || scheduleValue !== existing.scheduleValue;
+  const validationError = scheduleChanged ? validateSchedule(scheduleType, scheduleValue, timeZone) : undefined;
+  if (validationError) return { kind: "invalid", message: `Lịch không hợp lệ: ${validationError}` };
+
+  return {
+    kind: "valid",
+    scheduleChanged,
+    schedule: {
+      name,
+      scheduleType: scheduleType as "interval" | "cron_expr" | "once",
+      scheduleValue,
+      prompt,
+      channel,
+      enabled,
+      nextRunAt: scheduleChanged ? computeNextRun(scheduleType, scheduleValue, undefined, timeZone) : existing.nextRunAt,
+    },
+  };
+}
+
+function normalizeCliChannel(value: string): string | undefined {
+  const normalized = value.trim();
+  return !normalized || normalized === "none" || normalized === "clear" ? undefined : normalized;
 }
 
 async function askCli(question: string, defaultValue: string): Promise<string> {

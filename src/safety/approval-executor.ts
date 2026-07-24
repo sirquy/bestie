@@ -122,9 +122,13 @@ function executePendingKnowledgeApproval(store: SqliteMemoryStore, approval: Pen
     }
 
     const approved = store.approvePendingKnowledgeItem(pendingKnowledgeId);
-    return approved
-      ? { status: "executed", shortText: "Knowledge graph saved.", message: `Knowledge graph approved and saved: ${approved.entities.length} entities, ${approved.relations.length} relations.` }
-      : { status: "invalid", shortText: "Pending knowledge graph item not found.", message: `Approval ${approval.status}: ${approval.id}, but pending knowledge graph item ${pendingKnowledgeId} was not found.` };
+    if (!approved) {
+      return { status: "invalid", shortText: "Pending knowledge graph item not found.", message: `Approval ${approval.status}: ${approval.id}, but pending knowledge graph item ${pendingKnowledgeId} was not found.` };
+    }
+    if (approved.status === "blocked") {
+      return { status: "invalid", shortText: "Knowledge graph blocked.", message: `Knowledge graph approval blocked: ${approved.explanation ?? approved.reason} No graph fact was stored. Reject or recreate the pending item with sanitized evidence.` };
+    }
+    return { status: "executed", shortText: "Knowledge graph saved.", message: `Knowledge graph approved and saved: ${approved.entities.length} entities, ${approved.relations.length} relations.` };
   }
 
   const rejected = store.rejectPendingKnowledgeItem(pendingKnowledgeId);

@@ -282,13 +282,83 @@ test("SqliteMemoryStore approves pending knowledge graph items", async () => {
 
     const approved = store.approvePendingKnowledgeItem(pending.id);
 
+    assert.equal(approved?.status, "approved");
+    if (approved?.status !== "approved") throw new Error("Expected pending knowledge item to be approved.");
     assert.equal(approved?.entities.length, 2);
     assert.equal(approved?.relations.length, 1);
     assert.deepEqual(store.listKnowledgeAuditEvents("pending", pending.id).map((event) => event.eventType), ["approved", "queued"]);
-    assert.equal(store.listKnowledgeAuditEvents("entity", approved!.entities[0]!.id)[0]?.eventType, "approved");
+    assert.equal(store.listKnowledgeAuditEvents("entity", approved.entities[0]!.id)[0]?.eventType, "approved");
     assert.equal(store.getPendingKnowledgeItem(pending.id), undefined);
     assert.deepEqual(store.searchKnowledgeGraph("Bestie").entities.map((entity) => entity.canonicalName), ["Bestie"]);
     assert.deepEqual(store.searchKnowledgeGraph("works").relations.map((relation) => relation.relationType), ["works_on"]);
+  } finally {
+    store.close();
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("SqliteMemoryStore blocks unsafe pending knowledge approval without deleting the pending item", async () => {
+  const paths = await createTempPaths();
+  const store = await SqliteMemoryStore.open(paths);
+
+  try {
+    const pending = store.addPendingKnowledgeItem({
+      payload: {
+        entities: [{ name: "Payment note", kind: "concept" }],
+        relations: [{ sourceName: "Payment note", sourceKind: "concept", type: "mentions", targetName: "User", targetKind: "person", evidence: "Card number 4111 1111 1111 1111 should not be stored." }],
+      },
+      reason: "Needs approval.",
+      source: "test",
+    });
+
+    const blocked = store.approvePendingKnowledgeItem(pending.id);
+
+    assert.equal(blocked?.status, "blocked");
+    if (blocked?.status !== "blocked") throw new Error("Expected pending knowledge item to be blocked.");
+    assert.deepEqual(blocked.diagnostics?.blockedBy, ["payment_card_like"]);
+    assert.match(blocked.explanation ?? "", /payment card details/);
+    assert.ok(store.getPendingKnowledgeItem(pending.id));
+    assert.deepEqual(store.listKnowledgeEntities(), []);
+    assert.deepEqual(store.listKnowledgeRelations(), []);
+    assert.deepEqual(store.listKnowledgeAuditEvents("pending", pending.id).map((event) => event.eventType), ["blocked", "queued"]);
+  } finally {
+    store.close();
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("SqliteMemoryStore sanitizes unsafe pending knowledge items before approval", async () => {
+  const paths = await createTempPaths();
+  const store = await SqliteMemoryStore.open(paths);
+
+  try {
+    const pending = store.addPendingKnowledgeItem({
+      payload: {
+        entities: [
+          { name: "Integration credential", kind: "concept" },
+          { name: "Bestie", kind: "project" },
+        ],
+        relations: [{ sourceName: "Bestie", sourceKind: "project", type: "mentions", targetName: "Integration credential", targetKind: "concept", evidence: "api_key: sk-secret1234567890 was found in docs and should be removed." }],
+      },
+      reason: "Needs approval.",
+      source: "test",
+    });
+
+    const sanitized = store.sanitizePendingKnowledgeItem(pending.id);
+
+    assert.equal(sanitized?.status, "sanitized");
+    if (sanitized?.status !== "sanitized") throw new Error("Expected pending knowledge item to be sanitized.");
+    assert.deepEqual(sanitized.previousDiagnostics?.blockedBy, ["api_key_assignment", "openai_key"]);
+    assert.doesNotMatch(JSON.stringify(sanitized.item.payload), /sk-secret1234567890|api_key/);
+    assert.match(JSON.stringify(sanitized.item.payload), /REDACTED SECRET-LIKE VALUE/);
+
+    const approved = store.approvePendingKnowledgeItem(pending.id);
+    assert.equal(approved?.status, "approved");
+    if (approved?.status !== "approved") throw new Error("Expected sanitized pending knowledge item to be approved.");
+    assert.equal(approved.entities.length, 2);
+    assert.equal(approved.relations.length, 1);
+    assert.equal(store.getPendingKnowledgeItem(pending.id), undefined);
+    assert.deepEqual(store.listKnowledgeAuditEvents("pending", pending.id).map((event) => event.eventType), ["approved", "sanitized", "queued"]);
   } finally {
     store.close();
     await rm(paths.rootDir, { recursive: true, force: true });
