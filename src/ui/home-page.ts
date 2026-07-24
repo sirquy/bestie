@@ -32,23 +32,23 @@ interface HomePanel {
 }
 
 const PANELS: HomePanel[] = [
-  { id: "chat-panel", icon: "message", nav: "Chat", title: "Chat", subtitle: "Local agent session with tools, memory context, and provider fallbacks.", actions: `${button("check", "chat-send", "Send")}${button("refresh", "chat-retry", "Retry")}${button("refresh", "chat-clear", "Clear")}`, body: "Ready to chat." },
-  { id: "doctor-panel", icon: "shield", nav: "Doctor", title: "Doctor", subtitle: "Local readiness checks and safe fixes.", actions: button("wrench", "doctor-fix", "Run safe fixes"), body: "Loading diagnostics..." },
-  { id: "provider-panel", icon: "plug", nav: "Providers", title: "Provider Hub", subtitle: "Primary model, fallbacks, setup, and quick connection check.", actions: `${button("activity", "provider-test", "Test primary")}${button("refresh", "provider-refresh", "Refresh")}`, body: "Loading providers..." },
-  { id: "character-panel", icon: "user", nav: "Character", title: "Character Studio", subtitle: "Edit character JSON and system prompt locally.", actions: `${button("check", "character-save", "Save character")}${button("refresh", "character-reload", "Reload")}`, body: "Loading character..." },
-  { id: "memory-panel", icon: "database", nav: "Memory", title: "Memory Center", subtitle: "Search active memories and approve pending writes.", actions: button("refresh", "memory-refresh", "Refresh"), body: "Loading memory..." },
-  { id: "knowledge-panel", icon: "brain", nav: "Graph", title: "Knowledge Graph", subtitle: "Inspect local entities, relations, and graph review suggestions.", actions: button("refresh", "knowledge-refresh", "Refresh"), body: "Loading graph..." },
-  { id: "channel-panel", icon: "globe", nav: "Channels", title: "Channel Hub", subtitle: "Telegram, Zalo, daemon state, and cron schedules.", actions: `${button("refresh", "channel-refresh", "Refresh")}${button("terminal", "channel-stop-cron", "Stop cron")}${button("activity", "cron-toggle", "Toggle first cron")}`, body: "Loading channels..." },
-  { id: "approvals-panel", icon: "key", nav: "Approvals", title: "Approvals", subtitle: "Pending permission decisions with guarded execution for UI actions.", actions: `${button("refresh", "approvals-refresh", "Refresh")}${button("check", "approval-approve", "Approve first")}${button("shield", "approval-deny", "Deny first")}`, body: "Loading approvals..." },
-  { id: "mcp-panel", icon: "brain", nav: "MCP", title: "MCP Hub", subtitle: "Configured servers, transports, auth metadata, and tools.", actions: button("refresh", "mcp-refresh", "Refresh"), body: "Loading MCP..." },
-  { id: "tools-panel", icon: "terminal", nav: "Tools", title: "Tools & Permissions", subtitle: "Internal tool policies and workspace boundaries.", actions: button("refresh", "tools-refresh", "Refresh"), body: "Loading tools..." },
-  { id: "skills-panel", icon: "layers", nav: "Skills", title: "Quản lý Skills", subtitle: "Create, edit, inspect, and delete local .bestie skills.", actions: `${button("layers", "skill-new", "New skill")}${button("check", "skill-save", "Save skill")}${button("refresh", "skills-refresh", "Refresh")}`, body: "Loading skills..." },
-  { id: "settings-panel", icon: "sliders", nav: "Settings", title: "Settings", subtitle: "Low-risk agent and memory settings.", actions: `${button("refresh", "settings-refresh", "Refresh")}${button("sliders", "settings-tone", "Tone +1")}`, body: "Loading settings..." },
+  { id: "chat-panel", icon: "message", nav: "Trò chuyện", title: "Trò chuyện", subtitle: "Phiên agent cục bộ với tools, ngữ cảnh trí nhớ và fallback provider.", actions: `${button("check", "chat-send", "Gửi")}${button("refresh", "chat-retry", "Thử lại")}${button("refresh", "chat-clear", "Xóa")}`, body: "Sẵn sàng trò chuyện." },
+  { id: "doctor-panel", icon: "shield", nav: "Kiểm tra", title: "Doctor", subtitle: "Kiểm tra trạng thái cục bộ và sửa lỗi an toàn.", actions: button("wrench", "doctor-fix", "Chạy sửa lỗi an toàn"), body: "Đang tải chẩn đoán..." },
+  { id: "provider-panel", icon: "plug", nav: "Provider", title: "Trung tâm Provider", subtitle: "Model chính, fallback, thiết lập và kiểm tra kết nối nhanh.", actions: `${button("activity", "provider-test", "Kiểm tra model chính")}${button("refresh", "provider-refresh", "Làm mới")}`, body: "Đang tải provider..." },
+  { id: "character-panel", icon: "user", nav: "Nhân vật", title: "Studio Nhân vật", subtitle: "Chỉnh character JSON và system prompt ngay trên máy.", actions: `${button("check", "character-save", "Lưu nhân vật")}${button("refresh", "character-reload", "Tải lại")}`, body: "Đang tải nhân vật..." },
+  { id: "memory-panel", icon: "database", nav: "Trí nhớ", title: "Trung tâm Trí nhớ", subtitle: "Tìm trí nhớ đã lưu và duyệt các ghi nhớ đang chờ.", actions: button("refresh", "memory-refresh", "Làm mới"), body: "Đang tải trí nhớ..." },
+  { id: "knowledge-panel", icon: "brain", nav: "Đồ thị", title: "Đồ thị Tri thức", subtitle: "Kiểm tra entity, relation và gợi ý review đồ thị cục bộ.", actions: button("refresh", "knowledge-refresh", "Làm mới"), body: "Đang tải đồ thị..." },
+  { id: "channel-panel", icon: "globe", nav: "Kênh", title: "Trung tâm Kênh", subtitle: "Telegram, Zalo, trạng thái daemon và cron schedules.", actions: `${button("refresh", "channel-refresh", "Làm mới")}${button("terminal", "channel-stop-cron", "Dừng cron")}${button("activity", "cron-toggle", "Bật/tắt cron đầu tiên")}`, body: "Đang tải kênh..." },
+  { id: "approvals-panel", icon: "key", nav: "Phê duyệt", title: "Phê duyệt", subtitle: "Các quyết định quyền đang chờ với lớp thực thi được bảo vệ.", actions: `${button("refresh", "approvals-refresh", "Làm mới")}${button("check", "approval-approve", "Duyệt mục đầu")}${button("shield", "approval-deny", "Từ chối mục đầu")}`, body: "Đang tải phê duyệt..." },
+  { id: "mcp-panel", icon: "brain", nav: "MCP", title: "Trung tâm MCP", subtitle: "Server, transport, auth metadata và tools đã cấu hình.", actions: button("refresh", "mcp-refresh", "Làm mới"), body: "Đang tải MCP..." },
+  { id: "tools-panel", icon: "terminal", nav: "Tools", title: "Tools & Quyền", subtitle: "Chính sách tool nội bộ và ranh giới workspace.", actions: button("refresh", "tools-refresh", "Làm mới"), body: "Đang tải tools..." },
+  { id: "skills-panel", icon: "layers", nav: "Skills", title: "Quản lý Skills", subtitle: "Tạo, sửa, kiểm tra và xóa skills cục bộ trong .bestie.", actions: `${button("layers", "skill-new", "Skill mới")}${button("check", "skill-save", "Lưu skill")}${button("refresh", "skills-refresh", "Làm mới")}`, body: "Đang tải skills..." },
+  { id: "settings-panel", icon: "sliders", nav: "Cài đặt", title: "Cài đặt", subtitle: "Thiết lập agent và trí nhớ có rủi ro thấp.", actions: `${button("refresh", "settings-refresh", "Làm mới")}${button("sliders", "settings-tone", "Tone +1")}`, body: "Đang tải cài đặt..." },
 ];
 
 export function renderHomePage(): string {
   return `<!doctype html>
-<html lang="en">
+<html lang="vi">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -57,9 +57,9 @@ export function renderHomePage(): string {
   </head>
   <body>
     <div class="shell">
-      <aside class="sidebar" aria-label="Bestie navigation">
-        <div class="brand"><span class="brand-mark">${icon("spark")}</span><span class="brand-copy"><strong>Bestie</strong><small>Local Console</small></span></div>
-        <button class="sidebar-toggle" id="sidebar-toggle" type="button" aria-pressed="false" aria-label="Collapse sidebar">${icon("sliders")}<span>Compact</span></button>
+      <aside class="sidebar" aria-label="Điều hướng Bestie">
+        <div class="brand"><span class="brand-mark">${icon("spark")}</span><span class="brand-copy"><strong>Bestie</strong><small>Bảng điều khiển cục bộ</small></span></div>
+        <button class="sidebar-toggle" id="sidebar-toggle" type="button" aria-pressed="false" aria-label="Thu gọn sidebar">${icon("sliders")}<span>Gọn</span></button>
         <nav>${PANELS.map((panel, index) => `<a href="#${panel.id}" data-panel-target="${panel.id}"${index === 0 ? " class=\"active\"" : ""}>${icon(panel.icon)}<span>${panel.nav}</span></a>`).join("")}</nav>
       </aside>
       <main>
@@ -71,46 +71,46 @@ export function renderHomePage(): string {
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
     <dialog id="confirm-dialog">
       <form method="dialog" class="confirm-card">
-        <div class="label">Confirm action</div>
-        <div class="value" id="confirm-title">Continue?</div>
-        <p id="confirm-message">This changes local Bestie state.</p>
-        <div class="actions"><button value="cancel" type="submit">Cancel</button><button value="confirm" type="submit">Confirm</button></div>
+        <div class="label">Xác nhận thao tác</div>
+        <div class="value" id="confirm-title">Tiếp tục?</div>
+        <p id="confirm-message">Thao tác này thay đổi trạng thái Bestie cục bộ.</p>
+        <div class="actions"><button value="cancel" type="submit">Hủy</button><button value="confirm" type="submit">Xác nhận</button></div>
       </form>
     </dialog>
     <dialog id="input-dialog">
       <form method="dialog" class="confirm-card">
-        <div class="label" id="input-label">Input</div>
-        <div class="value" id="input-title">Enter value</div>
+        <div class="label" id="input-label">Nhập liệu</div>
+        <div class="value" id="input-title">Nhập giá trị</div>
         <input id="input-value" autocomplete="off">
-        <p id="input-message">This updates local Bestie state.</p>
-        <div class="actions"><button value="cancel" type="submit">Cancel</button><button id="input-confirm" value="confirm" type="submit">Save</button></div>
+        <p id="input-message">Thao tác này cập nhật trạng thái Bestie cục bộ.</p>
+        <div class="actions"><button value="cancel" type="submit">Hủy</button><button id="input-confirm" value="confirm" type="submit">Lưu</button></div>
       </form>
     </dialog>
     <dialog id="chat-import-dialog">
       <form method="dialog" class="confirm-card import-card">
-        <div class="label">Import chat</div>
-        <div class="value">Paste or choose exported JSON</div>
-        <div class="import-tabs"><button class="active" data-import-tab="paste" type="button">Paste</button><button data-import-tab="file" type="button">File</button></div>
-        <textarea id="chat-import-text" placeholder="Paste exported chat JSON" spellcheck="false"></textarea>
+        <div class="label">Nhập chat</div>
+        <div class="value">Dán hoặc chọn file JSON đã xuất</div>
+        <div class="import-tabs"><button class="active" data-import-tab="paste" type="button">Dán</button><button data-import-tab="file" type="button">File</button></div>
+        <textarea id="chat-import-text" placeholder="Dán JSON chat đã xuất" spellcheck="false"></textarea>
         <input id="chat-import-file" type="file" accept="application/json,.json">
-        <p id="chat-import-preview">Waiting for export JSON.</p>
-        <div class="actions"><button value="cancel" type="submit">Cancel</button><button id="chat-import-confirm" value="confirm" type="button" disabled>Import JSON</button></div>
+        <p id="chat-import-preview">Đang chờ JSON đã xuất.</p>
+        <div class="actions"><button value="cancel" type="submit">Hủy</button><button id="chat-import-confirm" value="confirm" type="button" disabled>Nhập JSON</button></div>
       </form>
     </dialog>
     <dialog id="chat-export-dialog">
       <form method="dialog" class="confirm-card import-card">
-        <div class="label">Export chat</div>
-        <div class="value" id="chat-export-title">Current session</div>
+        <div class="label">Xuất chat</div>
+        <div class="value" id="chat-export-title">Phiên hiện tại</div>
         <div class="import-tabs"><button class="active" data-export-format="json" type="button">JSON</button><button data-export-format="markdown" type="button">Markdown</button></div>
         <textarea id="chat-export-preview" readonly spellcheck="false"></textarea>
-        <p id="chat-export-summary">Waiting for export data.</p>
-        <div class="actions"><button value="cancel" type="submit">Close</button><button id="chat-export-copy" type="button">Copy</button><button id="chat-export-download" type="button">Download</button></div>
+        <p id="chat-export-summary">Đang chờ dữ liệu xuất.</p>
+        <div class="actions"><button value="cancel" type="submit">Đóng</button><button id="chat-export-copy" type="button">Sao chép</button><button id="chat-export-download" type="button">Tải xuống</button></div>
       </form>
     </dialog>
     <dialog id="command-palette-dialog">
       <form method="dialog" class="confirm-card palette-card">
-        <div class="label">Command palette</div>
-        <input id="command-palette-input" placeholder="Search Chat commands" autocomplete="off">
+        <div class="label">Bảng lệnh</div>
+        <input id="command-palette-input" placeholder="Tìm lệnh Chat" autocomplete="off">
         <div id="command-palette-list" class="palette-list"></div>
       </form>
     </dialog>

@@ -76,7 +76,7 @@ function renderMarkdown(value) {
   const codeBlocks = [];
   const withCodeBlocks = escaped.replace(new RegExp(fence + "([\\\\s\\\\S]*?)" + fence, "g"), (_match, code) => {
     const token = "BESTIE_CODE_BLOCK_" + codeBlocks.length;
-    codeBlocks.push('<div class="code-block"><button class="copy-code" type="button">Copy</button><pre><code>' + code.trim() + '</code></pre></div>');
+    codeBlocks.push('<div class="code-block"><button class="copy-code" type="button">Sao chép</button><pre><code>' + code.trim() + '</code></pre></div>');
     return token;
   });
   const lines = withCodeBlocks.split("\\n");
@@ -135,13 +135,13 @@ const commandPaletteItems = [
   { id: "chat-export", title: "Export Chat", hint: "Open JSON/Markdown export", run: () => exportActiveChatSession() },
   { id: "chat-import", title: "Import Chat", hint: "Open import dialog", run: () => importChatSessionFromPrompt() },
   { id: "chat-retry", title: "Retry Last", hint: "Retry the last user message", run: () => retryLastChatMessage() },
-  { id: "chat-search", title: "Search Sessions", hint: "Focus session search", run: () => document.querySelector("#chat-session-search")?.focus() },
+  { id: "chat-search", title: "Tìm kiếm Phiên", hint: "Focus session search", run: () => document.querySelector("#chat-session-search")?.focus() },
 ];
 
 function providerSetupNote(provider) {
   if (provider === "gemini") return "Gemini uses the native SDK endpoint; baseUrl is ignored.";
   if (provider === "ollama") return "Ollama runs locally and does not need an API key.";
-  return "Setup may write the provided secret to the local .env file.";
+  return "Setup may write the provided có secret to the local .env file.";
 }
 
 function showToast(message, tone) {
@@ -243,7 +243,7 @@ function setChatStreaming(active, controller) {
   const send = document.querySelector("[data-chat-send]");
   if (stop) stop.disabled = !active;
   if (send) send.disabled = active;
-  setComposerStatus(active ? "Streaming..." : "Ready");
+  setComposerStatus(active ? "Streaming..." : "Sẵn sàng");
 }
 
 function stopChatStream() {
@@ -301,28 +301,28 @@ window.addEventListener("hashchange", () => activatePanel(location.hash.slice(1)
 function loadChat() {
   if (!state.chatHistory) state.chatHistory = [];
   if (state.chatSideOpen === undefined) state.chatSideOpen = localStorage.getItem("bestie.chatSideOpen") === "1";
-  setValue("#chat-panel .value", state.activeChatSession ? 'Session #' + state.activeChatSession.id : "Ready");
+  setValue("#chat-panel .value", state.activeChatSession ? 'Phiên #' + state.activeChatSession.id : "Sẵn sàng");
   setBody("#chat-panel", [
-    '<div class="chat-layout ' + (state.chatSideOpen ? '' : 'chat-side-hidden') + '"><aside class="chat-sessions"><div class="chat-session-tools"><strong>Sessions</strong><span><button id="chat-new-session" type="button" title="New chat" aria-label="New chat">' + icon("check") + '</button><button id="chat-rename-session" type="button" title="Rename chat" aria-label="Rename chat">' + icon("refresh") + '</button><button id="chat-export-session" type="button" title="Export chat" aria-label="Export chat">' + icon("cloud") + '</button><button id="chat-import-session" type="button" title="Import chat" aria-label="Import chat">' + icon("database") + '</button><button id="chat-delete-session" type="button" title="Delete chat" aria-label="Delete chat">' + icon("x") + '</button></span></div><div class="chat-search"><input id="chat-session-search" placeholder="Search" value="' + escapeHtml(state.chatSearchQuery ?? "") + '"><select id="chat-session-filter"><option value="all">All</option><option value="approval">Approval</option><option value="cancelled">Cancelled</option><option value="error">Error</option><option value="fork">Fork</option><option value="retry">Retry</option></select></div><div id="chat-session-list" class="stack">' + row("Sessions", "loading", "") + '</div></aside><div id="chat-transcript" class="chat-transcript">' + renderChatTranscript() + '</div><button id="chat-side-toggle" class="chat-side-toggle" type="button" aria-expanded="' + (state.chatSideOpen ? 'true' : 'false') + '">' + icon("sliders") + '<span>' + (state.chatSideOpen ? 'Hide' : 'Details') + '</span></button><aside class="chat-side"><div class="summary-strip"><span><strong>Tools</strong><small>agent loop</small></span><span><strong>Memory</strong><small>optional</small></span><span><strong>Fallbacks</strong><small>provider aware</small></span></div><div id="chat-inspector" class="tool-section"><div class="label">Run inspector</div>' + renderChatInspector() + '</div><div id="chat-preferences" class="tool-section"><div class="label">Preferences</div>' + renderChatPreferences() + '</div><div id="chat-branch" class="tool-section"><div class="label">Branches</div>' + renderChatBranchNavigator() + '</div><div id="chat-timeline" class="tool-section"><div class="label">Run timeline</div>' + renderChatTimeline() + '</div></aside></div>',
-    '<form id="chat-form" class="chat-composer"><div class="composer-field"><div class="composer-toolbar"><span id="chat-composer-status">Ready</span><span id="chat-composer-context">Tools + Memory</span></div><textarea id="chat-input" placeholder="Nhắn với Bestie..." spellcheck="false" rows="1"></textarea><input id="chat-attachment-input" type="file" multiple hidden><div id="chat-attachment-preview" class="attachment-preview"></div><div class="composer-tools"><button id="chat-attach" type="button">' + icon("clip") + '<span>Attach</span></button><button id="chat-context" type="button">' + icon("sliders") + '<span>Context</span></button></div></div><button type="submit" data-chat-send>' + icon("check") + '<span>Send</span></button><button id="chat-stop" type="button" disabled>' + icon("square") + '<span>Stop</span></button></form>',
+    '<div class="chat-layout ' + (state.chatSideOpen ? '' : 'chat-side-hidden') + '"><aside class="chat-sessions"><div class="chat-session-tools"><strong>Phiên</strong><span><button id="chat-new-session" type="button" title="Chat mới" aria-label="Chat mới">' + icon("check") + '</button><button id="chat-rename-session" type="button" title="Đổi tên chat" aria-label="Đổi tên chat">' + icon("refresh") + '</button><button id="chat-export-session" type="button" title="Xuất chat" aria-label="Xuất chat">' + icon("cloud") + '</button><button id="chat-import-session" type="button" title="Nhập chat" aria-label="Nhập chat">' + icon("database") + '</button><button id="chat-delete-session" type="button" title="Xóa chat" aria-label="Xóa chat">' + icon("x") + '</button></span></div><div class="chat-search"><input id="chat-session-search" placeholder="Tìm kiếm" value="' + escapeHtml(state.chatSearchQuery ?? "") + '"><select id="chat-session-filter"><option value="all">Tất cả</option><option value="approval">Phê duyệt</option><option value="cancelled">Đã hủy</option><option value="error">Lỗi</option><option value="fork">Tách nhánh</option><option value="retry">Thử lại</option></select></div><div id="chat-session-list" class="stack">' + row("Phiên", "đang tải", "") + '</div></aside><div id="chat-transcript" class="chat-transcript">' + renderChatTranscript() + '</div><button id="chat-side-toggle" class="chat-side-toggle" type="button" aria-expanded="' + (state.chatSideOpen ? 'true' : 'false') + '">' + icon("sliders") + '<span>' + (state.chatSideOpen ? 'Ẩn' : 'Chi tiết') + '</span></button><aside class="chat-side"><div class="summary-strip"><span><strong>Công cụ</strong><small>vòng lặp agent</small></span><span><strong>Trí nhớ</strong><small>tùy chọn</small></span><span><strong>Fallback</strong><small>theo provider</small></span></div><div id="chat-inspector" class="tool-section"><div class="label">Trình kiểm tra lượt chạy</div>' + renderChatInspector() + '</div><div id="chat-preferences" class="tool-section"><div class="label">Tùy chọn</div>' + renderChatPreferences() + '</div><div id="chat-branch" class="tool-section"><div class="label">Nhánh</div>' + renderChatBranchNavigator() + '</div><div id="chat-timeline" class="tool-section"><div class="label">Timeline lượt chạy</div>' + renderChatTimeline() + '</div></aside></div>',
+    '<form id="chat-form" class="chat-composer"><div class="composer-field"><div class="composer-toolbar"><span id="chat-composer-status">Sẵn sàng</span><span id="chat-composer-context">Công cụ + Trí nhớ</span></div><textarea id="chat-input" placeholder="Nhắn với Bestie..." spellcheck="false" rows="1"></textarea><input id="chat-attachment-input" type="file" multiple hidden><div id="chat-attachment-preview" class="attachment-preview"></div><div class="composer-tools"><button id="chat-attach" type="button">' + icon("clip") + '<span>Đính kèm</span></button><button id="chat-context" type="button">' + icon("sliders") + '<span>Ngữ cảnh</span></button></div></div><button type="submit" data-chat-send>' + icon("check") + '<span>Gửi</span></button><button id="chat-stop" type="button" disabled>' + icon("square") + '<span>Dừng</span></button></form>',
   ].join(""));
   bindChatControls();
   const filter = document.querySelector("#chat-session-filter");
   if (filter) filter.value = state.chatSessionFilter ?? "all";
-  loadChatSessions();
+  loadChatPhiên();
 }
 
 function renderChatTranscript() {
-  if (!state.chatHistory?.length) return '<div class="notice">No messages yet.</div>';
+  if (!state.chatHistory?.length) return '<div class="notice">Chưa có tin nhắn nào.</div>';
   return state.chatHistory.map((message, index) => {
     const messageId = Number(message.id ?? 0);
     const runId = Number(message.runId ?? 0);
     const highlighted = (messageId && Number(state.highlightChatMessageId ?? 0) === messageId) || (runId && Number(state.highlightChatRunId ?? 0) === runId);
-    const actions = ['<button class="message-menu-item" data-chat-copy-message="' + index + '" type="button">' + icon("check") + '<span>Copy</span></button>'];
-    if (messageId && message.role === "user") actions.push('<button class="message-menu-item" data-chat-retry-message="' + messageId + '" type="button">' + icon("refresh") + '<span>Retry</span></button>');
-    if (message.runId && message.role === "assistant") actions.push('<button class="message-menu-item" data-chat-inspect-run="' + message.runId + '" type="button">' + icon("activity") + '<span>Inspect run</span></button>');
-    if (messageId) actions.push('<button class="message-menu-item" data-chat-fork="' + messageId + '" type="button">' + icon("layers") + '<span>Fork</span></button>');
-    const menu = '<details class="message-menu"><summary aria-label="Message actions">' + icon("dots") + '</summary><div class="message-menu-popover">' + actions.join("") + '</div></details>';
+    const actions = ['<button class="message-menu-item" data-chat-copy-message="' + index + '" type="button">' + icon("check") + '<span>Sao chép</span></button>'];
+    if (messageId && message.role === "user") actions.push('<button class="message-menu-item" data-chat-retry-message="' + messageId + '" type="button">' + icon("refresh") + '<span>Thử lại</span></button>');
+    if (message.runId && message.role === "assistant") actions.push('<button class="message-menu-item" data-chat-inspect-run="' + message.runId + '" type="button">' + icon("activity") + '<span>Kiểm tra lượt chạy</span></button>');
+    if (messageId) actions.push('<button class="message-menu-item" data-chat-fork="' + messageId + '" type="button">' + icon("layers") + '<span>Tách nhánh</span></button>');
+    const menu = '<details class="message-menu"><summary aria-label="Thao tác tin nhắn">' + icon("dots") + '</summary><div class="message-menu-popover">' + actions.join("") + '</div></details>';
     return '<div class="chat-message ' + escapeHtml(message.role) + (highlighted ? ' source-highlight' : '') + '"' + (messageId ? ' data-chat-message-id="' + escapeHtml(messageId) + '"' : '') + (runId ? ' data-chat-run-id="' + escapeHtml(runId) + '"' : '') + '>' +
       '<div class="chat-bubble-wrapper">' +
         '<div class="chat-bubble"><div class="chat-message-head"><strong>' + escapeHtml(chatDisplayName(message.role)) + '</strong>' + menu + '</div>' +
@@ -340,7 +340,7 @@ function renderChatMessageMeta(message) {
   const status = message.role === "assistant" ? (run?.status ?? "saved") : "sent";
   const context = formatChatMessageContext(message, metadata);
   const time = formatChatTime(message.createdAt ?? run?.finishedAt ?? run?.startedAt);
-  return '<div class="chat-message-meta"><span title="Message time">' + icon("activity") + escapeHtml(time) + '</span><span title="Total context">' + icon("brain") + escapeHtml(context) + '</span><span class="pill ' + pillClass(status) + '" title="Message status">' + escapeHtml(formatChatStatus(status)) + '</span></div>';
+  return '<div class="chat-message-meta"><span title="Thời gian tin nhắn">' + icon("activity") + escapeHtml(time) + '</span><span title="Tổng ngữ cảnh">' + icon("brain") + escapeHtml(context) + '</span><span class="pill ' + pillClass(status) + '" title="Trạng thái tin nhắn">' + escapeHtml(formatChatStatus(status)) + '</span></div>';
 }
 
 function formatChatMessageContext(message, metadata) {
@@ -366,16 +366,16 @@ function formatCount(value, unit) {
 }
 
 function formatChatStatus(status) {
-  if (status === "done") return "sent";
+  if (status === "done") return "đã gửi";
   if (status === "error") return "error";
-  if (status === "cancelled") return "cancelled";
-  if (status === "running") return "running";
-  return status || "saved";
+  if (status === "cancelled") return "đã hủy";
+  if (status === "running") return "đang chạy";
+  return status || "đã lưu";
 }
 
 function chatDisplayName(role) {
   const parsed = state.character?.character?.parsed;
-  if (role === "user") return parsed?.ownerName || "You";
+  if (role === "user") return parsed?.ownerName || "Bạn";
   return parsed?.name || "Bestie";
 }
 
@@ -423,8 +423,8 @@ function bindChatControls() {
   document.querySelector("#chat-attachment-input")?.addEventListener("change", loadChatAttachments);
   document.querySelector("#chat-context")?.addEventListener("click", () => document.querySelector("#chat-preferences")?.scrollIntoView({ block: "nearest", behavior: "smooth" }));
   document.querySelector("#chat-retry")?.addEventListener("click", () => retryLastChatMessage());
-  document.querySelector("#chat-session-search")?.addEventListener("input", (event) => { state.chatSearchQuery = event.target.value; loadChatSessions(); });
-  document.querySelector("#chat-session-filter")?.addEventListener("change", (event) => { state.chatSessionFilter = event.target.value; loadChatSessions(); });
+  document.querySelector("#chat-session-search")?.addEventListener("input", (event) => { state.chatSearchQuery = event.target.value; loadChatPhiên(); });
+  document.querySelector("#chat-session-filter")?.addEventListener("change", (event) => { state.chatSessionFilter = event.target.value; loadChatPhiên(); });
   bindChatPreferenceControls();
   document.querySelector("#chat-export-trace")?.addEventListener("click", exportChatRunTrace);
   bindChatBranchControls();
@@ -450,7 +450,7 @@ function toggleChatSide() {
   if (toggle) {
     toggle.setAttribute("aria-expanded", state.chatSideOpen ? "true" : "false");
     const label = toggle.querySelector("span");
-    if (label) label.textContent = state.chatSideOpen ? "Hide" : "Details";
+    if (label) label.textContent = state.chatSideOpen ? "Ẩn" : "Chi tiết";
   }
 }
 
@@ -469,7 +469,7 @@ function setComposerStatus(value) {
 function updateComposerContext() {
   const target = document.querySelector("#chat-composer-context");
   if (!target) return;
-  const tools = document.querySelector("#chat-tools")?.checked !== false ? "Tools" : "No tools";
+  const tools = document.querySelector("#chat-tools")?.checked !== false ? "Công cụ" : "No tools";
   const memory = document.querySelector("#chat-memory")?.checked !== false ? "Memory" : "No memory";
   const files = state.chatAttachments?.length ?? 0;
   target.textContent = tools + " + " + memory + (files ? " + " + files + " file" + (files > 1 ? "s" : "") : "");
@@ -520,7 +520,7 @@ function renderChatPreferences() {
 function renderChatPreferencesIntoPanel() {
   const target = document.querySelector("#chat-preferences");
   if (target) {
-    target.innerHTML = '<div class="label">Preferences</div>' + renderChatPreferences();
+    target.innerHTML = '<div class="label">Tùy chọn</div>' + renderChatPreferences();
     bindChatPreferenceControls();
     updateComposerContext();
   }
@@ -535,7 +535,7 @@ function bindChatPreferenceControls() {
 function renderChatInspectorIntoPanel() {
   const target = document.querySelector("#chat-inspector");
   if (target) {
-    target.innerHTML = '<div class="label">Run inspector</div>' + renderChatInspector();
+    target.innerHTML = '<div class="label">Trình kiểm tra lượt chạy</div>' + renderChatInspector();
     document.querySelector("#chat-export-trace")?.addEventListener("click", exportChatRunTrace);
     document.querySelector("#chat-replay-run")?.addEventListener("click", replaySelectedChatRun);
   }
@@ -557,7 +557,7 @@ function renderChatInspector() {
     + row("Status", status, status === "done" ? "good" : status === "error" || status === "cancelled" ? "bad" : status === "running" ? "warn" : "")
     + row("Model", model, "")
     + row("Events", String(events.length), "")
-    + row("Tools", String(toolCalls.length), toolCalls.length ? "warn" : "")
+    + row("Công cụ", String(toolCalls.length), toolCalls.length ? "warn" : "")
     + row("Approvals", String(approvals.length), approvals.length ? "warn" : "")
     + row("Errors", String(errors.length), errors.length ? "bad" : "good")
     + (selectedRun ? '<div class="subvalue">Run #' + escapeHtml(selectedRun.id) + (selectedRun.assistantMessageId ? ' · Message #' + escapeHtml(selectedRun.assistantMessageId) : '') + '</div>' : '')
@@ -630,7 +630,7 @@ function renderChatRunDiff(run) {
     + row("Source", 'Run #' + diff.sourceId, "")
     + row("Model", diff.modelChanged ? "changed" : "same", diff.modelChanged ? "warn" : "good")
     + row("Settings", diff.settingsChanged ? "changed" : "same", diff.settingsChanged ? "warn" : "good")
-    + row("Tools", String(diff.toolDelta), diff.toolDelta ? "warn" : "")
+    + row("Công cụ", String(diff.toolDelta), diff.toolDelta ? "warn" : "")
     + row("Output", diff.outputChanged ? 'changed ' + diff.outputDelta + ' chars' : "same", outputTone)
     + '<div class="subvalue">' + escapeHtml(diff.preview) + '</div>'
     + '</div>';
@@ -711,7 +711,7 @@ function saveChatPreferences() {
   });
 }
 
-function loadChatSessions() {
+function loadChatPhiên() {
   const query = state.chatSearchQuery ?? "";
   const filter = state.chatSessionFilter ?? "all";
   const url = query || filter !== "all" ? "/api/chat/search?q=" + encodeURIComponent(query) + "&filter=" + encodeURIComponent(filter) : "/api/chat/sessions";
@@ -719,20 +719,20 @@ function loadChatSessions() {
     .then((response) => response.json())
     .then((summary) => {
       state.chatSessions = summary.sessions ?? [];
-      renderChatSessions();
+      renderChatPhiên();
       if (!state.activeChatSession && state.chatSessions[0]) loadChatSession(state.chatSessions[0].id);
     })
-    .catch(() => { document.querySelector("#chat-session-list").innerHTML = row("Sessions", "unable to load", "bad"); });
+    .catch(() => { document.querySelector("#chat-session-list").innerHTML = row("Phiên", "unable to load", "bad"); });
 }
 
-function renderChatSessions() {
+function renderChatPhiên() {
   const list = document.querySelector("#chat-session-list");
   if (!list) return;
   if (!state.chatSessions?.length) {
-    list.innerHTML = row("Sessions", "none", "");
+    list.innerHTML = row("Phiên", "none", "");
     return;
   }
-  list.innerHTML = state.chatSessions.map((session) => '<div class="chat-session-row ' + (state.activeChatSession?.id === session.id ? "active" : "") + '"><button class="chat-session-open" data-chat-session="' + session.id + '" type="button"><strong>' + escapeHtml(session.title) + '</strong><span>' + escapeHtml(session.messageCount) + ' messages</span>' + renderChatSessionBadges(session) + '</button><button class="pin-session" data-chat-pin="' + session.id + '" data-pinned="' + (session.pinnedAt ? "true" : "false") + '" type="button">' + (session.pinnedAt ? "Pinned" : "Pin") + '</button></div>').join("");
+  list.innerHTML = state.chatSessions.map((session) => '<div class="chat-session-row ' + (state.activeChatSession?.id === session.id ? "active" : "") + '"><button class="chat-session-open" data-chat-session="' + session.id + '" type="button"><strong>' + escapeHtml(session.title) + '</strong><span>' + escapeHtml(session.messageCount) + ' tin nhắn</span>' + renderChatSessionBadges(session) + '</button><button class="pin-session" data-chat-pin="' + session.id + '" data-pinned="' + (session.pinnedAt ? "true" : "false") + '" type="button">' + (session.pinnedAt ? "Pinned" : "Pin") + '</button></div>').join("");
   document.querySelectorAll("[data-chat-session]").forEach((button) => button.addEventListener("click", () => loadChatSession(Number(button.dataset.chatSession))));
   document.querySelectorAll("[data-chat-pin]").forEach((button) => button.addEventListener("click", (event) => {
     toggleChatSessionPin(Number(button.dataset.chatPin), button.dataset.pinned !== "true");
@@ -753,7 +753,7 @@ function renderChatSessionBadges(session) {
 }
 
 function createChatSession() {
-  postJson("/api/chat/sessions", { title: "New chat" })
+  postJson("/api/chat/sessions", { title: "Chat mới" })
     .then((result) => {
       state.activeChatSession = result.session;
       state.chatHistory = [];
@@ -762,11 +762,11 @@ function createChatSession() {
       state.chatApprovals = {};
       state.chatBranch = result.branch ?? { children: [] };
       state.chatRun = undefined;
-      setValue("#chat-panel .value", 'Session #' + result.session.id);
+      setValue("#chat-panel .value", 'Phiên #' + result.session.id);
       renderChatTranscriptIntoPanel();
       renderChatBranchIntoPanel();
       renderChatTimelineIntoPanel();
-      loadChatSessions();
+      loadChatPhiên();
     })
     .catch((error) => setValue("#chat-panel .value", error?.message ?? "Unable to create session."));
 }
@@ -791,7 +791,7 @@ function loadChatSessionWithTarget(id, target) {
       renderChatPreferencesIntoPanel();
       renderChatBranchIntoPanel();
       renderChatTimelineIntoPanel();
-      renderChatSessions();
+      renderChatPhiên();
       if (target) focusChatSource(target);
     })
     .catch((error) => setValue("#chat-panel .value", error?.message ?? "Unable to load session."));
@@ -823,7 +823,7 @@ function jumpToKnowledgeSource(source) {
 
 function deleteActiveChatSession() {
   if (!state.activeChatSession) return;
-  requireConfirm("Delete chat session?", state.activeChatSession.title, () => postJson("/api/chat/sessions/delete", { id: state.activeChatSession.id, confirm: true }).then((summary) => {
+  requireConfirm("Xóa chat session?", state.activeChatSession.title, () => postJson("/api/chat/sessions/delete", { id: state.activeChatSession.id, confirm: true }).then((summary) => {
     state.chatSessions = summary.sessions ?? [];
     state.activeChatSession = undefined;
     state.chatHistory = [];
@@ -835,16 +835,16 @@ function deleteActiveChatSession() {
     renderChatTranscriptIntoPanel();
     renderChatBranchIntoPanel();
     renderChatTimelineIntoPanel();
-    renderChatSessions();
+    renderChatPhiên();
     if (state.chatSessions[0]) loadChatSession(state.chatSessions[0].id);
-    setValue("#chat-panel .value", state.chatSessions[0] ? 'Session #' + state.chatSessions[0].id : "Ready");
+    setValue("#chat-panel .value", state.chatSessions[0] ? 'Phiên #' + state.chatSessions[0].id : "Sẵn sàng");
     showToast("Chat session deleted.", "good");
   })).catch(() => setValue("#chat-panel .value", "Unable to delete session."));
 }
 
 function renameActiveChatSession() {
   if (!state.activeChatSession) return;
-  inputAction({ label: "Rename chat", title: "Session title", message: state.activeChatSession.title ?? "New chat", value: state.activeChatSession.title ?? "New chat", confirmLabel: "Rename" }).then((title) => {
+  inputAction({ label: "Đổi tên chat", title: "Session title", message: state.activeChatSession.title ?? "Chat mới", value: state.activeChatSession.title ?? "Chat mới", confirmLabel: "Rename" }).then((title) => {
     const nextTitle = String(title ?? "").trim();
     if (!nextTitle) return;
     updateChatSession({ id: state.activeChatSession.id, title: nextTitle });
@@ -870,7 +870,7 @@ function updateChatSession(body) {
       renderChatBranchIntoPanel();
       renderChatTimelineIntoPanel();
     }
-    loadChatSessions();
+    loadChatPhiên();
     showToast(body.pinned === true ? "Chat pinned." : body.pinned === false ? "Chat unpinned." : "toolsEnabled" in body || "memoryEnabled" in body || "providerModelRef" in body ? "Chat preferences saved." : "Chat renamed.", "good");
   }).catch(() => setValue("#chat-panel .value", "Unable to update chat session."));
 }
@@ -987,7 +987,7 @@ function submitChatImport(raw) {
     renderChatTranscriptIntoPanel();
     renderChatBranchIntoPanel();
     renderChatTimelineIntoPanel();
-    loadChatSessions();
+    loadChatPhiên();
     document.querySelector("#chat-import-dialog")?.close();
     showToast("Chat imported.", "good");
   }).catch(() => setValue("#chat-panel .value", "Unable to import chat."));
@@ -1030,7 +1030,7 @@ function runChatStream({ message, history, restoreHistory, attachments, replaySo
       setValue("#chat-panel .value", 'Model ' + text(result.model));
       renderChatTranscriptIntoPanel();
       renderChatTimelineIntoPanel();
-      loadChatSessions();
+      loadChatPhiên();
     })
     .catch((error) => {
       if (error?.name === "AbortError") {
@@ -1099,7 +1099,7 @@ function forkChatSession(messageId) {
     renderChatTranscriptIntoPanel();
     renderChatBranchIntoPanel();
     renderChatTimelineIntoPanel();
-    loadChatSessions();
+    loadChatPhiên();
     showToast("Chat session forked.", "good");
   })).catch(() => setValue("#chat-panel .value", "Unable to fork chat."));
 }
@@ -1114,7 +1114,7 @@ function createChatSessionWithMessage(message, input) {
       state.chatApprovals = {};
       state.chatBranch = result.branch ?? { children: [] };
       input.value = message;
-      renderChatSessions();
+      renderChatPhiên();
       sendChatMessage();
     })
     .catch((error) => setValue("#chat-panel .value", error?.message ?? "Unable to create session."));
@@ -1225,7 +1225,7 @@ function parseSseChunk(chunk) {
 function renderChatTimelineIntoPanel() {
   const target = document.querySelector("#chat-timeline");
   if (target) {
-    target.innerHTML = '<div class="label">Run timeline</div>' + renderChatTimeline();
+    target.innerHTML = '<div class="label">Timeline lượt chạy</div>' + renderChatTimeline();
     bindChatApprovalControls();
     bindChatContinueControls();
   }
@@ -1235,7 +1235,7 @@ function renderChatTimelineIntoPanel() {
 function renderChatBranchIntoPanel() {
   const target = document.querySelector("#chat-branch");
   if (target) {
-    target.innerHTML = '<div class="label">Branches</div>' + renderChatBranchNavigator();
+    target.innerHTML = '<div class="label">Nhánh</div>' + renderChatBranchNavigator();
     bindChatBranchControls();
   }
 }
@@ -1275,7 +1275,7 @@ function formatTimelineDetail(type, payload, event) {
   if (type === "approval_required") return [payload.category, payload.target, payload.proposedReason ?? payload.reason].filter(Boolean).join(" · ") || "Approval required";
   if (type === "approval_approved" || type === "approval_denied") return [payload.status, payload.message, payload.reason].filter(Boolean).join(" · ") || "Approval updated";
   if (type === "done") return [payload.status, payload.characters ? payload.characters + " chars" : undefined, payload.toolCalls ? payload.toolCalls + " tools" : undefined].filter(Boolean).join(" · ") || "Completed";
-  if (type === "memory_capture") return [payload.storedEntities ? payload.storedEntities + " entities" : undefined, payload.storedRelations ? payload.storedRelations + " relations" : undefined, payload.pending ? payload.pending + " pending" : undefined, payload.skipped ? payload.skipped + " skipped" : undefined].filter(Boolean).join(" · ") || "No graph changes";
+  if (type === "memory_capture") return [payload.storedEntity ? payload.storedEntity + " entities" : undefined, payload.storedRelation ? payload.storedRelation + " relations" : undefined, payload.pending ? payload.pending + " pending" : undefined, payload.skipped ? payload.skipped + " skipped" : undefined].filter(Boolean).join(" · ") || "No graph changes";
   if (type === "error") return payload.message ?? payload.error ?? event.label ?? "Error";
   if (type === "thinking") return [payload.model, payload.memoryCount !== undefined ? payload.memoryCount + " memories" : undefined].filter(Boolean).join(" · ") || "Preparing context";
   if (type === "token") return payload.bytes ? payload.bytes + " bytes" : "Streaming";
@@ -1304,7 +1304,7 @@ function bindChatApprovalControls() {
     const id = Number(button.dataset.approvalId);
     requireConfirm((action === "approve" ? "Approve chat action?" : "Deny chat action?"), String(id), () => postJson("/api/approvals/action", { action, id, confirm: true }).then(() => {
       if (action === "approve") {
-        state.chatTimeline = [...(state.chatTimeline ?? []), { type: "approval_approved", label: "Approval ready to continue", payload: { approvalId: id } }];
+        state.chatTimeline = [...(state.chatTimeline ?? []), { type: "approval_approved", label: "Approval sẵn sàng to continue", payload: { approvalId: id } }];
         state.chatApprovals = { ...(state.chatApprovals ?? {}), [String(id)]: { ...(state.chatApprovals?.[String(id)] ?? { id }), status: "approved" } };
         renderChatTimelineIntoPanel();
       } else {
@@ -1335,7 +1335,7 @@ function bindChatContinueControls() {
       state.chatRun = { ...(state.chatRun ?? {}), status: "done", finishedAt: new Date().toISOString() };
       renderChatTranscriptIntoPanel();
       renderChatTimelineIntoPanel();
-      loadChatSessions();
+      loadChatPhiên();
       showToast("Chat run continued.", "good");
       }).catch((error) => {
         if (error?.name === "AbortError") {
@@ -1358,7 +1358,7 @@ function timelineTone(type) {
 }
 
 function renderMetrics(status) {
-  setValue("#runtime-card .value", status.ok ? "Ready" : text(status.error?.code));
+  setValue("#runtime-card .value", status.ok ? "Sẵn sàng" : text(status.error?.code));
 }
 
 function loadStatus() {
@@ -1389,11 +1389,11 @@ function loadProviders() {
       setValue("#provider-panel .value", text(providers.primary?.modelRef) + ' via ' + text(providers.primary?.provider));
       const modelOptions = (providers.models ?? []).map((model) => option(model.modelRef, model.modelRef, model.primary)).join("");
       const fallbackOptions = (providers.models ?? []).filter((model) => !model.primary).map((model) => option(model.modelRef, model.modelRef, false)).join("");
-      const profileRows = (providers.profiles ?? []).slice(0, 4).map((profile) => row(profile.id, profile.secretPresent ? profile.provider + ' ready' : profile.provider + ' missing secret', profile.secretPresent ? "good" : "bad"));
+      const profileRows = (providers.profiles ?? []).slice(0, 4).map((profile) => row(profile.id, profile.secretPresent ? profile.provider + ' sẵn sàng' : profile.provider + ' thiếu secret', profile.secretPresent ? "good" : "bad"));
       setBody("#provider-panel", [
         '<div class="segmented" role="tablist" aria-label="Provider views"><button class="active" data-segment-target="provider-overview" type="button">Overview</button><button data-segment-target="provider-configure" type="button">Configure</button><button data-segment-target="provider-profiles" type="button">Profiles</button></div>',
         '<div class="segment active" id="provider-overview">' + [row("Auth profile", providers.primary?.authProfile, ""), row("Secret", providers.primary?.secretPresent ? "present" : "missing", providers.primary?.secretPresent ? "good" : "bad"), row("Fallbacks", providers.fallbacks?.length ?? 0, "")].join("") + '</div>',
-        '<div class="segment" id="provider-configure"><div class="preset-row"><button data-provider-preset="anthropic" type="button">' + icon("brain") + '<span>Claude</span></button><button data-provider-preset="openai" type="button">' + icon("spark") + '<span>ChatGPT</span></button><button data-provider-preset="gemini" type="button">' + icon("spark") + '<span>Gemini</span></button><button data-provider-preset="groq" type="button">' + icon("activity") + '<span>Groq</span></button><button data-provider-preset="openrouter" type="button">' + icon("cloud") + '<span>OpenRouter</span></button><button data-provider-preset="ollama" type="button">' + icon("terminal") + '<span>Ollama</span></button></div><div class="control-grid"><label>Primary model<select id="provider-primary-select">' + modelOptions + '</select></label>' + iconButton("check", "Set primary", 'id="provider-primary-set"') + '</div><div class="control-grid"><label>Fallback<select id="provider-fallback-select">' + fallbackOptions + '</select></label>' + iconButton("check", "Add", 'id="provider-fallback-add"') + iconButton("x", "Remove", 'id="provider-fallback-remove"') + '</div><form id="provider-setup-form" class="stack"><div class="control-grid"><label>Provider<input name="provider" value="gemini"></label><label>Model<input name="model" value="gemini-2.5-flash"></label><label data-provider-field="baseUrl">Base URL<input name="baseUrl" placeholder="SDK default for Gemini"></label><label data-provider-field="apiKeyEnv">API key env<input name="apiKeyEnv" value="GEMINI_API_KEY"></label><label data-provider-field="secret">Secret<input name="secret" type="password" placeholder="optional"></label><label class="check"><input name="setDefault" type="checkbox"> Set default</label><button type="submit">' + icon("check") + '<span>Setup</span></button></div><div class="notice" id="provider-setup-note">' + escapeHtml(providerSetupNote("gemini")) + '</div></form></div>',
+        '<div class="segment" id="provider-configure"><div class="preset-row"><button data-provider-preset="anthropic" type="button">' + icon("brain") + '<span>Claude</span></button><button data-provider-preset="openai" type="button">' + icon("spark") + '<span>ChatGPT</span></button><button data-provider-preset="gemini" type="button">' + icon("spark") + '<span>Gemini</span></button><button data-provider-preset="groq" type="button">' + icon("activity") + '<span>Groq</span></button><button data-provider-preset="openrouter" type="button">' + icon("cloud") + '<span>OpenRouter</span></button><button data-provider-preset="ollama" type="button">' + icon("terminal") + '<span>Ollama</span></button></div><div class="control-grid"><label>Primary model<select id="provider-primary-select">' + modelOptions + '</select></label>' + iconButton("check", "Set primary", 'id="provider-primary-set"') + '</div><div class="control-grid"><label>Fallback<select id="provider-fallback-select">' + fallbackOptions + '</select></label>' + iconButton("check", "Add", 'id="provider-fallback-add"') + iconButton("x", "Remove", 'id="provider-fallback-remove"') + '</div><form id="provider-setup-form" class="stack"><div class="control-grid"><label>Provider<input name="provider" value="gemini"></label><label>Model<input name="model" value="gemini-2.5-flash"></label><label data-provider-field="baseUrl">Base URL<input name="baseUrl" placeholder="SDK default for Gemini"></label><label data-provider-field="apiKeyEnv">API key env<input name="apiKeyEnv" value="GEMINI_API_KEY"></label><label data-provider-field="có secret">Secret<input name="có secret" type="password" placeholder="tùy chọn"></label><label class="check"><input name="setDefault" type="checkbox"> Set default</label><button type="submit">' + icon("check") + '<span>Setup</span></button></div><div class="notice" id="provider-setup-note">' + escapeHtml(providerSetupNote("gemini")) + '</div></form></div>',
         '<div class="segment" id="provider-profiles">' + (profileRows.join("") || row("Profiles", "empty", "")) + '</div>',
       ].join(""));
       bindProviderControls();
@@ -1414,7 +1414,7 @@ function loadCharacter() {
         row("Prompt bytes", character.prompt?.bytes ?? 0, ""),
         row("Roast", parsed?.tone?.roastLevel ?? "-", ""),
         row("Warmth", parsed?.tone?.warmthLevel ?? "-", "good"),
-        '<form id="character-form" class="stack"><div class="control-grid"><label>Name<input name="name" value="' + escapeHtml(parsed?.name) + '"></label><label>Owner<input name="ownerName" value="' + escapeHtml(parsed?.ownerName) + '"></label><label>Language<input name="language" value="' + escapeHtml(parsed?.language) + '"></label></div><div class="slider-grid"><label>Roast<input name="roastLevel" type="range" min="0" max="10" value="' + escapeHtml(tone.roastLevel ?? 0) + '"></label><label>Warmth<input name="warmthLevel" type="range" min="0" max="10" value="' + escapeHtml(tone.warmthLevel ?? 0) + '"></label><label>Bluntness<input name="bluntnessLevel" type="range" min="0" max="10" value="' + escapeHtml(tone.bluntnessLevel ?? 0) + '"></label><label>Chaos<input name="chaosLevel" type="range" min="0" max="10" value="' + escapeHtml(tone.chaosLevel ?? 0) + '"></label></div></form>',
+        '<form id="character-form" class="stack"><div class="control-grid"><label>Tên<input name="name" value="' + escapeHtml(parsed?.name) + '"></label><label>Owner<input name="ownerName" value="' + escapeHtml(parsed?.ownerName) + '"></label><label>Language<input name="language" value="' + escapeHtml(parsed?.language) + '"></label></div><div class="slider-grid"><label>Roast<input name="roastLevel" type="range" min="0" max="10" value="' + escapeHtml(tone.roastLevel ?? 0) + '"></label><label>Warmth<input name="warmthLevel" type="range" min="0" max="10" value="' + escapeHtml(tone.warmthLevel ?? 0) + '"></label><label>Bluntness<input name="bluntnessLevel" type="range" min="0" max="10" value="' + escapeHtml(tone.bluntnessLevel ?? 0) + '"></label><label>Chaos<input name="chaosLevel" type="range" min="0" max="10" value="' + escapeHtml(tone.chaosLevel ?? 0) + '"></label></div></form>',
         '<label class="stack">character.json<textarea id="character-json" spellcheck="false">' + escapeHtml(character.character?.text ?? "") + '</textarea></label>',
         '<label class="stack">system-prompt.md<textarea id="character-prompt" spellcheck="false">' + escapeHtml(character.prompt?.text ?? "") + '</textarea></label>',
       ].join(""));
@@ -1432,10 +1432,10 @@ function loadMemory() {
       const memories = (memory.memories ?? []).slice(0, 6).map(renderMemoryItem);
       const pending = (memory.pending ?? []).slice(0, 6).map(renderPendingMemoryItem);
       setBody("#memory-panel", [
-        '<div class="segmented" role="tablist" aria-label="Memory views"><button class="active" data-segment-target="memory-active" type="button">Active</button><button data-segment-target="memory-pending" type="button">Pending</button><button data-segment-target="memory-search-view" type="button">Search</button></div>',
+        '<div class="segmented" role="tablist" aria-label="Memory views"><button class="active" data-segment-target="memory-active" type="button">Active</button><button data-segment-target="memory-pending" type="button">Đang chờ</button><button data-segment-target="memory-search-view" type="button">Tìm kiếm</button></div>',
         '<div class="segment active" id="memory-active">' + (memories.join("") || row("Active", "empty", "")) + '</div>',
         '<div class="segment" id="memory-pending">' + (pending.join("") || row("Pending", "empty", "")) + '</div>',
-        '<div class="segment" id="memory-search-view"><div class="control-grid"><input id="memory-search" placeholder="Search memories"><button id="memory-search-run" type="button">Search</button></div><div id="memory-search-results" class="stack">' + row("Search", "ready", "") + '</div></div>',
+        '<div class="segment" id="memory-search-view"><div class="control-grid"><input id="memory-search" placeholder="Tìm kiếm memories"><button id="memory-search-run" type="button">Tìm kiếm</button></div><div id="memory-search-results" class="stack">' + row("Tìm kiếm", "sẵn sàng", "") + '</div></div>',
       ].join(""));
       bindMemoryControls();
     })
@@ -1448,7 +1448,7 @@ function renderMemoryItem(item) {
 }
 
 function renderPendingMemoryItem(item) {
-  const meta = [item.reason, item.source, item.explicitConsent ? "explicit consent" : "needs review"].filter(Boolean).join(' / ');
+  const meta = [item.reason, item.source, item.explicitConsent ? "đã đồng ý rõ ràng" : "cần rà soát"].filter(Boolean).join(' / ');
   return '<div class="memory-row"><div><strong>Pending ' + escapeHtml(item.type) + '</strong><div>' + escapeHtml(item.content) + '</div><div class="subvalue">' + escapeHtml(meta || item.createdAt) + '</div></div><span>' + iconButton("check", "Approve", 'data-memory-action="approve_pending" data-memory-id="' + item.id + '"') + iconButton("x", "Reject", 'data-memory-action="reject_pending" data-memory-id="' + item.id + '"') + '</span></div>';
 }
 
@@ -1509,7 +1509,7 @@ function updateProviderSetupFields(provider) {
   const isOllama = normalized === "ollama";
   document.querySelector('[data-provider-field="baseUrl"]')?.classList.toggle("hidden", isGemini);
   document.querySelector('[data-provider-field="apiKeyEnv"]')?.classList.toggle("hidden", isOllama);
-  document.querySelector('[data-provider-field="secret"]')?.classList.toggle("hidden", isOllama);
+  document.querySelector('[data-provider-field="có secret"]')?.classList.toggle("hidden", isOllama);
   setValue("#provider-setup-note", providerSetupNote(normalized));
 }
 
@@ -1549,8 +1549,8 @@ function bindMemoryControls() {
       .then((response) => response.json())
       .then((memory) => {
         const results = (memory.memories ?? []).map(renderMemoryItem);
-        setValue("#memory-panel .value", 'Search results for "' + query + '"');
-        document.querySelector("#memory-search-results").innerHTML = results.join("") || row("Search", "no results", "");
+        setValue("#memory-panel .value", 'Tìm kiếm results for "' + query + '"');
+        document.querySelector("#memory-search-results").innerHTML = results.join("") || row("Tìm kiếm", "no results", "");
         activateSegment("#memory-panel", "memory-search-view");
       })
       .catch(() => setValue("#memory-panel .value", "Unable to search memory."));
@@ -1567,7 +1567,7 @@ function loadKnowledgeGraph() {
       state.knowledgeGraph = graph;
       renderKnowledgeGraphPanel(graph, "graph");
     })
-    .catch(() => setValue("#knowledge-panel .value", "Unable to load graph."));
+    .catch(() => setValue("#knowledge-panel .value", "Không thể tải đồ thị."));
 }
 
 function renderKnowledgeGraphPanel(graph, mode) {
@@ -1585,20 +1585,20 @@ function renderKnowledgeGraphPanel(graph, mode) {
   state.knowledgeClusterBy = state.knowledgeClusterBy ?? "none";
   state.knowledgeRelationDensity = state.knowledgeRelationDensity ?? "all";
   state.knowledgeMotion = state.knowledgeMotion ?? "subtle";
-  setValue("#knowledge-panel .value", 'Entities ' + text(graph.counts?.entities) + ' / Relations ' + text(graph.counts?.relations) + ' / Score ' + text(graph.analysis?.score));
+  setValue("#knowledge-panel .value", 'Thực thể ' + text(graph.counts?.entities) + ' / Liên kết ' + text(graph.counts?.relations) + ' / Score ' + text(graph.analysis?.score));
   const entities = graph.entities ?? [];
   const relations = graph.relations ?? [];
   const pending = graph.pending ?? [];
   const suggestions = filterKnowledgeReviewSuggestions(graph.review?.suggestions ?? []);
-  const graphSummary = '<div class="summary-strip knowledge-map-summary"><span><strong>' + escapeHtml(graph.counts?.entities ?? 0) + '</strong><small>Entities</small></span><span><strong>' + escapeHtml(graph.counts?.relations ?? 0) + '</strong><small>Relations</small></span><span><strong>' + escapeHtml(graph.counts?.pending ?? 0) + '</strong><small>Pending</small></span><span><strong>' + escapeHtml(graph.trust?.averageScore ?? graph.analysis?.score ?? 100) + '</strong><small>Trust</small></span></div>';
-  const graphSegments = '<div class="segmented knowledge-map-segments" role="tablist" aria-label="Knowledge graph views"><button class="active" data-segment-target="knowledge-map" type="button">Map</button><button data-segment-target="knowledge-review" type="button">Review</button><button data-segment-target="knowledge-trust" type="button">Trust</button><button data-segment-target="knowledge-search-view" type="button">Search</button></div>';
+  const graphSummary = '<div class="summary-strip knowledge-map-summary"><span><strong>' + escapeHtml(graph.counts?.entities ?? 0) + '</strong><small>Thực thể</small></span><span><strong>' + escapeHtml(graph.counts?.relations ?? 0) + '</strong><small>Liên kết</small></span><span><strong>' + escapeHtml(graph.counts?.pending ?? 0) + '</strong><small>Đang chờ</small></span><span><strong>' + escapeHtml(graph.trust?.averageScore ?? graph.analysis?.score ?? 100) + '</strong><small>Độ tin cậy</small></span></div>';
+  const graphSegments = '<div class="segmented knowledge-map-segments" role="tablist" aria-label="Các chế độ đồ thị tri thức"><button class="active" data-segment-target="knowledge-map" type="button">Bản đồ</button><button data-segment-target="knowledge-review" type="button">Rà soát</button><button data-segment-target="knowledge-trust" type="button">Độ tin cậy</button><button data-segment-target="knowledge-search-view" type="button">Tìm kiếm</button></div>';
   setBody("#knowledge-panel", [
     graphSummary,
     graphSegments,
-    '<div class="segment active" id="knowledge-map"><div class="knowledge-map-shell" data-knowledge-drawer="' + escapeHtml(state.knowledgeDrawer) + '" data-knowledge-overlay="' + (state.knowledgeOverlayCollapsed ? "collapsed" : "expanded") + '"><div class="knowledge-map-overlay"><div class="knowledge-map-overlay-head"><button data-knowledge-overlay-toggle type="button" title="Toggle map tools">' + icon(state.knowledgeOverlayCollapsed ? "sliders" : "x") + '<span>' + (state.knowledgeOverlayCollapsed ? "Tools" : "Hide") + '</span></button><span class="pill" id="knowledge-visible-count">visible graph</span><button data-knowledge-graph-action="fit" type="button" title="Fit graph">' + icon("activity") + '<span>Fit</span></button><button data-knowledge-drawer-open="inspector" type="button" title="Open inspector">' + icon("sliders") + '<span>Inspector</span></button></div>' + graphSummary + graphSegments + renderKnowledgeMapToolbar(entities, relations) + '</div><div class="knowledge-canvas"><div id="knowledge-provenance-overlay" class="knowledge-provenance-overlay" aria-live="polite">' + renderKnowledgeProvenanceOverlay(graph) + '</div><div id="knowledge-cytoscape" class="knowledge-cytoscape" role="img" aria-label="Knowledge graph map"></div></div><aside class="knowledge-drawer" aria-label="Knowledge graph drawer"><div class="knowledge-drawer-head"><div><div class="label" id="knowledge-drawer-title">' + escapeHtml(state.knowledgeDrawer === "list" ? "Graph items" : "Inspector") + '</div><div class="subvalue">' + escapeHtml(state.knowledgeDrawer === "list" ? "Entities and relations" : "Selected graph item") + '</div></div><button data-knowledge-drawer-close type="button" aria-label="Close">' + icon("x") + '</button></div><div class="knowledge-drawer-view knowledge-drawer-list"><div id="knowledge-drawer-list" class="stack">' + renderKnowledgeDrawerList(graph) + '</div></div><div class="knowledge-drawer-view knowledge-drawer-inspector"><div id="knowledge-inspector" class="knowledge-inspector">' + renderKnowledgeInspector(graph) + '</div></div></aside></div></div>',
-    '<div class="segment" id="knowledge-review">' + renderKnowledgeReviewControls(graph) + '<div class="knowledge-detail-layout"><div class="stack">' + (suggestions.map((suggestion) => renderKnowledgeSuggestion(suggestion, suggestion.index, graph)).join("") || row("Review", "clean for current filters", "good")) + renderKnowledgePendingReviewSection(pending) + '</div><div id="knowledge-review-inspector" class="knowledge-inspector">' + renderKnowledgeInspector(graph) + '</div></div></div>',
+    '<div class="segment active" id="knowledge-map"><div class="knowledge-map-shell" data-knowledge-drawer="' + escapeHtml(state.knowledgeDrawer) + '" data-knowledge-overlay="' + (state.knowledgeOverlayCollapsed ? "collapsed" : "expanded") + '"><div class="knowledge-map-overlay"><div class="knowledge-map-overlay-head"><button data-knowledge-overlay-toggle type="button" title="Bật/tắt công cụ bản đồ">' + icon(state.knowledgeOverlayCollapsed ? "sliders" : "x") + '<span>' + (state.knowledgeOverlayCollapsed ? "Công cụ" : "Ẩn") + '</span></button><span class="pill" id="knowledge-visible-count">đồ thị hiển thị</span><button data-knowledge-graph-action="fit" type="button" title="Vừa khung đồ thị">' + icon("activity") + '<span>Vừa khung</span></button><button data-knowledge-drawer-open="inspector" type="button" title="Mở chi tiết">' + icon("sliders") + '<span>Chi tiết</span></button></div>' + graphSummary + graphSegments + renderKnowledgeMapToolbar(entities, relations) + '</div><div class="knowledge-canvas"><div id="knowledge-provenance-overlay" class="knowledge-provenance-overlay" aria-live="polite">' + renderKnowledgeProvenanceOverlay(graph) + '</div><div id="knowledge-cytoscape" class="knowledge-cytoscape" role="img" aria-label="Bản đồ tri thức"></div></div><aside class="knowledge-drawer" aria-label="Drawer đồ thị tri thức"><div class="knowledge-drawer-head"><div><div class="label" id="knowledge-drawer-title">' + escapeHtml(state.knowledgeDrawer === "list" ? "Mục đồ thị" : "Inspector") + '</div><div class="subvalue">' + escapeHtml(state.knowledgeDrawer === "list" ? "Thực thể và liên kết" : "Mục đồ thị đã chọn") + '</div></div><button data-knowledge-drawer-close type="button" aria-label="Đóng">' + icon("x") + '</button></div><div class="knowledge-drawer-view knowledge-drawer-list"><div id="knowledge-drawer-list" class="stack">' + renderKnowledgeDrawerList(graph) + '</div></div><div class="knowledge-drawer-view knowledge-drawer-inspector"><div id="knowledge-inspector" class="knowledge-inspector">' + renderKnowledgeInspector(graph) + '</div></div></aside></div></div>',
+    '<div class="segment" id="knowledge-review">' + renderKnowledgeReviewControls(graph) + '<div class="knowledge-detail-layout"><div class="stack">' + (suggestions.map((suggestion) => renderKnowledgeSuggestion(suggestion, suggestion.index, graph)).join("") || row("Review", "sạch với bộ lọc hiện tại", "good")) + renderKnowledgePendingReviewSection(pending) + '</div><div id="knowledge-review-inspector" class="knowledge-inspector">' + renderKnowledgeInspector(graph) + '</div></div></div>',
     '<div class="segment" id="knowledge-trust">' + renderKnowledgeTrustDashboard(graph) + '</div>',
-    '<div class="segment" id="knowledge-search-view"><div class="control-grid"><input id="knowledge-search" placeholder="Search graph"><button id="knowledge-search-run" type="button">Search</button></div><div class="knowledge-detail-layout"><div id="knowledge-search-results" class="stack">' + (mode === "search" ? renderKnowledgeSearchResults(graph) : row("Search", "ready", "")) + '</div><div id="knowledge-search-inspector" class="knowledge-inspector">' + renderKnowledgeInspector(graph) + '</div></div></div>',
+    '<div class="segment" id="knowledge-search-view"><div class="control-grid"><input id="knowledge-search" placeholder="Tìm kiếm đồ thị"><button id="knowledge-search-run" type="button">Tìm kiếm</button></div><div class="knowledge-detail-layout"><div id="knowledge-search-results" class="stack">' + (mode === "search" ? renderKnowledgeSearchResults(graph) : row("Tìm kiếm", "sẵn sàng", "")) + '</div><div id="knowledge-search-inspector" class="knowledge-inspector">' + renderKnowledgeInspector(graph) + '</div></div></div>',
   ].join(""));
   bindKnowledgeGraphControls();
   renderKnowledgeCytoscapeGraph(entities, relations);
@@ -1616,7 +1616,7 @@ function renderKnowledgeMapToolbar(entities, relations) {
   const activeView = state.knowledgeActiveView ?? "all";
   const customOption = activeView === "custom" ? option("custom", "Custom", true) : "";
   const savedOption = state.knowledgeSavedView ? option("saved", "Saved view", activeView === "saved") : "";
-  return '<div class="knowledge-map-toolbar"><div class="knowledge-map-views"><select id="knowledge-map-view" aria-label="Graph saved view">' + option("all", "All", activeView === "all") + option("review", "Review", activeView === "review") + option("high-trust", "High trust", activeView === "high-trust") + option("focused", "Focused", activeView === "focused") + customOption + savedOption + '</select><button data-knowledge-view-apply type="button">' + icon("check") + '<span>Apply</span></button><button data-knowledge-view-save type="button">' + icon("database") + '<span>Save</span></button></div><div class="knowledge-map-cluster"><select id="knowledge-cluster-by" aria-label="Graph clustering">' + option("none", "Cluster off", state.knowledgeClusterBy === "none") + option("kind", "Cluster by kind", state.knowledgeClusterBy === "kind") + option("scope", "Cluster by scope", state.knowledgeClusterBy === "scope") + option("trust", "Cluster by trust", state.knowledgeClusterBy === "trust") + '</select><select id="knowledge-relation-density" aria-label="Relation density">' + option("all", "All relations", state.knowledgeRelationDensity === "all") + option("balanced", "Balanced", state.knowledgeRelationDensity === "balanced") + option("strong", "Strong only", state.knowledgeRelationDensity === "strong") + '</select><select id="knowledge-motion" aria-label="Graph motion">' + option("subtle", "Motion subtle", state.knowledgeMotion !== "off") + option("off", "Motion off", state.knowledgeMotion === "off") + '</select></div><div class="knowledge-map-search"><input id="knowledge-map-search" placeholder="Search graph" value="' + escapeHtml(state.knowledgeGraphSearch ?? "") + '"><select id="knowledge-map-search-result" aria-label="Graph search results">' + renderKnowledgeMapSearchOptions(entities, relations, state.knowledgeGraphSearch ?? "") + '</select><button data-knowledge-graph-action="focus-search" type="button">' + icon("activity") + '<span>Focus</span></button><button data-knowledge-graph-action="unfocus" type="button">' + icon("x") + '<span>Unfocus</span></button><label class="knowledge-focus-toggle"><input id="knowledge-connected-only" type="checkbox"' + (state.knowledgeConnectedOnly ? ' checked' : '') + '><span>Connected only</span></label></div><div class="knowledge-map-actions"><button data-knowledge-graph-action="fit" type="button" title="Fit graph">' + icon("activity") + '<span>Fit</span></button><button data-knowledge-graph-action="reset" type="button" title="Reset layout">' + icon("refresh") + '<span>Reset</span></button><button data-knowledge-graph-action="zoom-in" type="button" title="Zoom in">' + icon("spark") + '<span>Zoom in</span></button><button data-knowledge-graph-action="zoom-out" type="button" title="Zoom out">' + icon("square") + '<span>Zoom out</span></button></div><div class="knowledge-map-filters"><select id="knowledge-kind-filter" aria-label="Graph kind filter">' + option("all", "All kinds", filters.kind === "all") + kinds.map((kind) => option(kind, kind, filters.kind === kind)).join("") + '</select><select id="knowledge-scope-filter" aria-label="Graph scope filter">' + option("all", "All scopes", filters.scope === "all") + scopes.map((scope) => option(scope, scope === "core" ? "Core scope" : scope === "project" ? "Project scope" : scope, filters.scope === scope)).join("") + '</select><select id="knowledge-map-trust-filter" aria-label="Graph trust filter">' + option("all", "All trust", filters.trust === "all") + trusts.map((trust) => option(trust, trust, filters.trust === trust)).join("") + '</select><button data-knowledge-graph-action="clear-filters" type="button">' + icon("x") + '<span>Clear</span></button></div><div class="knowledge-map-actions"><button data-knowledge-drawer-open="list" type="button">' + icon("layers") + '<span>List</span></button><button data-knowledge-drawer-open="inspector" type="button">' + icon("sliders") + '<span>Inspector</span></button></div></div><div class="knowledge-legend"><span><i class="person"></i>person</span><span><i class="project"></i>project</span><span><i class="preference"></i>preference</span><span><i class="topic"></i>topic</span></div>';
+  return '<div class="knowledge-map-toolbar"><div class="knowledge-map-views"><select id="knowledge-map-view" aria-label="View đồ thị đã lưu">' + option("all", "All", activeView === "all") + option("review", "Review", activeView === "review") + option("high-trust", "Độ tin cậy cao", activeView === "high-trust") + option("focused", "Tập trung", activeView === "focused") + customOption + savedOption + '</select><button data-knowledge-view-apply type="button">' + icon("check") + '<span>Áp dụng</span></button><button data-knowledge-view-save type="button">' + icon("database") + '<span>Lưu</span></button></div><div class="knowledge-map-cluster"><select id="knowledge-cluster-by" aria-label="Gom cụm đồ thị">' + option("none", "Tắt gom cụm", state.knowledgeClusterBy === "none") + option("kind", "Gom cụm theo loại", state.knowledgeClusterBy === "kind") + option("scope", "Gom cụm theo phạm vi", state.knowledgeClusterBy === "scope") + option("trust", "Gom cụm theo độ tin cậy", state.knowledgeClusterBy === "trust") + '</select><select id="knowledge-relation-density" aria-label="Mật độ liên kết">' + option("all", "Tất cả liên kết", state.knowledgeRelationDensity === "all") + option("balanced", "Cân bằng", state.knowledgeRelationDensity === "balanced") + option("strong", "Chỉ liên kết mạnh", state.knowledgeRelationDensity === "strong") + '</select><select id="knowledge-motion" aria-label="Chuyển động đồ thị">' + option("subtle", "Chuyển động nhẹ", state.knowledgeMotion !== "off") + option("off", "Tắt chuyển động", state.knowledgeMotion === "off") + '</select></div><div class="knowledge-map-search"><input id="knowledge-map-search" placeholder="Tìm kiếm đồ thị" value="' + escapeHtml(state.knowledgeGraphSearch ?? "") + '"><select id="knowledge-map-search-result" aria-label="Kết quả tìm trên đồ thị">' + renderKnowledgeMapSearchOptions(entities, relations, state.knowledgeGraphSearch ?? "") + '</select><button data-knowledge-graph-action="focus-search" type="button">' + icon("activity") + '<span>Tập trung</span></button><button data-knowledge-graph-action="unfocus" type="button">' + icon("x") + '<span>Bỏ focus</span></button><label class="knowledge-focus-toggle"><input id="knowledge-connected-only" type="checkbox"' + (state.knowledgeConnectedOnly ? ' checked' : '') + '><span>Chỉ mục liên kết</span></label></div><div class="knowledge-map-actions"><button data-knowledge-graph-action="fit" type="button" title="Vừa khung đồ thị">' + icon("activity") + '<span>Vừa khung</span></button><button data-knowledge-graph-action="reset" type="button" title="Đặt lại bố cục">' + icon("refresh") + '<span>Đặt lại</span></button><button data-knowledge-graph-action="zoom-in" type="button" title="Phóng to">' + icon("spark") + '<span>Phóng to</span></button><button data-knowledge-graph-action="zoom-out" type="button" title="Thu nhỏ">' + icon("square") + '<span>Thu nhỏ</span></button></div><div class="knowledge-map-filters"><select id="knowledge-kind-filter" aria-label="Bộ lọc loại đồ thị">' + option("all", "Tất cả loại", filters.kind === "all") + kinds.map((kind) => option(kind, kind, filters.kind === kind)).join("") + '</select><select id="knowledge-scope-filter" aria-label="Bộ lọc phạm vi đồ thị">' + option("all", "Tất cả phạm vi", filters.scope === "all") + scopes.map((scope) => option(scope, scope === "core" ? "Phạm vi core" : scope === "project" ? "Phạm vi project" : scope, filters.scope === scope)).join("") + '</select><select id="knowledge-map-trust-filter" aria-label="Bộ lọc độ tin cậy đồ thị">' + option("all", "Tất cả độ tin cậy", filters.trust === "all") + trusts.map((trust) => option(trust, trust, filters.trust === trust)).join("") + '</select><button data-knowledge-graph-action="clear-filters" type="button">' + icon("x") + '<span>Xóa</span></button></div><div class="knowledge-map-actions"><button data-knowledge-drawer-open="list" type="button">' + icon("layers") + '<span>Danh sách</span></button><button data-knowledge-drawer-open="inspector" type="button">' + icon("sliders") + '<span>Chi tiết</span></button></div></div><div class="knowledge-legend"><span><i class="person"></i>person</span><span><i class="project"></i>project</span><span><i class="preference"></i>preference</span><span><i class="topic"></i>topic</span></div>';
 }
 
 function renderKnowledgeMapSearchOptions(entities, relations, query) {
@@ -1625,7 +1625,7 @@ function renderKnowledgeMapSearchOptions(entities, relations, query) {
     ...(entities ?? []).map((entity) => ({ value: "entity:" + entity.id, label: 'Entity #' + entity.id + ' ' + entity.canonicalName, text: [entity.canonicalName, entity.kind, entity.scope, ...(entity.aliases ?? [])].join(" ") })),
     ...(relations ?? []).map((relation) => ({ value: "relation:" + relation.id, label: 'Relation #' + relation.id + ' ' + relation.sourceName + ' --' + relation.relationType + '--> ' + relation.targetName, text: [relation.sourceName, relation.relationType, relation.targetName, relation.scope, relation.evidence].join(" ") })),
   ].filter((item) => !normalized || item.text.toLowerCase().includes(normalized) || item.label.toLowerCase().includes(normalized)).slice(0, 16);
-  return options.length ? options.map((item) => option(item.value, item.label, false)).join("") : option("", "No graph results", true);
+  return options.length ? options.map((item) => option(item.value, item.label, false)).join("") : option("", "Không có kết quả đồ thị", true);
 }
 
 function renderKnowledgeDrawerList(graph) {
@@ -1637,10 +1637,10 @@ function renderKnowledgeDrawerList(graph) {
 
 function renderKnowledgeClusterDrilldown(graph, clusterId) {
   const cluster = getKnowledgeClusterMembers(graph, clusterId);
-  if (!cluster) return row("Cluster", "not found", "warn");
-  const relationRows = cluster.relations.slice(0, 8).map(renderKnowledgeRelation).join("") || row("Relations", "none inside cluster", "");
+  if (!cluster) return row("Cluster", "không tìm thấy", "warn");
+  const relationRows = cluster.relations.slice(0, 8).map(renderKnowledgeRelation).join("") || row("Relations", "không có trong cụm", "");
   const entityRows = cluster.entities.slice(0, 12).map(renderKnowledgeEntity).join("") || row("Entities", "empty", "");
-  return '<div class="knowledge-cluster-detail"><div class="label">Cluster</div><div class="value">' + escapeHtml(cluster.label) + '</div><div class="summary-strip"><span><strong>' + escapeHtml(cluster.entities.length) + '</strong><small>Entities</small></span><span><strong>' + escapeHtml(cluster.relations.length) + '</strong><small>Relations</small></span></div><div class="actions inline-actions"><button data-knowledge-cluster-expand="' + escapeHtml(cluster.id) + '" type="button">' + icon("layers") + '<span>Expand cluster</span></button></div><div class="tool-section"><div class="label">Members</div>' + entityRows + '</div><div class="tool-section"><div class="label">Internal relations</div>' + relationRows + '</div></div>';
+  return '<div class="knowledge-cluster-detail"><div class="label">Cluster</div><div class="value">' + escapeHtml(cluster.label) + '</div><div class="summary-strip"><span><strong>' + escapeHtml(cluster.entities.length) + '</strong><small>Thực thể</small></span><span><strong>' + escapeHtml(cluster.relations.length) + '</strong><small>Liên kết</small></span></div><div class="actions inline-actions"><button data-knowledge-cluster-expand="' + escapeHtml(cluster.id) + '" type="button">' + icon("layers") + '<span>Mở cụm</span></button></div><div class="tool-section"><div class="label">Thành viên</div>' + entityRows + '</div><div class="tool-section"><div class="label">Liên kết nội bộ</div>' + relationRows + '</div></div>';
 }
 
 function getKnowledgeClusterMembers(graph, clusterId) {
@@ -1665,7 +1665,7 @@ function knowledgeClusterKey(entity, clusterBy) {
 function renderKnowledgeTrustDashboard(graph) {
   const trust = graph.trust ?? {};
   const items = getKnowledgeTrustItems(graph);
-  return '<div class="knowledge-review-toolbar"><div class="summary-strip"><span><strong>' + escapeHtml(trust.averageScore ?? 100) + '</strong><small>Average</small></span><span><strong>' + escapeHtml(trust.lowTrust ?? 0) + '</strong><small>Low trust</small></span><span><strong>' + escapeHtml(trust.stale ?? 0) + '</strong><small>Stale</small></span><span><strong>' + escapeHtml(trust.needsSource ?? 0) + '</strong><small>Needs source</small></span><span><strong>' + escapeHtml(trust.conflicting ?? 0) + '</strong><small>Conflicts</small></span></div><div class="control-grid"><select id="knowledge-trust-filter" aria-label="Trust filter">' + option("all", "All trust", state.knowledgeTrustFilter === "all") + option("low", "Low trust", state.knowledgeTrustFilter === "low") + option("stale", "Stale", state.knowledgeTrustFilter === "stale") + option("source", "Needs source", state.knowledgeTrustFilter === "source") + option("conflict", "Conflicting", state.knowledgeTrustFilter === "conflict") + '</select><select id="knowledge-trust-sort" aria-label="Trust sort">' + option("score", "Lowest trust first", state.knowledgeTrustSort === "score") + option("age", "Oldest first", state.knowledgeTrustSort === "age") + option("source", "Needs source first", state.knowledgeTrustSort === "source") + '</select></div></div><div class="knowledge-detail-layout"><div class="stack">' + (items.map(renderKnowledgeTrustRow).join("") || row("Trust", "clean for current filters", "good")) + '</div><div id="knowledge-trust-inspector" class="knowledge-inspector">' + renderKnowledgeInspector(graph) + '</div></div>';
+  return '<div class="knowledge-review-toolbar"><div class="summary-strip"><span><strong>' + escapeHtml(trust.averageScore ?? 100) + '</strong><small>Average</small></span><span><strong>' + escapeHtml(trust.lowTrust ?? 0) + '</strong><small>Low trust</small></span><span><strong>' + escapeHtml(trust.stale ?? 0) + '</strong><small>Stale</small></span><span><strong>' + escapeHtml(trust.needsSource ?? 0) + '</strong><small>Needs source</small></span><span><strong>' + escapeHtml(trust.conflicting ?? 0) + '</strong><small>Conflicts</small></span></div><div class="control-grid"><select id="knowledge-trust-filter" aria-label="Trust filter">' + option("all", "Tất cả độ tin cậy", state.knowledgeTrustFilter === "all") + option("low", "Low trust", state.knowledgeTrustFilter === "low") + option("stale", "Stale", state.knowledgeTrustFilter === "stale") + option("source", "Needs source", state.knowledgeTrustFilter === "source") + option("conflict", "Conflicting", state.knowledgeTrustFilter === "conflict") + '</select><select id="knowledge-trust-sort" aria-label="Trust sort">' + option("score", "Lowest trust first", state.knowledgeTrustSort === "score") + option("age", "Oldest first", state.knowledgeTrustSort === "age") + option("source", "Needs source first", state.knowledgeTrustSort === "source") + '</select></div></div><div class="knowledge-detail-layout"><div class="stack">' + (items.map(renderKnowledgeTrustRow).join("") || row("Trust", "sạch với bộ lọc hiện tại", "good")) + '</div><div id="knowledge-trust-inspector" class="knowledge-inspector">' + renderKnowledgeInspector(graph) + '</div></div>';
 }
 
 function getKnowledgeTrustItems(graph) {
@@ -1744,7 +1744,7 @@ function renderKnowledgeGraphSvg(entities, relations) {
     const tone = node.kind === "person" ? "person" : node.kind === "project" ? "project" : node.kind === "preference" ? "preference" : "topic";
     return '<g class="knowledge-node ' + tone + '" tabindex="0" role="button" data-knowledge-select="entity" data-entity-id="' + escapeHtml(node.id) + '"><circle cx="' + point.x.toFixed(1) + '" cy="' + point.y.toFixed(1) + '" r="25"></circle><text x="' + point.x.toFixed(1) + '" y="' + (point.y + 4).toFixed(1) + '">#' + escapeHtml(node.id) + '</text><title>' + escapeHtml(node.canonicalName) + ' / ' + escapeHtml(node.kind) + '</title></g>';
   }).join("");
-  return '<svg class="knowledge-svg" viewBox="0 0 ' + width + ' ' + height + '" role="img" aria-label="Knowledge graph map">' + edgeHtml + nodeHtml + '</svg>';
+  return '<svg class="knowledge-svg" viewBox="0 0 ' + width + ' ' + height + '" role="img" aria-label="Bản đồ tri thức">' + edgeHtml + nodeHtml + '</svg>';
 }
 
 function renderKnowledgeCytoscapeGraph(entities, relations) {
@@ -1954,16 +1954,16 @@ function formatKnowledgeReviewAction(action) {
 }
 
 function renderPendingKnowledgeItem(item) {
-  const meta = [item.reason, item.source, item.explicitConsent ? "explicit consent" : "needs review", item.createdAt].filter(Boolean).join(' / ');
+  const meta = [item.reason, item.source, item.explicitConsent ? "đã đồng ý rõ ràng" : "cần rà soát", item.createdAt].filter(Boolean).join(' / ');
   return '<div class="knowledge-row" data-knowledge-select="pending" data-pending-id="' + escapeHtml(item.id) + '"><div><strong>Pending #' + escapeHtml(item.id) + '</strong><div>' + escapeHtml(item.payloadSummary) + '</div><div class="subvalue">' + escapeHtml(meta) + '</div></div><span><span class="pill warn">pending</span>' + iconButton("sliders", "Sanitize", 'data-knowledge-action="sanitize_pending" data-pending-id="' + escapeHtml(item.id) + '"') + iconButton("check", "Approve", 'data-knowledge-action="approve_pending" data-pending-id="' + escapeHtml(item.id) + '"') + iconButton("x", "Reject", 'data-knowledge-action="reject_pending" data-pending-id="' + escapeHtml(item.id) + '"') + '</span></div>';
 }
 
 function renderKnowledgeSearchResults(graph) {
-  const heading = row('Search results for "' + text(graph.query) + '"', (graph.relations?.length ?? 0) + ' relations / ' + (graph.entities?.length ?? 0) + ' entities', "");
+  const heading = row('Tìm kiếm results for "' + text(graph.query) + '"', (graph.relations?.length ?? 0) + ' relations / ' + (graph.entities?.length ?? 0) + ' entities', "");
   const relations = (graph.relations ?? []).map(renderKnowledgeRelation);
   const entities = (graph.entities ?? []).map(renderKnowledgeEntity);
   const pending = (graph.pending ?? []).map(renderPendingKnowledgeItem);
-  return heading + ([...relations, ...entities, ...pending].join("") || row("Search", "no results", ""));
+  return heading + ([...relations, ...entities, ...pending].join("") || row("Tìm kiếm", "no results", ""));
 }
 
 function bindKnowledgeGraphControls() {
@@ -1989,7 +1989,7 @@ function bindKnowledgeGraphControls() {
     fetch("/api/knowledge-graph/search?q=" + encodeURIComponent(query))
       .then((response) => response.json())
       .then((graph) => {
-        setValue("#knowledge-panel .value", 'Search results for "' + query + '"');
+        setValue("#knowledge-panel .value", 'Tìm kiếm results for "' + query + '"');
         renderKnowledgeGraphPanel(graph, "search");
       })
       .catch(() => setValue("#knowledge-panel .value", "Unable to search graph."));
@@ -2003,7 +2003,7 @@ function setKnowledgeDrawer(drawer) {
   if (!shell) return;
   shell.dataset.knowledgeDrawer = state.knowledgeDrawer;
   const title = document.querySelector("#knowledge-drawer-title");
-  if (title) title.textContent = state.knowledgeDrawer === "list" && state.selectedKnowledge?.type === "cluster" ? "Cluster detail" : state.knowledgeDrawer === "list" ? "Graph items" : "Inspector";
+  if (title) title.textContent = state.knowledgeDrawer === "list" && state.selectedKnowledge?.type === "cluster" ? "Cluster detail" : state.knowledgeDrawer === "list" ? "Mục đồ thị" : "Inspector";
   const list = document.querySelector("#knowledge-drawer-list");
   if (list) list.innerHTML = renderKnowledgeDrawerList(state.knowledgeGraph ?? {});
   state.knowledgeCytoscape?.resize();
@@ -2036,9 +2036,9 @@ function setKnowledgeOverlayCollapsed(collapsed) {
   shell.dataset.knowledgeOverlay = state.knowledgeOverlayCollapsed ? "collapsed" : "expanded";
   const toggle = document.querySelector("[data-knowledge-overlay-toggle]");
   if (toggle) {
-    toggle.title = state.knowledgeOverlayCollapsed ? "Show map tools" : "Hide map tools";
+    toggle.title = state.knowledgeOverlayCollapsed ? "Show map tools" : "Ẩn map tools";
     const label = toggle.querySelector("span");
-    if (label) label.textContent = state.knowledgeOverlayCollapsed ? "Tools" : "Hide";
+    if (label) label.textContent = state.knowledgeOverlayCollapsed ? "Công cụ" : "Ẩn";
   }
   state.knowledgeCytoscape?.resize();
   saveKnowledgeMapPreferences();
@@ -2092,7 +2092,7 @@ function applyKnowledgeMapView(view) {
       setKnowledgeDrawer("inspector");
       focusKnowledgeGraphViewport(state.selectedKnowledge.type, state.selectedKnowledge.id);
     } else {
-      showToast("Select a node or relation before using Focused view.", "warn");
+      showToast("Select a node or relation before using Tập trung view.", "warn");
       state.knowledgeActiveView = "all";
     }
   } else if (saved) {
@@ -2573,7 +2573,7 @@ function renderKnowledgeProvenanceOverlay(graph) {
     + row("Relations", cluster.relations.length, "")
     + row("Timeline", "Grouped from current filtered graph view", "")
     + '</div>'
-    + renderKnowledgeProvenanceActions('<button data-knowledge-cluster-expand="' + escapeHtml(cluster.id) + '" type="button">' + icon("layers") + '<span>Expand cluster</span></button>');
+    + renderKnowledgeProvenanceActions('<button data-knowledge-cluster-expand="' + escapeHtml(cluster.id) + '" type="button">' + icon("layers") + '<span>Mở cụm</span></button>');
 }
 
 function renderKnowledgeProvenanceTrust(trust) {
@@ -2589,7 +2589,7 @@ function renderKnowledgeProvenanceActions(actions) {
 function renderKnowledgeInspector(graph) {
   const selected = state.selectedKnowledge;
   if (!selected) {
-    return '<div class="label">Inspector</div><div class="value">Select a graph item</div><p class="subvalue">Click a node, relation, review item, or pending graph write to inspect details.</p>';
+    return '<div class="label">Chi tiết</div><div class="value">Select a graph item</div><p class="subvalue">Click a node, relation, review item, or pending graph write to inspect details.</p>';
   }
   if (selected.type === "entity") {
     const entity = (graph.entities ?? []).find((candidate) => Number(candidate.id) === Number(selected.id));
@@ -2669,7 +2669,7 @@ function renderKnowledgeInspector(graph) {
 }
 
 function renderKnowledgeInspectorMissing() {
-  return '<div class="label">Inspector</div><div class="value">Selection unavailable</div><p class="subvalue">The graph changed since this item was selected.</p>';
+  return '<div class="label">Chi tiết</div><div class="value">Selection unavailable</div><p class="subvalue">The graph changed since this item was selected.</p>';
 }
 
 function renderKnowledgeTimeline(events) {
@@ -2704,7 +2704,7 @@ function renderKnowledgeSourceJump(item) {
 function renderKnowledgeTrustDetails(trust) {
   if (!trust) return "";
   const tone = trust.level === "high" ? "good" : trust.level === "low" ? "warn" : "";
-  return '<div class="tool-section knowledge-trust-details"><div class="label">Trust</div>'
+  return '<div class="tool-section knowledge-trust-details"><div class="label">Độ tin cậy</div>'
     + row("Score", trust.score + ' / ' + trust.level, tone)
     + row("Source", trust.sourceKind + ' / quality ' + trust.sourceQuality, trust.needsSource ? "warn" : "good")
     + row("Age", trust.ageDays + ' day' + (trust.ageDays === 1 ? "" : "s"), trust.stale ? "warn" : "good")
@@ -2813,20 +2813,20 @@ function loadChannels() {
     .then((summary) => {
       const activeChannels = summary.channels?.filter((channel) => channel.enabled).length ?? 0;
       state.firstCron = summary.cron?.schedules?.[0] ?? null;
-      setValue("#channel-panel .value", 'Channels ' + text(activeChannels) + ' / Cron ' + text(summary.cron?.counts?.total));
-      const channelRows = (summary.channels ?? []).map((channel) => '<div class="action-row"><span><strong>' + escapeHtml(channel.displayName) + '</strong> <span class="pill ' + pillClass(channel.daemon?.state) + '">' + escapeHtml(channel.daemon?.state ?? "stopped") + '</span> <span class="pill ' + (channel.secretPresent ? "good" : "bad") + '">' + (channel.secretPresent ? "secret" : "no secret") + '</span></span><span>' + iconButton("activity", "Start", 'data-channel-action="daemon_start" data-channel="' + escapeHtml(channel.id) + '"') + iconButton("x", "Stop", 'data-channel-action="daemon_stop" data-channel="' + escapeHtml(channel.id) + '"') + iconButton("refresh", "Restart", 'data-channel-action="daemon_restart" data-channel="' + escapeHtml(channel.id) + '"') + '</span></div>');
+      setValue("#channel-panel .value", 'Kênh ' + text(activeChannels) + ' / Cron ' + text(summary.cron?.counts?.total));
+      const channelRows = (summary.channels ?? []).map((channel) => '<div class="action-row"><span><strong>' + escapeHtml(channel.displayName) + '</strong> <span class="pill ' + pillClass(channel.daemon?.state) + '">' + escapeHtml(channel.daemon?.state ?? "stopped") + '</span> <span class="pill ' + (channel.secretPresent ? "good" : "bad") + '">' + (channel.secretPresent ? "có secret" : "no có secret") + '</span></span><span>' + iconButton("activity", "Bắt đầu", 'data-channel-action="daemon_start" data-channel="' + escapeHtml(channel.id) + '"') + iconButton("x", "Stop", 'data-channel-action="daemon_stop" data-channel="' + escapeHtml(channel.id) + '"') + iconButton("refresh", "Khởi động lại", 'data-channel-action="daemon_restart" data-channel="' + escapeHtml(channel.id) + '"') + '</span></div>');
       const cronRows = (summary.cron?.schedules ?? []).map(renderCronScheduleRow);
       const cronLogRows = (summary.cron?.logs ?? []).map(renderCronLogRow);
       setBody("#channel-panel", [
-        '<div class="segmented" role="tablist" aria-label="Channel views"><button class="active" data-segment-target="channel-daemons" type="button">Daemons</button><button data-segment-target="channel-cron" type="button">Cron</button><button data-segment-target="channel-cron-logs" type="button">Logs</button></div>',
+        '<div class="segmented" role="tablist" aria-label="Các chế độ kênh"><button class="active" data-segment-target="channel-daemons" type="button">Daemon</button><button data-segment-target="channel-cron" type="button">Cron</button><button data-segment-target="channel-cron-logs" type="button">Nhật ký</button></div>',
         '<div class="segment active" id="channel-daemons">' + (channelRows.join("") || row("Daemons", "none", "")) + '</div>',
-        '<div class="segment" id="channel-cron">' + [row("Cron enabled", summary.cron?.counts?.enabled ?? 0, "good"), renderCronCreateForm(), ...(cronRows.length ? cronRows : [row("Schedules", "none", "")])].join("") + '</div>',
+        '<div class="segment" id="channel-cron">' + [row("Cron bật", summary.cron?.counts?.enabled ?? 0, "good"), renderCronCreateForm(), ...(cronRows.length ? cronRows : [row("Schedules", "none", "")])].join("") + '</div>',
         '<div class="segment" id="channel-cron-logs">' + (cronLogRows.join("") || row("Logs", "none", "")) + '</div>',
       ].join(""));
       bindChannelControls();
       activateSegment("#channel-panel", document.getElementById(activeSegment) ? activeSegment : "channel-daemons");
     })
-    .catch(() => setValue("#channel-panel .value", "Unable to load channels."));
+    .catch(() => setValue("#channel-panel .value", "Không thể tải kênh."));
 }
 
 function bindChannelControls() {
@@ -2834,22 +2834,22 @@ function bindChannelControls() {
   document.querySelectorAll("[data-channel-action]").forEach((button) => button.addEventListener("click", () => {
     const action = button.dataset.channelAction;
     const channel = button.dataset.channel;
-    requireConfirm("Update channel daemon?", action + ' / ' + channel, () => withLoading("#channel-panel .value", "Updating channel...", () => postJson("/api/channels/action", { action, channel, confirm: true }).then(loadChannels).then(() => showToast("Channel action completed.", "good")))).catch(() => setValue("#channel-panel .value", "Unable to update channel."));
+    requireConfirm("Cập nhật daemon kênh?", action + ' / ' + channel, () => withLoading("#channel-panel .value", "Đang cập nhật kênh...", () => postJson("/api/channels/action", { action, channel, confirm: true }).then(loadChannels).then(() => showToast("Đã cập nhật kênh.", "good")))).catch(() => setValue("#channel-panel .value", "Không thể cập nhật kênh."));
   }));
   document.querySelectorAll("[data-cron-id]").forEach((button) => button.addEventListener("click", () => {
     const id = Number(button.dataset.cronId);
     const enabled = button.dataset.cronEnabled !== "true";
-    requireConfirm("Toggle cron schedule?", String(id), () => withLoading("#channel-panel .value", "Updating cron...", () => postJson("/api/channels/action", { action: "cron_toggle", id, enabled, confirm: true }).then(loadChannels).then(() => showToast("Cron schedule updated.", "good")))).catch(() => setValue("#channel-panel .value", "Unable to update cron schedule."));
+    requireConfirm("Bật/tắt lịch cron?", String(id), () => withLoading("#channel-panel .value", "Đang cập nhật cron...", () => postJson("/api/channels/action", { action: "cron_toggle", id, enabled, confirm: true }).then(loadChannels).then(() => showToast("Đã cập nhật lịch cron.", "good")))).catch(() => setValue("#channel-panel .value", "Không thể cập nhật lịch cron."));
   }));
   document.querySelectorAll("[data-cron-view]").forEach((button) => button.addEventListener("click", () => document.querySelector('[data-cron-detail="' + button.dataset.cronView + '"]')?.classList.toggle("hidden")));
   document.querySelectorAll("[data-cron-edit]").forEach((button) => button.addEventListener("click", () => document.querySelector('[data-cron-form="' + button.dataset.cronEdit + '"]')?.classList.toggle("hidden")));
   document.querySelectorAll("[data-cron-delete]").forEach((button) => button.addEventListener("click", () => {
     const id = Number(button.dataset.cronDelete);
-    requireConfirm("Delete cron schedule?", String(id), () => withLoading("#channel-panel .value", "Deleting cron...", () => postJson("/api/channels/action", { action: "cron_delete", id, confirm: true }).then(loadChannels).then(() => showToast("Cron schedule deleted.", "good")))).catch(() => setValue("#channel-panel .value", "Unable to delete cron schedule."));
+    requireConfirm("Xóa lịch cron?", String(id), () => withLoading("#channel-panel .value", "Đang xóa cron...", () => postJson("/api/channels/action", { action: "cron_delete", id, confirm: true }).then(loadChannels).then(() => showToast("Đã xóa lịch cron.", "good")))).catch(() => setValue("#channel-panel .value", "Không thể xóa lịch cron."));
   }));
   document.querySelectorAll("[data-cron-trigger]").forEach((button) => button.addEventListener("click", () => {
     const id = Number(button.dataset.cronTrigger);
-    requireConfirm("Trigger cron now?", String(id), () => withLoading("#channel-panel .value", "Triggering cron...", () => postJson("/api/channels/action", { action: "cron_trigger", id, confirm: true }).then(loadChannels).then(() => showToast("Cron schedule triggered.", "good")))).catch(() => setValue("#channel-panel .value", "Unable to trigger cron schedule."));
+    requireConfirm("Kích hoạt cron ngay?", String(id), () => withLoading("#channel-panel .value", "Đang kích hoạt cron...", () => postJson("/api/channels/action", { action: "cron_trigger", id, confirm: true }).then(loadChannels).then(() => showToast("Đã kích hoạt cron.", "good")))).catch(() => setValue("#channel-panel .value", "Không thể kích hoạt lịch cron."));
   }));
   document.querySelectorAll("[data-cron-update-form]").forEach((form) => form.addEventListener("submit", (event) => {
     event.preventDefault();
@@ -2875,24 +2875,24 @@ function submitCronWriteForm(formElement, action, id) {
     confirm: true,
   };
   const verb = action === "cron_add" ? "Create" : "Save";
-  requireConfirm(verb + " cron schedule?", body.name, () => withLoading("#channel-panel .value", "Saving cron...", () => postJson("/api/channels/action", body).then(loadChannels).then(() => showToast("Cron schedule saved.", "good")))).catch(() => setValue("#channel-panel .value", "Unable to save cron schedule."));
+  requireConfirm(verb + " cron schedule?", body.name, () => withLoading("#channel-panel .value", "Đang lưu cron...", () => postJson("/api/channels/action", body).then(loadChannels).then(() => showToast("Đã lưu lịch cron.", "good")))).catch(() => setValue("#channel-panel .value", "Không thể lưu lịch cron."));
 }
 
 function renderCronCreateForm() {
   const typeOptions = scheduleTypes.map((type) => option(type, type, type === "interval")).join("");
-  return '<details class="tool-section"><summary class="label">Add cron</summary><form id="cron-create-form" class="stack"><div class="control-grid"><label>Name<input name="name" value="New schedule"></label><label>Type<select name="scheduleType">' + typeOptions + '</select></label><label>Schedule<input name="scheduleValue" value="1h"></label><label>Channel<input name="channel" placeholder="telegram:111"></label><label class="check"><input name="enabled" type="checkbox" checked> Enabled</label><button type="submit">' + icon("check") + '<span>Create</span></button></div><label class="stack">Prompt<textarea name="prompt" spellcheck="false">Send a short update.</textarea></label></form></details>';
+  return '<details class="tool-section"><summary class="label">Thêm cron</summary><form id="cron-create-form" class="stack"><div class="control-grid"><label>Tên<input name="name" value="Lịch mới"></label><label>Loại<select name="scheduleType">' + typeOptions + '</select></label><label>Lịch<input name="scheduleValue" value="1h"></label><label>Kênh<input name="channel" placeholder="telegram:111"></label><label class="check"><input name="enabled" type="checkbox" checked> Enabled</label><button type="submit">' + icon("check") + '<span>Tạo</span></button></div><label class="stack">Prompt<textarea name="prompt" spellcheck="false">Gửi một cập nhật ngắn.</textarea></label></form></details>';
 }
 
 function renderCronScheduleRow(schedule) {
   const detail = [
-    row("Next run", schedule.nextRunAt, ""),
-    row("Last result", schedule.lastResult ?? "none", schedule.lastResult === "ok" ? "good" : schedule.lastResult ? "bad" : ""),
-    row("Run count", schedule.runCount ?? 0, ""),
+    row("Lần chạy tới", schedule.nextRunAt, ""),
+    row("Kết quả cuối", schedule.lastResult ?? "none", schedule.lastResult === "ok" ? "good" : schedule.lastResult ? "bad" : ""),
+    row("Số lần chạy", schedule.runCount ?? 0, ""),
     row("Channel", schedule.channel ?? "none", schedule.channel ? "good" : ""),
     '<div class="tool-section"><div class="label">Prompt</div><div>' + escapeHtml(schedule.prompt ?? "") + '</div></div>',
   ].join("");
   const typeOptions = scheduleTypes.map((type) => option(type, type, schedule.scheduleType === type)).join("");
-  const form = '<form class="stack hidden" data-cron-form="' + schedule.id + '" data-cron-update-form="' + schedule.id + '"><div class="control-grid"><label>Name<input name="name" value="' + escapeHtml(schedule.name) + '"></label><label>Type<select name="scheduleType">' + typeOptions + '</select></label><label>Schedule<input name="scheduleValue" value="' + escapeHtml(schedule.scheduleValue) + '"></label><label>Channel<input name="channel" value="' + escapeHtml(schedule.channel ?? "") + '" placeholder="telegram:111"></label><label class="check"><input name="enabled" type="checkbox"' + (schedule.enabled ? ' checked' : '') + '> Enabled</label><button type="submit">' + icon("check") + '<span>Save</span></button></div><label class="stack">Prompt<textarea name="prompt" spellcheck="false">' + escapeHtml(schedule.prompt ?? "") + '</textarea></label></form>';
+  const form = '<form class="stack hidden" data-cron-form="' + schedule.id + '" data-cron-update-form="' + schedule.id + '"><div class="control-grid"><label>Tên<input name="name" value="' + escapeHtml(schedule.name) + '"></label><label>Loại<select name="scheduleType">' + typeOptions + '</select></label><label>Lịch<input name="scheduleValue" value="' + escapeHtml(schedule.scheduleValue) + '"></label><label>Kênh<input name="channel" value="' + escapeHtml(schedule.channel ?? "") + '" placeholder="telegram:111"></label><label class="check"><input name="enabled" type="checkbox"' + (schedule.enabled ? ' checked' : '') + '> Enabled</label><button type="submit">' + icon("check") + '<span>Lưu</span></button></div><label class="stack">Prompt<textarea name="prompt" spellcheck="false">' + escapeHtml(schedule.prompt ?? "") + '</textarea></label></form>';
   return '<div class="cron-card"><div class="action-row"><span><strong>' + escapeHtml(schedule.name) + '</strong> ' + escapeHtml(schedule.scheduleType) + ' ' + escapeHtml(schedule.scheduleValue) + ' <span class="pill ' + (schedule.enabled ? "good" : "bad") + '">' + (schedule.enabled ? "enabled" : "disabled") + '</span></span><span>' + iconButton("activity", "View", 'data-cron-view="' + schedule.id + '"') + iconButton("sliders", "Edit", 'data-cron-edit="' + schedule.id + '"') + iconButton("terminal", "Trigger", 'data-cron-trigger="' + schedule.id + '"') + iconButton(schedule.enabled ? "x" : "check", schedule.enabled ? "Disable" : "Enable", 'data-cron-id="' + schedule.id + '" data-cron-enabled="' + schedule.enabled + '"') + iconButton("x", "Delete", 'data-cron-delete="' + schedule.id + '"') + '</span></div><div class="tool-section hidden" data-cron-detail="' + schedule.id + '">' + detail + '</div>' + form + '</div>';
 }
 
@@ -2914,7 +2914,7 @@ function loadApprovals() {
         return '<div class="approval-row"><div><strong>' + escapeHtml(approval.action) + '</strong><div class="subvalue">' + escapeHtml(detail) + '</div><div class="subvalue">' + escapeHtml(reason) + '</div></div><span>' + iconButton("check", "Approve", 'data-approval-action="approve" data-approval-id="' + approval.id + '"') + iconButton("x", "Deny", 'data-approval-action="deny" data-approval-id="' + approval.id + '"') + '</span></div>';
       });
       setBody("#approvals-panel", [
-        '<div class="segmented" role="tablist" aria-label="Approval views"><button class="active" data-segment-target="approvals-pending" type="button">Pending</button><button data-segment-target="approvals-history" type="button">History</button></div>',
+        '<div class="segmented" role="tablist" aria-label="Approval views"><button class="active" data-segment-target="approvals-pending" type="button">Đang chờ</button><button data-segment-target="approvals-history" type="button">History</button></div>',
         '<div class="segment active" id="approvals-pending">' + (approvalRows.join("") || row("Approvals", "none pending", "good")) + '</div>',
         '<div class="segment" id="approvals-history"><div class="notice">Approval history is not stored by the current local API yet.</div>' + row("Audit trail", "planned", "warn") + '</div>',
       ].join(""));
@@ -2948,9 +2948,9 @@ function loadMcp() {
       const servers = summary.servers ?? [];
       setBody("#mcp-panel", [
         '<div class="summary-strip" data-mcp-summary><span><strong>' + escapeHtml(summary.counts?.enabled ?? 0) + '</strong><small>enabled</small></span><span><strong>' + escapeHtml(summary.counts?.disabled ?? 0) + '</strong><small>disabled</small></span><span><strong>' + escapeHtml(summary.counts?.tools ?? 0) + '</strong><small>tools</small></span><span><strong>' + escapeHtml(summary.counts?.total ?? 0) + '</strong><small>servers</small></span></div>',
-        '<div class="segmented" role="tablist" aria-label="MCP views"><button class="active" data-segment-target="mcp-servers" type="button">Servers</button><button data-segment-target="mcp-tools" type="button">Tools</button><button data-segment-target="mcp-auth" type="button">Auth</button></div>',
+        '<div class="segmented" role="tablist" aria-label="MCP views"><button class="active" data-segment-target="mcp-servers" type="button">Servers</button><button data-segment-target="mcp-tools" type="button">Công cụ</button><button data-segment-target="mcp-auth" type="button">Auth</button></div>',
         '<div class="segment active" id="mcp-servers">' + (servers.map(renderMcpServerCard).join("") || row("MCP", "not configured", "")) + '</div>',
-        '<div class="segment" id="mcp-tools">' + (servers.map(renderMcpToolSection).join("") || row("Tools", "none", "")) + '</div>',
+        '<div class="segment" id="mcp-tools">' + (servers.map(renderMcpToolSection).join("") || row("Công cụ", "none", "")) + '</div>',
         '<div class="segment" id="mcp-auth">' + (servers.map(renderMcpAuthSection).join("") || row("Auth", "none", "")) + '</div>',
       ].join("") || row("MCP", "not configured", ""));
       bindMcpControls();
@@ -3043,7 +3043,7 @@ function loadSettings() {
         row("Owner", summary.agent?.ownerName, ""),
         row("Language", summary.agent?.language, ""),
         row("Primary", summary.llm?.primary, ""),
-        '<form id="settings-form" class="stack"><div class="control-grid"><label>Name<input name="name" value="' + escapeHtml(summary.agent?.name) + '"></label><label>Owner<input name="ownerName" value="' + escapeHtml(summary.agent?.ownerName) + '"></label><label>Language<input name="language" value="' + escapeHtml(summary.agent?.language) + '"></label><label>Memory policy<select name="writePolicy">' + ["ask", "allow", "deny"].map((policy) => option(policy, policy, summary.memory?.writePolicy === policy)).join("") + '</select></label><label>Tone<input name="toneIntensity" type="range" min="0" max="10" value="' + escapeHtml(summary.agent?.toneIntensity ?? 7) + '"></label><button type="submit">Save settings</button></div></form>',
+        '<form id="settings-form" class="stack"><div class="control-grid"><label>Tên<input name="name" value="' + escapeHtml(summary.agent?.name) + '"></label><label>Owner<input name="ownerName" value="' + escapeHtml(summary.agent?.ownerName) + '"></label><label>Language<input name="language" value="' + escapeHtml(summary.agent?.language) + '"></label><label>Memory policy<select name="writePolicy">' + ["ask", "allow", "deny"].map((policy) => option(policy, policy, summary.memory?.writePolicy === policy)).join("") + '</select></label><label>Tone<input name="toneIntensity" type="range" min="0" max="10" value="' + escapeHtml(summary.agent?.toneIntensity ?? 7) + '"></label><button type="submit">Save settings</button></div></form>',
       ].join(""));
       bindSettingsControls();
     })
@@ -3058,7 +3058,7 @@ function loadSkills() {
       setValue("#skills-panel .value", 'Skills ' + text(summary.count));
       const selected = state.skills.find((skill) => skill.name === state.activeSkillName) ?? state.skills[0];
       setBody("#skills-panel", [
-        '<div class="skills-layout"><aside class="skills-rail"><div class="skills-rail-head"><div><div class="label">Installed skills</div><strong>' + escapeHtml(summary.count) + ' local</strong></div>' + iconButton("layers", "New", 'id="skill-new-inline"') + '</div><label class="skill-search"><span>Search</span><input id="skill-search" value="' + escapeHtml(state.skillFilter ?? "") + '" placeholder="Filter by name or content"></label><div id="skill-list" class="skill-list">' + renderSkillList(selected?.name) + '</div><div class="notice compact">Stored in ' + escapeHtml(summary.skillsDir) + '</div></aside>' + renderSkillEditor(selected) + '</div>',
+        '<div class="skills-layout"><aside class="skills-rail"><div class="skills-rail-head"><div><div class="label">Installed skills</div><strong>' + escapeHtml(summary.count) + ' local</strong></div>' + iconButton("layers", "New", 'id="skill-new-inline"') + '</div><label class="skill-search"><span>Tìm kiếm</span><input id="skill-search" value="' + escapeHtml(state.skillFilter ?? "") + '" placeholder="Filter by name or content"></label><div id="skill-list" class="skill-list">' + renderSkillList(selected?.name) + '</div><div class="notice compact">Stored in ' + escapeHtml(summary.skillsDir) + '</div></aside>' + renderSkillEditor(selected) + '</div>',
       ].join(""));
       bindSkillControls();
       if (selected?.name) return loadSkillItem(selected.name);
@@ -3205,7 +3205,7 @@ document.querySelector("#channel-refresh")?.addEventListener("click", loadChanne
 document.querySelector("#channel-stop-cron")?.addEventListener("click", () => requireConfirm("Stop cron daemon?", "This requests the local cron daemon to stop.", () => withLoading("#channel-panel .value", "Stopping cron...", () => postJson("/api/channels/action", { action: "daemon_stop", channel: "cron", confirm: true }).then((summary) => { setValue("#channel-panel .value", text(summary.messages?.[0] ?? "Cron daemon stop requested.")); loadChannels(); showToast("Cron stop requested.", "good"); }))).catch(() => setValue("#channel-panel .value", "Unable to stop cron daemon.")));
 document.querySelector("#cron-toggle")?.addEventListener("click", () => {
   if (!state.firstCron) { setValue("#channel-panel .value", "No cron schedule found."); return; }
-  requireConfirm("Toggle cron schedule?", state.firstCron.name ?? String(state.firstCron.id), () => withLoading("#channel-panel .value", "Updating cron...", () => postJson("/api/channels/action", { action: "cron_toggle", id: state.firstCron.id, enabled: !state.firstCron.enabled, confirm: true }).then(loadChannels).then(() => showToast("Cron schedule updated.", "good")))).catch(() => setValue("#channel-panel .value", "Unable to update cron schedule."));
+  requireConfirm("Bật/tắt lịch cron?", state.firstCron.name ?? String(state.firstCron.id), () => withLoading("#channel-panel .value", "Đang cập nhật cron...", () => postJson("/api/channels/action", { action: "cron_toggle", id: state.firstCron.id, enabled: !state.firstCron.enabled, confirm: true }).then(loadChannels).then(() => showToast("Đã cập nhật lịch cron.", "good")))).catch(() => setValue("#channel-panel .value", "Không thể cập nhật lịch cron."));
 });
 document.querySelector("#approvals-refresh")?.addEventListener("click", loadApprovals);
 document.querySelector("#approval-approve")?.addEventListener("click", () => decideApproval("approve"));

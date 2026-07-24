@@ -166,36 +166,36 @@ export async function searchUiKnowledgeGraph(query: string, paths: RuntimePaths 
 
 export async function runUiKnowledgeGraphAction(options: UiKnowledgeGraphActionOptions): Promise<UiKnowledgeGraphActionResult> {
   if (!options.confirm) {
-    throw new Error("Knowledge graph actions require confirm=true.");
+    throw new Error("Thao tác đồ thị tri thức cần confirm=true.");
   }
 
   const paths = options.paths ?? getRuntimePaths();
   if (options.action === "approve_pending" || options.action === "reject_pending" || options.action === "sanitize_pending") {
-    const id = positiveInteger(options.id, "Pending knowledge id");
+    const id = positiveInteger(options.id, "ID tri thức đang chờ");
     const store = await SqliteMemoryStore.open(paths);
     try {
       if (store.getMemoryState().paused) {
-        throw new Error("Memory is paused.");
+        throw new Error("Trí nhớ đang tạm dừng.");
       }
       if (options.action === "approve_pending") {
         const approved = store.approvePendingKnowledgeItem(id);
-        if (!approved) throw new Error(`Pending knowledge graph item not found: ${id}`);
+        if (!approved) throw new Error(`Không tìm thấy mục đồ thị tri thức đang chờ: ${id}`);
         if (approved.status === "blocked") {
-          throw new Error(`Pending knowledge graph item blocked: ${approved.explanation ?? approved.reason}`);
+          throw new Error(`Mục đồ thị tri thức đang chờ bị chặn: ${approved.explanation ?? approved.reason}`);
         }
       } else if (options.action === "sanitize_pending") {
         const sanitized = store.sanitizePendingKnowledgeItem(id);
-        if (!sanitized) throw new Error(`Pending knowledge graph item not found: ${id}`);
+        if (!sanitized) throw new Error(`Không tìm thấy mục đồ thị tri thức đang chờ: ${id}`);
         if (sanitized.status === "blocked") {
-          throw new Error(`Pending knowledge graph item could not be sanitized: ${sanitized.explanation ?? sanitized.reason}`);
+          throw new Error(`Không thể làm sạch mục đồ thị tri thức đang chờ: ${sanitized.explanation ?? sanitized.reason}`);
         }
       } else if (!store.rejectPendingKnowledgeItem(id)) {
-        throw new Error(`Pending knowledge graph item not found: ${id}`);
+        throw new Error(`Không tìm thấy mục đồ thị tri thức đang chờ: ${id}`);
       }
     } finally {
       store.close();
     }
-    return { ...(await getUiKnowledgeGraphSummary(paths)), action: options.action, actionStatus: "executed", message: options.action === "approve_pending" ? "Pending graph item approved." : options.action === "sanitize_pending" ? "Pending graph item sanitized." : "Pending graph item rejected." };
+    return { ...(await getUiKnowledgeGraphSummary(paths)), action: options.action, actionStatus: "executed", message: options.action === "approve_pending" ? "Đã duyệt mục đồ thị đang chờ." : options.action === "sanitize_pending" ? "Đã làm sạch mục đồ thị đang chờ." : "Đã từ chối mục đồ thị đang chờ." };
   }
 
   const request = buildGraphToolRequest(options);
@@ -219,7 +219,7 @@ export async function runUiKnowledgeGraphAction(options: UiKnowledgeGraphActionO
           ttlMs: 15 * 60 * 1000,
         });
         approvalId = approval.id;
-        return { approved: false, reason: `Approval queued in Bestie UI: ${approval.id}` };
+        return { approved: false, reason: `Đã đưa phê duyệt vào hàng chờ Bestie UI: ${approval.id}` };
       } finally {
         store.close();
       }
@@ -235,7 +235,7 @@ export async function runUiKnowledgeGraphAction(options: UiKnowledgeGraphActionO
     ...(await getUiKnowledgeGraphSummary(paths)),
     action: options.action,
     actionStatus,
-    message: approvalId ? `Approval queued: ${approvalId}.` : result.message,
+    message: approvalId ? `Đã đưa phê duyệt vào hàng chờ: ${approvalId}.` : result.message,
     ...(approvalId === undefined ? {} : { approvalId }),
     toolResult: result,
   };
@@ -244,48 +244,48 @@ export async function runUiKnowledgeGraphAction(options: UiKnowledgeGraphActionO
 function buildGraphToolRequest(options: UiKnowledgeGraphActionOptions): AgentToolRequest {
   const reason = options.reason?.trim() || defaultActionReason(options.action);
   if (options.action === "merge_entity") {
-    return { tool: "internal.merge_knowledge_entities", arguments: { primaryId: positiveInteger(options.primaryId, "Primary entity id"), duplicateId: positiveInteger(options.duplicateId, "Duplicate entity id"), reason } };
+    return { tool: "internal.merge_knowledge_entities", arguments: { primaryId: positiveInteger(options.primaryId, "ID entity chính"), duplicateId: positiveInteger(options.duplicateId, "ID entity trùng"), reason } };
   }
   if (options.action === "forget_entity") {
-    return { tool: "internal.forget_knowledge_entity", arguments: { id: positiveInteger(options.id, "Entity id"), reason } };
+    return { tool: "internal.forget_knowledge_entity", arguments: { id: positiveInteger(options.id, "ID entity"), reason } };
   }
   if (options.action === "forget_relation") {
-    return { tool: "internal.forget_knowledge_relation", arguments: { id: positiveInteger(options.id, "Relation id"), reason } };
+    return { tool: "internal.forget_knowledge_relation", arguments: { id: positiveInteger(options.id, "ID relation"), reason } };
   }
   if (options.action === "update_relation") {
-    const args: Record<string, unknown> = { id: positiveInteger(options.id, "Relation id"), reason };
+    const args: Record<string, unknown> = { id: positiveInteger(options.id, "ID relation"), reason };
     if (options.confidence !== undefined) args.confidence = validConfidence(options.confidence);
     if (options.evidence !== undefined) args.evidence = options.evidence;
     if (options.scope !== undefined) args.scope = options.scope;
     if (options.sensitivity !== undefined) args.sensitivity = options.sensitivity;
     if (args.confidence === undefined && args.evidence === undefined && args.scope === undefined && args.sensitivity === undefined) {
-      throw new Error("Update relation requires confidence, evidence, scope, or sensitivity.");
+      throw new Error("Cập nhật relation cần confidence, evidence, scope hoặc sensitivity.");
     }
     return { tool: "internal.update_knowledge_relation", arguments: args };
   }
-  throw new Error(`Unsupported knowledge graph action: ${options.action}`);
+  throw new Error(`Action đồ thị tri thức không được hỗ trợ: ${options.action}`);
 }
 
 function positiveInteger(value: unknown, label: string): number {
   if (typeof value !== "number" || !Number.isInteger(value) || value <= 0) {
-    throw new Error(`${label} must be a positive integer.`);
+    throw new Error(`${label} phải là số nguyên dương.`);
   }
   return value;
 }
 
 function validConfidence(value: unknown): number {
   if (typeof value !== "number" || !Number.isFinite(value) || value < 0 || value > 1) {
-    throw new Error("Confidence must be a number between 0 and 1.");
+    throw new Error("Confidence phải là số từ 0 đến 1.");
   }
   return value;
 }
 
 function defaultActionReason(action: UiKnowledgeGraphAction): string {
-  if (action === "merge_entity") return "User requested entity merge from the Knowledge Graph UI.";
-  if (action === "forget_entity") return "User requested entity removal from the Knowledge Graph UI.";
-  if (action === "forget_relation") return "User requested relation removal from the Knowledge Graph UI.";
-  if (action === "update_relation") return "User requested relation metadata update from the Knowledge Graph UI.";
-  return "User requested pending knowledge graph review from the Knowledge Graph UI.";
+  if (action === "merge_entity") return "Người dùng yêu cầu gộp entity từ UI Đồ thị Tri thức.";
+  if (action === "forget_entity") return "Người dùng yêu cầu xóa entity từ UI Đồ thị Tri thức.";
+  if (action === "forget_relation") return "Người dùng yêu cầu xóa relation từ UI Đồ thị Tri thức.";
+  if (action === "update_relation") return "Người dùng yêu cầu cập nhật metadata relation từ UI Đồ thị Tri thức.";
+  return "Người dùng yêu cầu review mục đồ thị tri thức đang chờ từ UI.";
 }
 
 function buildKnowledgeGraphSummary(paths: RuntimePaths, store: SqliteMemoryStore, entities: KnowledgeEntity[], relations: KnowledgeRelationWithEntities[], pending: PendingKnowledgeItem[], databaseExists: boolean): UiKnowledgeGraphSummary {
@@ -433,7 +433,7 @@ function buildKnowledgeSourceAttribution(sourceMemoryId: number | undefined, sou
     }
     return { kind: "message", label: `Message ${sourceMessageId}`, sourceMessageId };
   }
-  return { kind: "manual", label: "Manual or inferred" };
+  return { kind: "manual", label: "Thủ công hoặc suy luận" };
 }
 
 function parseUiChatSource(sourceMessageId: string): { chatSessionId: number; chatMessageId: number; chatRunId?: number } | undefined {
@@ -456,13 +456,13 @@ function toUiKnowledgeAuditEvent(event: KnowledgeAuditEvent): UiKnowledgeAuditEv
 
 function summarizePendingKnowledgePayload(payload: unknown): string {
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
-    return typeof payload === "string" ? payload.slice(0, 120) : "pending graph payload";
+    return typeof payload === "string" ? payload.slice(0, 120) : "payload đồ thị đang chờ";
   }
 
   const record = payload as Record<string, unknown>;
   const entityCount = Array.isArray(record.entities) ? record.entities.length : 0;
   const relationCount = Array.isArray(record.relations) ? record.relations.length : 0;
-  return `${entityCount} entities, ${relationCount} relations`;
+  return `${entityCount} entity, ${relationCount} relation`;
 }
 
 function pendingKnowledgeMatches(item: PendingKnowledgeItem, query: string): boolean {
