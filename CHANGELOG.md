@@ -4,7 +4,7 @@ All notable changes to Bestie will be documented in this file.
 
 This project follows semantic versioning after the first public package release. Before `1.0.0`, minor versions may include breaking changes.
 
-## [Unreleased]
+## [0.1.18] - 2026-07-25
 
 ### Added
 
