@@ -75,9 +75,9 @@ test("runToolsCommand dry-runs Telegram attachment cleanup", async () => {
   const lines: string[] = [];
 
   try {
-    const voicePath = resolve(paths.workspaceDir, "telegram/2026-07-11/1-2-voice-message.ogg");
-    const photoPath = resolve(paths.workspaceDir, "telegram/2026-07-11/1-3-photo-image.jpg");
-    await mkdir(resolve(paths.workspaceDir, "telegram/2026-07-11"), { recursive: true });
+    const voicePath = resolve(paths.workspaceDir, "media/inbound/telegram-1-2-voice-message.ogg");
+    const photoPath = resolve(paths.workspaceDir, "media/inbound/telegram-1-3-photo-image.jpg");
+    await mkdir(resolve(paths.workspaceDir, "media/inbound"), { recursive: true });
     await writeFile(voicePath, new Uint8Array([1, 2, 3]));
     await writeFile(photoPath, new Uint8Array([1, 2]));
 
@@ -98,9 +98,9 @@ test("runToolsCommand deletes confirmed Telegram attachments", async () => {
   const lines: string[] = [];
 
   try {
-    const voicePath = resolve(paths.workspaceDir, "telegram/2026-07-11/1-2-voice-message.ogg");
-    const documentPath = resolve(paths.workspaceDir, "telegram/2026-07-11/1-3-document-note.txt");
-    await mkdir(resolve(paths.workspaceDir, "telegram/2026-07-11"), { recursive: true });
+    const voicePath = resolve(paths.workspaceDir, "media/inbound/telegram-1-2-voice-message.ogg");
+    const documentPath = resolve(paths.workspaceDir, "media/inbound/telegram-1-3-document-note.txt");
+    await mkdir(resolve(paths.workspaceDir, "media/inbound"), { recursive: true });
     await writeFile(voicePath, new Uint8Array([1, 2, 3]));
     await writeFile(documentPath, new Uint8Array([1, 2]));
 

@@ -1,10 +1,10 @@
 import { loadSystemPrompt } from "../character/prompt-loader.js";
-import { buildChatMessages } from "../chat/message-builder.js";
+import { buildChatMessages, MAX_RECENT_TURNS } from "../chat/message-builder.js";
 import { buildMcpToolSystemPrompt, completeWithAgentTools, runAgentToolRequest, type AgentToolActivity } from "../chat/mcp-tool-use.js";
 import { fallbackLogDetail, formatProviderFallbackDiagnostics, formatProviderFallbackHealth } from "../llm/fallbacks.js";
 import { ProviderAuthError, ProviderFallbackError, ProviderNetworkError, ProviderRateLimitError, ProviderResponseError, ProviderTimeoutError } from "../llm/errors.js";
 import { sendChatCompletionWithFallbacks } from "../llm/chat-completion.js";
-import type { ChatCompletionOptions, ChatMessage } from "../llm/types.js";
+import type { ChatCompletionOptions, ChatMessage, ChatMessageContent } from "../llm/types.js";
 import { isMemoryRetrievalPolicy, setMemoryRetrievalPolicy } from "../memory/governance.js";
 import { buildMemoryHygieneDoctorReport, formatMemoryHygieneDoctorReport } from "../memory/hygiene-doctor.js";
 import { calculateMemoryHygieneScore } from "../memory/hygiene-score.js";
@@ -12,6 +12,7 @@ import { formatMemoryHygieneStatus } from "../memory/hygiene-status.js";
 import { formatMemoryHygieneTrendReport, recordMemoryHygieneSnapshot } from "../memory/hygiene-trend.js";
 import { getMemoryMaintenanceReportStatus, installMemoryMaintenanceReport, removeMemoryMaintenanceReport, runMemoryMaintenanceDigest } from "../memory/maintenance.js";
 import { runKnowledgeReasoningPass, type KnowledgeReasoningResult } from "../memory/knowledge-reasoning.js";
+import { loadConversationSummaryContext, refreshConversationSummary } from "../memory/conversation-summary.js";
 import { runMemoryReasoningPass, type MemoryReasoningResult } from "../memory/reasoning.js";
 import { isMemoryScope, SqliteMemoryStore } from "../memory/sqlite-store.js";
 import { applyMemoryRebalancePlan, formatMemoryRebalanceApplyResult, formatMemoryRebalancePlan, planMemoryRebalance } from "../memory/rebalance.js";
@@ -27,16 +28,40 @@ import { analyzeMemoriesTool, planMemoryHygieneTool, readMemoryHygieneTrendTool 
 import type { PermissionApprover, PermissionPolicy } from "../safety/permission-policy.js";
 import type { ChannelIncomingMessage, ChannelOutboundAdapter, ChannelRuntimeAdapter } from "./adapter.js";
 import { createChannelActivityController } from "./activity.js";
+import { buildChannelAttachmentPreview, type AttachmentContentParser } from "./attachment-preview.js";
+import { buildChannelAttachmentPrompt } from "./attachment-prompt.js";
+import { resolveChannelVisionPolicy } from "./attachment-policy.js";
+import { processChannelAttachment } from "./attachment-pipeline.js";
+import { buildChannelVisionAttachment, type ChannelVisionAttachment } from "./attachment-vision.js";
+import { buildChannelProvidedAudioTranscriptResult, type ChannelAudioTranscriptResult } from "./audio-transcription.js";
+import {
+  ChannelAttachmentHandlingError,
+  applyChannelAttachmentRetention,
+  buildChannelAttachmentPath,
+  downloadChannelAttachmentBytes,
+  isAudioAttachmentKind,
+  persistChannelAttachmentFile,
+  type ChannelAttachmentKind,
+  type ChannelDownloadedAttachment,
+  type ChannelTranscript,
+} from "./attachments.js";
 import { applyMemoryHygienePlanForChannel, formatMemoryAnalysisReport, formatMemoryCleanupDryRunReport, formatMemoryGovernanceStatus, formatMemoryHygieneReport, formatMemoryInspect, formatMemoryMaintenanceInstalled, formatMemoryMaintenanceRemoved, formatMemoryMaintenanceStatus, formatMemoryRetrievalPolicyUpdated, formatPendingKnowledgeSanitizeResult } from "./memory-commands.js";
 import { ZALO_CHANNEL, formatChannelHelpCommands } from "./registry.js";
 import { createChannelResponseController } from "./response-controller.js";
 import { formatChannelToolProgress, shouldShowToolProgress } from "./tool-progress.js";
+import { createChannelVoiceTranscriber, type ChannelVoiceTranscriber } from "./voice.js";
+import { basename, extname } from "node:path";
 
 const ZALO_API_BASE_URL = "https://bot-api.zaloplatforms.com";
 const ZALO_MESSAGE_MAX_CHARS = 2_000;
 const ZALO_POLLING_TIMEOUT_SECONDS = 25;
 const ZALO_TOOL_PROGRESS_EVERY = 3;
 const ZALO_ACTION_APPROVAL_TTL_MS = 30 * 60 * 1000;
+const ZALO_ATTACHMENT_MAX_BYTES = 20 * 1024 * 1024;
+const ZALO_ATTACHMENT_PREVIEW_MAX_BYTES = 16 * 1024;
+const ZALO_ATTACHMENT_PARSE_MAX_BYTES = 5 * 1024 * 1024;
+const ZALO_ATTACHMENT_VISION_MAX_BYTES = 4 * 1024 * 1024;
+const ZALO_ATTACHMENT_TRANSCRIPTION_MAX_BYTES = 10 * 1024 * 1024;
 const ZALO_PERMISSION_POLICY: PermissionPolicy = {
   allowTrustedRead: true,
   allowLocalWrite: false,
@@ -77,6 +102,57 @@ export interface ZaloMessage {
   [key: string]: unknown;
 }
 
+export type ZaloAttachmentKind = ChannelAttachmentKind;
+
+export interface ZaloFileInfo {
+  fileId?: string;
+  filePath?: string;
+  fileSize?: number;
+}
+
+interface ZaloAttachmentSummary {
+  kind: ZaloAttachmentKind;
+  fileId: string;
+  filePath?: string;
+  fileName?: string;
+  mimeType?: string;
+  fileSize?: number;
+  width?: number;
+  height?: number;
+  duration?: number;
+  emoji?: string;
+  providedTranscript?: ChannelTranscript;
+}
+
+interface SavedZaloAttachment extends ZaloAttachmentSummary {
+  localPath: string;
+  localPathRetained: boolean;
+  bytes: number;
+  textPreview?: string;
+  textPreviewTruncated?: boolean;
+  contentParser?: AttachmentContentParser;
+  parseWarning?: string;
+  visionImage?: ChannelVisionAttachment;
+  audioTranscript?: string;
+  audioTranscriptTruncated?: boolean;
+  audioTranscriptSource?: ChannelTranscript["source"];
+  transcriptionWarning?: string;
+}
+
+type ZaloAttachmentPipelineInput = { localPath: string; bytes: Uint8Array };
+
+interface ZaloAttachmentPolicy {
+  downloadPolicy: "allow" | "deny";
+  maxBytes: number;
+  previewMaxBytes: number;
+  parseMaxBytes: number;
+  visionPolicy: "allow" | "deny";
+  visionMaxBytes: number;
+  transcriptionPolicy: "allow" | "deny";
+  transcriptionMaxBytes: number;
+  deleteAfterProcessingKinds: ZaloAttachmentKind[];
+}
+
 export interface ZaloUpdate {
   update_id: number;
   message?: ZaloMessage;
@@ -86,6 +162,8 @@ export interface ZaloUpdate {
 export interface ZaloClient {
   getMe?(): Promise<ZaloUser>;
   getUpdates(offset: number | undefined, timeoutSeconds: number): Promise<ZaloUpdate[]>;
+  getFile?(fileId: string): Promise<ZaloFileInfo>;
+  downloadFile?(filePath: string): Promise<Uint8Array>;
   sendMessage(chatId: string, text: string): Promise<ZaloSentMessage | void>;
   sendChatAction(chatId: string, action: "typing"): Promise<void>;
 }
@@ -124,6 +202,31 @@ export class ZaloHttpClient implements ZaloClient {
     const result = await this.call<unknown>("getUpdates", { ...(offset === undefined ? {} : { offset }), timeout: timeoutSeconds });
     await this.options.captureGetUpdatesShape?.(summarizeZaloPayloadShape(result));
     return normalizeZaloUpdatesResult(result);
+  }
+
+  async getFile(fileId: string): Promise<ZaloFileInfo> {
+    const file = await this.call<unknown>("getFile", { file_id: fileId });
+    return normalizeZaloFileInfo(file, fileId);
+  }
+
+  async downloadFile(filePath: string): Promise<Uint8Array> {
+    if (/^https?:\/\//i.test(filePath)) {
+      const response = await this.fetchImpl(filePath);
+      if (!response.ok) {
+        throw new Error(`Zalo file download failed: ${response.status} ${response.statusText}`);
+      }
+      return new Uint8Array(await response.arrayBuffer());
+    }
+
+    const response = await this.fetchImpl(`${ZALO_API_BASE_URL}/bot${this.botToken}/downloadFile`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ file_path: filePath }),
+    });
+    if (!response.ok) {
+      throw new Error(`Zalo file download failed: ${response.status} ${response.statusText}`);
+    }
+    return new Uint8Array(await response.arrayBuffer());
   }
 
   async sendMessage(chatId: string, text: string): Promise<ZaloSentMessage | void> {
@@ -229,7 +332,9 @@ export async function runZaloPollingLoop(options: ZaloPollingOptions): Promise<v
 export async function handleZaloUpdate(update: ZaloUpdate, options: ZaloUpdateHandlerOptions): Promise<ZaloUpdateResult> {
   const zaloConfig = options.config.channels?.zalo;
   const message = update.message;
+  const adapter = createZaloRuntimeAdapter(options.client, update, options);
   const incoming = message ? mapZaloIncomingMessage(message) : undefined;
+  const attachment = incoming ? adapter.attachments?.getAttachment(incoming) : undefined;
   const text = (incoming?.text ?? incoming?.caption ?? "").trim();
 
   if (!zaloConfig?.enabled || !incoming || !zaloConfig.ownerUserId || incoming.senderId !== zaloConfig.ownerUserId) {
@@ -238,38 +343,43 @@ export async function handleZaloUpdate(update: ZaloUpdate, options: ZaloUpdateHa
 
   await sendZaloChatActionBestEffort(options.client, incoming.chatId, "typing");
 
-  if (!text) {
-    await options.client.sendMessage(incoming.chatId, `${options.config.agent.name} received this Zalo message type, but this first version only supports text.`);
+  if (!text && !attachment) {
+    await options.client.sendMessage(incoming.chatId, `${options.config.agent.name} received this Zalo message type, but cannot save it yet. Please send a text description with it.`);
     return "replied";
   }
 
-  if (text === "/help") {
+  if (!attachment && text === "/help") {
     await options.client.sendMessage(incoming.chatId, formatChannelHelpCommands(ZALO_CHANNEL));
     return "replied";
   }
 
-  if (await handleZaloSlashCommand(text, incoming.chatId, options)) {
+  if (!attachment && await handleZaloSlashCommand(text, incoming.chatId, options)) {
     return "replied";
   }
 
-  if (text.startsWith("/")) {
+  if (!attachment && text.startsWith("/")) {
     await options.client.sendMessage(incoming.chatId, `Unknown command: ${text}. Try /help.`);
     return "replied";
   }
 
   const chatCompletion = options.chatCompletion ?? ((config, _apiKeyValue, requestOptions) => sendChatCompletionWithFallbacks(config, { ...requestOptions, stream: requestOptions.stream ?? true }, { paths: options.paths }));
   const apiKey = await loadLlmCandidateSecret(resolvePrimaryLlmCandidate(options.config), options.paths);
-  const adapter = createZaloRuntimeAdapter(options.client);
   const typing = createChannelActivityController(adapter.outbound.createActivityOptions(incoming.chatId, "typing"));
   typing.start();
 
   try {
+    const savedAttachment = attachment ? await adapter.attachments?.processAttachment(attachment, incoming) as SavedZaloAttachment | undefined : undefined;
+    const userInput = savedAttachment ? buildZaloAttachmentUserInput(text, savedAttachment) : text;
     const systemPrompt = await loadSystemPrompt(options.paths);
     const memories = await loadActiveMemories(options.paths);
     const recentTurns = await loadRecentZaloTurns(options.paths, zaloConfig.ownerUserId);
-    const knowledgeGraph = await loadRelevantKnowledgeGraph(options.paths, text);
+    const knowledgeGraph = await loadRelevantKnowledgeGraph(options.paths, userInput);
     const runtimeContext = buildZaloRuntimeToolContext(incoming, zaloConfig.ownerUserId);
-    const messages = buildChatMessages(buildMcpToolSystemPrompt(systemPrompt, options.config, runtimeContext), recentTurns, text, memories, { memoryRetrievalPolicy: options.config.memory?.retrievalPolicy ?? "full", knowledgeGraph });
+    const conversationSummary = await loadConversationSummaryContext(options.paths, "zalo", zaloConfig.ownerUserId);
+    const messages = buildChatMessages(buildMcpToolSystemPrompt(systemPrompt, options.config, runtimeContext), recentTurns, userInput, memories, { memoryRetrievalPolicy: options.config.memory?.retrievalPolicy ?? "full", knowledgeGraph, conversationSummary });
+    if (savedAttachment?.visionImage) {
+      attachZaloVisionImage(messages, userInput, savedAttachment.visionImage.dataUrl);
+    }
     const response = createChannelResponseController(adapter.outbound.createResponseAdapter(incoming.chatId));
     const assistantText = await completeWithAgentTools({
       config: options.config,
@@ -291,15 +401,22 @@ export async function handleZaloUpdate(update: ZaloUpdate, options: ZaloUpdateHa
     });
     typing.stop();
     await response.replyFinal(assistantText);
-    await persistZaloConversationTurn(options.paths, zaloConfig.ownerUserId, text, assistantText);
-    const memoryReasoning = await runZaloMemoryReasoningPass({ config: options.config, paths: options.paths, apiKey, turn: { channel: "zalo", userId: zaloConfig.ownerUserId, userInput: text, assistantText }, chatCompletion });
-    const knowledgeReasoning = await runZaloKnowledgeReasoningPass({ config: options.config, paths: options.paths, apiKey, turn: { channel: "zalo", userId: zaloConfig.ownerUserId, userInput: text, assistantText }, chatCompletion });
+    await persistZaloConversationTurn(options.paths, zaloConfig.ownerUserId, userInput, assistantText);
+    await runZaloConversationSummaryPass({ config: options.config, paths: options.paths, apiKey, channel: "zalo", userId: zaloConfig.ownerUserId, chatCompletion });
+    const memoryReasoning = await runZaloMemoryReasoningPass({ config: options.config, paths: options.paths, apiKey, turn: { channel: "zalo", userId: zaloConfig.ownerUserId, userInput, assistantText }, chatCompletion });
+    const knowledgeReasoning = await runZaloKnowledgeReasoningPass({ config: options.config, paths: options.paths, apiKey, turn: { channel: "zalo", userId: zaloConfig.ownerUserId, userInput, assistantText }, chatCompletion });
     await sendZaloMemoryReasoningApprovalsIfNeeded(options.client, incoming.chatId, options.paths, zaloConfig.ownerUserId, memoryReasoning);
     await sendZaloKnowledgeReasoningApprovalsIfNeeded(options.client, incoming.chatId, options.paths, zaloConfig.ownerUserId, knowledgeReasoning);
     await appendLog({ event: "zalo_chat_success", detail: { model: options.config.llm.primary } }, { paths: options.paths });
     return "replied";
   } catch (error) {
     typing.stop();
+    if (error instanceof ChannelAttachmentHandlingError) {
+      await appendLog({ event: "zalo_attachment_failure", detail: { reason: error.reason, kind: attachment?.kind } }, { paths: options.paths, knownSecrets: [apiKey] });
+      await options.client.sendMessage(incoming.chatId, error.userMessage);
+      return "replied";
+    }
+
     const errorMessage = error instanceof Error ? error.message : "Unknown Zalo chat error.";
     await appendLog({ event: "zalo_chat_failure", detail: { message: errorMessage, ...fallbackLogDetail(error) } }, { paths: options.paths, knownSecrets: [apiKey] });
     await options.client.sendMessage(incoming.chatId, zaloChatFailureMessage(options.config, error));
@@ -328,8 +445,17 @@ function extractZaloChatId(message: ZaloMessage): string | undefined {
   return chatId === undefined ? undefined : String(chatId);
 }
 
-export function createZaloRuntimeAdapter(client: ZaloClient): ChannelRuntimeAdapter<never, string, "typing"> {
-  return { descriptor: ZALO_CHANNEL, outbound: createZaloOutboundAdapter(client) };
+export function createZaloRuntimeAdapter(client: ZaloClient, update?: ZaloUpdate, options?: Pick<ZaloUpdateHandlerOptions, "config" | "paths" | "client">): ChannelRuntimeAdapter<ZaloAttachmentSummary, string, "typing"> {
+  return {
+    descriptor: ZALO_CHANNEL,
+    ...(update && options ? {
+      attachments: {
+        getAttachment: (message) => getZaloAttachment(message.raw as ZaloMessage),
+        processAttachment: (attachment) => saveZaloAttachment(attachment, update, options),
+      },
+    } : {}),
+    outbound: createZaloOutboundAdapter(client),
+  };
 }
 
 export function createZaloOutboundAdapter(client: ZaloClient): ChannelOutboundAdapter<string, "typing"> {
@@ -344,6 +470,313 @@ export function createZaloOutboundAdapter(client: ZaloClient): ChannelOutboundAd
     }),
     createActivityOptions: (chatId, action) => ({ client, chatId, action, refreshMs: 4_000 }),
   };
+}
+
+function getZaloAttachment(message: ZaloMessage): ZaloAttachmentSummary | undefined {
+  for (const kind of ["photo", "document", "voice", "audio", "video", "sticker"] as const) {
+    const raw = message[kind];
+    const attachment = normalizeZaloAttachment(kind, raw);
+    if (attachment) {
+      return attachment;
+    }
+  }
+
+  const attachments = message.attachments;
+  if (Array.isArray(attachments)) {
+    for (const raw of attachments) {
+      const kind = inferZaloAttachmentKind(asRecord(raw)) ?? "document";
+      const attachment = normalizeZaloAttachment(kind, raw);
+      if (attachment) {
+        return attachment;
+      }
+    }
+  }
+
+  return normalizeZaloAttachment(inferZaloAttachmentKind(message) ?? "document", message.attachment);
+}
+
+function normalizeZaloAttachment(kind: ZaloAttachmentKind, raw: unknown): ZaloAttachmentSummary | undefined {
+  const record = asRecord(raw);
+  if (!record) {
+    if (typeof raw === "string" && raw.trim()) {
+      return { kind, fileId: raw.trim(), filePath: raw.trim() };
+    }
+    return undefined;
+  }
+
+  const fileId = firstString(record, ["file_id", "fileId", "id", "attachment_id", "attachmentId", "media_id", "mediaId", "token"]);
+  const filePath = firstString(record, ["file_path", "filePath", "file_url", "fileUrl", "download_url", "downloadUrl", "url", "href", "path"]);
+  if (!fileId && !filePath) {
+    return undefined;
+  }
+
+  const transcriptText = firstString(record, ["transcript", "transcription", "speech_to_text", "speechToText"]);
+  return {
+    kind,
+    fileId: fileId ?? filePath!,
+    ...(filePath === undefined ? {} : { filePath }),
+    ...optionalStringProperty("fileName", firstString(record, ["file_name", "fileName", "name", "filename", "title"])),
+    ...optionalStringProperty("mimeType", firstString(record, ["mime_type", "mimeType", "content_type", "contentType", "type"])),
+    ...optionalNumberProperty("fileSize", firstNumber(record, ["file_size", "fileSize", "size", "bytes"])),
+    ...optionalNumberProperty("width", firstNumber(record, ["width"])),
+    ...optionalNumberProperty("height", firstNumber(record, ["height"])),
+    ...optionalNumberProperty("duration", firstNumber(record, ["duration"])),
+    ...optionalStringProperty("emoji", firstString(record, ["emoji"])),
+    ...(transcriptText ? { providedTranscript: { text: transcriptText, source: "platform" as const } } : {}),
+  };
+}
+
+async function saveZaloAttachment(attachment: ZaloAttachmentSummary, update: ZaloUpdate, options: Pick<ZaloUpdateHandlerOptions, "config" | "paths" | "client">): Promise<SavedZaloAttachment> {
+  const policy = getZaloAttachmentPolicy(options.config);
+  const transcriber = createChannelVoiceTranscriber({ config: options.config, paths: options.paths, transcriptionPolicy: policy.transcriptionPolicy });
+  const processed = await processChannelAttachment({
+    validate: () => validateZaloAttachmentPolicy(policy),
+    download: () => downloadChannelAttachmentBytes({
+      fileId: attachment.fileId,
+      reportedSize: attachment.fileSize,
+      maxBytes: policy.maxBytes,
+      getFile: (fileId) => getZaloFileInfo(options.client, attachment, fileId),
+      downloadFile: options.client.downloadFile ? (filePath) => options.client.downloadFile!(filePath) : undefined,
+      messages: zaloAttachmentDownloadMessages(policy),
+    }),
+    buildLocalPath: (downloaded: ChannelDownloadedAttachment) => buildZaloAttachmentPath(options.paths, update, attachment, downloaded.filePath),
+    persist: persistChannelAttachmentFile,
+    preview: (input: ZaloAttachmentPipelineInput) => buildChannelAttachmentPreview({
+      bytes: input.bytes,
+      localPath: input.localPath,
+      mimeType: attachment.mimeType,
+      previewMaxBytes: policy.previewMaxBytes,
+      parseMaxBytes: policy.parseMaxBytes,
+    }),
+    vision: (input: ZaloAttachmentPipelineInput) => buildChannelVisionAttachment({
+      kind: attachment.kind,
+      mimeType: attachment.mimeType,
+      localPath: input.localPath,
+      bytes: input.bytes,
+      visionPolicy: policy.visionPolicy,
+      visionMaxBytes: policy.visionMaxBytes,
+    }),
+    transcribe: (input: ZaloAttachmentPipelineInput) => transcribeZaloAudioAttachment(attachment, input.localPath, input.bytes, policy, transcriber),
+    retain: (input: Pick<ZaloAttachmentPipelineInput, "localPath">) => applyChannelAttachmentRetention({
+      localPath: input.localPath,
+      kind: attachment.kind,
+      deleteAfterProcessingKinds: policy.deleteAfterProcessingKinds,
+      onCleanupFailed: (detail) => appendLog({ event: "zalo_attachment_cleanup_failed", detail }),
+    }),
+  });
+
+  return { ...attachment, ...processed };
+}
+
+async function getZaloFileInfo(client: ZaloClient, attachment: ZaloAttachmentSummary, fileId: string): Promise<ZaloFileInfo> {
+  if (attachment.filePath) {
+    return { fileId, filePath: attachment.filePath, fileSize: attachment.fileSize };
+  }
+  if (!client.getFile) {
+    return {};
+  }
+  return client.getFile(fileId);
+}
+
+function validateZaloAttachmentPolicy(policy: ZaloAttachmentPolicy): void {
+  if (policy.downloadPolicy === "deny") {
+    throw new ChannelAttachmentHandlingError("download_disabled", "Attachment downloads are disabled by config.");
+  }
+}
+
+function zaloAttachmentDownloadMessages(policy: ZaloAttachmentPolicy): Parameters<typeof downloadChannelAttachmentBytes>[0]["messages"] {
+  return {
+    clientUnsupported: "This Zalo runtime cannot download attachments yet.",
+    metadataFailed: "Zalo could not provide file metadata for this attachment.",
+    missingFilePath: "Zalo could not provide a downloadable file for this attachment.",
+    downloadFailed: "Zalo could not download this attachment. Please try again with a smaller or different file.",
+    tooLarge: `This attachment is larger than the configured limit of ${policy.maxBytes} bytes.`,
+  };
+}
+
+function buildZaloAttachmentPath(paths: RuntimePaths, update: ZaloUpdate, attachment: ZaloAttachmentSummary, filePath: string): string {
+  const date = new Date().toISOString().slice(0, 10);
+  const messageId = update.message?.message_id ?? update.message?.messageId ?? update.update_id;
+  const sourceName = attachment.fileName ?? (basename(filePath) || `${attachment.kind}-${attachment.fileId}`);
+  const extension = extname(sourceName) || defaultZaloAttachmentExtension(attachment.kind, attachment.mimeType);
+  return buildChannelAttachmentPath({
+    workspaceDir: paths.workspaceDir,
+    channelName: "zalo",
+    date,
+    updateId: update.update_id,
+    messageId,
+    kind: attachment.kind,
+    sourceName,
+    extension,
+    fallbackName: `${attachment.kind}-${messageId}`,
+  });
+}
+
+function defaultZaloAttachmentExtension(kind: ZaloAttachmentKind, mimeType: string | undefined): string {
+  if (mimeType === "text/plain") return ".txt";
+  if (mimeType === "application/json") return ".json";
+  if (mimeType === "application/pdf") return ".pdf";
+  if (mimeType === "image/jpeg") return ".jpg";
+  if (mimeType === "image/png") return ".png";
+  if (mimeType === "audio/ogg") return ".ogg";
+  if (mimeType === "video/mp4") return ".mp4";
+  if (kind === "photo") return ".jpg";
+  if (kind === "sticker") return ".webp";
+  return ".bin";
+}
+
+function getZaloAttachmentPolicy(config: AppConfig): ZaloAttachmentPolicy {
+  const configured = config.channels?.zalo?.attachments;
+  return {
+    downloadPolicy: configured?.downloadPolicy ?? "allow",
+    maxBytes: configured?.maxBytes ?? ZALO_ATTACHMENT_MAX_BYTES,
+    previewMaxBytes: configured?.previewMaxBytes ?? ZALO_ATTACHMENT_PREVIEW_MAX_BYTES,
+    parseMaxBytes: configured?.parseMaxBytes ?? ZALO_ATTACHMENT_PARSE_MAX_BYTES,
+    visionPolicy: resolveChannelVisionPolicy(config, configured?.visionPolicy),
+    visionMaxBytes: configured?.visionMaxBytes ?? ZALO_ATTACHMENT_VISION_MAX_BYTES,
+    transcriptionPolicy: configured?.transcriptionPolicy ?? "deny",
+    transcriptionMaxBytes: configured?.transcriptionMaxBytes ?? ZALO_ATTACHMENT_TRANSCRIPTION_MAX_BYTES,
+    deleteAfterProcessingKinds: configured?.deleteAfterProcessingKinds ?? [],
+  };
+}
+
+function buildZaloAttachmentUserInput(caption: string, attachment: SavedZaloAttachment): string {
+  return buildChannelAttachmentPrompt({
+    channelDisplayName: "Zalo",
+    caption,
+    kind: attachment.kind,
+    fileName: attachment.fileName,
+    mimeType: attachment.mimeType,
+    reportedSize: attachment.fileSize,
+    savedBytes: attachment.bytes,
+    width: attachment.width,
+    height: attachment.height,
+    duration: attachment.duration,
+    emoji: attachment.emoji,
+    localPath: attachment.localPath,
+    localPathRetained: attachment.localPathRetained,
+    textPreview: attachment.textPreview,
+    textPreviewParser: attachment.contentParser,
+    textPreviewTruncated: attachment.textPreviewTruncated,
+    parseWarning: attachment.parseWarning,
+    visionAttached: Boolean(attachment.visionImage),
+    audioTranscript: attachment.audioTranscript,
+    audioTranscriptSource: attachment.audioTranscriptSource,
+    audioTranscriptTruncated: attachment.audioTranscriptTruncated,
+    transcriptionWarning: attachment.transcriptionWarning,
+  });
+}
+
+async function transcribeZaloAudioAttachment(attachment: ZaloAttachmentSummary, localPath: string, bytes: Uint8Array, policy: ZaloAttachmentPolicy, transcriber: ChannelVoiceTranscriber | undefined): Promise<ChannelAudioTranscriptResult> {
+  if (!isAudioAttachmentKind(attachment.kind)) {
+    return {};
+  }
+
+  const providedTranscript = buildChannelProvidedAudioTranscriptResult({ transcript: attachment.providedTranscript, maxBytes: policy.previewMaxBytes });
+  if (providedTranscript) {
+    return providedTranscript;
+  }
+
+  if (policy.transcriptionPolicy !== "allow") {
+    return {};
+  }
+
+  if (bytes.byteLength > policy.transcriptionMaxBytes) {
+    return { transcriptionWarning: `Skipped audio transcription because the file exceeds transcriptionMaxBytes (${policy.transcriptionMaxBytes} bytes).` };
+  }
+
+  if (!transcriber) {
+    return { transcriptionWarning: "Transcription is allowed by config, but no transcriber is configured in this runtime." };
+  }
+
+  try {
+    const result = await transcriber({ bytes, localPath, mimeType: attachment.mimeType, kind: attachment.kind, duration: attachment.duration });
+    return buildChannelProvidedAudioTranscriptResult({ transcript: { text: result.text, source: "provider" }, maxBytes: policy.previewMaxBytes }) ?? {};
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "unknown transcription error";
+    return { transcriptionWarning: `Could not transcribe audio attachment: ${message}` };
+  }
+}
+
+function attachZaloVisionImage(messages: ChatMessage[], userInput: string, dataUrl: string): void {
+  const currentUserMessage = messages.at(-1);
+  if (!currentUserMessage || currentUserMessage.role !== "user") {
+    return;
+  }
+
+  currentUserMessage.content = buildZaloVisionContent(userInput, dataUrl);
+}
+
+function buildZaloVisionContent(userInput: string, dataUrl: string): ChatMessageContent {
+  return [
+    { type: "text", text: userInput },
+    { type: "image_url", image_url: { url: dataUrl } },
+  ];
+}
+
+function inferZaloAttachmentKind(record: Record<string, unknown> | undefined): ZaloAttachmentKind | undefined {
+  const kind = record ? firstString(record, ["kind", "type", "media_type", "mediaType", "attachment_type", "attachmentType"])?.toLowerCase() : undefined;
+  if (kind?.includes("photo") || kind?.includes("image")) return "photo";
+  if (kind?.includes("voice")) return "voice";
+  if (kind?.includes("audio")) return "audio";
+  if (kind?.includes("video")) return "video";
+  if (kind?.includes("sticker")) return "sticker";
+  if (kind?.includes("file") || kind?.includes("document")) return "document";
+  return undefined;
+}
+
+function normalizeZaloFileInfo(value: unknown, fallbackFileId: string): ZaloFileInfo {
+  const record = asRecord(value);
+  if (!record) {
+    return { fileId: fallbackFileId };
+  }
+
+  return {
+    fileId: firstString(record, ["file_id", "fileId", "id"]) ?? fallbackFileId,
+    ...optionalStringProperty("filePath", firstString(record, ["file_path", "filePath", "file_url", "fileUrl", "download_url", "downloadUrl", "url", "href", "path"])),
+    ...optionalNumberProperty("fileSize", firstNumber(record, ["file_size", "fileSize", "size", "bytes"])),
+  };
+}
+
+function asRecord(value: unknown): Record<string, unknown> | undefined {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : undefined;
+}
+
+function firstString(record: Record<string, unknown>, keys: string[]): string | undefined {
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === "string" && value.trim()) {
+      return value.trim();
+    }
+    if (typeof value === "number" && Number.isFinite(value)) {
+      return String(value);
+    }
+  }
+  return undefined;
+}
+
+function firstNumber(record: Record<string, unknown>, keys: string[]): number | undefined {
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === "number" && Number.isFinite(value)) {
+      return value;
+    }
+    if (typeof value === "string" && value.trim()) {
+      const parsed = Number(value);
+      if (Number.isFinite(parsed)) {
+        return parsed;
+      }
+    }
+  }
+  return undefined;
+}
+
+function optionalStringProperty<TKey extends string>(key: TKey, value: string | undefined): { [K in TKey]: string } | Record<string, never> {
+  return value === undefined ? {} : { [key]: value } as { [K in TKey]: string };
+}
+
+function optionalNumberProperty<TKey extends string>(key: TKey, value: number | undefined): { [K in TKey]: number } | Record<string, never> {
+  return value === undefined ? {} : { [key]: value } as { [K in TKey]: number };
 }
 
 async function handleZaloSlashCommand(text: string, chatId: string, options: ZaloUpdateHandlerOptions): Promise<boolean> {
@@ -733,6 +1166,15 @@ async function runZaloKnowledgeReasoningPass(options: Parameters<typeof runKnowl
   }
 }
 
+async function runZaloConversationSummaryPass(options: Parameters<typeof refreshConversationSummary>[0]): Promise<void> {
+  try {
+    await refreshConversationSummary(options);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown conversation summary error.";
+    await appendLog({ event: "conversation_summary_failure", detail: { channel: options.channel, message } }, { paths: options.paths, knownSecrets: [options.apiKey] });
+  }
+}
+
 async function sendZaloMemoryReasoningApprovalsIfNeeded(
   client: ZaloClient,
   chatId: string,
@@ -926,7 +1368,7 @@ async function loadRecentZaloTurns(paths: RuntimePaths, userId: string): Promise
     if (store.getMemoryState().paused) {
       return [];
     }
-    return store.listRecentMessagesForChannel("zalo", userId, 12).map((message) => ({ role: message.role, content: message.content }));
+    return store.listRecentMessagesForChannel("zalo", userId, MAX_RECENT_TURNS).map((message) => ({ role: message.role, content: message.content }));
   } finally {
     store.close();
   }

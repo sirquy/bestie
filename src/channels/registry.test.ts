@@ -30,11 +30,12 @@ test("formatChannelHelpCommands includes aliases without registering them native
   );
 });
 
-test("Zalo channel descriptor starts as text polling only", () => {
+test("Zalo channel descriptor exposes polling attachments and tool activity", () => {
   assert.deepEqual(CHANNELS.map((channel) => channel.id), ["telegram", "zalo"]);
   assert.equal(ZALO_CHANNEL.id, "zalo");
   assert.equal(ZALO_CHANNEL.capabilities.polling, true);
-  assert.equal(ZALO_CHANNEL.capabilities.attachments, false);
+  assert.equal(ZALO_CHANNEL.capabilities.attachments, true);
+  assert.equal(ZALO_CHANNEL.capabilities.voiceInput, true);
   assert.equal(ZALO_CHANNEL.capabilities.voiceReply, false);
   assert.equal(ZALO_CHANNEL.capabilities.toolActivity, true);
   assert.deepEqual(

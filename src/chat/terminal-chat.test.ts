@@ -167,6 +167,50 @@ test("runTerminalChat uses injected chat client and persists successful turns", 
   }
 });
 
+test("runTerminalChat includes persisted terminal turns from earlier sessions", async () => {
+  const paths = await createTempPaths();
+  await mkdir(paths.appDir, { recursive: true });
+  await writeFile(paths.envPath, "OPENAI_API_KEY=test-key\n", { mode: 0o600 });
+  const store = await SqliteMemoryStore.open(paths);
+  try {
+    store.addMessage({ channel: "terminal", role: "user", content: "old terminal detail" });
+    store.addMessage({ channel: "terminal", role: "assistant", content: "old terminal reply" });
+    store.addMessage({ channel: "telegram", userId: "12345", role: "user", content: "telegram detail" });
+  } finally {
+    store.close();
+  }
+
+  const prompts: string[] = [];
+  let requestMessages: unknown;
+
+  try {
+    await runTerminalChat({
+      config: createConfig(),
+      systemPrompt: "system prompt",
+      paths,
+      questioner: {
+        ask: async () => {
+          prompts.push("asked");
+          return prompts.length === 1 ? "continue" : "/exit";
+        },
+        close: () => undefined,
+      },
+      chatCompletion: async (_config, _apiKey, options) => {
+        requestMessages = options.messages;
+        return '{"answer":"Continuing."}';
+      },
+      writeLine: () => undefined,
+    });
+
+    const serializedMessages = JSON.stringify(requestMessages);
+    assert.match(serializedMessages, /old terminal detail/);
+    assert.match(serializedMessages, /old terminal reply/);
+    assert.doesNotMatch(serializedMessages, /telegram detail/);
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
 test("runTerminalChat status includes recent provider fallback health", async () => {
   const paths = await createTempPaths();
   await mkdir(paths.appDir, { recursive: true });

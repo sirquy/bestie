@@ -622,8 +622,8 @@ test("runDoctor warns when retained Telegram attachments exceed the storage thre
 
   try {
     await writeTelegramConfiguredFiles(paths, { OPENAI_API_KEY: "sk-test", BESTIE_TELEGRAM_BOT_TOKEN: "telegram-secret-token" });
-    await mkdir(resolve(paths.workspaceDir, "telegram/2026-07-11"), { recursive: true });
-    await writeFile(resolve(paths.workspaceDir, "telegram/2026-07-11/1-2-voice-message.ogg"), new Uint8Array(2048));
+    await mkdir(resolve(paths.workspaceDir, "media/inbound"), { recursive: true });
+    await writeFile(resolve(paths.workspaceDir, "media/inbound/telegram-1-2-voice-message.ogg"), new Uint8Array(2048));
 
     const report = await runDoctor(paths, { telegramWorkspaceWarnBytes: 1024 });
     const storageCheck = report.checks.find((check) => check.name === "Telegram attachment storage");

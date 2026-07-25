@@ -551,8 +551,30 @@ test("SqliteMemoryStore lists recent messages for one channel user", async () =>
     store.addMessage({ channel: "telegram", userId: "12345", role: "assistant", content: "Telegram assistant" });
     store.addMessage({ channel: "telegram", userId: "99999", role: "user", content: "Other Telegram user" });
 
+    assert.deepEqual(store.listRecentMessagesForChannel("terminal").map((message) => message.content), ["Terminal user"]);
     assert.deepEqual(store.listRecentMessagesForChannel("telegram", "12345").map((message) => message.content), ["Telegram user", "Telegram assistant"]);
     assert.deepEqual(store.listRecentMessagesForChannel("telegram", "12345", 1).map((message) => message.content), ["Telegram assistant"]);
+  } finally {
+    store.close();
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("SqliteMemoryStore upserts conversation summaries by channel and user", async () => {
+  const paths = await createTempPaths();
+  const store = await SqliteMemoryStore.open(paths);
+
+  try {
+    const terminal = store.upsertConversationSummary({ channel: "terminal", content: "Old terminal context", summarizedMessageId: 10 });
+    const telegram = store.upsertConversationSummary({ channel: "telegram", userId: "12345", content: "Old Telegram context", summarizedMessageId: 20 });
+    const updated = store.upsertConversationSummary({ channel: "telegram", userId: "12345", content: "Updated Telegram context", summarizedMessageId: 24 });
+
+    assert.equal(terminal.userId, undefined);
+    assert.equal(terminal.content, "Old terminal context");
+    assert.equal(telegram.id, updated.id);
+    assert.equal(store.getConversationSummary("telegram", "12345")?.content, "Updated Telegram context");
+    assert.equal(store.getConversationSummary("telegram", "12345")?.summarizedMessageId, 24);
+    assert.equal(store.getConversationSummary("telegram", "99999"), undefined);
   } finally {
     store.close();
     await rm(paths.rootDir, { recursive: true, force: true });

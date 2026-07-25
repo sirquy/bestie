@@ -128,6 +128,14 @@ test("ZaloHttpClient rejects unexpected getUpdates result shape", async () => {
   await assert.rejects(() => client.getUpdates(undefined, 20), /result keys: status/);
 });
 
+test("ZaloHttpClient maps getFile metadata", async () => {
+  const client = new ZaloHttpClient("test-token", async () => jsonResponse({ ok: true, result: { file_id: "file-1", file_url: "https://example.com/file.txt", file_size: 10 } }));
+
+  const file = await client.getFile("file-1");
+
+  assert.deepEqual(file, { fileId: "file-1", filePath: "https://example.com/file.txt", fileSize: 10 });
+});
+
 test("handleZaloUpdate ignores non-owner messages", async () => {
   const sent: Array<{ chatId: string; text: string }> = [];
   const result = await handleZaloUpdate(
@@ -148,6 +156,84 @@ test("handleZaloUpdate replies to owner help command", async () => {
 
   assert.equal(result, "replied");
   assert.match(sent[0]?.text ?? "", /\/memory pending/);
+});
+
+test("handleZaloUpdate saves document attachments and sends metadata to LLM", async () => {
+  const paths = await createTempPaths();
+  const sent: Array<{ chatId: string; text: string }> = [];
+  let requestMessages: unknown;
+
+  try {
+    await writeRuntimeFiles(paths);
+    const client: ZaloClient = {
+      ...createRecordingClient(sent),
+      getFile: async (fileId) => ({ fileId, filePath: "documents/note.txt", fileSize: 11 }),
+      downloadFile: async () => new TextEncoder().encode("hello zalo"),
+    };
+
+    const result = await handleZaloUpdate(
+      { update_id: 1, message: { from: { id: "owner-1" }, chat: { id: "chat-1" }, caption: "please read this", document: { file_id: "file-1", file_name: "note.txt", mime_type: "text/plain", file_size: 11 } } },
+      {
+        config,
+        paths,
+        client,
+        chatCompletion: async (_config, _apiKey, options) => {
+          requestMessages = options.messages;
+          const systemText = String(options.messages[0]?.content ?? "");
+          return systemText.includes("memory reasoning pass") ? '{"candidates":[]}' : '{"answer":"Đã đọc file Zalo."}';
+        },
+      },
+    );
+
+    assert.equal(result, "replied");
+    assert.equal(sent.at(-1)?.text, "Đã đọc file Zalo.");
+    assert.match(JSON.stringify(requestMessages), /User caption: please read this/);
+    assert.match(JSON.stringify(requestMessages), /Kind: document/);
+    assert.match(JSON.stringify(requestMessages), /Text preview \(text\):/);
+    assert.match(JSON.stringify(requestMessages), /hello zalo/);
+    const savedPathMatch = JSON.stringify(requestMessages).match(/Local path: ([^\\"]+)/);
+    assert.ok(savedPathMatch?.[1]);
+    assert.match(savedPathMatch[1], /\/media\/inbound\/zalo-/);
+    assert.equal(await readFile(savedPathMatch[1], "utf8"), "hello zalo");
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("handleZaloUpdate attaches photo bytes to LLM when primary provider supports vision", async () => {
+  const paths = await createTempPaths();
+  const sent: Array<{ chatId: string; text: string }> = [];
+  let requestMessages: unknown;
+  const imageBytes = new Uint8Array([1, 2, 3, 4]);
+
+  try {
+    await writeRuntimeFiles(paths);
+    const client: ZaloClient = {
+      ...createRecordingClient(sent),
+      downloadFile: async () => imageBytes,
+    };
+
+    const result = await handleZaloUpdate(
+      { update_id: 1, message: { from: { id: "owner-1" }, chat: { id: "chat-1" }, caption: "what is this?", photo: { file_url: "https://example.com/photo.jpg", file_name: "photo.jpg", mime_type: "image/jpeg", file_size: imageBytes.byteLength } } },
+      {
+        config,
+        paths,
+        client,
+        chatCompletion: async (_config, _apiKey, options) => {
+          requestMessages = options.messages;
+          const systemText = String(options.messages[0]?.content ?? "");
+          return systemText.includes("memory reasoning pass") ? '{"candidates":[]}' : '{"answer":"Đã xem ảnh Zalo."}';
+        },
+      },
+    );
+
+    assert.equal(result, "replied");
+    assert.equal(sent.at(-1)?.text, "Đã xem ảnh Zalo.");
+    assert.match(JSON.stringify(requestMessages), /image_url/);
+    assert.match(JSON.stringify(requestMessages), /data:image\/jpeg;base64/);
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
 });
 
 test("handleZaloUpdate sanitizes pending knowledge graph items from Zalo", async () => {

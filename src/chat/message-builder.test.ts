@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { appendConversationTurn, buildChatMessages } from "./message-builder.js";
+import { appendConversationTurn, buildChatMessages, MAX_RECENT_TURNS } from "./message-builder.js";
 import type { ChatMessage } from "../llm/types.js";
 import type { KnowledgeGraphSearchResult, StoredMemory } from "../memory/sqlite-store.js";
 
@@ -59,6 +59,19 @@ test("buildChatMessages includes approved active memory context", () => {
   assert.match(String(messages[1]?.content ?? ""), /#1 \[communication_preference\] User prefers concise replies/);
   assert.doesNotMatch(String(messages[1]?.content ?? ""), /Deleted memory/);
   assert.equal(messages.at(-1)?.content, "remember?");
+});
+
+test("buildChatMessages includes rolling conversation summary before recent turns", () => {
+  const messages = buildChatMessages("system prompt", [{ role: "assistant", content: "recent reply" }], "hello", [], {
+    conversationSummary: [{ role: "system", content: "Earlier summary" }],
+  });
+
+  assert.deepEqual(messages, [
+    { role: "system", content: "system prompt" },
+    { role: "system", content: "Earlier summary" },
+    { role: "assistant", content: "recent reply" },
+    { role: "user", content: "hello" },
+  ]);
 });
 
 test("buildChatMessages includes compact knowledge graph context", () => {
@@ -232,14 +245,14 @@ test("buildChatMessages does not truncate long active memory context", () => {
 });
 
 test("appendConversationTurn keeps only recent terminal turns", () => {
-  const turns: ChatMessage[] = Array.from({ length: 12 }, (_, index) => ({
+  const turns: ChatMessage[] = Array.from({ length: MAX_RECENT_TURNS }, (_, index) => ({
     role: index % 2 === 0 ? "user" : "assistant",
     content: `turn-${index}`,
   }));
 
   const nextTurns = appendConversationTurn(turns, "new user", "new assistant");
 
-  assert.equal(nextTurns.length, 12);
+  assert.equal(nextTurns.length, MAX_RECENT_TURNS);
   assert.equal(nextTurns[0]?.content, "turn-2");
   assert.equal(nextTurns.at(-1)?.content, "new assistant");
 });

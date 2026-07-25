@@ -52,12 +52,14 @@ Zalo Bot Platform constraints are now grounded from `https://bot.zapps.me/docs`:
 - `sendChatAction` supports typing activity and can back shared progress indicators.
 - `sendVoice` requires a public `.aac` URL and only supports 1-1 chats, so voice reply is out of the initial text polling slice.
 
-Initial Zalo support is intentionally text-only local polling:
+Zalo support is local polling with text, tool activity, owner approvals, and basic attachment handling:
 
-- descriptor capability: polling and tool activity enabled; attachments, voice input, and voice reply disabled
+- descriptor capability: polling, attachments, voice input, and tool activity enabled; voice reply disabled
 - config key: `channels.zalo` with `enabled`, `botTokenEnv`, `ownerUserId`, and optional `pollingTimeoutSeconds`
 - CLI setup: `bestie channels zalo setup` writes `BESTIE_ZALO_BOT_TOKEN` and owner allowlist config
 - CLI polling: `bestie channels zalo --once` runs one local polling pass
+- attachments reuse the shared channel pipeline for download, local persistence, text/PDF/DOCX preview, opt-in vision input, platform transcript labels, retention, and prompt formatting
+- inbound attachments are stored together under `.bestie/workspace/media/inbound/...` for every channel that implements the shared attachment pipeline; filenames include the channel prefix to avoid collisions
 
 ## WhatsApp Notes
 
@@ -77,7 +79,6 @@ If a platform provides ASR text with an audio message, store it as a platform tr
 ## Out Of Scope For The Initial Zalo Step
 
 - no Zalo webhook server or hosted callback setup
-- no Zalo attachment download/pipeline support
 - no Zalo voice reply upload/public URL support
 - no installer changes
 - no WhatsApp transport

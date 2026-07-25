@@ -115,6 +115,18 @@ export interface AppConfig {
       botTokenEnv: string;
       ownerUserId: string;
       pollingTimeoutSeconds?: number;
+      attachments?: {
+        downloadPolicy?: "allow" | "deny";
+        maxBytes?: number;
+        previewMaxBytes?: number;
+        parseMaxBytes?: number;
+        visionPolicy?: "allow" | "deny";
+        visionMaxBytes?: number;
+        transcriptionPolicy?: "allow" | "deny";
+        transcriptionMaxBytes?: number;
+        deleteAfterProcessingKinds?: Array<"photo" | "document" | "voice" | "audio" | "video" | "sticker">;
+        allowedMimeTypes?: string[];
+      };
     };
   };
   memory?: {
@@ -725,6 +737,7 @@ function optionalZaloChannel(value: unknown): NonNullable<NonNullable<AppConfig[
     botTokenEnv: requireString(zalo.botTokenEnv, "channels.zalo.botTokenEnv"),
     ownerUserId: requireOptionalString(zalo.ownerUserId, "channels.zalo.ownerUserId"),
     ...(zalo.pollingTimeoutSeconds === undefined ? {} : { pollingTimeoutSeconds: optionalPositiveInteger(zalo.pollingTimeoutSeconds, "channels.zalo.pollingTimeoutSeconds") }),
+    ...(zalo.attachments === undefined ? {} : { attachments: optionalChannelAttachments(zalo.attachments, "channels.zalo.attachments") }),
   };
 }
 
@@ -752,37 +765,37 @@ function optionalTelegramChannel(value: unknown): NonNullable<NonNullable<AppCon
     ...(voiceReplyPolicy === undefined ? {} : { voiceReplyPolicy }),
     ...(telegram.voiceReplyMaxChars === undefined ? {} : { voiceReplyMaxChars: optionalPositiveInteger(telegram.voiceReplyMaxChars, "channels.telegram.voiceReplyMaxChars") }),
     ...(telegram.voiceReplyCooldownMs === undefined ? {} : { voiceReplyCooldownMs: optionalNonNegativeInteger(telegram.voiceReplyCooldownMs, "channels.telegram.voiceReplyCooldownMs") }),
-    ...(telegram.attachments === undefined ? {} : { attachments: optionalTelegramAttachments(telegram.attachments) }),
+    ...(telegram.attachments === undefined ? {} : { attachments: optionalChannelAttachments(telegram.attachments, "channels.telegram.attachments") }),
   };
 }
 
-function optionalTelegramAttachments(value: unknown): NonNullable<NonNullable<NonNullable<AppConfig["channels"]>["telegram"]>["attachments"]> {
-  const attachments = requireRecord(value, "channels.telegram.attachments");
+function optionalChannelAttachments(value: unknown, fieldName: string): NonNullable<NonNullable<NonNullable<AppConfig["channels"]>["telegram"]>["attachments"]> {
+  const attachments = requireRecord(value, fieldName);
   const downloadPolicy = attachments.downloadPolicy;
-  const maxBytes = optionalPositiveInteger(attachments.maxBytes, "channels.telegram.attachments.maxBytes");
-  const previewMaxBytes = optionalPositiveInteger(attachments.previewMaxBytes, "channels.telegram.attachments.previewMaxBytes");
-  const parseMaxBytes = optionalPositiveInteger(attachments.parseMaxBytes, "channels.telegram.attachments.parseMaxBytes");
+  const maxBytes = optionalPositiveInteger(attachments.maxBytes, `${fieldName}.maxBytes`);
+  const previewMaxBytes = optionalPositiveInteger(attachments.previewMaxBytes, `${fieldName}.previewMaxBytes`);
+  const parseMaxBytes = optionalPositiveInteger(attachments.parseMaxBytes, `${fieldName}.parseMaxBytes`);
   const visionPolicy = attachments.visionPolicy;
-  const visionMaxBytes = optionalPositiveInteger(attachments.visionMaxBytes, "channels.telegram.attachments.visionMaxBytes");
+  const visionMaxBytes = optionalPositiveInteger(attachments.visionMaxBytes, `${fieldName}.visionMaxBytes`);
   const transcriptionPolicy = attachments.transcriptionPolicy;
-  const transcriptionMaxBytes = optionalPositiveInteger(attachments.transcriptionMaxBytes, "channels.telegram.attachments.transcriptionMaxBytes");
-  const deleteAfterProcessingKinds = optionalTelegramAttachmentKinds(attachments.deleteAfterProcessingKinds, "channels.telegram.attachments.deleteAfterProcessingKinds");
+  const transcriptionMaxBytes = optionalPositiveInteger(attachments.transcriptionMaxBytes, `${fieldName}.transcriptionMaxBytes`);
+  const deleteAfterProcessingKinds = optionalChannelAttachmentKinds(attachments.deleteAfterProcessingKinds, `${fieldName}.deleteAfterProcessingKinds`);
   const allowedMimeTypes = attachments.allowedMimeTypes;
 
   if (downloadPolicy !== undefined && downloadPolicy !== "allow" && downloadPolicy !== "deny") {
-    throw new InvalidConfigError("channels.telegram.attachments.downloadPolicy must be allow or deny.");
+    throw new InvalidConfigError(`${fieldName}.downloadPolicy must be allow or deny.`);
   }
 
   if (visionPolicy !== undefined && visionPolicy !== "allow" && visionPolicy !== "deny") {
-    throw new InvalidConfigError("channels.telegram.attachments.visionPolicy must be allow or deny.");
+    throw new InvalidConfigError(`${fieldName}.visionPolicy must be allow or deny.`);
   }
 
   if (transcriptionPolicy !== undefined && transcriptionPolicy !== "allow" && transcriptionPolicy !== "deny") {
-    throw new InvalidConfigError("channels.telegram.attachments.transcriptionPolicy must be allow or deny.");
+    throw new InvalidConfigError(`${fieldName}.transcriptionPolicy must be allow or deny.`);
   }
 
   if (allowedMimeTypes !== undefined && (!Array.isArray(allowedMimeTypes) || allowedMimeTypes.some((mimeType) => typeof mimeType !== "string" || mimeType.trim().length === 0))) {
-    throw new InvalidConfigError("channels.telegram.attachments.allowedMimeTypes must be an array of non-empty strings.");
+    throw new InvalidConfigError(`${fieldName}.allowedMimeTypes must be an array of non-empty strings.`);
   }
 
   return {
@@ -799,7 +812,7 @@ function optionalTelegramAttachments(value: unknown): NonNullable<NonNullable<No
   };
 }
 
-function optionalTelegramAttachmentKinds(value: unknown, fieldName: string): Array<"photo" | "document" | "voice" | "audio" | "video" | "sticker"> | undefined {
+function optionalChannelAttachmentKinds(value: unknown, fieldName: string): Array<"photo" | "document" | "voice" | "audio" | "video" | "sticker"> | undefined {
   if (value === undefined) {
     return undefined;
   }

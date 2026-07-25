@@ -76,6 +76,15 @@ export interface StoredMessage {
   createdAt: string;
 }
 
+export interface ConversationSummary {
+  id: number;
+  channel: string;
+  userId?: string;
+  content: string;
+  summarizedMessageId: number;
+  updatedAt: string;
+}
+
 export interface MemoryState {
   paused: boolean;
 }
@@ -447,12 +456,43 @@ export class SqliteMemoryStore {
     return rows.reverse().map(mapMessageRow);
   }
 
-  listRecentMessagesForChannel(channel: string, userId: string, limit = 20): StoredMessage[] {
-    const rows = this.db
-      .prepare("SELECT * FROM messages WHERE channel = ? AND user_id = ? ORDER BY id DESC LIMIT ?")
-      .all(channel, userId, limit) as MessageRow[];
+  listRecentMessagesForChannel(channel: string, userId?: string, limit = 20): StoredMessage[] {
+    const rows = userId === undefined
+      ? this.db.prepare("SELECT * FROM messages WHERE channel = ? AND user_id IS NULL ORDER BY id DESC LIMIT ?").all(channel, limit) as MessageRow[]
+      : this.db.prepare("SELECT * FROM messages WHERE channel = ? AND user_id = ? ORDER BY id DESC LIMIT ?").all(channel, userId, limit) as MessageRow[];
 
     return rows.reverse().map(mapMessageRow);
+  }
+
+  listMessagesForChannel(channel: string, userId?: string): StoredMessage[] {
+    const rows = userId === undefined
+      ? this.db.prepare("SELECT * FROM messages WHERE channel = ? AND user_id IS NULL ORDER BY id ASC").all(channel) as MessageRow[]
+      : this.db.prepare("SELECT * FROM messages WHERE channel = ? AND user_id = ? ORDER BY id ASC").all(channel, userId) as MessageRow[];
+
+    return rows.map(mapMessageRow);
+  }
+
+  getConversationSummary(channel: string, userId?: string): ConversationSummary | undefined {
+    const row = this.db
+      .prepare("SELECT * FROM conversation_summaries WHERE channel = ? AND user_id = ?")
+      .get(channel, conversationSummaryUserId(userId)) as ConversationSummaryRow | undefined;
+
+    return row ? mapConversationSummaryRow(row) : undefined;
+  }
+
+  upsertConversationSummary(summary: { channel: string; userId?: string; content: string; summarizedMessageId: number }): ConversationSummary {
+    this.db
+      .prepare(`
+        INSERT INTO conversation_summaries (channel, user_id, content, summarized_message_id, updated_at)
+        VALUES (@channel, @userId, @content, @summarizedMessageId, CURRENT_TIMESTAMP)
+        ON CONFLICT(channel, user_id) DO UPDATE SET
+          content = excluded.content,
+          summarized_message_id = excluded.summarized_message_id,
+          updated_at = CURRENT_TIMESTAMP
+      `)
+      .run({ channel: summary.channel, userId: conversationSummaryUserId(summary.userId), content: summary.content, summarizedMessageId: summary.summarizedMessageId });
+
+    return this.getConversationSummary(summary.channel, summary.userId)!;
   }
 
   searchMessages(query: string, limit = 20, role?: StoredMessageRole): StoredMessage[] {
@@ -1784,6 +1824,15 @@ interface MessageRow {
   created_at: string;
 }
 
+interface ConversationSummaryRow {
+  id: number;
+  channel: string;
+  user_id: string;
+  content: string;
+  summarized_message_id: number;
+  updated_at: string;
+}
+
 interface UiChatSessionRow {
   id: number;
   title: string;
@@ -2234,6 +2283,21 @@ function mapMessageRow(row: MessageRow): StoredMessage {
   };
 }
 
+function mapConversationSummaryRow(row: ConversationSummaryRow): ConversationSummary {
+  return {
+    id: row.id,
+    channel: row.channel,
+    userId: row.user_id || undefined,
+    content: row.content,
+    summarizedMessageId: row.summarized_message_id,
+    updatedAt: row.updated_at,
+  };
+}
+
+function conversationSummaryUserId(userId: string | undefined): string {
+  return userId ?? "";
+}
+
 function mapUiChatSessionRow(row: UiChatSessionRow): UiChatSession {
   return {
     id: row.id,
@@ -2538,6 +2602,17 @@ function applyMemoryMigrations(db: Database.Database): void {
   addColumnIfMissing(db, "pending_memories", "source", "TEXT DEFAULT 'manual'");
   addColumnIfMissing(db, "pending_memories", "explicit_consent", "INTEGER DEFAULT 0");
   addColumnIfMissing(db, "pending_action_approvals", "payload_json", "TEXT");
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS conversation_summaries (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      channel TEXT NOT NULL,
+      user_id TEXT NOT NULL DEFAULT '',
+      content TEXT NOT NULL,
+      summarized_message_id INTEGER DEFAULT 0,
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(channel, user_id)
+    )
+  `);
   db.exec(`
     CREATE TABLE IF NOT EXISTS memory_links (
       id INTEGER PRIMARY KEY AUTOINCREMENT,

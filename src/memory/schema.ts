@@ -101,6 +101,16 @@ CREATE TABLE IF NOT EXISTS messages (
   created_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS conversation_summaries (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  channel TEXT NOT NULL,
+  user_id TEXT NOT NULL DEFAULT '',
+  content TEXT NOT NULL,
+  summarized_message_id INTEGER DEFAULT 0,
+  updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(channel, user_id)
+);
+
 CREATE TABLE IF NOT EXISTS ui_chat_sessions (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   title TEXT NOT NULL,

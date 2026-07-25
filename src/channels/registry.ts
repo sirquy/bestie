@@ -51,8 +51,8 @@ export const ZALO_CHANNEL: ChannelDescriptor = {
   configKey: "zalo",
   capabilities: {
     polling: true,
-    attachments: false,
-    voiceInput: false,
+    attachments: true,
+    voiceInput: true,
     voiceReply: false,
     toolActivity: true,
     approvals: true,

@@ -3,7 +3,7 @@ import type { ChatMessage } from "../llm/types.js";
 import type { MemoryRetrievalPolicy } from "../runtime/config.js";
 import { compareKnowledgeTrustPriority, formatKnowledgeTrustFlags } from "../memory/knowledge-trust.js";
 
-const MAX_RECENT_TURNS = 12;
+export const MAX_RECENT_TURNS = 40;
 export const MEMORY_CONTEXT_CHAR_LIMIT = 12_000;
 const MEMORY_CONTEXT_PREFIX = "Approved local memories for this user. Use them when relevant; do not claim perfect memory.";
 const GOVERNED_MEMORY_CONTEXT_PREFIX = "Approved local memories for this user, organized by memory governance. Use current high-confidence memories first; treat flagged stale, superseded, or conflicting memories cautiously. Do not claim perfect memory.";
@@ -12,6 +12,7 @@ const KNOWLEDGE_CONTEXT_PREFIX = "Relevant approved local knowledge graph facts,
 export interface BuildChatMessagesOptions {
   memoryRetrievalPolicy?: MemoryRetrievalPolicy;
   knowledgeGraph?: KnowledgeGraphSearchResult;
+  conversationSummary?: ChatMessage[];
 }
 
 export function buildChatMessages(systemPrompt: string, recentTurns: ChatMessage[], userInput: string, memories: StoredMemory[] = [], options: BuildChatMessagesOptions = {}): ChatMessage[] {
@@ -19,6 +20,7 @@ export function buildChatMessages(systemPrompt: string, recentTurns: ChatMessage
     { role: "system", content: systemPrompt },
     ...buildMemoryContextMessages(memories, options.memoryRetrievalPolicy ?? "full"),
     ...buildKnowledgeContextMessages(options.knowledgeGraph),
+    ...(options.conversationSummary ?? []),
     ...recentTurns.slice(-MAX_RECENT_TURNS),
     { role: "user", content: userInput },
   ];

@@ -27,7 +27,7 @@ export interface CleanupTelegramAttachmentsResult {
 const TELEGRAM_ATTACHMENT_KINDS: CleanupAttachmentKind[] = ["photo", "document", "voice", "audio", "video", "sticker"];
 
 export async function cleanupTelegramAttachments(options: CleanupTelegramAttachmentsOptions): Promise<CleanupTelegramAttachmentsResult> {
-  const root = resolve(options.paths.workspaceDir, "telegram");
+  const root = resolve(options.paths.workspaceDir, "media", "inbound");
   const nowMs = (options.now ?? new Date()).getTime();
   const kindFilter = new Set(options.kinds ?? TELEGRAM_ATTACHMENT_KINDS);
   const files: CleanupTelegramAttachmentsResult["files"] = [];
@@ -118,7 +118,7 @@ async function listFiles(root: string): Promise<string[]> {
 
 function detectTelegramAttachmentKind(filePath: string): CleanupAttachmentKind | undefined {
   const name = filePath.split(/[\\/]/).at(-1) ?? "";
-  const match = /^\d+-\d+-(photo|document|voice|audio|video|sticker)-/.exec(name);
+  const match = /^telegram-\d+-\d+-(photo|document|voice|audio|video|sticker)-/.exec(name);
   return match && isTelegramAttachmentKind(match[1]) ? match[1] : undefined;
 }
 

@@ -68,7 +68,10 @@ export function sanitizeChannelFileName(value: string): string {
 export function buildChannelAttachmentPath(input: ChannelAttachmentPathInput): string {
   const baseSourceName = input.sourceName.endsWith(input.extension) ? input.sourceName.slice(0, input.sourceName.length - input.extension.length) : input.sourceName;
   const baseName = sanitizeChannelFileName(baseSourceName || input.fallbackName || `${input.kind}-${input.messageId}`);
-  return resolve(input.workspaceDir, input.channelName, input.date, `${input.updateId}-${input.messageId}-${input.kind}-${baseName}${input.extension}`);
+  const channelName = sanitizeChannelFileName(input.channelName);
+  const updateId = sanitizeChannelFileName(String(input.updateId));
+  const messageId = sanitizeChannelFileName(String(input.messageId));
+  return resolve(input.workspaceDir, "media", "inbound", `${channelName}-${updateId}-${messageId}-${input.kind}-${baseName}${input.extension}`);
 }
 
 export function isAllowedChannelAttachmentMimeType(mimeType: string | undefined, allowedMimeTypes: string[]): boolean {

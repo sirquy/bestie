@@ -7,7 +7,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { basename, extname, join, resolve } from "node:path";
 
 import { loadSystemPrompt } from "../character/prompt-loader.js";
-import { buildChatMessages } from "../chat/message-builder.js";
+import { buildChatMessages, MAX_RECENT_TURNS } from "../chat/message-builder.js";
 import {
   buildMcpToolSystemPrompt,
   completeWithAgentTools,
@@ -19,6 +19,7 @@ import type { ChatCompletionOptions, ChatMessage, ChatMessageContent } from "../
 import { sendChatCompletionWithFallbacks } from "../llm/chat-completion.js";
 import { fallbackLogDetail, formatProviderFallbackDiagnostics, formatProviderFallbackHealth } from "../llm/fallbacks.js";
 import { runKnowledgeReasoningPass, type KnowledgeReasoningResult } from "../memory/knowledge-reasoning.js";
+import { loadConversationSummaryContext, refreshConversationSummary } from "../memory/conversation-summary.js";
 import { runMemoryReasoningPass, type MemoryReasoningResult } from "../memory/reasoning.js";
 import { isMemoryRetrievalPolicy, setMemoryRetrievalPolicy } from "../memory/governance.js";
 import { getMemoryMaintenanceReportStatus, installMemoryMaintenanceReport, removeMemoryMaintenanceReport, runMemoryMaintenanceDigest } from "../memory/maintenance.js";
@@ -46,6 +47,7 @@ import type { ChannelIncomingMessage, ChannelOutboundAdapter, ChannelRuntimeAdap
 import { createChannelActivityController } from "./activity.js";
 import { applyMemoryHygienePlanForChannel, formatMemoryAnalysisReport, formatMemoryCleanupDryRunReport, formatMemoryGovernanceStatus, formatMemoryHygieneReport, formatMemoryInspect, formatMemoryMaintenanceInstalled, formatMemoryMaintenanceRemoved, formatMemoryMaintenanceStatus, formatMemoryRetrievalPolicyUpdated, formatPendingKnowledgeSanitizeResult } from "./memory-commands.js";
 import { buildChannelAttachmentPrompt } from "./attachment-prompt.js";
+import { resolveChannelVisionPolicy } from "./attachment-policy.js";
 import { processChannelAttachment } from "./attachment-pipeline.js";
 import { buildChannelVisionAttachment, type ChannelVisionAttachment } from "./attachment-vision.js";
 import {
@@ -473,7 +475,8 @@ export async function handleTelegramUpdate(update: TelegramUpdate, options: Tele
     const memories = await loadActiveMemories(options.paths);
     const recentTurns = await loadRecentTelegramTurns(options.paths, ownerUserId);
     const knowledgeGraph = await loadRelevantKnowledgeGraph(options.paths, userInput);
-    const messages = buildChatMessages(buildMcpToolSystemPrompt(systemPrompt, options.config, buildTelegramRuntimeToolContext(decision.incoming)), recentTurns, userInput, memories, { memoryRetrievalPolicy: options.config.memory?.retrievalPolicy ?? "full", knowledgeGraph });
+    const conversationSummary = await loadConversationSummaryContext(options.paths, "telegram", ownerUserId);
+    const messages = buildChatMessages(buildMcpToolSystemPrompt(systemPrompt, options.config, buildTelegramRuntimeToolContext(decision.incoming)), recentTurns, userInput, memories, { memoryRetrievalPolicy: options.config.memory?.retrievalPolicy ?? "full", knowledgeGraph, conversationSummary });
     if (savedAttachment?.visionImage) {
       attachTelegramVisionImage(messages, userInput, savedAttachment.visionImage.dataUrl);
     }
@@ -520,6 +523,7 @@ export async function handleTelegramUpdate(update: TelegramUpdate, options: Tele
       speechVoiceConverter: options.speechVoiceConverter,
     });
     await persistTelegramConversationTurn(options.paths, ownerUserId, userInput, assistantText);
+    await runTelegramConversationSummaryPass({ config: options.config, paths: options.paths, apiKey, channel: "telegram", userId: ownerUserId, chatCompletion });
     const memoryReasoning = await runTelegramMemoryReasoningPass({
       config: options.config,
       paths: options.paths,
@@ -676,6 +680,15 @@ async function runTelegramKnowledgeReasoningPass(options: Parameters<typeof runK
     const message = error instanceof Error ? error.message : "Unknown knowledge reasoning error.";
     await appendLog({ event: "knowledge_reasoning_failure", detail: { channel: "telegram", message } }, { paths: options.paths, knownSecrets: [options.apiKey] });
     return { storedEntities: [], storedRelations: [], pending: [], skipped: [] };
+  }
+}
+
+async function runTelegramConversationSummaryPass(options: Parameters<typeof refreshConversationSummary>[0]): Promise<void> {
+  try {
+    await refreshConversationSummary(options);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown conversation summary error.";
+    await appendLog({ event: "conversation_summary_failure", detail: { channel: options.channel, message } }, { paths: options.paths, knownSecrets: [options.apiKey] });
   }
 }
 
@@ -1215,8 +1228,8 @@ async function saveTelegramAttachment(attachment: TelegramAttachmentSummary, upd
       fileId: attachment.fileId,
       reportedSize: attachment.fileSize,
       maxBytes: policy.maxBytes,
-      getFile: options.client.getFile,
-      downloadFile: options.client.downloadFile,
+      getFile: options.client.getFile ? (fileId) => options.client.getFile!(fileId) : undefined,
+      downloadFile: options.client.downloadFile ? (filePath) => options.client.downloadFile!(filePath) : undefined,
       messages: telegramAttachmentDownloadMessages(policy),
     }),
     buildLocalPath: (downloaded: ChannelDownloadedAttachment) => buildTelegramAttachmentPath(options.paths, update, attachment, downloaded.filePath),
@@ -1299,7 +1312,7 @@ function getTelegramAttachmentPolicy(config: AppConfig): TelegramAttachmentPolic
     maxBytes: configured?.maxBytes ?? TELEGRAM_ATTACHMENT_MAX_BYTES,
     previewMaxBytes: configured?.previewMaxBytes ?? TELEGRAM_ATTACHMENT_PREVIEW_MAX_BYTES,
     parseMaxBytes: configured?.parseMaxBytes ?? TELEGRAM_ATTACHMENT_PARSE_MAX_BYTES,
-    visionPolicy: configured?.visionPolicy ?? "deny",
+    visionPolicy: resolveChannelVisionPolicy(config, configured?.visionPolicy),
     visionMaxBytes: configured?.visionMaxBytes ?? TELEGRAM_ATTACHMENT_VISION_MAX_BYTES,
     transcriptionPolicy: configured?.transcriptionPolicy ?? "deny",
     transcriptionMaxBytes: configured?.transcriptionMaxBytes ?? TELEGRAM_ATTACHMENT_TRANSCRIPTION_MAX_BYTES,
@@ -2001,7 +2014,7 @@ async function loadRecentTelegramTurns(paths: RuntimePaths, userId: string): Pro
       return [];
     }
 
-    return store.listRecentMessagesForChannel("telegram", userId, 12).map((message) => ({ role: message.role, content: message.content }));
+    return store.listRecentMessagesForChannel("telegram", userId, MAX_RECENT_TURNS).map((message) => ({ role: message.role, content: message.content }));
   } finally {
     store.close();
   }

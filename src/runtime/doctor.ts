@@ -330,7 +330,7 @@ async function testTelegramSpeechRoundTrip(config: AppConfig, paths: RuntimePath
 }
 
 async function checkTelegramWorkspaceUsage(paths: RuntimePaths, warnBytes: number): Promise<DoctorCheck> {
-  const telegramWorkspace = resolve(paths.workspaceDir, "telegram");
+  const telegramWorkspace = resolve(paths.workspaceDir, "media", "inbound");
   const usage = await getDirectoryUsage(telegramWorkspace);
 
   if (usage.files === 0) {

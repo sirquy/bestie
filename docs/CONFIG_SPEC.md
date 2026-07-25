@@ -139,7 +139,18 @@ Phase Now config started with non-secret `agent` and `llm` fields. The current l
       "enabled": false,
       "botTokenEnv": "BESTIE_ZALO_BOT_TOKEN",
       "ownerUserId": "",
-      "pollingTimeoutSeconds": 25
+      "pollingTimeoutSeconds": 25,
+      "attachments": {
+        "downloadPolicy": "allow",
+        "maxBytes": 20971520,
+        "previewMaxBytes": 16384,
+        "parseMaxBytes": 5242880,
+        "visionPolicy": "deny",
+        "visionMaxBytes": 4194304,
+        "transcriptionPolicy": "deny",
+        "transcriptionMaxBytes": 10485760,
+        "deleteAfterProcessingKinds": []
+      }
     }
   },
   "mcp": {
@@ -195,7 +206,7 @@ For ElevenLabs audio transcription, use an `elevenlabs` provider. `languageCode`
 }
 ```
 
-Telegram attachments are kept by default. Set `channels.telegram.attachments.deleteAfterProcessingKinds` to attachment kinds such as `["voice", "audio"]` to remove downloaded files after parsing/transcription/vision processing completes. This is useful for voice-heavy Telegram use where transcripts are enough and retaining raw audio would grow disk usage quickly.
+Telegram and Zalo inbound attachments are saved together under `.bestie/workspace/media/inbound/...` and kept by default. Image attachments are sent to the LLM automatically when the primary provider adapter supports image input; set `channels.telegram.attachments.visionPolicy` or `channels.zalo.attachments.visionPolicy` to `"deny"` to force this off. Set `channels.telegram.attachments.deleteAfterProcessingKinds` or `channels.zalo.attachments.deleteAfterProcessingKinds` to attachment kinds such as `["voice", "audio"]` to remove downloaded files after parsing/transcription/vision processing completes. This is useful for voice-heavy channel use where transcripts are enough and retaining raw audio would grow disk usage quickly.
 
 ```json
 {

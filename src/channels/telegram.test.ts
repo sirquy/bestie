@@ -225,16 +225,53 @@ test("handleTelegramUpdate saves owner photo attachments and sends metadata to L
     assert.match(JSON.stringify(requestMessages), /User caption: what is this\?/);
     assert.match(JSON.stringify(requestMessages), /Kind: photo/);
     assert.match(JSON.stringify(requestMessages), /Local path:/);
-    assert.doesNotMatch(JSON.stringify(requestMessages), /image_url/);
+    assert.match(JSON.stringify(requestMessages), /image_url/);
     const savedPathMatch = JSON.stringify(requestMessages).match(/Local path: ([^\\"]+)/);
     assert.ok(savedPathMatch?.[1]);
+    assert.match(savedPathMatch[1], /\/media\/inbound\/telegram-/);
     assert.equal(await readFile(savedPathMatch[1], "utf8"), "meow");
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
   }
 });
 
-test("handleTelegramUpdate attaches photo bytes to LLM only when vision policy allows it", async () => {
+test("handleTelegramUpdate preserves Telegram client method receivers while downloading attachments", async () => {
+  const paths = await createTempPaths();
+  const sentMessages: Array<{ chatId: number; text: string }> = [];
+
+  try {
+    await writeRuntimeFiles(paths);
+    const client: TelegramClient & { filePath: string; bytes: Uint8Array } = {
+      ...createRecordingClient(sentMessages),
+      filePath: "documents/note.txt",
+      bytes: new TextEncoder().encode("hello from bound client"),
+      async getFile(this: TelegramClient & { filePath: string }, fileId) {
+        return { fileId, filePath: this.filePath, fileSize: 23 };
+      },
+      async downloadFile(this: TelegramClient & { filePath: string; bytes: Uint8Array }, filePath) {
+        assert.equal(filePath, this.filePath);
+        return this.bytes;
+      },
+    };
+
+    const result = await handleTelegramUpdate(createDocumentUpdate(12345, "note.txt", "text/plain", "please read this"), {
+      config,
+      paths,
+      client,
+      chatCompletion: async (_config, _apiKey, options) => {
+        const systemText = String(options.messages[0]?.content ?? "");
+        return systemText.includes("memory reasoning pass") ? '{"candidates":[]}' : '{"answer":"Đã đọc attachment."}';
+      },
+    });
+
+    assert.equal(result, "replied");
+    assert.equal(sentMessages.at(-1)?.text, "Đã đọc attachment.");
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("handleTelegramUpdate keeps photo bytes out of LLM when vision policy denies it", async () => {
   const paths = await createTempPaths();
   const sentMessages: Array<{ chatId: number; text: string }> = [];
   let requestMessages: unknown;
@@ -249,7 +286,7 @@ test("handleTelegramUpdate attaches photo bytes to LLM only when vision policy a
     };
 
     const result = await handleTelegramUpdate(createPhotoUpdate(12345, 1, "what is this?"), {
-      config: { ...config, channels: { telegram: { ...config.channels!.telegram!, attachments: { visionPolicy: "allow" } } } },
+      config: { ...config, channels: { telegram: { ...config.channels!.telegram!, attachments: { visionPolicy: "deny" } } } },
       paths,
       client,
       chatCompletion: async (_config, _apiKey, options) => {
@@ -261,12 +298,7 @@ test("handleTelegramUpdate attaches photo bytes to LLM only when vision policy a
 
     assert.equal(result, "replied");
     assert.equal(sentMessages.at(-1)?.text, "Đã xem ảnh.");
-    const userMessage = (requestMessages as Array<{ role: string; content: unknown }>).find((message) => message.role === "user" && Array.isArray(message.content));
-    assert.ok(userMessage);
-    const parts = userMessage.content as Array<{ type: string; text?: string; image_url?: { url: string } }>;
-    assert.equal(parts[0].type, "text");
-    assert.match(parts[0].text ?? "", /Vision input: attached/);
-    assert.deepEqual(parts[1], { type: "image_url", image_url: { url: "data:image/jpeg;base64,AQIDBA==" } });
+    assert.doesNotMatch(JSON.stringify(requestMessages), /image_url/);
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
   }

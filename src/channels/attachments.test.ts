@@ -48,7 +48,7 @@ test("buildChannelAttachmentPath uses shared channel layout and sanitized base n
       sourceName: "unsafe report?.txt",
       extension: ".txt",
     }),
-    "/workspace/telegram/2026-07-13/42-7-document-unsafe-report.txt",
+    "/workspace/media/inbound/telegram-42-7-document-unsafe-report.txt",
   );
 });
 

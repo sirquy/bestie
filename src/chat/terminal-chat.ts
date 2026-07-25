@@ -1,6 +1,7 @@
 import { stdout as output } from "node:process";
 
 import { runKnowledgeReasoningPass } from "../memory/knowledge-reasoning.js";
+import { loadConversationSummaryContext, refreshConversationSummary } from "../memory/conversation-summary.js";
 import { runMemoryReasoningPass } from "../memory/reasoning.js";
 import { SqliteMemoryStore } from "../memory/sqlite-store.js";
 import { createCliPermissionApprover } from "../cli/permission-approver.js";
@@ -13,7 +14,7 @@ import { loadLlmCandidateSecret, resolvePrimaryLlmCandidate } from "../llm/resol
 import type { ChatCompletionOptions, ChatMessage } from "../llm/types.js";
 import { createCliQuestioner } from "../cli/prompt.js";
 import { badge, bold, color, dim, rule } from "../cli/ui.js";
-import { appendConversationTurn, buildChatMessages } from "./message-builder.js";
+import { appendConversationTurn, buildChatMessages, MAX_RECENT_TURNS } from "./message-builder.js";
 import { buildMcpToolSystemPrompt, completeWithAgentTools, runAgentToolRequest, type AgentToolActivity, type RunAgentToolRequestOptions } from "./mcp-tool-use.js";
 
 export interface TerminalChatOptions {
@@ -53,7 +54,7 @@ export async function runTerminalChat(options: TerminalChatOptions): Promise<voi
     },
   });
   let apiKey: string | undefined;
-  let recentTurns: ChatMessage[] = [];
+  let recentTurns: ChatMessage[] = await loadRecentTerminalTurns(options.paths);
 
   await appendLog({ event: "command_start", detail: { command: "chat" } }, { paths: options.paths });
   printChatHeader(options, writeLine);
@@ -87,7 +88,8 @@ export async function runTerminalChat(options: TerminalChatOptions): Promise<voi
         apiKey ??= await loadLlmCandidateSecret(resolvePrimaryLlmCandidate(options.config), options.paths);
         const memories = await loadActiveMemories(options.paths);
         const knowledgeGraph = await loadRelevantKnowledgeGraph(options.paths, userInput);
-        const messages = buildChatMessages(buildTerminalSystemPrompt(options.systemPrompt, options.config), recentTurns, userInput, memories, { memoryRetrievalPolicy: options.config.memory?.retrievalPolicy ?? "full", knowledgeGraph });
+        const conversationSummary = await loadConversationSummaryContext(options.paths, "terminal");
+        const messages = buildChatMessages(buildTerminalSystemPrompt(options.systemPrompt, options.config), recentTurns, userInput, memories, { memoryRetrievalPolicy: options.config.memory?.retrievalPolicy ?? "full", knowledgeGraph, conversationSummary });
         const indicator = startChatIndicator(options.agentName);
         let assistantText: string;
         const writeChatLine = (message: string) => {
@@ -119,6 +121,7 @@ export async function runTerminalChat(options: TerminalChatOptions): Promise<voi
           writeChatLine(formatAssistantMessage(options.agentName, assistantText));
         }
         await persistConversationTurn(options.paths, userInput, assistantText);
+        await runTerminalConversationSummaryPass({ config: options.config, paths: options.paths, apiKey, channel: "terminal", chatCompletion });
         await runTerminalMemoryReasoningPass({
           config: options.config,
           paths: options.paths,
@@ -164,6 +167,15 @@ async function runTerminalKnowledgeReasoningPass(options: Parameters<typeof runK
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown knowledge reasoning error.";
     await appendLog({ event: "knowledge_reasoning_failure", detail: { channel: "terminal", message } }, { paths: options.paths, knownSecrets: [options.apiKey] });
+  }
+}
+
+async function runTerminalConversationSummaryPass(options: Parameters<typeof refreshConversationSummary>[0]): Promise<void> {
+  try {
+    await refreshConversationSummary(options);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown conversation summary error.";
+    await appendLog({ event: "conversation_summary_failure", detail: { channel: options.channel, message } }, { paths: options.paths, knownSecrets: [options.apiKey] });
   }
 }
 
@@ -401,6 +413,21 @@ async function isMemoryPaused(paths: RuntimePaths): Promise<boolean> {
     store.close();
   }
 }
+
+async function loadRecentTerminalTurns(paths: RuntimePaths): Promise<ChatMessage[]> {
+  const store = await SqliteMemoryStore.open(paths);
+
+  try {
+    if (store.getMemoryState().paused) {
+      return [];
+    }
+
+    return store.listRecentMessagesForChannel("terminal", undefined, MAX_RECENT_TURNS).map((message) => ({ role: message.role, content: message.content }));
+  } finally {
+    store.close();
+  }
+}
+
 async function persistConversationTurn(paths: RuntimePaths, userInput: string, assistantText: string): Promise<void> {
   const store = await SqliteMemoryStore.open(paths);
 
