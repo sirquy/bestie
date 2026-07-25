@@ -29,6 +29,33 @@ test("runMemoryReasoningPass stores allowed durable candidates", async () => {
   }
 });
 
+test("runMemoryReasoningPass prompts for durable bounded memory only", async () => {
+  const paths = await createTempPaths();
+  let systemPrompt = "";
+
+  try {
+    await runMemoryReasoningPass({
+      config: { ...createConfig(), memory: { writePolicy: "allow" } },
+      paths,
+      apiKey: "test-key",
+      turn: { channel: "terminal", userInput: "I prefer terse answers.", assistantText: "Got it." },
+      chatCompletion: async (_config, _apiKey, options) => {
+        systemPrompt = String(options.messages[0]?.content ?? "");
+        return '{"candidates":[]}';
+      },
+    });
+
+    assert.match(systemPrompt, /Memory is for conversational continuity/);
+    assert.match(systemPrompt, /not a transcript archive/);
+    assert.match(systemPrompt, /Do not save the assistant's own acknowledgment/);
+    assert.match(systemPrompt, /Do not save facts that belong in the knowledge graph as a relationship/);
+    assert.match(systemPrompt, /Content must stand alone/);
+    assert.match(systemPrompt, /confidence below 0\.65/);
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
 test("runKnowledgeReasoningPass stores durable graph candidates", async () => {
   const paths = await createTempPaths();
 
@@ -50,6 +77,33 @@ test("runKnowledgeReasoningPass stores durable graph candidates", async () => {
     assert.deepEqual(result.storedEntities.map((entity) => `${entity.kind}:${entity.canonicalName}`), ["person:User", "project:Bestie"]);
     assert.deepEqual(result.storedRelations.map((relation) => relation.relationType), ["works_on"]);
     assert.deepEqual(result.pending, []);
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("runKnowledgeReasoningPass prompts for grounded structured graph facts only", async () => {
+  const paths = await createTempPaths();
+  let systemPrompt = "";
+
+  try {
+    await runKnowledgeReasoningPass({
+      config: { ...createConfig(), memory: { writePolicy: "allow" } },
+      paths,
+      apiKey: "test-key",
+      turn: { channel: "terminal", userInput: "Bestie uses SQLite.", assistantText: "Noted." },
+      chatCompletion: async (_config, _apiKey, options) => {
+        systemPrompt = String(options.messages[0]?.content ?? "");
+        return '{"entities":[],"relations":[]}';
+      },
+    });
+
+    assert.match(systemPrompt, /Knowledge graph is for structured facts/);
+    assert.match(systemPrompt, /not conversational style or transcript storage/);
+    assert.match(systemPrompt, /Do not turn every noun into an entity/);
+    assert.match(systemPrompt, /Do not store the assistant's own plan/);
+    assert.match(systemPrompt, /Evidence must be short, grounded/);
+    assert.match(systemPrompt, /confidence below 0\.65/);
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
   }

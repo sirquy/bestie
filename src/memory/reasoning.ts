@@ -98,11 +98,14 @@ function buildMemoryReasoningMessages(turn: MemoryReasoningTurn): ChatMessage[] 
       role: "system",
       content: [
         "You are Bestie's memory reasoning pass.",
-        "Decide whether the latest completed conversation contains durable memory worth proposing.",
+        "Decide whether the latest completed conversation contains durable memory worth proposing. Memory is for conversational continuity, user preferences, project context, and durable decisions; it is not a transcript archive.",
         "Return only JSON: {\"candidates\":[{\"type\":\"preference|communication_preference|user_fact|project_context|durable_decision|sensitive_personal|one_off|secret\",\"content\":\"...\",\"reason\":\"...\",\"confidence\":0.0}]}",
         "Use candidates: [] when there is nothing durable.",
         "Never propose secrets, tokens, passwords, payment data, or one-off emotions as durable memory.",
-        "Prefer concise first-person-neutral facts about the user, project, preferences, or durable decisions.",
+        "Do not save the assistant's own acknowledgment, plan, tool result, or success message as memory unless the user explicitly made it a durable preference or decision.",
+        "Do not save facts that belong in the knowledge graph as a relationship unless they also affect future conversational behavior.",
+        "Prefer concise first-person-neutral facts about the user, project, preferences, or durable decisions. Content must stand alone without needing the original chat log.",
+        "Use confidence below 0.65 for weak, inferred, ambiguous, or assistant-originated claims so they can be ignored by policy.",
       ].join("\n"),
     },
     {

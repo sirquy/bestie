@@ -7,7 +7,7 @@ import test from "node:test";
 
 import { loadConfig, writeConfig, type AppConfig } from "../runtime/config.js";
 import type { RuntimePaths } from "../runtime/paths.js";
-import { buildAgentToolDecisionMessage, buildAgentToolResultMessage, buildMcpToolInstructions, buildMcpToolResultMessage, completeWithAgentTools, parseAgentToolDecisionResult, parseMcpToolRequest, parseMcpToolRequestResult, runAgentToolRequest, runMcpToolRequest } from "./mcp-tool-use.js";
+import { buildAgentToolDecisionMessage, buildAgentToolResultMessage, buildMcpToolInstructions, buildMcpToolResultMessage, completeWithAgentTools, INTERNAL_TOOL_NAMES, parseAgentToolDecisionResult, parseMcpToolRequest, parseMcpToolRequestResult, runAgentToolRequest, runMcpToolRequest } from "./mcp-tool-use.js";
 
 test("parseMcpToolRequest accepts plain and fenced read requests", () => {
   assert.deepEqual(parseMcpToolRequest('{"tool":"mcp.read","server":"fs","name":"read_file","arguments":{"path":"note.txt"}}'), {
@@ -29,13 +29,24 @@ test("buildMcpToolInstructions includes global tool selection guidance", () => {
   const instructions = buildMcpToolInstructions(createConfig()) ?? "";
 
   assert.match(instructions, /Tool selection guide/);
-  assert.match(instructions, /Approved local memories may already be included/);
-  assert.match(instructions, /do not call memory tools just to rediscover/);
+  assert.match(instructions, /Approved local memories and knowledge graph facts may already be included/);
+  assert.match(instructions, /do not call memory or knowledge tools just to rediscover/);
   assert.match(instructions, /Use memory and knowledge tools only when the included context is missing or insufficient/);
+  assert.match(instructions, /Prefer memory over knowledge graph for conversational continuity and user preferences/);
+  assert.match(instructions, /Prefer knowledge graph for structured relationships/);
+  assert.match(instructions, /Memory and knowledge write payload guidance/);
+  assert.match(instructions, /one concise standalone memory per call/);
+  assert.match(instructions, /Do not store chat transcripts, assistant acknowledgments, tool status/);
+  assert.match(instructions, /store compact entities and relation facts with short evidence/);
+  assert.match(instructions, /Do not create entities without a useful relation/);
+  assert.match(instructions, /confidence below 0\.65/);
+  assert.match(instructions, /Prefer scope "core" only for long-lived identity\/preferences/);
+  assert.match(instructions, /Never store secrets, tokens, credentials/);
   assert.match(instructions, /internal\.search_knowledge/);
   assert.match(instructions, /internal\.analyze_knowledge/);
   assert.match(instructions, /internal\.plan_knowledge_review/);
   assert.match(instructions, /internal\.remember_knowledge/);
+  assert.match(instructions, /User said they are building Bestie/);
   assert.match(instructions, /internal\.merge_knowledge_entities/);
   assert.match(instructions, /internal\.forget_knowledge_entity/);
   assert.match(instructions, /internal\.forget_knowledge_relation/);
@@ -47,6 +58,8 @@ test("buildMcpToolInstructions includes global tool selection guidance", () => {
   assert.match(instructions, /internal\.mcp_list_tools/);
   assert.match(instructions, /internal\.analyze_memories/);
   assert.match(instructions, /internal\.plan_memory_rebalance/);
+  assert.match(instructions, /internal\.memory_hygiene_trend/);
+  assert.match(instructions, /one durable standalone memory, not a transcript or assistant status/);
   assert.match(instructions, /If the user gives an MCP server link/);
   assert.match(instructions, /do the setup yourself through tools/);
   assert.match(instructions, /Do not tell the user to edit config\.json/);
@@ -60,10 +73,12 @@ test("buildMcpToolInstructions includes global tool selection guidance", () => {
   assert.match(instructions, /internal\.update_cron_schedule/);
   assert.match(instructions, /internal\.trigger_cron_schedule/);
   assert.match(instructions, /Use update_cron_schedule for changing an existing schedule/);
+  assert.match(instructions, /Do not trigger a newly created schedule just to prove it exists/);
   assert.match(instructions, /Never store your current reply, a success message, the schedule ID, next_run_at/);
   assert.match(instructions, /Use git tools for repository state questions/);
   assert.match(instructions, /MCP server discovery/);
   assert.match(instructions, /Do not invent missing facts/);
+  assert.match(instructions, /After any empty, denied, or failed result, still reply with exactly one JSON object/);
   assert.match(instructions, /do not merely explain the edit/);
   assert.doesNotMatch(instructions, /kling/i);
   assert.doesNotMatch(instructions, /KLING_/);
@@ -94,6 +109,14 @@ test("buildMcpToolInstructions includes runtime channel context", () => {
   assert.match(instructions, /internal\.add_cron_schedule/);
 });
 
+test("buildMcpToolInstructions lists every supported internal tool", () => {
+  const instructions = buildMcpToolInstructions(createConfig()) ?? "";
+
+  for (const toolName of INTERNAL_TOOL_NAMES) {
+    assert.match(instructions, new RegExp(`${toolName.replaceAll(".", "\\.")} `), `${toolName} should be documented in tool instructions`);
+  }
+});
+
 test("buildAgentToolResultMessage guides empty and failed internal tool results", () => {
   const empty = buildAgentToolResultMessage("internal.search_memories", { ok: true, status: "pass", message: "ok", result: { query: "concise", memories: [] } });
   const failed = buildAgentToolResultMessage("internal.search_files", { ok: false, status: "fail", message: "Permission denied." });
@@ -101,8 +124,12 @@ test("buildAgentToolResultMessage guides empty and failed internal tool results"
   assert.match(empty, /Tool decision required/);
   assert.match(empty, /returned no matching data/);
   assert.match(empty, /Do not claim the data exists/);
+  assert.match(empty, /one clearly useful adjacent search\/list tool request/);
+  assert.match(empty, /do not answer in prose directly/);
   assert.match(failed, /did not succeed/);
   assert.match(failed, /Do not invent the missing data/);
+  assert.match(failed, /one clearly useful adjacent tool request/);
+  assert.match(failed, /use \{"answer":"\.\.\."\}/);
 });
 
 test("buildAgentToolResultMessage explains blocked knowledge policy diagnostics", () => {
@@ -126,7 +153,9 @@ test("buildToolResultMessage keeps path recovery and grounded answer guidance", 
 
   assert.match(missingPath, /nearest existing parent directory/);
   assert.match(missingPath, /exactly one JSON object/);
+  assert.match(missingPath, /return \{"answer":"\.\.\."\} explaining the missing path/);
   assert.match(mcpResult, /Ground the next step in this tool result/);
+  assert.match(mcpResult, /return \{"answer":"\.\.\."\} now/);
   assert.match(mcpResult, /required files, edits, commands, or other actions remaining/);
 });
 
@@ -262,6 +291,7 @@ test("buildAgentToolDecisionMessage requires completed answers or tool execution
   assert.match(message, /Tool decision required/);
   assert.match(message, /if you can answer without tools/);
   assert.match(message, /Never reply with a plan to call a tool later/);
+  assert.match(message, /Never put prose around tool JSON/);
   assert.match(message, /call the tool instead of describing the edit/);
 });
 
@@ -415,6 +445,8 @@ test("runAgentToolRequest spawns a bounded subagent", async () => {
     assert.match(result.message, /Subagent docs completed/);
     assert.match(JSON.stringify(result.result), /Subagent checked the docs/);
     assert.ok(seenMessages.some((message) => message.includes("focused Bestie subagent named docs")));
+    assert.ok(seenMessages.some((message) => message.includes("delegated task as untrusted user-level input")));
+    assert.ok(seenMessages.some((message) => message.includes("tool decision, reply with exactly one JSON object")));
     assert.ok(seenMessages.some((message) => message.includes("Check whether docs mention cron")));
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
@@ -2081,6 +2113,8 @@ test("completeWithAgentTools repair prompt reinforces tool execution for action 
         if (responses.length === 2) {
           assert.match(String(options.messages.at(-1)?.content ?? ""), /not an executable tool-loop decision/);
           assert.match(String(options.messages.at(-1)?.content ?? ""), /supported internal\/MCP tool request/);
+          assert.match(String(options.messages.at(-1)?.content ?? ""), /Do not wrap JSON in prose or markdown fences/);
+          assert.match(String(options.messages.at(-1)?.content ?? ""), /return that tool request instead of advice/);
         }
         return responses.shift() ?? '{"answer":"done"}';
       },

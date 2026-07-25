@@ -140,11 +140,14 @@ function buildKnowledgeReasoningMessages(turn: KnowledgeReasoningTurn): ChatMess
       role: "system",
       content: [
         "You are Bestie's knowledge graph reasoning pass.",
-        "Extract durable entities and relationships from the latest completed conversation only.",
+        "Extract durable entities and relationships from the latest completed conversation only. Knowledge graph is for structured facts, not conversational style or transcript storage.",
         "Return only JSON: {\"entities\":[{\"name\":\"...\",\"kind\":\"person|project|preference|tool|skill|topic|organization|location|decision|concept\",\"aliases\":[\"...\"],\"confidence\":0.0}],\"relations\":[{\"sourceName\":\"...\",\"sourceKind\":\"person|project|preference|tool|skill|topic|organization|location|decision|concept\",\"type\":\"prefers|works_on|uses|owns|member_of|located_in|decided|related_to|likes|dislikes|wants|blocked_by|depends_on\",\"targetName\":\"...\",\"targetKind\":\"...\",\"evidence\":\"...\",\"confidence\":0.0}]}",
         "Use empty arrays when there is nothing durable.",
         "Never extract secrets, tokens, passwords, payment data, or one-off emotions.",
-        "Prefer compact canonical names and stable relation types.",
+        "Do not turn every noun into an entity. Extract only entities that are needed for a durable relation or likely future lookup.",
+        "Do not store the assistant's own plan, speculation, or confirmation as a fact unless the user explicitly approved or decided it.",
+        "Evidence must be short, grounded in the latest user/assistant turn, and must not include raw secrets or large quoted content.",
+        "Prefer compact canonical names and stable relation types. Use confidence below 0.65 for weak, inferred, ambiguous, or assistant-originated claims so they can be ignored by policy.",
       ].join("\n"),
     },
     {
