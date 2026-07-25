@@ -2,6 +2,7 @@ import { stdout as output } from "node:process";
 
 import { runKnowledgeReasoningPass } from "../memory/knowledge-reasoning.js";
 import { loadConversationSummaryContext, refreshConversationSummary } from "../memory/conversation-summary.js";
+import { loadRelevantMemories } from "../memory/context.js";
 import { runMemoryReasoningPass } from "../memory/reasoning.js";
 import { SqliteMemoryStore } from "../memory/sqlite-store.js";
 import { createCliPermissionApprover } from "../cli/permission-approver.js";
@@ -14,7 +15,7 @@ import { loadLlmCandidateSecret, resolvePrimaryLlmCandidate } from "../llm/resol
 import type { ChatCompletionOptions, ChatMessage } from "../llm/types.js";
 import { createCliQuestioner } from "../cli/prompt.js";
 import { badge, bold, color, dim, rule } from "../cli/ui.js";
-import { appendConversationTurn, buildChatMessages, MAX_RECENT_TURNS } from "./message-builder.js";
+import { appendConversationTurn, buildChatMessages, getRecentMessageLimit } from "./message-builder.js";
 import { buildMcpToolSystemPrompt, completeWithAgentTools, runAgentToolRequest, type AgentToolActivity, type RunAgentToolRequestOptions } from "./mcp-tool-use.js";
 
 export interface TerminalChatOptions {
@@ -54,7 +55,8 @@ export async function runTerminalChat(options: TerminalChatOptions): Promise<voi
     },
   });
   let apiKey: string | undefined;
-  let recentTurns: ChatMessage[] = await loadRecentTerminalTurns(options.paths);
+  const recentMessageLimit = getRecentMessageLimit(options.config);
+  let recentTurns: ChatMessage[] = await loadRecentTerminalTurns(options.paths, recentMessageLimit);
 
   await appendLog({ event: "command_start", detail: { command: "chat" } }, { paths: options.paths });
   printChatHeader(options, writeLine);
@@ -86,10 +88,10 @@ export async function runTerminalChat(options: TerminalChatOptions): Promise<voi
 
       try {
         apiKey ??= await loadLlmCandidateSecret(resolvePrimaryLlmCandidate(options.config), options.paths);
-        const memories = await loadActiveMemories(options.paths);
+        const memories = await loadRelevantMemories(options.paths, { query: userInput });
         const knowledgeGraph = await loadRelevantKnowledgeGraph(options.paths, userInput);
         const conversationSummary = await loadConversationSummaryContext(options.paths, "terminal");
-        const messages = buildChatMessages(buildTerminalSystemPrompt(options.systemPrompt, options.config), recentTurns, userInput, memories, { memoryRetrievalPolicy: options.config.memory?.retrievalPolicy ?? "full", knowledgeGraph, conversationSummary });
+        const messages = buildChatMessages(buildTerminalSystemPrompt(options.systemPrompt, options.config), recentTurns, userInput, memories, { memoryRetrievalPolicy: options.config.memory?.retrievalPolicy ?? "full", knowledgeGraph, conversationSummary, recentMessageLimit });
         const indicator = startChatIndicator(options.agentName);
         let assistantText: string;
         const writeChatLine = (message: string) => {
@@ -137,7 +139,7 @@ export async function runTerminalChat(options: TerminalChatOptions): Promise<voi
           chatCompletion,
         });
         if (!(await isMemoryPaused(options.paths))) {
-          recentTurns = appendConversationTurn(recentTurns, userInput, assistantText);
+          recentTurns = appendConversationTurn(recentTurns, userInput, assistantText, recentMessageLimit);
         }
         await appendLog({ event: "chat_request_success", detail: { model: options.config.llm.primary } }, { paths: options.paths });
       } catch (error) {
@@ -375,20 +377,6 @@ function createQuestioner(): Questioner {
   return createCliQuestioner({ echoAnswer: true, returnUndefinedOnInputEnd: true });
 }
 
-async function loadActiveMemories(paths: RuntimePaths): Promise<import("../memory/sqlite-store.js").StoredMemory[]> {
-  const store = await SqliteMemoryStore.open(paths);
-
-  try {
-    if (store.getMemoryState().paused) {
-      return [];
-    }
-
-    return store.listActiveMemories();
-  } finally {
-    store.close();
-  }
-}
-
 async function loadRelevantKnowledgeGraph(paths: RuntimePaths, query: string): Promise<import("../memory/sqlite-store.js").KnowledgeGraphSearchResult | undefined> {
   const store = await SqliteMemoryStore.open(paths);
 
@@ -414,7 +402,7 @@ async function isMemoryPaused(paths: RuntimePaths): Promise<boolean> {
   }
 }
 
-async function loadRecentTerminalTurns(paths: RuntimePaths): Promise<ChatMessage[]> {
+async function loadRecentTerminalTurns(paths: RuntimePaths, recentMessageLimit: number): Promise<ChatMessage[]> {
   const store = await SqliteMemoryStore.open(paths);
 
   try {
@@ -422,7 +410,7 @@ async function loadRecentTerminalTurns(paths: RuntimePaths): Promise<ChatMessage
       return [];
     }
 
-    return store.listRecentMessagesForChannel("terminal", undefined, MAX_RECENT_TURNS).map((message) => ({ role: message.role, content: message.content }));
+    return store.listRecentMessagesForChannel("terminal", undefined, recentMessageLimit).map((message) => ({ role: message.role, content: message.content }));
   } finally {
     store.close();
   }

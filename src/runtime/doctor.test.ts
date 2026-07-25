@@ -9,6 +9,8 @@ import { writeEnvFile } from "./env.js";
 import { appendLog } from "./logger.js";
 import { runDoctor } from "./doctor.js";
 import { validateDoctorReportContract } from "./doctor-report-contract.js";
+import { MAX_RECENT_TURNS } from "../chat/message-builder.js";
+import { SqliteMemoryStore } from "../memory/sqlite-store.js";
 import type { RuntimePaths } from "./paths.js";
 
 test("runDoctor reports missing local setup", async () => {
@@ -336,6 +338,53 @@ test("runDoctor warns about unusual LLM request timeouts", async () => {
     assert.equal(report.issueCount, 0);
     assert.equal(timeoutCheck?.status, "warn");
     assert.match(timeoutCheck?.message ?? "", /very low/);
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("runDoctor warns when long conversation threads lack rolling summaries", async () => {
+  const paths = await createConfiguredPaths();
+  const store = await SqliteMemoryStore.open(paths);
+
+  try {
+    for (let index = 0; index < MAX_RECENT_TURNS + 2; index += 1) {
+      store.addMessage({ channel: "telegram", userId: "12345", role: index % 2 === 0 ? "user" : "assistant", content: `turn-${index}` });
+    }
+  } finally {
+    store.close();
+  }
+
+  try {
+    const report = await runDoctor(paths);
+    const check = report.checks.find((candidate) => candidate.name === "Conversation summaries");
+
+    assert.equal(check?.status, "warn");
+    assert.match(check?.message ?? "", /telegram:12345/);
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("runDoctor passes conversation summary diagnostics when long threads are covered", async () => {
+  const paths = await createConfiguredPaths();
+  const store = await SqliteMemoryStore.open(paths);
+
+  try {
+    for (let index = 0; index < MAX_RECENT_TURNS + 2; index += 1) {
+      store.addMessage({ channel: "telegram", userId: "12345", role: index % 2 === 0 ? "user" : "assistant", content: `turn-${index}` });
+    }
+    store.upsertConversationSummary({ channel: "telegram", userId: "12345", content: "Covered older turns.", summarizedMessageId: 2 });
+  } finally {
+    store.close();
+  }
+
+  try {
+    const report = await runDoctor(paths);
+    const check = report.checks.find((candidate) => candidate.name === "Conversation summaries");
+
+    assert.equal(check?.status, "pass");
+    assert.match(check?.message ?? "", /1 long thread/);
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
   }

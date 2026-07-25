@@ -1,5 +1,5 @@
 import { loadSystemPrompt } from "../character/prompt-loader.js";
-import { buildChatMessages, MAX_RECENT_TURNS } from "../chat/message-builder.js";
+import { buildChatMessages, getRecentMessageLimit } from "../chat/message-builder.js";
 import { buildMcpToolSystemPrompt, completeWithAgentTools, runAgentToolRequest, type AgentToolActivity } from "../chat/mcp-tool-use.js";
 import { fallbackLogDetail, formatProviderFallbackDiagnostics, formatProviderFallbackHealth } from "../llm/fallbacks.js";
 import { ProviderAuthError, ProviderFallbackError, ProviderNetworkError, ProviderRateLimitError, ProviderResponseError, ProviderTimeoutError } from "../llm/errors.js";
@@ -13,6 +13,7 @@ import { formatMemoryHygieneTrendReport, recordMemoryHygieneSnapshot } from "../
 import { getMemoryMaintenanceReportStatus, installMemoryMaintenanceReport, removeMemoryMaintenanceReport, runMemoryMaintenanceDigest } from "../memory/maintenance.js";
 import { runKnowledgeReasoningPass, type KnowledgeReasoningResult } from "../memory/knowledge-reasoning.js";
 import { loadConversationSummaryContext, refreshConversationSummary } from "../memory/conversation-summary.js";
+import { loadRelevantMemories } from "../memory/context.js";
 import { runMemoryReasoningPass, type MemoryReasoningResult } from "../memory/reasoning.js";
 import { isMemoryScope, SqliteMemoryStore } from "../memory/sqlite-store.js";
 import { applyMemoryRebalancePlan, formatMemoryRebalanceApplyResult, formatMemoryRebalancePlan, planMemoryRebalance } from "../memory/rebalance.js";
@@ -371,12 +372,13 @@ export async function handleZaloUpdate(update: ZaloUpdate, options: ZaloUpdateHa
     const savedAttachment = attachment ? await adapter.attachments?.processAttachment(attachment, incoming) as SavedZaloAttachment | undefined : undefined;
     const userInput = savedAttachment ? buildZaloAttachmentUserInput(text, savedAttachment) : text;
     const systemPrompt = await loadSystemPrompt(options.paths);
-    const memories = await loadActiveMemories(options.paths);
-    const recentTurns = await loadRecentZaloTurns(options.paths, zaloConfig.ownerUserId);
+    const memories = await loadRelevantMemories(options.paths, { query: userInput });
+    const recentMessageLimit = getRecentMessageLimit(options.config);
+    const recentTurns = await loadRecentZaloTurns(options.paths, zaloConfig.ownerUserId, recentMessageLimit);
     const knowledgeGraph = await loadRelevantKnowledgeGraph(options.paths, userInput);
     const runtimeContext = buildZaloRuntimeToolContext(incoming, zaloConfig.ownerUserId);
     const conversationSummary = await loadConversationSummaryContext(options.paths, "zalo", zaloConfig.ownerUserId);
-    const messages = buildChatMessages(buildMcpToolSystemPrompt(systemPrompt, options.config, runtimeContext), recentTurns, userInput, memories, { memoryRetrievalPolicy: options.config.memory?.retrievalPolicy ?? "full", knowledgeGraph, conversationSummary });
+    const messages = buildChatMessages(buildMcpToolSystemPrompt(systemPrompt, options.config, runtimeContext), recentTurns, userInput, memories, { memoryRetrievalPolicy: options.config.memory?.retrievalPolicy ?? "full", knowledgeGraph, conversationSummary, recentMessageLimit });
     if (savedAttachment?.visionImage) {
       attachZaloVisionImage(messages, userInput, savedAttachment.visionImage.dataUrl);
     }
@@ -1362,13 +1364,13 @@ function formatMemoryList(memories: Array<{ id: number; type: string; content: s
   return memories.map((memory) => `${memory.id}. [${memory.type}] ${memory.content}`).join("\n");
 }
 
-async function loadRecentZaloTurns(paths: RuntimePaths, userId: string): Promise<ChatMessage[]> {
+async function loadRecentZaloTurns(paths: RuntimePaths, userId: string, recentMessageLimit: number): Promise<ChatMessage[]> {
   const store = await SqliteMemoryStore.open(paths);
   try {
     if (store.getMemoryState().paused) {
       return [];
     }
-    return store.listRecentMessagesForChannel("zalo", userId, MAX_RECENT_TURNS).map((message) => ({ role: message.role, content: message.content }));
+    return store.listRecentMessagesForChannel("zalo", userId, recentMessageLimit).map((message) => ({ role: message.role, content: message.content }));
   } finally {
     store.close();
   }
@@ -1382,18 +1384,6 @@ async function persistZaloConversationTurn(paths: RuntimePaths, userId: string, 
     }
     store.addMessage({ channel: "zalo", userId, role: "user", content: userInput });
     store.addMessage({ channel: "zalo", userId, role: "assistant", content: assistantText });
-  } finally {
-    store.close();
-  }
-}
-
-async function loadActiveMemories(paths: RuntimePaths): Promise<import("../memory/sqlite-store.js").StoredMemory[]> {
-  const store = await SqliteMemoryStore.open(paths);
-  try {
-    if (store.getMemoryState().paused) {
-      return [];
-    }
-    return store.listActiveMemories();
   } finally {
     store.close();
   }

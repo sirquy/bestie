@@ -1,6 +1,6 @@
 import { access } from "node:fs/promises";
 
-import { SqliteMemoryStore, type PendingMemory, type StoredMemory } from "../../memory/sqlite-store.js";
+import { SqliteMemoryStore, type ConversationSummary, type PendingMemory, type StoredMemory } from "../../memory/sqlite-store.js";
 import { getRuntimePaths, type RuntimePaths } from "../../runtime/paths.js";
 
 export interface UiMemorySummary {
@@ -18,9 +18,11 @@ export interface UiMemorySummary {
     core: number;
     project: number;
     session: number;
+    conversationSummaries: number;
   };
   memories: UiMemoryItem[];
   pending: UiPendingMemoryItem[];
+  conversationSummaries: UiConversationSummaryItem[];
 }
 
 export interface UiMemorySearchResult extends UiMemorySummary {
@@ -56,6 +58,15 @@ export interface UiPendingMemoryItem {
   source?: string;
   explicitConsent: boolean;
   createdAt: string;
+}
+
+export interface UiConversationSummaryItem {
+  id: number;
+  channel: string;
+  userId?: string;
+  content: string;
+  summarizedMessageId: number;
+  updatedAt: string;
 }
 
 export async function getUiMemorySummary(paths: RuntimePaths = getRuntimePaths(), limit = 20): Promise<UiMemorySummary> {
@@ -119,6 +130,7 @@ export async function runUiMemoryAction(options: UiMemoryActionOptions): Promise
 
 function buildMemorySummary(paths: RuntimePaths, store: SqliteMemoryStore, memories: StoredMemory[], pending: PendingMemory[], databaseExists: boolean): UiMemorySummary {
   const allActive = store.listActiveMemories();
+  const conversationSummaries = store.listConversationSummaries({ limit: 20 });
   return {
     ok: true,
     database: { exists: databaseExists, path: paths.memoryDbPath },
@@ -129,9 +141,11 @@ function buildMemorySummary(paths: RuntimePaths, store: SqliteMemoryStore, memor
       core: allActive.filter((memory) => memory.scope === "core").length,
       project: allActive.filter((memory) => memory.scope === "project").length,
       session: allActive.filter((memory) => memory.scope === "session").length,
+      conversationSummaries: store.listConversationSummaries({ limit: 1000 }).length,
     },
     memories: memories.map(toUiMemoryItem),
     pending: pending.map(toUiPendingMemoryItem),
+    conversationSummaries: conversationSummaries.map(toUiConversationSummaryItem),
   };
 }
 
@@ -140,9 +154,10 @@ function emptyMemorySummary(paths: RuntimePaths): UiMemorySummary {
     ok: true,
     database: { exists: false, path: paths.memoryDbPath },
     state: { paused: false },
-    counts: { active: 0, pending: 0, core: 0, project: 0, session: 0 },
+    counts: { active: 0, pending: 0, core: 0, project: 0, session: 0, conversationSummaries: 0 },
     memories: [],
     pending: [],
+    conversationSummaries: [],
   };
 }
 
@@ -171,6 +186,17 @@ function toUiPendingMemoryItem(memory: PendingMemory): UiPendingMemoryItem {
     ...(memory.source === undefined ? {} : { source: memory.source }),
     explicitConsent: memory.explicitConsent,
     createdAt: memory.createdAt,
+  };
+}
+
+function toUiConversationSummaryItem(summary: ConversationSummary): UiConversationSummaryItem {
+  return {
+    id: summary.id,
+    channel: summary.channel,
+    ...(summary.userId === undefined ? {} : { userId: summary.userId }),
+    content: summary.content,
+    summarizedMessageId: summary.summarizedMessageId,
+    updatedAt: summary.updatedAt,
   };
 }
 

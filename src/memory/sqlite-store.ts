@@ -480,6 +480,19 @@ export class SqliteMemoryStore {
     return row ? mapConversationSummaryRow(row) : undefined;
   }
 
+  listConversationSummaries(options: { channel?: string; userId?: string; limit?: number } = {}): ConversationSummary[] {
+    const limit = options.limit ?? 20;
+    const rows = options.channel === undefined
+      ? this.db
+        .prepare("SELECT * FROM conversation_summaries WHERE (@userId IS NULL OR user_id = @userId) ORDER BY updated_at DESC, id DESC LIMIT @limit")
+        .all({ userId: options.userId === undefined ? null : conversationSummaryUserId(options.userId), limit }) as ConversationSummaryRow[]
+      : this.db
+        .prepare("SELECT * FROM conversation_summaries WHERE channel = @channel AND (@userId IS NULL OR user_id = @userId) ORDER BY updated_at DESC, id DESC LIMIT @limit")
+        .all({ channel: options.channel, userId: options.userId === undefined ? null : conversationSummaryUserId(options.userId), limit }) as ConversationSummaryRow[];
+
+    return rows.map(mapConversationSummaryRow);
+  }
+
   upsertConversationSummary(summary: { channel: string; userId?: string; content: string; summarizedMessageId: number }): ConversationSummary {
     this.db
       .prepare(`
@@ -860,6 +873,16 @@ export class SqliteMemoryStore {
           .all({ query: `%${escapeLike(normalizedQuery)}%`, limit }) as MemoryRow[]);
 
     return rows.map(mapMemoryRow);
+  }
+
+  recordMemoryAccess(memoryIds: number[]): void {
+    const ids = [...new Set(memoryIds.filter((id) => Number.isInteger(id) && id > 0))];
+    if (ids.length === 0) return;
+
+    const placeholders = ids.map(() => "?").join(", ");
+    this.db
+      .prepare(`UPDATE memories SET last_accessed_at = CURRENT_TIMESTAMP, access_count = COALESCE(access_count, 0) + 1 WHERE status = 'active' AND id IN (${placeholders})`)
+      .run(...ids);
   }
 
   upsertKnowledgeEntity(entity: NewKnowledgeEntity): KnowledgeEntity {

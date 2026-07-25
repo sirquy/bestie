@@ -1,9 +1,12 @@
 import { buildAgentToolResultMessage, buildMcpToolSystemPrompt, completeWithAgentTools, formatToolRequestName, parseAgentToolDecisionResult, type AgentToolActivity } from "../../chat/mcp-tool-use.js";
-import { appendConversationTurn, buildChatMessages } from "../../chat/message-builder.js";
+import { buildChatMessages, getRecentMessageLimit } from "../../chat/message-builder.js";
 import { loadSystemPrompt } from "../../character/prompt-loader.js";
+import { getProviderAdapterMetadata } from "../../llm/adapters/registry.js";
 import { sendChatCompletionWithFallbacks } from "../../llm/chat-completion.js";
 import { loadLlmCandidateSecret, resolvePrimaryLlmCandidate } from "../../llm/resolve-config.js";
-import type { ChatCompletionOptions } from "../../llm/types.js";
+import type { ChatCompletionOptions, ChatMessage } from "../../llm/types.js";
+import { loadUiConversationSummaryContext, refreshUiConversationSummary } from "../../memory/conversation-summary.js";
+import { loadRelevantMemories } from "../../memory/context.js";
 import { runKnowledgeReasoningPass, type KnowledgeReasoningResult } from "../../memory/knowledge-reasoning.js";
 import { SqliteMemoryStore } from "../../memory/sqlite-store.js";
 import { loadConfig } from "../../runtime/config.js";
@@ -452,6 +455,7 @@ function readReplayAttachments(value: unknown): UiChatAttachment[] | undefined {
     if (!attachment || typeof attachment !== "object") return [];
     const item = attachment as Record<string, unknown>;
     if (typeof item.name !== "string" || typeof item.content !== "string") return [];
+    if (item.content === UI_IMAGE_CONTENT_OMITTED) return [];
     return [{ name: item.name, type: typeof item.type === "string" ? item.type : undefined, size: typeof item.size === "number" ? item.size : undefined, content: item.content.slice(0, 64 * 1024) }];
   });
   return attachments.length ? attachments : undefined;
@@ -466,10 +470,13 @@ async function synthesizeContinuedChatAnswer(paths: RuntimePaths, config: Awaite
   const systemPrompt = await loadSystemPrompt(paths);
   const store = await SqliteMemoryStore.open(paths);
   try {
-    const history = toChatHistory(store.listUiChatMessages(sessionId).map((message) => ({ role: message.role, content: message.content })));
+    const recentMessageLimit = getRecentMessageLimit(config);
+    const history = toChatHistory(store.listUiChatMessages(sessionId, recentMessageLimit).map((message) => ({ role: message.role, content: message.content })), recentMessageLimit);
+    const conversationSummary = await loadUiConversationSummaryContext(paths, sessionId);
     const toolName = formatToolRequestName(execution.request);
     const messages = [
       { role: "system" as const, content: buildMcpToolSystemPrompt(systemPrompt, config) },
+      ...conversationSummary,
       ...history,
       { role: "user" as const, content: buildAgentToolResultMessage(toolName, execution.toolResult) },
     ];
@@ -488,10 +495,46 @@ function appendAttachmentContext(userInput: string, attachments: UiChatAttachmen
     `Attachment ${index + 1}: ${attachment.name}`,
     `Type: ${attachment.type ?? "text/plain"}`,
     `Size: ${attachment.size ?? attachment.content.length} bytes`,
-    "Content:",
-    attachment.content.slice(0, 64 * 1024),
+    isUiImageAttachment(attachment)
+      ? `Content: ${isSupportedUiImageDataUrl(attachment.content) ? "[image attached for vision input]" : "[image attachment omitted from text context]"}`
+      : ["Content:", attachment.content.slice(0, 64 * 1024)].join("\n"),
   ].join("\n"));
   return `${userInput}\n\nAttached context:\n${blocks.join("\n\n---\n\n")}`;
+}
+
+const UI_SUPPORTED_IMAGE_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
+const UI_IMAGE_CONTENT_OMITTED = "[image data omitted]";
+
+function isUiImageAttachment(attachment: UiChatAttachment): boolean {
+  const type = attachment.type?.toLowerCase() ?? "";
+  return type.startsWith("image/") || attachment.content.startsWith("data:image/");
+}
+
+function isSupportedUiImageDataUrl(value: string): boolean {
+  return /^data:image\/(?:jpeg|png|webp|gif);base64,[a-z0-9+/=\r\n]+$/i.test(value);
+}
+
+function resolveUiVisionImageUrls(config: Awaited<ReturnType<typeof loadConfig>>, attachments: UiChatAttachment[] | undefined): string[] {
+  if (!attachments?.length) return [];
+  const provider = resolvePrimaryLlmCandidate(config).provider;
+  if (!getProviderAdapterMetadata(provider).supportsVision) return [];
+  return attachments
+    .filter((attachment) => {
+      const type = attachment.type?.toLowerCase() ?? "";
+      return (!type || UI_SUPPORTED_IMAGE_MIME_TYPES.has(type)) && isSupportedUiImageDataUrl(attachment.content);
+    })
+    .slice(0, 5)
+    .map((attachment) => attachment.content);
+}
+
+function attachUiVisionImages(messages: ChatMessage[], promptInput: string, imageUrls: string[]): void {
+  if (!imageUrls.length) return;
+  const lastUserMessage = [...messages].reverse().find((message) => message.role === "user");
+  if (!lastUserMessage) return;
+  lastUserMessage.content = [
+    { type: "text", text: promptInput },
+    ...imageUrls.map((url) => ({ type: "image_url" as const, image_url: { url } })),
+  ];
 }
 
 export async function runUiChat(options: UiChatOptions): Promise<UiChatResult> {
@@ -504,11 +547,14 @@ export async function runUiChat(options: UiChatOptions): Promise<UiChatResult> {
   const systemPrompt = await loadSystemPrompt(paths);
   const apiKey = await loadLlmCandidateSecret(resolvePrimaryLlmCandidate(config), paths);
   const chatCompletion = options.chatCompletion ?? ((currentConfig: typeof config, _apiKey: string, requestOptions: ChatCompletionOptions) => sendChatCompletionWithFallbacks(currentConfig, requestOptions, { paths }));
-  const memories = options.memoryEnabled === false ? [] : await loadActiveMemories(paths);
-  const history = toChatHistory(options.history ?? []);
+  const recentMessageLimit = getRecentMessageLimit(config);
+  const history = toChatHistory(await resolveUiChatHistory(paths, options, recentMessageLimit), recentMessageLimit);
   const promptInput = appendAttachmentContext(userInput, options.attachments);
+  const memories = options.memoryEnabled === false ? [] : await loadRelevantMemories(paths, { query: promptInput });
   const knowledgeGraph = options.memoryEnabled === false ? undefined : await loadRelevantKnowledgeGraph(paths, promptInput);
-  const messages = buildChatMessages(buildMcpToolSystemPrompt(systemPrompt, config), history, promptInput, memories, { memoryRetrievalPolicy: config.memory?.retrievalPolicy ?? "full", knowledgeGraph });
+  const conversationSummary = options.memoryEnabled === false || options.sessionId === undefined ? [] : await loadUiConversationSummaryContext(paths, options.sessionId);
+  const messages = buildChatMessages(buildMcpToolSystemPrompt(systemPrompt, config), history, promptInput, memories, { memoryRetrievalPolicy: config.memory?.retrievalPolicy ?? "full", knowledgeGraph, conversationSummary, recentMessageLimit });
+  attachUiVisionImages(messages, promptInput, resolveUiVisionImageUrls(config, options.attachments));
   const toolActivities: AgentToolActivity[] = [];
   const persistedUser = options.sessionId === undefined ? undefined : await persistUserChatMessage(paths, options.sessionId, userInput);
   const session = persistedUser?.session;
@@ -555,6 +601,9 @@ export async function runUiChat(options: UiChatOptions): Promise<UiChatResult> {
   const finishedRun = run ? await finishUiChatRun(paths, run.id, { status: "done", model: config.llm.primary, assistantMessageId: persistedAssistant?.message.id, metadataJson: JSON.stringify(buildChatRunMetadata(userInput, options, { model: config.llm.primary, output: answer, outputChars: answer.length, toolCalls: toolActivities.length })) }) : undefined;
   if (options.memoryEnabled !== false) {
     await runUiKnowledgeReasoningPass({ config, paths, apiKey, userInput: promptInput, assistantText: answer, sessionId: session?.id, assistantMessageId: persistedAssistant?.message.id, runId: run?.id, timelineOptions, chatCompletion });
+    if (session) {
+      await refreshUiConversationSummaryBestEffort({ config, paths, apiKey, sessionId: session.id, chatCompletion });
+    }
   }
   await emitTimelineEvent(paths, session?.id, timelineOptions, { type: "done", label: "Assistant response completed", payload: { characters: answer.length, toolCalls: toolActivities.length } });
   await appendLog({ event: "ui_chat_success", detail: { model: config.llm.primary, toolCalls: toolActivities.length } }, { paths, knownSecrets: [apiKey] });
@@ -703,24 +752,49 @@ function buildChatRunMetadata(userInput: string, options: UiChatOptions, result:
 }
 
 function summarizeChatAttachments(attachments: UiChatAttachment[] | undefined): Array<{ name: string; type?: string; size?: number; chars: number; content: string }> {
-  return (attachments ?? []).slice(0, 5).map((attachment) => ({ name: attachment.name, type: attachment.type, size: attachment.size, chars: attachment.content.length, content: attachment.content.slice(0, 64 * 1024) }));
+  return (attachments ?? []).slice(0, 5).map((attachment) => ({
+    name: attachment.name,
+    type: attachment.type,
+    size: attachment.size,
+    chars: attachment.content.length,
+    content: isUiImageAttachment(attachment) ? UI_IMAGE_CONTENT_OMITTED : attachment.content.slice(0, 64 * 1024),
+  }));
 }
 
-function toChatHistory(history: UiChatMessage[]): import("../../llm/types.js").ChatMessage[] {
-  return history.reduce<import("../../llm/types.js").ChatMessage[]>((turns, message, index) => {
-    if (message.role !== "user" && message.role !== "assistant") return turns;
-    if (index >= 24) return turns;
-    return appendConversationTurn(turns, message.role === "user" ? message.content : "", message.role === "assistant" ? message.content : "");
-  }, []).filter((message) => typeof message.content === "string" && message.content.trim());
+function toChatHistory(history: UiChatMessage[], recentMessageLimit: number): import("../../llm/types.js").ChatMessage[] {
+  return history
+    .filter((message) => (message.role === "user" || message.role === "assistant") && message.content.trim())
+    .slice(-recentMessageLimit)
+    .map((message) => ({ role: message.role, content: message.content }));
 }
 
-async function loadActiveMemories(paths: RuntimePaths): Promise<import("../../memory/sqlite-store.js").StoredMemory[]> {
+async function resolveUiChatHistory(paths: RuntimePaths, options: UiChatOptions, recentMessageLimit: number): Promise<UiChatMessage[]> {
+  if (options.history && options.history.length > 0) {
+    return options.history;
+  }
+  if (options.sessionId === undefined) {
+    return [];
+  }
+
   const store = await SqliteMemoryStore.open(paths);
   try {
-    if (store.getMemoryState().paused) return [];
-    return store.listActiveMemories();
+    return store.listUiChatMessages(options.sessionId, recentMessageLimit).map((message) => ({ role: message.role, content: message.content }));
   } finally {
     store.close();
+  }
+}
+
+async function refreshUiConversationSummaryBestEffort(options: {
+  config: Awaited<ReturnType<typeof loadConfig>>;
+  paths: RuntimePaths;
+  apiKey: string;
+  sessionId: number;
+  chatCompletion: (config: Awaited<ReturnType<typeof loadConfig>>, apiKey: string, options: ChatCompletionOptions) => Promise<string>;
+}): Promise<void> {
+  try {
+    await refreshUiConversationSummary(options);
+  } catch (error) {
+    await appendLog({ event: "conversation_summary_failure", detail: { channel: "ui", sessionId: options.sessionId, error: error instanceof Error ? error.message : String(error) } }, { paths: options.paths, knownSecrets: [options.apiKey] });
   }
 }
 

@@ -138,6 +138,9 @@ function shouldSuppressBanner(argv: string[]): boolean {
   if (command === "memory" && argv[3] === "cleanup" && argv.includes("--json")) {
     return true;
   }
+  if (command === "memory" && argv[3] === "summaries" && argv.includes("--json")) {
+    return true;
+  }
 
   return false;
 }

@@ -3,6 +3,7 @@ import type { RuntimePaths } from "../runtime/paths.js";
 import { sendChatCompletionWithFallbacks } from "../llm/chat-completion.js";
 import { loadLlmCandidateSecret, resolvePrimaryLlmCandidate } from "../llm/resolve-config.js";
 import { appendLog } from "../runtime/logger.js";
+import { loadRelevantMemories } from "../memory/context.js";
 import { SqliteMemoryStore } from "../memory/sqlite-store.js";
 import { buildChatMessages } from "../chat/message-builder.js";
 import { buildMcpToolSystemPrompt, completeWithAgentTools, type AgentToolChatCompletionRunner } from "../chat/mcp-tool-use.js";
@@ -28,7 +29,7 @@ export async function runIsolatedChat(options: IsolatedChatOptions): Promise<str
   const apiKey = options.apiKey ?? (await loadLlmCandidateSecret(resolvePrimaryLlmCandidate(options.config), options.paths));
 
   const systemPrompt = buildCronSystemPrompt(options.config, await loadWorkspaceInstructions(options.paths));
-  const memories = await loadActiveMemories(options.paths);
+  const memories = await loadRelevantMemories(options.paths, { query: options.prompt });
   const knowledgeGraph = await loadRelevantKnowledgeGraph(options.paths, options.prompt);
   const messages = buildChatMessages(systemPrompt, [], options.prompt, memories, { memoryRetrievalPolicy: options.config.memory?.retrievalPolicy ?? "full", knowledgeGraph });
 
@@ -53,20 +54,6 @@ export async function runIsolatedChat(options: IsolatedChatOptions): Promise<str
 export function buildCronSystemPrompt(config: AppConfig, workspaceInstructions?: string): string {
   const base = [CRON_SYSTEM_PREFIX, `Agent name: ${config.agent.name}. Owner: ${config.agent.ownerName}.`].join("\n\n");
   return buildMcpToolSystemPrompt(appendWorkspaceInstructionsText(base, workspaceInstructions), config);
-}
-
-async function loadActiveMemories(paths: RuntimePaths): Promise<import("../memory/sqlite-store.js").StoredMemory[]> {
-  const store = await SqliteMemoryStore.open(paths);
-
-  try {
-    if (store.getMemoryState().paused) {
-      return [];
-    }
-
-    return store.listActiveMemories();
-  } finally {
-    store.close();
-  }
 }
 
 async function loadRelevantKnowledgeGraph(paths: RuntimePaths, query: string): Promise<import("../memory/sqlite-store.js").KnowledgeGraphSearchResult | undefined> {

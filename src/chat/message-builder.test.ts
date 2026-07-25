@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { appendConversationTurn, buildChatMessages, MAX_RECENT_TURNS } from "./message-builder.js";
+import { appendConversationTurn, buildChatMessages, getRecentMessageLimit, KNOWLEDGE_CONTEXT_CHAR_LIMIT, MAX_RECENT_TURNS, MEMORY_CONTEXT_CHAR_LIMIT } from "./message-builder.js";
 import type { ChatMessage } from "../llm/types.js";
 import type { KnowledgeGraphSearchResult, StoredMemory } from "../memory/sqlite-store.js";
 
@@ -144,6 +144,36 @@ test("buildChatMessages orders knowledge graph facts by trust and labels cautiou
   assert.equal(entityLines[1]?.includes("Old Guess"), true);
 });
 
+test("buildChatMessages bounds long knowledge graph context while keeping high-trust facts", () => {
+  const graph: KnowledgeGraphSearchResult = {
+    query: "Bestie",
+    entities: [
+      { id: 1, canonicalName: "Bestie Agent", kind: "project", aliases: ["Bestie"], sensitivity: "normal", scope: "project", confidence: 0.95, sourceMessageId: "ui-chat:1:message:2", status: "active", createdAt: "now", updatedAt: "now" },
+      ...Array.from({ length: 35 }, (_value, index) => ({
+        id: index + 2,
+        canonicalName: `Low Trust Topic ${index + 1}`,
+        kind: "topic" as const,
+        aliases: ["x".repeat(900)],
+        sensitivity: "normal" as const,
+        scope: "session" as const,
+        confidence: 0.2,
+        status: "active" as const,
+        createdAt: "2020-01-01T00:00:00.000Z",
+        updatedAt: "2020-01-01T00:00:00.000Z",
+      })),
+    ],
+    relations: [],
+  };
+
+  const messages = buildChatMessages("system prompt", [], "what do we know?", [], { knowledgeGraph: graph });
+  const graphContext = String(messages[1]?.content ?? "");
+
+  assert.ok(graphContext.length <= KNOWLEDGE_CONTEXT_CHAR_LIMIT);
+  assert.match(graphContext, /Bestie Agent/);
+  assert.doesNotMatch(graphContext, /- entity #36: \[topic\] Low Trust Topic 35/);
+  assert.match(graphContext, /context truncated: \d+ lower-trust knowledge graph facts omitted/);
+});
+
 test("buildChatMessages prioritizes important recent memories in context", () => {
   const memories: StoredMemory[] = Array.from({ length: 10 }, (_, index) => createStoredMemory({
     id: index + 1,
@@ -164,6 +194,21 @@ test("buildChatMessages prioritizes important recent memories in context", () =>
   assert.equal(memoryLines[0], "- #10 [preference] Memory 10");
   assert.equal(memoryLines[1], "- #9 [preference] Memory 9");
   assert.equal(memoryLines.at(-1), "- #1 [preference] Memory 1");
+});
+
+test("buildChatMessages uses memory access metadata as a context priority tiebreaker", () => {
+  const messages = buildChatMessages("system prompt", [], "hello", [
+    createStoredMemory({ id: 1, type: "preference", content: "Never used", importance: 3, accessCount: 0, updatedAt: "2026-01-04T00:00:00.000Z" }),
+    createStoredMemory({ id: 2, type: "preference", content: "Frequently used", importance: 3, accessCount: 4, lastAccessedAt: "2026-01-02T00:00:00.000Z", updatedAt: "2026-01-01T00:00:00.000Z" }),
+    createStoredMemory({ id: 3, type: "preference", content: "Recently used", importance: 3, accessCount: 4, lastAccessedAt: "2026-01-03T00:00:00.000Z", updatedAt: "2026-01-01T00:00:00.000Z" }),
+  ]);
+
+  const memoryContext = String(messages[1]?.content ?? "");
+  const memoryLines = memoryContext.split("\n").filter((line) => line.includes("[preference]"));
+
+  assert.equal(memoryLines[0], "- #3 [preference] Recently used");
+  assert.equal(memoryLines[1], "- #2 [preference] Frequently used");
+  assert.equal(memoryLines[2], "- #1 [preference] Never used");
 });
 
 test("buildChatMessages orders memory tiers as core project session", () => {
@@ -224,11 +269,11 @@ test("buildChatMessages can organize full memory context with governance labels"
   assert.match(memoryLines.at(-1) ?? "", /#3 \[preference\] \(low-confidence:0.2, stale:expired 2020-01-01T00:00:00.000Z, superseded-by:#1\) old low confidence/);
 });
 
-test("buildChatMessages does not truncate long active memory context", () => {
+test("buildChatMessages bounds long active memory context while keeping high-priority memories", () => {
   const memories: StoredMemory[] = Array.from({ length: 50 }, (_, index) => createStoredMemory({
     id: index + 1,
     type: "project_context",
-    content: `Important memory ${index + 1}: ${"x".repeat(900)}`,
+    content: `Important memory ${index + 1}: ${"x".repeat(1400)}`,
     sensitivity: "normal",
     importance: index === 49 ? 5 : 1,
     status: "active",
@@ -240,8 +285,10 @@ test("buildChatMessages does not truncate long active memory context", () => {
   const messages = buildChatMessages("system prompt", [], "hello", memories);
   const memoryContext = String(messages[1]?.content ?? "");
 
+  assert.ok(memoryContext.length <= MEMORY_CONTEXT_CHAR_LIMIT);
   assert.match(memoryContext, /Important memory 50/);
-  assert.match(memoryContext, /Important memory 1/);
+  assert.doesNotMatch(memoryContext, /- #1 \[project_context\] Important memory 1:/);
+  assert.match(memoryContext, /context truncated: \d+ lower-priority memory entries omitted/);
 });
 
 test("appendConversationTurn keeps only recent terminal turns", () => {
@@ -255,4 +302,22 @@ test("appendConversationTurn keeps only recent terminal turns", () => {
   assert.equal(nextTurns.length, MAX_RECENT_TURNS);
   assert.equal(nextTurns[0]?.content, "turn-2");
   assert.equal(nextTurns.at(-1)?.content, "new assistant");
+});
+
+test("buildChatMessages honors configured recent message limit", () => {
+  const turns: ChatMessage[] = Array.from({ length: 10 }, (_, index) => ({
+    role: index % 2 === 0 ? "user" : "assistant",
+    content: `turn-${index}`,
+  }));
+
+  const messages = buildChatMessages("system prompt", turns, "latest", [], { recentMessageLimit: 6 });
+
+  assert.deepEqual(messages.map((message) => message.content), ["system prompt", "turn-4", "turn-5", "turn-6", "turn-7", "turn-8", "turn-9", "latest"]);
+});
+
+test("getRecentMessageLimit reads memory.recentMessageLimit with conservative bounds", () => {
+  assert.equal(getRecentMessageLimit({ memory: { recentMessageLimit: 80 } }), 80);
+  assert.equal(getRecentMessageLimit({ memory: { recentMessageLimit: 1 } }), 4);
+  assert.equal(getRecentMessageLimit({ memory: { recentMessageLimit: 999 } }), 400);
+  assert.equal(getRecentMessageLimit(undefined), MAX_RECENT_TURNS);
 });

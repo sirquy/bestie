@@ -1,6 +1,6 @@
 import { evaluateMemoryCandidate, type MemoryType } from "../../memory/policy.js";
 import { analyzeKnowledgeGraph, planKnowledgeGraphReview, type KnowledgeGraphAnalysis, type KnowledgeGraphReviewPlan } from "../../memory/knowledge-governance.js";
-import { isMemoryScope, SqliteMemoryStore, type KnowledgeEntity, type KnowledgeEntityKind, type KnowledgeRelationWithEntities, type KnowledgeSensitivity, type PendingKnowledgeItem, type PendingMemory, type StoredMemory, type StoredMessageRole } from "../../memory/sqlite-store.js";
+import { isMemoryScope, SqliteMemoryStore, type ConversationSummary, type KnowledgeEntity, type KnowledgeEntityKind, type KnowledgeRelationWithEntities, type KnowledgeSensitivity, type PendingKnowledgeItem, type PendingMemory, type StoredMemory, type StoredMessageRole } from "../../memory/sqlite-store.js";
 import { isMemoryRetrievalPolicy, setMemoryRetrievalPolicy } from "../../memory/governance.js";
 import { buildMemoryHygieneDoctorReport, fixMemoryHygieneDoctorIssues, formatMemoryHygieneDoctorFixes, formatMemoryHygieneDoctorReport } from "../../memory/hygiene-doctor.js";
 import { calculateMemoryHygieneScore } from "../../memory/hygiene-score.js";
@@ -10,6 +10,9 @@ import { MEMORY_MAINTENANCE_DEFAULT_SCHEDULE, installMemoryMaintenanceReport, ge
 import { applyMemoryRebalancePlan, formatMemoryRebalanceApplyResult, formatMemoryRebalancePlan, planMemoryRebalance } from "../../memory/rebalance.js";
 import { formatMemorySummary } from "../../memory/summary.js";
 import { formatMemoryTiersReport } from "../../memory/tiers.js";
+import { refreshAllConversationSummaries, type ConversationSummaryChannel, type ConversationSummaryRefreshReport } from "../../memory/conversation-summary.js";
+import { sendChatCompletionWithFallbacks } from "../../llm/chat-completion.js";
+import { loadLlmCandidateSecret, resolvePrimaryLlmCandidate } from "../../llm/resolve-config.js";
 import { loadConfig, type MemoryDeletePolicy } from "../../runtime/config.js";
 import { MissingConfigError } from "../../runtime/errors.js";
 import { getRuntimePaths } from "../../runtime/paths.js";
@@ -179,6 +182,16 @@ export async function runMemoryCommand(argv: string[] = process.argv): Promise<v
     return;
   }
 
+  if (subcommand === "summaries") {
+    if (argv[4] === "refresh") {
+      await refreshConversationSummaries(argv);
+      return;
+    }
+
+    await listConversationSummaries(argv);
+    return;
+  }
+
   if (subcommand === "pending") {
     if (argv[4] === "inspect") {
       await inspectPendingMemory(argv);
@@ -210,7 +223,7 @@ export async function runMemoryCommand(argv: string[] = process.argv): Promise<v
   }
 
   console.error(`Unknown memory command: ${subcommand}`);
-  console.error("Usage: bestie memory status | pause | resume | list | tiers | rebalance [--dry-run|--apply] [--yes] [--json] | summary | graph status|search|entities|relations|analyze|review|inspect|add|merge|forget|export | search <query> | analyze [--mode all|duplicates|stale|conflicts] [--json] | hygiene [status|trend|doctor|--apply] [--fix] [--yes] [--json] | digest | cleanup --dry-run|--apply [--yes] [--json] | maintenance install|status|remove [--channel telegram:<id>|zalo:<id>] [--schedule <cron>] | add <type> <content> | inspect <id> | edit <id> <content> | forget <id> | messages [--limit <n>] [--role user|assistant|system] | messages search <query> [--limit <n>] [--role user|assistant|system] | export | clear --yes | pending [--limit <n>] | pending search <query> [--limit <n>] | pending inspect <id> | approve <id> | reject <id> | reject-all --yes");
+  console.error("Usage: bestie memory status | pause | resume | list | tiers | rebalance [--dry-run|--apply] [--yes] [--json] | summary | summaries [--channel <name>] [--user <id>] [--limit <n>] [--json] | summaries refresh [--channel terminal|telegram|zalo|ui] [--user <id>] [--limit <n>] [--json] | graph status|search|entities|relations|analyze|review|inspect|add|merge|forget|export | search <query> | analyze [--mode all|duplicates|stale|conflicts] [--json] | hygiene [status|trend|doctor|--apply] [--fix] [--yes] [--json] | digest | cleanup --dry-run|--apply [--yes] [--json] | maintenance install|status|remove [--channel telegram:<id>|zalo:<id>] [--schedule <cron>] | add <type> <content> | inspect <id> | edit <id> <content> | forget <id> | messages [--limit <n>] [--role user|assistant|system] | messages search <query> [--limit <n>] [--role user|assistant|system] | export | clear --yes | pending [--limit <n>] | pending search <query> [--limit <n>] | pending inspect <id> | approve <id> | reject <id> | reject-all --yes");
   process.exitCode = 1;
 }
 
@@ -295,6 +308,7 @@ async function showMemorySummary(): Promise<void> {
       plan,
       rebalance,
       trend,
+      conversationSummaries: store.listConversationSummaries({ limit: 1000 }),
       deletePolicy: config.memory?.deletePolicy ?? "ask",
       retrievalPolicy: config.memory?.retrievalPolicy ?? "full",
     }));
@@ -1723,6 +1737,76 @@ async function listRecentMessages(argv: string[] = process.argv): Promise<void> 
   }
 }
 
+async function listConversationSummaries(argv: string[] = process.argv): Promise<void> {
+  const limit = parseLimitOption(argv, 20);
+  const channel = parseTextFlag(argv, "--channel");
+  const userId = parseTextFlag(argv, "--user");
+  const json = argv.includes("--json");
+
+  if (!limit || channel === false || userId === false) {
+    return;
+  }
+
+  const store = await SqliteMemoryStore.open();
+
+  try {
+    const summaries = store.listConversationSummaries({ channel, userId, limit });
+    if (json) {
+      console.log(JSON.stringify({ summaries }, null, 2));
+      return;
+    }
+
+    if (summaries.length === 0) {
+      console.log(`${badge("INFO", "blue")} No rolling conversation summaries yet.`);
+      return;
+    }
+
+    console.log(title(`Conversation Summaries (${summaries.length})`));
+    console.log(rule());
+    for (const summary of summaries) {
+      console.log(formatConversationSummaryBlock(summary));
+    }
+  } finally {
+    store.close();
+  }
+}
+
+async function refreshConversationSummaries(argv: string[] = process.argv): Promise<void> {
+  const limit = parseLimitOption(argv, 20);
+  const rawChannel = parseTextFlag(argv, "--channel");
+  const userId = parseTextFlag(argv, "--user");
+  const json = argv.includes("--json");
+  const paths = getRuntimePaths();
+
+  if (!limit || rawChannel === false || userId === false) {
+    return;
+  }
+
+  const channel = parseConversationSummaryChannel(rawChannel);
+  if (channel === false) {
+    return;
+  }
+
+  const config = await loadConfig(paths);
+  const apiKey = await loadLlmCandidateSecret(resolvePrimaryLlmCandidate(config), paths);
+  const report = await refreshAllConversationSummaries({
+    config,
+    paths,
+    apiKey,
+    channel,
+    userId,
+    limit,
+    chatCompletion: async (currentConfig, _apiKey, options) => sendChatCompletionWithFallbacks(currentConfig, options, { paths }),
+  });
+
+  if (json) {
+    console.log(JSON.stringify(report, null, 2));
+    return;
+  }
+
+  console.log(formatConversationSummaryRefreshReport(report));
+}
+
 async function listPendingMemories(argv: string[] = process.argv): Promise<void> {
   const limit = parseLimitOption(argv, 20);
 
@@ -1882,6 +1966,42 @@ function formatActiveMemoryLine(memory: StoredMemory): string {
   return `${badge(memory.type.toUpperCase(), "cyan")} #${memory.id} scope ${memory.scope} importance ${memory.importance} ${dim(`${memory.sensitivity}; updated ${memory.updatedAt}`)} ${memory.content}`;
 }
 
+function formatConversationSummaryBlock(summary: ConversationSummary): string {
+  const owner = summary.userId ? `${summary.channel}:${summary.userId}` : summary.channel;
+  const content = summary.content.length > 500 ? `${summary.content.slice(0, 497)}...` : summary.content;
+  return [
+    `${badge("SUMMARY", "cyan")} #${summary.id} ${owner} ${dim(`updated ${summary.updatedAt}; summarized through message #${summary.summarizedMessageId}`)}`,
+    `   ${content}`,
+  ].join("\n");
+}
+
+function formatConversationSummaryRefreshReport(report: ConversationSummaryRefreshReport): string {
+  const lines = [
+    title("Conversation Summary Refresh"),
+    rule(),
+    `${badge(report.failed > 0 ? "WARN" : "OK", report.failed > 0 ? "yellow" : "green")} Checked ${report.checked}; refreshed ${report.refreshed}; skipped ${report.skipped}; failed ${report.failed}; recent window ${report.recentMessageLimit}`,
+  ];
+
+  if (report.paused) {
+    lines.push(`${badge("PAUSED", "yellow")} Memory is paused; no summaries refreshed.`);
+    return lines.join("\n");
+  }
+
+  if (report.items.length === 0) {
+    lines.push(`${badge("CLEAN", "green")} No stale long conversation summaries found.`);
+    return lines.join("\n");
+  }
+
+  for (const item of report.items) {
+    const owner = item.userId ? `${item.channel}:${item.userId}` : item.channel;
+    const statusBadge = item.status === "refreshed" ? badge("REFRESHED", "green") : item.status === "failed" ? badge("FAILED", "red") : badge("SKIPPED", "yellow");
+    const detail = item.summarizedMessageId ? `summarized through message #${item.summarizedMessageId}` : item.reason ?? "no detail";
+    lines.push(`${statusBadge} ${owner} ${dim(`${item.messageCount} message(s); ${detail}`)}`);
+  }
+
+  return lines.join("\n");
+}
+
 function formatKnowledgeEntityLine(entity: KnowledgeEntity): string {
   const aliases = entity.aliases.length > 0 ? ` aliases ${entity.aliases.join(", ")}` : "";
   return `${badge(entity.kind.toUpperCase(), "cyan")} #${entity.id} scope ${entity.scope} confidence ${entity.confidence} ${dim(`${entity.sensitivity}; updated ${entity.updatedAt}`)} ${entity.canonicalName}${aliases}`;
@@ -1960,6 +2080,19 @@ function parseTextFlag(argv: string[], flag: string): string | undefined | false
     return false;
   }
   return value;
+}
+
+function parseConversationSummaryChannel(value: string | undefined): ConversationSummaryChannel | undefined | false {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (value === "terminal" || value === "telegram" || value === "zalo" || value === "ui") {
+    return value;
+  }
+
+  console.error("--channel must be one of: terminal, telegram, zalo, ui.");
+  process.exitCode = 1;
+  return false;
 }
 
 function parseScopeFlag(argv: string[]): "core" | "project" | "session" | undefined | false {

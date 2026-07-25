@@ -7,7 +7,8 @@ import { DEFAULT_LLM_TIMEOUT_MS, configExists, loadConfig, type AppConfig } from
 import { loadEnvFile } from "./env.js";
 import { resolvePrimaryLlmCandidate } from "../llm/resolve-config.js";
 import { InvalidConfigError } from "./errors.js";
-import { SqliteMemoryStore } from "../memory/sqlite-store.js";
+import { getRecentMessageLimit } from "../chat/message-builder.js";
+import { SqliteMemoryStore, type StoredMessage } from "../memory/sqlite-store.js";
 import { listMcpServers, type McpServerSummary } from "../mcp/servers.js";
 import { getRuntimePaths, type RuntimePaths } from "./paths.js";
 import { TelegramHttpClient, convertSpeechToTelegramVoice } from "../channels/telegram.js";
@@ -178,6 +179,7 @@ export async function runDoctor(paths: RuntimePaths = getRuntimePaths(), options
   checks.push(await checkProviderFallbackHealth(paths));
 
   checks.push(await checkMemoryDatabase(paths));
+  checks.push(await checkConversationSummaryContinuity(paths, configForChecks));
 
   checks.push(await checkCronHealth(paths));
 
@@ -911,6 +913,55 @@ async function checkMemoryDatabase(paths: RuntimePaths): Promise<DoctorCheck> {
   } finally {
     store?.close();
   }
+}
+
+async function checkConversationSummaryContinuity(paths: RuntimePaths, config?: AppConfig): Promise<DoctorCheck> {
+  let store: SqliteMemoryStore | undefined;
+
+  try {
+    store = await SqliteMemoryStore.open(paths);
+    const recentMessageLimit = getRecentMessageLimit(config);
+    const messages = store.listAllMessages();
+    const summaries = store.listConversationSummaries({ limit: 1000 });
+    const longThreads = groupMessagesByThread(messages).filter((thread) => thread.messages.length > recentMessageLimit);
+    const staleThreads = longThreads.filter((thread) => {
+      const summary = summaries.find((item) => item.channel === thread.channel && (item.userId ?? "") === (thread.userId ?? ""));
+      const summarizeThrough = thread.messages.at(-recentMessageLimit - 1)?.id ?? 0;
+      return !summary || summary.summarizedMessageId < summarizeThrough;
+    });
+
+    if (staleThreads.length > 0) {
+      const preview = staleThreads.slice(0, 3).map((thread) => formatMessageThreadOwner(thread)).join(", ");
+      return {
+        name: "Conversation summaries",
+        status: "warn",
+        message: `${staleThreads.length} long conversation thread(s) need rolling summary refresh: ${preview}.`,
+        fix: "Run `bestie memory summaries refresh` or inspect with `bestie memory summaries`.",
+      };
+    }
+
+    return { name: "Conversation summaries", status: "pass", message: `${summaries.length} rolling summary record(s); ${longThreads.length} long thread(s) covered.` };
+  } catch {
+    return { name: "Conversation summaries", status: "pass", message: "Conversation summary diagnostics skipped until memory database is ready." };
+  } finally {
+    store?.close();
+  }
+}
+
+function groupMessagesByThread(messages: StoredMessage[]): Array<{ channel: string; userId?: string; messages: StoredMessage[] }> {
+  const groups = new Map<string, { channel: string; userId?: string; messages: StoredMessage[] }>();
+  for (const message of messages) {
+    const channel = message.channel ?? "unknown";
+    const key = `${channel}\0${message.userId ?? ""}`;
+    const group = groups.get(key) ?? { channel, userId: message.userId, messages: [] };
+    group.messages.push(message);
+    groups.set(key, group);
+  }
+  return [...groups.values()];
+}
+
+function formatMessageThreadOwner(thread: { channel: string; userId?: string }): string {
+  return thread.userId ? `${thread.channel}:${thread.userId}` : thread.channel;
 }
 
 function getMissingMemoryColumns(store: SqliteMemoryStore): string[] {

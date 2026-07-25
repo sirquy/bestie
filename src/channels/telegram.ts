@@ -7,7 +7,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { basename, extname, join, resolve } from "node:path";
 
 import { loadSystemPrompt } from "../character/prompt-loader.js";
-import { buildChatMessages, MAX_RECENT_TURNS } from "../chat/message-builder.js";
+import { buildChatMessages, getRecentMessageLimit } from "../chat/message-builder.js";
 import {
   buildMcpToolSystemPrompt,
   completeWithAgentTools,
@@ -20,6 +20,7 @@ import { sendChatCompletionWithFallbacks } from "../llm/chat-completion.js";
 import { fallbackLogDetail, formatProviderFallbackDiagnostics, formatProviderFallbackHealth } from "../llm/fallbacks.js";
 import { runKnowledgeReasoningPass, type KnowledgeReasoningResult } from "../memory/knowledge-reasoning.js";
 import { loadConversationSummaryContext, refreshConversationSummary } from "../memory/conversation-summary.js";
+import { loadRelevantMemories } from "../memory/context.js";
 import { runMemoryReasoningPass, type MemoryReasoningResult } from "../memory/reasoning.js";
 import { isMemoryRetrievalPolicy, setMemoryRetrievalPolicy } from "../memory/governance.js";
 import { getMemoryMaintenanceReportStatus, installMemoryMaintenanceReport, removeMemoryMaintenanceReport, runMemoryMaintenanceDigest } from "../memory/maintenance.js";
@@ -472,11 +473,12 @@ export async function handleTelegramUpdate(update: TelegramUpdate, options: Tele
     }
     const userInput = savedAttachment ? buildTelegramAttachmentUserInput(text, savedAttachment) : text;
     const systemPrompt = await loadSystemPrompt(options.paths);
-    const memories = await loadActiveMemories(options.paths);
-    const recentTurns = await loadRecentTelegramTurns(options.paths, ownerUserId);
+    const memories = await loadRelevantMemories(options.paths, { query: userInput });
+    const recentMessageLimit = getRecentMessageLimit(options.config);
+    const recentTurns = await loadRecentTelegramTurns(options.paths, ownerUserId, recentMessageLimit);
     const knowledgeGraph = await loadRelevantKnowledgeGraph(options.paths, userInput);
     const conversationSummary = await loadConversationSummaryContext(options.paths, "telegram", ownerUserId);
-    const messages = buildChatMessages(buildMcpToolSystemPrompt(systemPrompt, options.config, buildTelegramRuntimeToolContext(decision.incoming)), recentTurns, userInput, memories, { memoryRetrievalPolicy: options.config.memory?.retrievalPolicy ?? "full", knowledgeGraph, conversationSummary });
+    const messages = buildChatMessages(buildMcpToolSystemPrompt(systemPrompt, options.config, buildTelegramRuntimeToolContext(decision.incoming)), recentTurns, userInput, memories, { memoryRetrievalPolicy: options.config.memory?.retrievalPolicy ?? "full", knowledgeGraph, conversationSummary, recentMessageLimit });
     if (savedAttachment?.visionImage) {
       attachTelegramVisionImage(messages, userInput, savedAttachment.visionImage.dataUrl);
     }
@@ -2006,7 +2008,7 @@ function parseTelegramMemoryCommand(text: string): "list" | "tiers" | "rebalance
   return undefined;
 }
 
-async function loadRecentTelegramTurns(paths: RuntimePaths, userId: string): Promise<ChatMessage[]> {
+async function loadRecentTelegramTurns(paths: RuntimePaths, userId: string, recentMessageLimit: number): Promise<ChatMessage[]> {
   const store = await SqliteMemoryStore.open(paths);
 
   try {
@@ -2014,7 +2016,7 @@ async function loadRecentTelegramTurns(paths: RuntimePaths, userId: string): Pro
       return [];
     }
 
-    return store.listRecentMessagesForChannel("telegram", userId, MAX_RECENT_TURNS).map((message) => ({ role: message.role, content: message.content }));
+    return store.listRecentMessagesForChannel("telegram", userId, recentMessageLimit).map((message) => ({ role: message.role, content: message.content }));
   } finally {
     store.close();
   }
@@ -2030,20 +2032,6 @@ async function persistTelegramConversationTurn(paths: RuntimePaths, userId: stri
 
     store.addMessage({ channel: "telegram", userId, role: "user", content: userInput });
     store.addMessage({ channel: "telegram", userId, role: "assistant", content: assistantText });
-  } finally {
-    store.close();
-  }
-}
-
-async function loadActiveMemories(paths: RuntimePaths): Promise<import("../memory/sqlite-store.js").StoredMemory[]> {
-  const store = await SqliteMemoryStore.open(paths);
-
-  try {
-    if (store.getMemoryState().paused) {
-      return [];
-    }
-
-    return store.listActiveMemories();
   } finally {
     store.close();
   }

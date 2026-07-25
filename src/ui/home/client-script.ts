@@ -486,6 +486,15 @@ function loadChatAttachments() {
 
 function readChatAttachmentFile(file) {
   if (file.size > 256 * 1024) return Promise.reject(new Error("Attachment is too large. Use files under 256 KB."));
+  const imageTypes = ["image/jpeg", "image/png", "image/webp", "image/gif"];
+  if (imageTypes.includes(file.type)) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.addEventListener("load", () => resolve({ name: file.name, type: file.type, size: file.size, content: String(reader.result ?? "") }));
+      reader.addEventListener("error", () => reject(new Error("Unable to read image attachment.")));
+      reader.readAsDataURL(file);
+    });
+  }
   return file.text().then((content) => ({ name: file.name, type: file.type || "text/plain", size: file.size, content: content.slice(0, 64 * 1024) }));
 }
 
@@ -1428,13 +1437,15 @@ function loadMemory() {
   fetch("/api/memory")
     .then((response) => response.json())
     .then((memory) => {
-      setValue("#memory-panel .value", 'Active ' + text(memory.counts?.active) + ' / Pending ' + text(memory.counts?.pending));
+      setValue("#memory-panel .value", 'Active ' + text(memory.counts?.active) + ' / Pending ' + text(memory.counts?.pending) + ' / Summaries ' + text(memory.counts?.conversationSummaries ?? 0));
       const memories = (memory.memories ?? []).slice(0, 6).map(renderMemoryItem);
       const pending = (memory.pending ?? []).slice(0, 6).map(renderPendingMemoryItem);
+      const summaries = (memory.conversationSummaries ?? []).slice(0, 6).map(renderConversationSummaryItem);
       setBody("#memory-panel", [
-        '<div class="segmented" role="tablist" aria-label="Memory views"><button class="active" data-segment-target="memory-active" type="button">Active</button><button data-segment-target="memory-pending" type="button">Đang chờ</button><button data-segment-target="memory-search-view" type="button">Tìm kiếm</button></div>',
+        '<div class="segmented" role="tablist" aria-label="Memory views"><button class="active" data-segment-target="memory-active" type="button">Active</button><button data-segment-target="memory-pending" type="button">Đang chờ</button><button data-segment-target="memory-continuity" type="button">Continuity</button><button data-segment-target="memory-search-view" type="button">Tìm kiếm</button></div>',
         '<div class="segment active" id="memory-active">' + (memories.join("") || row("Active", "empty", "")) + '</div>',
         '<div class="segment" id="memory-pending">' + (pending.join("") || row("Pending", "empty", "")) + '</div>',
+        '<div class="segment" id="memory-continuity">' + (summaries.join("") || row("Continuity", "no rolling summaries yet", "")) + '</div>',
         '<div class="segment" id="memory-search-view"><div class="control-grid"><input id="memory-search" placeholder="Tìm kiếm memories"><button id="memory-search-run" type="button">Tìm kiếm</button></div><div id="memory-search-results" class="stack">' + row("Tìm kiếm", "sẵn sàng", "") + '</div></div>',
       ].join(""));
       bindMemoryControls();
@@ -1450,6 +1461,13 @@ function renderMemoryItem(item) {
 function renderPendingMemoryItem(item) {
   const meta = [item.reason, item.source, item.explicitConsent ? "đã đồng ý rõ ràng" : "cần rà soát"].filter(Boolean).join(' / ');
   return '<div class="memory-row"><div><strong>Pending ' + escapeHtml(item.type) + '</strong><div>' + escapeHtml(item.content) + '</div><div class="subvalue">' + escapeHtml(meta || item.createdAt) + '</div></div><span>' + iconButton("check", "Approve", 'data-memory-action="approve_pending" data-memory-id="' + item.id + '"') + iconButton("x", "Reject", 'data-memory-action="reject_pending" data-memory-id="' + item.id + '"') + '</span></div>';
+}
+
+function renderConversationSummaryItem(item) {
+  const owner = item.userId ? item.channel + ':' + item.userId : item.channel;
+  const meta = 'through message #' + text(item.summarizedMessageId) + ' / updated ' + text(item.updatedAt);
+  const content = text(item.content).length > 260 ? text(item.content).slice(0, 257) + '...' : text(item.content);
+  return '<div class="memory-row"><div><strong>' + escapeHtml(owner) + '</strong><div>' + escapeHtml(content) + '</div><div class="subvalue">' + escapeHtml(meta) + '</div></div><span><span class="pill good">summary</span></span></div>';
 }
 
 function bindProviderControls() {

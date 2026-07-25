@@ -68,6 +68,34 @@ test("SqliteMemoryStore can pin and unpin active memories", async () => {
   }
 });
 
+test("SqliteMemoryStore records active memory access", async () => {
+  const paths = await createTempPaths();
+  const store = await SqliteMemoryStore.open(paths);
+
+  try {
+    const first = store.addMemory({ type: "preference", content: "First accessed memory" });
+    const second = store.addMemory({ type: "preference", content: "Second accessed memory" });
+    const forgotten = store.addMemory({ type: "preference", content: "Forgotten memory" });
+    store.forgetMemory(forgotten.id);
+
+    store.recordMemoryAccess([first.id, first.id, second.id, forgotten.id, 999]);
+    store.recordMemoryAccess([first.id]);
+
+    const memories = store.listAllMemories();
+    const firstMemory = memories.find((memory) => memory.id === first.id);
+    const secondMemory = memories.find((memory) => memory.id === second.id);
+    const forgottenMemory = memories.find((memory) => memory.id === forgotten.id);
+
+    assert.equal(firstMemory?.accessCount, 2);
+    assert.equal(secondMemory?.accessCount, 1);
+    assert.equal(forgottenMemory?.accessCount, 0);
+    assert.match(firstMemory?.lastAccessedAt ?? "", /\d{4}-\d{2}-\d{2}/);
+  } finally {
+    store.close();
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
 test("SqliteMemoryStore assigns and moves memory scopes", async () => {
   const paths = await createTempPaths();
   const store = await SqliteMemoryStore.open(paths);
@@ -575,6 +603,24 @@ test("SqliteMemoryStore upserts conversation summaries by channel and user", asy
     assert.equal(store.getConversationSummary("telegram", "12345")?.content, "Updated Telegram context");
     assert.equal(store.getConversationSummary("telegram", "12345")?.summarizedMessageId, 24);
     assert.equal(store.getConversationSummary("telegram", "99999"), undefined);
+  } finally {
+    store.close();
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("SqliteMemoryStore lists conversation summaries with channel and user filters", async () => {
+  const paths = await createTempPaths();
+  const store = await SqliteMemoryStore.open(paths);
+
+  try {
+    const terminal = store.upsertConversationSummary({ channel: "terminal", content: "Terminal context", summarizedMessageId: 1 });
+    const telegram = store.upsertConversationSummary({ channel: "telegram", userId: "123", content: "Telegram context", summarizedMessageId: 2 });
+    store.upsertConversationSummary({ channel: "telegram", userId: "456", content: "Other Telegram context", summarizedMessageId: 3 });
+
+    assert.deepEqual(store.listConversationSummaries({ channel: "terminal" }).map((summary) => summary.id), [terminal.id]);
+    assert.deepEqual(store.listConversationSummaries({ channel: "telegram", userId: "123" }).map((summary) => summary.id), [telegram.id]);
+    assert.equal(store.listConversationSummaries({ limit: 2 }).length, 2);
   } finally {
     store.close();
     await rm(paths.rootDir, { recursive: true, force: true });

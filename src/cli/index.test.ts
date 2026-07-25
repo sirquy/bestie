@@ -62,6 +62,62 @@ test("main suppresses the banner for memory analyze JSON", async () => {
   }
 });
 
+test("memory summaries JSON lists filtered rolling conversation summaries", async () => {
+  const homeDir = await mkdtemp(resolve(tmpdir(), "bestie-cli-index-test-"));
+
+  try {
+    const paths = getRuntimePaths(homeDir);
+    const store = await SqliteMemoryStore.open(paths);
+    try {
+      store.upsertConversationSummary({ channel: "telegram", userId: "123", content: "Telegram long-running context", summarizedMessageId: 42 });
+      store.upsertConversationSummary({ channel: "zalo", userId: "999", content: "Other channel context", summarizedMessageId: 7 });
+    } finally {
+      store.close();
+    }
+
+    const { stdout } = await captureMain(["node", "bestie", "memory", "summaries", "--json", "--channel", "telegram", "--user", "123"], { HOME: homeDir });
+
+    assert.doesNotMatch(stdout, /____/);
+    const parsed = JSON.parse(stdout) as { summaries: Array<{ channel: string; userId?: string; content: string; summarizedMessageId: number }> };
+    assert.deepEqual(parsed.summaries.map((summary) => summary.channel), ["telegram"]);
+    assert.equal(parsed.summaries[0]?.userId, "123");
+    assert.equal(parsed.summaries[0]?.content, "Telegram long-running context");
+    assert.equal(parsed.summaries[0]?.summarizedMessageId, 42);
+  } finally {
+    await rm(homeDir, { recursive: true, force: true });
+  }
+});
+
+test("memory summaries refresh JSON reports paused memory without provider calls", async () => {
+  const homeDir = await mkdtemp(resolve(tmpdir(), "bestie-cli-index-test-"));
+
+  try {
+    const paths = getRuntimePaths(homeDir);
+    await mkdir(paths.appDir, { recursive: true });
+    await writeFile(paths.configPath, `${JSON.stringify(createTestConfig(), null, 2)}\n`, { mode: 0o600 });
+    const store = await SqliteMemoryStore.open(paths);
+    try {
+      store.setMemoryPaused(true);
+      for (let index = 0; index < 10; index += 1) {
+        store.addMessage({ channel: "telegram", userId: "123", role: index % 2 === 0 ? "user" : "assistant", content: `long-${index}` });
+      }
+    } finally {
+      store.close();
+    }
+
+    const { stdout } = await captureMain(["node", "bestie", "memory", "summaries", "refresh", "--json"], { HOME: homeDir, OPENAI_API_KEY: "test-key" });
+
+    assert.doesNotMatch(stdout, /____/);
+    const parsed = JSON.parse(stdout) as { paused: boolean; checked: number; refreshed: number; items: unknown[] };
+    assert.equal(parsed.paused, true);
+    assert.equal(parsed.checked, 0);
+    assert.equal(parsed.refreshed, 0);
+    assert.deepEqual(parsed.items, []);
+  } finally {
+    await rm(homeDir, { recursive: true, force: true });
+  }
+});
+
 test("memory graph CLI can add search and export graph items", async () => {
   const homeDir = await mkdtemp(resolve(tmpdir(), "bestie-cli-index-test-"));
 

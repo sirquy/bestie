@@ -104,6 +104,165 @@ test("runUiChat queues captured graph memory when memory writes ask", async () =
   }
 });
 
+test("runUiChat sends UI conversation summary to the provider", async () => {
+  const paths = await createTempPaths();
+
+  try {
+    await prepareRuntime(paths, { writePolicy: "allow" });
+    const session = await createUiChatSession("Remember older UI context", paths);
+    const store = await SqliteMemoryStore.open(paths);
+    try {
+      store.upsertConversationSummary({ channel: "ui", userId: `session:${session.session.id}`, content: "Earlier UI context: user chose the codename Lotus.", summarizedMessageId: 12 });
+    } finally {
+      store.close();
+    }
+
+    let providerMessages: ChatCompletionOptions["messages"] | undefined;
+    await runUiChat({
+      paths,
+      sessionId: session.session.id,
+      message: "What codename did I choose?",
+      chatCompletion: async (_config, _apiKey, options) => {
+        if (!isKnowledgeReasoningRequest(options) && providerMessages === undefined) {
+          providerMessages = options.messages;
+          return "You chose Lotus.";
+        }
+        return "{}";
+      },
+    });
+
+    assert.ok(providerMessages?.some((message) => message.role === "system" && typeof message.content === "string" && message.content.includes("Earlier UI context: user chose the codename Lotus.")));
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("runUiChat keeps the most recent UI history turns", async () => {
+  const paths = await createTempPaths();
+
+  try {
+    await prepareRuntime(paths, { writePolicy: "allow", recentMessageLimit: 40 });
+    const history = Array.from({ length: 45 }, (_value, index) => ({ role: "user" as const, content: `history-${index}` }));
+    let providerMessages: ChatCompletionOptions["messages"] | undefined;
+
+    await runUiChat({
+      paths,
+      history,
+      memoryEnabled: false,
+      message: "continue",
+      chatCompletion: async (_config, _apiKey, options) => {
+        providerMessages = options.messages;
+        return "Continuing.";
+      },
+    });
+
+    const serialized = JSON.stringify(providerMessages);
+    assert.doesNotMatch(serialized, /history-0/);
+    assert.match(serialized, /history-44/);
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("runUiChat loads persisted UI session history when request history is empty", async () => {
+  const paths = await createTempPaths();
+
+  try {
+    await prepareRuntime(paths, { writePolicy: "allow" });
+    const session = await createUiChatSession("Persisted context", paths);
+    const store = await SqliteMemoryStore.open(paths);
+    try {
+      store.addUiChatMessage(session.session.id, "user", "My project codename is Cedar.");
+      store.addUiChatMessage(session.session.id, "assistant", "I will remember Cedar for this session.");
+    } finally {
+      store.close();
+    }
+
+    let providerMessages: ChatCompletionOptions["messages"] | undefined;
+    await runUiChat({
+      paths,
+      sessionId: session.session.id,
+      history: [],
+      memoryEnabled: false,
+      message: "What codename did I mention?",
+      chatCompletion: async (_config, _apiKey, options) => {
+        providerMessages = options.messages;
+        return "Cedar.";
+      },
+    });
+
+    const serialized = JSON.stringify(providerMessages);
+    assert.match(serialized, /My project codename is Cedar/);
+    assert.match(serialized, /I will remember Cedar/);
+    assert.ok(providerMessages?.some((message) => message.role === "user" && message.content === "My project codename is Cedar."));
+    assert.ok(providerMessages?.some((message) => message.role === "assistant" && message.content === "I will remember Cedar for this session."));
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("runUiChat sends image attachments as provider vision input without storing image data in metadata", async () => {
+  const paths = await createTempPaths();
+
+  try {
+    await prepareRuntime(paths, { writePolicy: "allow" });
+    const session = await createUiChatSession("Image input", paths);
+    const imageDataUrl = "data:image/png;base64,iVBORw0KGgo=";
+    let providerMessages: ChatCompletionOptions["messages"] | undefined;
+
+    const result = await runUiChat({
+      paths,
+      sessionId: session.session.id,
+      memoryEnabled: false,
+      message: "What is in this image?",
+      attachments: [{ name: "screen.png", type: "image/png", size: 12, content: imageDataUrl }],
+      chatCompletion: async (_config, _apiKey, options) => {
+        providerMessages ??= options.messages;
+        return JSON.stringify({ answer: "It is an image." });
+      },
+    });
+
+    const attachmentMessage = providerMessages?.find((message) => message.role === "user" && Array.isArray(message.content));
+    assert.ok(Array.isArray(attachmentMessage?.content));
+    assert.deepEqual(attachmentMessage?.content[0], { type: "text", text: "What is in this image?\n\nAttached context:\nAttachment 1: screen.png\nType: image/png\nSize: 12 bytes\nContent: [image attached for vision input]" });
+    assert.deepEqual(attachmentMessage?.content[1], { type: "image_url", image_url: { url: imageDataUrl } });
+    assert.doesNotMatch(JSON.stringify(attachmentMessage?.content[0]), /iVBORw0KGgo/);
+
+    const metadata = JSON.parse(result.run?.metadataJson ?? "{}");
+    assert.equal(metadata.attachments?.[0]?.content, "[image data omitted]");
+    assert.doesNotMatch(result.run?.metadataJson ?? "", /iVBORw0KGgo/);
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("runUiChat keeps non-image attachments in text context", async () => {
+  const paths = await createTempPaths();
+
+  try {
+    await prepareRuntime(paths, { writePolicy: "allow" });
+    let providerMessages: ChatCompletionOptions["messages"] | undefined;
+
+    await runUiChat({
+      paths,
+      memoryEnabled: false,
+      message: "Read this note.",
+      attachments: [{ name: "note.txt", type: "text/plain", size: 11, content: "hello world" }],
+      chatCompletion: async (_config, _apiKey, options) => {
+        providerMessages ??= options.messages;
+        return JSON.stringify({ answer: "Read it." });
+      },
+    });
+
+    const attachmentMessage = providerMessages?.find((message) => message.role === "user" && typeof message.content === "string" && message.content.includes("Attachment 1: note.txt"));
+    assert.equal(typeof attachmentMessage?.content, "string");
+    assert.match(String(attachmentMessage?.content), /Attachment 1: note\.txt/);
+    assert.match(String(attachmentMessage?.content), /hello world/);
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
 function isKnowledgeReasoningRequest(options: ChatCompletionOptions): boolean {
   const system = options.messages.find((message) => message.role === "system")?.content;
   return typeof system === "string" && system.includes("knowledge graph reasoning pass");

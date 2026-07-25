@@ -1,4 +1,4 @@
-import type { StoredMemory } from "./sqlite-store.js";
+import type { ConversationSummary, StoredMemory } from "./sqlite-store.js";
 import type { MemoryHygienePlanResult, MemoryHygieneTrendResult } from "../tools/local-read-tools.js";
 import type { MemoryRebalancePlan } from "./rebalance.js";
 import { calculateMemoryHygieneScore, formatMemoryHygieneScore } from "./hygiene-score.js";
@@ -9,13 +9,14 @@ export interface MemorySummaryOptions {
   plan: MemoryHygienePlanResult;
   rebalance: MemoryRebalancePlan;
   trend?: MemoryHygieneTrend;
+  conversationSummaries?: ConversationSummary[];
   deletePolicy: string;
   retrievalPolicy: string;
   channelCommandPrefix?: string;
 }
 
 export function formatMemorySummary(options: MemorySummaryOptions): string {
-  const { memories, plan, rebalance, trend, deletePolicy, retrievalPolicy, channelCommandPrefix } = options;
+  const { memories, plan, rebalance, trend, conversationSummaries = [], deletePolicy, retrievalPolicy, channelCommandPrefix } = options;
   const lines: string[] = [];
   const cmd = channelCommandPrefix ?? "bestie memory";
   const move = channelCommandPrefix ? `${cmd} move <id> core|project|session` : `${cmd} move <id> --scope core|project|session`;
@@ -52,6 +53,20 @@ export function formatMemorySummary(options: MemorySummaryOptions): string {
   lines.push(`  Policies: delete=${deletePolicy}, retrieval=${retrievalPolicy}`);
   lines.push("");
 
+  // --- Continuity ---
+  lines.push("[Continuity]");
+  lines.push(`  Rolling summaries: ${conversationSummaries.length}`);
+  if (conversationSummaries.length > 0) {
+    lines.push(`  Channels: ${formatConversationSummaryChannels(conversationSummaries)}`);
+    const latest = [...conversationSummaries].sort((left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt))[0];
+    if (latest) {
+      lines.push(`  Latest: ${formatConversationSummaryOwner(latest)} updated ${latest.updatedAt}, through message #${latest.summarizedMessageId}`);
+    }
+  } else {
+    lines.push("  Latest: none yet");
+  }
+  lines.push("");
+
   // --- Rebalance ---
   const actionable = rebalance.recommendations.filter((r) => !r.reviewOnly);
   lines.push("[Rebalance]");
@@ -85,4 +100,16 @@ export function formatMemorySummary(options: MemorySummaryOptions): string {
   lines.push(`  ${nextCmds.join(" | ")}`);
 
   return lines.join("\n");
+}
+
+function formatConversationSummaryChannels(summaries: ConversationSummary[]): string {
+  const counts = new Map<string, number>();
+  for (const summary of summaries) {
+    counts.set(summary.channel, (counts.get(summary.channel) ?? 0) + 1);
+  }
+  return [...counts.entries()].sort(([left], [right]) => left.localeCompare(right)).map(([channel, count]) => `${channel}:${count}`).join(", ");
+}
+
+function formatConversationSummaryOwner(summary: ConversationSummary): string {
+  return summary.userId ? `${summary.channel}:${summary.userId}` : summary.channel;
 }

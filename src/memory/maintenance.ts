@@ -1,7 +1,10 @@
 import { isCronReportDestination } from "../cron/channel-commands.js";
 import { computeNextRun, validateSchedule } from "../cron/scheduler.js";
 import { runIsolatedChat, type IsolatedChatOptions } from "../cron/isolated-chat.js";
+import { sendChatCompletionWithFallbacks } from "../llm/chat-completion.js";
+import { loadLlmCandidateSecret, resolvePrimaryLlmCandidate } from "../llm/resolve-config.js";
 import type { RuntimePaths } from "../runtime/paths.js";
+import { refreshAllConversationSummaries, type ConversationSummaryChatCompletion, type ConversationSummaryRefreshReport } from "./conversation-summary.js";
 import { SqliteMemoryStore, type CronSchedule } from "./sqlite-store.js";
 
 export const MEMORY_MAINTENANCE_CRON_NAME = "Bestie memory maintenance report";
@@ -99,20 +102,62 @@ export interface MemoryMaintenanceDigestResult {
   ok: boolean;
   output: string;
   reason?: string;
+  conversationSummaryRefresh?: ConversationSummaryRefreshReport;
 }
 
-export async function runMemoryMaintenanceDigest(options: { config: IsolatedChatOptions["config"]; paths: RuntimePaths; apiKey?: string }): Promise<MemoryMaintenanceDigestResult> {
+export async function runMemoryMaintenanceDigest(options: {
+  config: IsolatedChatOptions["config"];
+  paths: RuntimePaths;
+  apiKey?: string;
+  isolatedChat?: typeof runIsolatedChat;
+  summaryChatCompletion?: ConversationSummaryChatCompletion;
+  summaryRefreshLimit?: number;
+}): Promise<MemoryMaintenanceDigestResult> {
   try {
-    const output = await runIsolatedChat({
+    const apiKey = options.apiKey ?? await loadLlmCandidateSecret(resolvePrimaryLlmCandidate(options.config), options.paths);
+    const conversationSummaryRefresh = await refreshMaintenanceConversationSummaries({
       config: options.config,
       paths: options.paths,
-      apiKey: options.apiKey,
+      apiKey,
+      limit: options.summaryRefreshLimit,
+      chatCompletion: options.summaryChatCompletion,
+    });
+    const output = await (options.isolatedChat ?? runIsolatedChat)({
+      config: options.config,
+      paths: options.paths,
+      apiKey,
       prompt: MEMORY_MAINTENANCE_PROMPT,
     });
 
-    return { ok: true, output };
+    return { ok: true, output: prependConversationSummaryRefresh(output, conversationSummaryRefresh), conversationSummaryRefresh };
   } catch (error) {
     const message = error instanceof Error ? error.message : "unknown error";
     return { ok: false, output: "", reason: message };
   }
+}
+
+async function refreshMaintenanceConversationSummaries(options: {
+  config: IsolatedChatOptions["config"];
+  paths: RuntimePaths;
+  apiKey: string;
+  limit?: number;
+  chatCompletion?: ConversationSummaryChatCompletion;
+}): Promise<ConversationSummaryRefreshReport> {
+  try {
+    return await refreshAllConversationSummaries({
+      config: options.config,
+      paths: options.paths,
+      apiKey: options.apiKey,
+      limit: options.limit ?? 10,
+      chatCompletion: options.chatCompletion ?? ((config, _apiKey, requestOptions) => sendChatCompletionWithFallbacks(config, requestOptions, { paths: options.paths })),
+    });
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : "unknown_error";
+    return { paused: false, recentMessageLimit: 0, checked: 1, refreshed: 0, skipped: 0, failed: 1, items: [{ channel: "terminal", status: "failed", messageCount: 0, reason }] };
+  }
+}
+
+function prependConversationSummaryRefresh(output: string, report: ConversationSummaryRefreshReport): string {
+  const prefix = `Conversation summary refresh: checked ${report.checked}, refreshed ${report.refreshed}, skipped ${report.skipped}, failed ${report.failed}.`;
+  return `${prefix}\n\n${output}`;
 }

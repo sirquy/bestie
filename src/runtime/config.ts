@@ -133,6 +133,7 @@ export interface AppConfig {
     writePolicy?: MemoryWritePolicy;
     deletePolicy?: MemoryDeletePolicy;
     retrievalPolicy?: MemoryRetrievalPolicy;
+    recentMessageLimit?: number;
   };
   workspace?: {
     defaultPath?: string;
@@ -529,6 +530,7 @@ function optionalMemory(value: unknown): AppConfig["memory"] | undefined {
   const writePolicy = memory.writePolicy;
   const deletePolicy = memory.deletePolicy;
   const retrievalPolicy = memory.retrievalPolicy;
+  const recentMessageLimit = optionalPositiveInteger(memory.recentMessageLimit, "memory.recentMessageLimit");
 
   if (writePolicy !== undefined && writePolicy !== "allow" && writePolicy !== "ask" && writePolicy !== "deny") {
     throw new InvalidConfigError("memory.writePolicy must be allow, ask, or deny.");
@@ -546,6 +548,7 @@ function optionalMemory(value: unknown): AppConfig["memory"] | undefined {
     ...(writePolicy === undefined ? {} : { writePolicy }),
     ...(deletePolicy === undefined ? {} : { deletePolicy }),
     ...(retrievalPolicy === undefined ? {} : { retrievalPolicy }),
+    ...(recentMessageLimit === undefined ? {} : { recentMessageLimit }),
   };
 }
 
