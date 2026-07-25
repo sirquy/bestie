@@ -37,6 +37,7 @@ button {
   display: inline-flex;
   font: 700 0.78rem "Trebuchet MS", Verdana, sans-serif;
   gap: 6px;
+  line-height: 1.15;
   min-height: 32px;
   padding: 6px 8px;
 }
@@ -84,7 +85,7 @@ body.sidebar-compact .sidebar { padding: 24px 12px; }
 body.sidebar-compact .brand { justify-content: center; margin-bottom: 18px; }
 body.sidebar-compact .brand-copy, body.sidebar-compact nav a span, body.sidebar-compact .sidebar-toggle span { display: none; }
 body.sidebar-compact nav a, body.sidebar-compact .sidebar-toggle { justify-content: center; padding: 9px; }
-main { display: grid; gap: 20px; padding: 34px; }
+main { display: grid; gap: 20px; margin: 0 auto; max-width: 1240px; padding: 34px; width: 100%; }
 .eyebrow, .label { align-items: center; color: var(--muted); display: inline-flex; font: 800 0.74rem "Trebuchet MS", Verdana, sans-serif; gap: 7px; letter-spacing: 0; margin: 0 0 8px; text-transform: uppercase; }
 h1 { font-size: clamp(1.6rem, 4vw, 2.4rem); line-height: 1; margin: 0; }
 .panel {
@@ -93,6 +94,7 @@ h1 { font-size: clamp(1.6rem, 4vw, 2.4rem); line-height: 1; margin: 0; }
   border-radius: 8px;
   box-shadow: var(--shadow);
   backdrop-filter: blur(10px);
+  overflow: hidden;
 }
 .value { font: 700 1rem "Trebuchet MS", Verdana, sans-serif; overflow-wrap: anywhere; }
 .subvalue { color: var(--muted); font: 0.78rem/1.25 "Trebuchet MS", Verdana, sans-serif; margin-top: 2px; }
@@ -136,10 +138,11 @@ details.tool-section summary { cursor: pointer; }
 .cron-card { border-top: 1px solid rgba(238, 246, 237, 0.1); display: grid; gap: 8px; padding-top: 8px; }
 .cron-card .action-row { border-top: 0; padding-top: 0; }
 .knowledge-map-shell { min-height: 100vh; position: relative; overflow: hidden; }
-.knowledge-map-overlay { background: rgba(13, 20, 17, 0.84); border: 1px solid rgba(238, 246, 237, 0.12); border-radius: 8px; display: grid; gap: 5px; left: 10px; max-width: min(760px, calc(100% - 20px)); padding: 6px; position: absolute; top: 10px; z-index: 10; }
+.knowledge-map-overlay { background: rgba(13, 20, 17, 0.88); border: 1px solid rgba(238, 246, 237, 0.14); border-radius: 8px; display: grid; gap: 6px; left: auto; max-height: min(70vh, 620px); max-width: min(560px, calc(100% - 20px)); overflow: auto; padding: 8px; position: absolute; right: 10px; top: 10px; z-index: 10; }
+.knowledge-map-shell:not([data-knowledge-drawer="closed"]) .knowledge-map-overlay { left: 10px; right: auto; }
 .knowledge-map-overlay-head { align-items: center; display: flex; flex-wrap: wrap; gap: 5px; justify-content: flex-end; }
 .knowledge-map-overlay-head .pill { margin-right: auto; }
-.knowledge-map-shell[data-knowledge-overlay="collapsed"] .knowledge-map-overlay { max-width: min(360px, calc(100% - 20px)); width: auto; }
+.knowledge-map-shell[data-knowledge-overlay="collapsed"] .knowledge-map-overlay { max-width: min(360px, calc(100% - 20px)); overflow: visible; width: auto; }
 .knowledge-map-shell[data-knowledge-overlay="collapsed"] .knowledge-map-overlay-head { flex-wrap: nowrap; }
 .knowledge-map-shell[data-knowledge-overlay="collapsed"] .knowledge-map-overlay-head button span { display: none; }
 .knowledge-map-shell[data-knowledge-overlay="collapsed"] .knowledge-map-summary, .knowledge-map-shell[data-knowledge-overlay="collapsed"] .knowledge-map-segments, .knowledge-map-shell[data-knowledge-overlay="collapsed"] .knowledge-map-toolbar, .knowledge-map-shell[data-knowledge-overlay="collapsed"] .knowledge-legend { display: none; }
@@ -153,15 +156,16 @@ details.tool-section summary { cursor: pointer; }
 #knowledge-panel[data-active-segment="knowledge-map"] .panel-body > .knowledge-map-segments { display: none; }
 .knowledge-map-overlay .knowledge-map-segments { padding: 3px; }
 .knowledge-map-overlay .knowledge-map-segments button { min-height: 25px; padding: 3px 6px; }
-.knowledge-map-toolbar { align-items: center; display: grid; gap: 5px; grid-template-columns: 1fr; margin: 0; position: relative; z-index: 1; }
+.knowledge-map-toolbar { align-items: center; display: grid; gap: 6px; grid-template-columns: 1fr; margin: 0; position: relative; z-index: 1; }
 .knowledge-map-actions, .knowledge-map-filters, .knowledge-map-views, .knowledge-map-cluster { align-items: center; display: flex; flex-wrap: wrap; gap: 5px; }
+.knowledge-map-overlay button { min-height: 30px; }
 .knowledge-map-actions { justify-content: flex-end; }
 .knowledge-map-actions:first-child { justify-content: flex-start; }
 .knowledge-map-views { display: grid; grid-template-columns: minmax(120px, 1fr) auto auto; }
 .knowledge-map-views select { font-size: 0.78rem; min-height: 27px; min-width: 0; padding: 4px 26px 4px 7px; }
 .knowledge-map-cluster { display: grid; grid-template-columns: repeat(3, minmax(112px, 1fr)); }
 .knowledge-map-cluster select { font-size: 0.78rem; min-height: 27px; min-width: 0; padding: 4px 26px 4px 7px; }
-.knowledge-map-search { align-items: center; display: grid; gap: 5px; grid-template-columns: minmax(130px, 1.2fr) minmax(150px, 1fr) auto auto; }
+.knowledge-map-search { align-items: center; display: grid; gap: 5px; grid-template-columns: minmax(130px, 1.15fr) minmax(150px, 1fr) auto auto; }
 .knowledge-map-search input, .knowledge-map-search select { font-size: 0.78rem; min-height: 27px; padding-bottom: 4px; padding-top: 4px; }
 .knowledge-focus-toggle { align-items: center; background: rgba(238, 246, 237, 0.07); border: 1px solid rgba(238, 246, 237, 0.12); border-radius: 6px; color: var(--ink); display: inline-flex; gap: 5px; justify-content: center; min-height: 27px; padding: 4px 7px; text-transform: none; }
 .knowledge-focus-toggle input { margin: 0; padding: 0; width: auto; }
@@ -300,7 +304,8 @@ details.tool-section summary { cursor: pointer; }
 .timeline-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 .inspector-stack { display: grid; gap: 8px; }
 .inspector-stack button { justify-content: center; width: 100%; }
-.chat-composer { display: grid; gap: 8px; grid-template-columns: minmax(0, 1fr) auto auto; }
+.chat-composer { align-items: start; display: grid; gap: 8px; grid-template-columns: minmax(0, 1fr) 72px 76px; }
+.chat-composer > button { align-self: start; justify-content: center; min-height: 42px; width: 100%; }
 .composer-field { background: rgba(8, 13, 11, 0.34); border: 1px solid rgba(238, 246, 237, 0.1); border-radius: 8px; display: grid; gap: 6px; padding: 8px; }
 .composer-toolbar, .composer-tools { align-items: center; display: flex; flex-wrap: wrap; gap: 6px; justify-content: space-between; }
 .composer-toolbar span { color: var(--muted); font: 800 0.68rem var(--chat-font); text-transform: uppercase; }
@@ -411,7 +416,8 @@ dialog::backdrop { background: rgba(24, 35, 29, 0.44); }
   .knowledge-map-cluster { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .knowledge-map-search { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto auto; }
   .knowledge-map-filters { grid-template-columns: repeat(3, minmax(0, 1fr)) auto; justify-content: stretch; }
-  .knowledge-map-overlay { top: 10px; }
+  .knowledge-map-overlay { left: 10px; right: 10px; top: 10px; }
+  .knowledge-map-shell:not([data-knowledge-drawer="closed"]) .knowledge-map-overlay { right: 10px; }
   .knowledge-map-shell[data-knowledge-overlay="collapsed"] .knowledge-map-overlay { max-width: min(360px, calc(100% - 20px)); }
   .knowledge-drawer { top: 10px; width: 360px; }
   .knowledge-cytoscape { height: 100vh; min-height: 560px; }
@@ -428,11 +434,13 @@ dialog::backdrop { background: rgba(24, 35, 29, 0.44); }
   .panel-head { display: grid; }
   .actions { justify-content: start; }
   .chat-composer { grid-template-columns: 1fr; }
+  .chat-composer > button { min-height: 34px; }
   .knowledge-map-actions, .knowledge-map-filters, .knowledge-map-views, .knowledge-map-cluster { width: 100%; }
   .knowledge-map-views { grid-template-columns: 1fr auto auto; }
   .knowledge-map-cluster { grid-template-columns: 1fr; }
   .knowledge-map-search { grid-template-columns: 1fr; width: 100%; }
-  .knowledge-map-overlay { left: 8px; max-width: calc(100% - 16px); right: 8px; top: 8px; }
+  .knowledge-map-overlay { left: 8px; max-height: none; max-width: calc(100% - 16px); right: 8px; top: 8px; }
+  .knowledge-map-shell:not([data-knowledge-drawer="closed"]) .knowledge-map-overlay { right: 8px; }
   .knowledge-map-overlay-head { justify-content: flex-start; }
   .knowledge-map-overlay-head .pill { margin-right: 0; }
   .knowledge-map-shell[data-knowledge-overlay="collapsed"] .knowledge-map-overlay { max-width: calc(100% - 16px); right: auto; }

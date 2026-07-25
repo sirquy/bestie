@@ -70,7 +70,7 @@ async function assertVisualLayouts(page, baseUrl, outputDir) {
 }
 
 async function assertMemoryPanel(page, url) {
-  await assertPanel(page, url, "#memory-panel", "Active 2 / Pending 1", ["User prefers concise replies.", "Pending", "Search"]);
+  await assertPanel(page, url, "#memory-panel", "Active 2 / Pending 1", ["User prefers concise replies.", "Đang chờ", "Tìm kiếm"]);
   await page.click('#memory-panel [data-segment-target="memory-pending"]');
   await page.waitForSelector("#memory-pending.active");
   await page.waitForSelector("text=Review this memory before saving.");
@@ -78,11 +78,11 @@ async function assertMemoryPanel(page, url) {
   await page.fill("#memory-search", "concise");
   await page.click("#memory-search-run");
   await page.waitForSelector("#memory-search-view.active");
-  await page.waitForSelector("text=Search results for \"concise\"");
+  await page.waitForSelector("#memory-search-view.active >> text=User prefers concise replies.");
 }
 
 async function assertKnowledgePanel(page, url) {
-  await assertPanel(page, url, "#knowledge-panel", "Entities 3 / Relations 2", ["Bestie UI", "works_on", "Review"]);
+  await assertPanel(page, url, "#knowledge-panel", "Thực thể 3 / Liên kết 2", ["Bestie UI", "works_on", "Review"]);
   await page.waitForSelector('#knowledge-panel .knowledge-cytoscape[data-knowledge-graph-ready="true"]');
   const graphGeometry = await page.locator("#knowledge-panel .knowledge-cytoscape").evaluate((element) => {
     const rect = element.getBoundingClientRect();
@@ -173,9 +173,9 @@ async function assertKnowledgePanel(page, url) {
   await page.evaluate(() => window.__bestieKnowledgeGraph.cy.nodes(".cluster")[0].emit("tap"));
   await page.waitForSelector('#knowledge-map .knowledge-map-shell[data-knowledge-drawer="list"]');
   await page.waitForSelector("#knowledge-drawer-title >> text=Cluster detail");
-  await page.waitForSelector("#knowledge-drawer-list >> text=Expand cluster");
+  await page.waitForSelector("#knowledge-drawer-list >> text=Mở cụm");
   await page.waitForSelector("#knowledge-provenance-overlay >> text=Cluster");
-  await page.waitForSelector("#knowledge-provenance-overlay >> text=Expand cluster");
+  await page.waitForSelector("#knowledge-provenance-overlay >> text=Mở cụm");
   await page.click('#knowledge-drawer-list [data-knowledge-cluster-expand]');
   await page.waitForSelector("#toast.show >> text=Cluster expanded on the map.");
   await page.waitForFunction(() => document.querySelector("#knowledge-cluster-by")?.value === "none" && window.__bestieKnowledgeGraph.cy.nodes(".cluster").length === 0);
@@ -217,7 +217,7 @@ async function assertKnowledgePanel(page, url) {
   await page.waitForSelector("#knowledge-provenance-overlay >> text=Trust");
   await page.waitForSelector('#knowledge-inspector [data-knowledge-action="update_relation"]');
   await page.waitForSelector("#knowledge-inspector >> text=Evidence");
-  await page.waitForSelector("#knowledge-inspector >> text=Trust");
+  await page.waitForSelector("#knowledge-inspector >> text=Độ tin cậy");
   await page.locator('#knowledge-panel [data-segment-target="knowledge-trust"]').filter({ visible: true }).click();
   await page.waitForSelector("#knowledge-trust.active");
   await page.waitForSelector("#knowledge-trust-filter");
@@ -227,7 +227,7 @@ async function assertKnowledgePanel(page, url) {
   await page.waitForSelector("#knowledge-trust >> text=Needs source");
   await page.selectOption("#knowledge-trust-filter", "all");
   await page.click('#knowledge-trust [data-knowledge-select="entity"], #knowledge-trust [data-knowledge-select="relation"]');
-  await page.waitForSelector("#knowledge-trust-inspector >> text=Trust");
+  await page.waitForSelector("#knowledge-trust-inspector >> text=Độ tin cậy");
   await page.locator('#knowledge-panel [data-segment-target="knowledge-review"]').filter({ visible: true }).click();
   await page.waitForSelector("#knowledge-review.active");
   await page.waitForSelector("#knowledge-review-priority");
@@ -248,7 +248,7 @@ async function assertKnowledgePanel(page, url) {
   await page.fill("#knowledge-search", "Bestie UI");
   await page.click("#knowledge-search-run");
   await page.waitForSelector("#knowledge-search-view.active");
-  await page.waitForSelector('text=Search results for "Bestie UI"');
+  await page.waitForSelector('#knowledge-search-view.active >> text=Bestie UI');
   await page.waitForSelector("#knowledge-search-results >> text=Bestie UI");
   await page.click('#knowledge-search-results [data-knowledge-select="relation"]');
   await page.waitForSelector("#knowledge-search-inspector >> text=Relation");
@@ -271,15 +271,15 @@ async function assertKnowledgePanel(page, url) {
 }
 
 async function assertChatPanel(page, url, homeDir) {
-  await assertPanel(page, url, "#chat-panel", "Approval chat", ["Approval chat", "Retry", "Fork", "Stop"]);
+  await assertPanel(page, url, "#chat-panel", "Approval chat", ["Approval chat", "Thử lại", "Tách nhánh", "Dừng"]);
   await page.waitForSelector(".chat-layout.chat-side-hidden");
-  await page.waitForSelector('#chat-side-toggle[aria-expanded="false"] >> text=Details');
+  await page.waitForSelector('#chat-side-toggle[aria-expanded="false"] >> text=Chi tiết');
   await page.click("#chat-side-toggle");
-  await page.waitForSelector('#chat-side-toggle[aria-expanded="true"] >> text=Hide');
-  await page.waitForSelector("#chat-inspector >> text=Run inspector");
-  await page.waitForSelector('#chat-rename-session[title="Rename chat"]');
-  await page.waitForSelector('#chat-export-session[title="Export chat"]');
-  await page.waitForSelector('#chat-import-session[title="Import chat"]');
+  await page.waitForSelector('#chat-side-toggle[aria-expanded="true"] >> text=Ẩn');
+  await page.waitForSelector("#chat-inspector >> text=TRÌNH KIỂM TRA LƯỢT CHẠY");
+  await page.waitForSelector('#chat-rename-session[title="Đổi tên chat"]');
+  await page.waitForSelector('#chat-export-session[title="Xuất chat"]');
+  await page.waitForSelector('#chat-import-session[title="Nhập chat"]');
   const sessionToolbar = await page.locator(".chat-session-tools").evaluate((element) => ({ height: element.getBoundingClientRect().height, buttons: element.querySelectorAll("button").length }));
   if (sessionToolbar.height > 48 || sessionToolbar.buttons !== 5) throw new Error(`Chat session toolbar is not compact: ${JSON.stringify(sessionToolbar)}`);
   const sessionsWidth = await page.locator(".chat-sessions").evaluate((element) => element.getBoundingClientRect().width);
@@ -298,7 +298,7 @@ async function assertChatPanel(page, url, homeDir) {
   await page.keyboard.press(process.platform === "darwin" ? "Meta+K" : "Control+K");
   await page.waitForSelector("#command-palette-dialog[open]");
   await page.fill("#command-palette-input", "search");
-  await page.waitForSelector("#command-palette-list >> text=Search Sessions");
+  await page.waitForSelector("#command-palette-list >> text=Tìm kiếm Phiên");
   await page.keyboard.press("Enter");
   await page.waitForFunction(() => document.activeElement?.id === "chat-session-search");
   await page.click("#chat-rename-session");
@@ -329,35 +329,35 @@ async function assertChatPanel(page, url, homeDir) {
   await page.waitForSelector("#chat-session-list .chat-session-badges >> text=pinned");
   await page.locator('#chat-session-list [data-chat-session] strong', { hasText: /^Approval chat$/ }).click();
   await page.waitForSelector("#chat-timeline >> text=approval_required");
-  await page.waitForSelector("#chat-inspector >> text=Run inspector");
+  await page.waitForSelector("#chat-inspector >> text=TRÌNH KIỂM TRA LƯỢT CHẠY");
   await page.waitForSelector("#chat-inspector >> text=Approvals");
   await page.waitForSelector("#chat-inspector >> text=Export trace");
   if (await page.locator("#chat-export-trace").isDisabled()) throw new Error("Run trace export should be enabled when timeline events exist.");
-  await page.waitForSelector("#chat-composer-status >> text=Ready");
+  await page.waitForSelector("#chat-composer-status >> text=Sẵn sàng");
   await page.waitForSelector("#chat-composer-context >> text=No memory");
-  await page.waitForSelector("#chat-attach >> text=Attach");
-  await page.waitForSelector("#chat-context >> text=Context");
+  await page.waitForSelector("#chat-attach >> text=Đính kèm");
+  await page.waitForSelector("#chat-context >> text=Ngữ cảnh");
   await page.waitForSelector("#chat-transcript .chat-message.user .chat-bubble");
   await page.waitForSelector("#chat-transcript .chat-message.user .chat-message-head strong >> text=Boss");
   await page.waitForSelector("#chat-transcript .chat-message.assistant .chat-message-head strong >> text=Bestie");
   await page.waitForSelector("#chat-transcript .chat-message.user .chat-message-meta >> text=sent");
-  await page.waitForSelector("#chat-transcript .chat-message.assistant .chat-message-meta >> text=sent");
+  await page.waitForSelector("#chat-transcript .chat-message.assistant .chat-message-meta >> text=ĐÃ GỬI");
   await page.waitForSelector("#chat-transcript .chat-message.assistant .chat-message-meta >> text=chars");
   const messageMeta = await page.locator("#chat-transcript .chat-message-meta").evaluateAll((elements) => elements.map((element) => ({ text: element.textContent ?? "", width: element.getBoundingClientRect().width, scrollWidth: element.scrollWidth })));
-  if (messageMeta.length < 2 || messageMeta.some((meta) => !meta.text.includes("chars") || meta.scrollWidth > meta.width + 1)) throw new Error(`Chat bubble metadata regressed: ${JSON.stringify(messageMeta)}`);
+  if (messageMeta.length < 2 || messageMeta.some((meta) => !meta.text.toLowerCase().includes("chars") || meta.scrollWidth > meta.width + 1)) throw new Error(`Chat bubble metadata regressed: ${JSON.stringify(messageMeta)}`);
   if (await page.locator(".metric-grid").count() > 0) throw new Error("metric-grid should not be present in the UI layout.");
   const firstMenu = page.locator("#chat-transcript .chat-message.user .message-menu").first();
   await firstMenu.locator("summary").click();
-  await page.waitForSelector("#chat-transcript .chat-message.user .message-menu[open] [data-chat-copy-message] >> text=Copy");
-  await page.waitForSelector("#chat-transcript .chat-message.user .message-menu[open] [data-chat-retry-message] >> text=Retry");
-  await page.waitForSelector("#chat-transcript .chat-message.user .message-menu[open] [data-chat-fork] >> text=Fork");
+  await page.waitForSelector("#chat-transcript .chat-message.user .message-menu[open] [data-chat-copy-message] >> text=Sao chép");
+  await page.waitForSelector("#chat-transcript .chat-message.user .message-menu[open] [data-chat-retry-message] >> text=Thử lại");
+  await page.waitForSelector("#chat-transcript .chat-message.user .message-menu[open] [data-chat-fork] >> text=Tách nhánh");
   await page.waitForSelector("#chat-transcript .chat-message.assistant .markdown-body strong >> text=Ready");
   await page.waitForSelector("#chat-transcript .chat-message.assistant .markdown-body code >> text=approval");
-  await page.waitForSelector("#chat-transcript .chat-message.assistant .copy-code >> text=Copy");
+  await page.waitForSelector("#chat-transcript .chat-message.assistant .copy-code >> text=Sao chép");
   await page.waitForSelector("#chat-transcript .chat-message.assistant .code-block code >> text=bestie doctor");
   const assistantMenu = page.locator("#chat-transcript .chat-message.assistant .message-menu").last();
   await assistantMenu.locator("summary").click();
-  await page.waitForSelector("#chat-transcript .chat-message.assistant .message-menu[open] [data-chat-inspect-run] >> text=Inspect run");
+  await page.waitForSelector("#chat-transcript .chat-message.assistant .message-menu[open] [data-chat-inspect-run] >> text=Kiểm tra lượt chạy");
   await page.click("#chat-transcript .chat-message.assistant .message-menu[open] [data-chat-inspect-run]");
   await page.waitForSelector("#chat-inspector >> text=Run #");
   await page.waitForSelector("#chat-inspector >> text=Replay diff");
@@ -431,7 +431,7 @@ async function assertChatPanel(page, url, homeDir) {
 }
 
 async function assertSkillsPanel(page, url) {
-  await assertPanel(page, url, "#skills-panel", "Editing smoke-skill", ["smoke-skill", "SKILL.md", "Save skill", "New skill"]);
+  await assertPanel(page, url, "#skills-panel", "Editing smoke-skill", ["smoke-skill", "SKILL.md", "Lưu skill", "Skill mới"]);
   await page.waitForSelector("#skill-content");
   await page.waitForSelector(".skills-layout .skill-list");
   await page.fill("#skill-search", "smoke");
@@ -471,7 +471,7 @@ async function assertSkillsPanel(page, url) {
 }
 
 async function assertChannelPanel(page, url) {
-  await assertPanel(page, url, "#channel-panel", "Channels 1 / Cron 1", ["Telegram", "Zalo", "Cron"]);
+  await assertPanel(page, url, "#channel-panel", "Kênh 1 / Cron 1", ["Telegram", "Zalo", "Cron"]);
   const secretPill = await page.locator("#channel-daemons.active .action-row .pill.good", { hasText: "secret" }).first().evaluate((element) => {
     const rect = element.getBoundingClientRect();
     return { width: rect.width, scrollWidth: element.scrollWidth };
@@ -490,7 +490,7 @@ async function assertChannelPanel(page, url) {
   await page.waitForSelector("#channel-cron.active >> text=Created from UI");
   await page.waitForSelector("#channel-cron.active >> text=View");
   await page.click('#channel-cron.active [data-cron-view]');
-  await page.waitForSelector('#channel-cron.active [data-cron-detail]:not(.hidden) >> text=Next run');
+  await page.waitForSelector('#channel-cron.active [data-cron-detail]:not(.hidden) >> text=Lần chạy tới');
   await page.waitForSelector('#channel-cron.active [data-cron-detail]:not(.hidden) >> text=Send a short update.');
   await page.waitForSelector('#channel-cron.active >> text=Trigger');
   await page.click('#channel-cron.active [data-cron-edit]');
@@ -512,7 +512,7 @@ async function assertChannelPanel(page, url) {
   await page.click('#channel-cron.active [data-cron-delete]');
   await page.waitForSelector("#confirm-dialog[open]");
   await page.click('#confirm-dialog button[value="confirm"]');
-  await page.waitForFunction(() => document.querySelector("#channel-panel .value")?.textContent?.includes("Channels 1 / Cron 1"));
+  await page.waitForFunction(() => document.querySelector("#channel-panel .value")?.textContent?.includes("Kênh 1 / Cron 1"));
   await page.waitForSelector("#channel-cron.active >> text=Created from UI");
 }
 
