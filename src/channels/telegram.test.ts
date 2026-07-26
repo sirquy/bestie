@@ -1941,7 +1941,7 @@ test("handleTelegramUpdate keeps trivial date exec progress silent", async () =>
   }
 });
 
-test("handleTelegramUpdate repairs tool JSON when the model adds prose before it", async () => {
+test("handleTelegramUpdate executes tool JSON when the model adds prose before it", async () => {
   const paths = await createTempPaths();
   const sentMessages: Array<{ chatId: number; text: string }> = [];
   const editedMessages: Array<{ chatId: number; messageId: number; text: string }> = [];
@@ -1957,7 +1957,6 @@ test("handleTelegramUpdate repairs tool JSON when the model adds prose before it
       chatCompletion: async () => {
         calls += 1;
         if (calls === 1) return 'Để review code, Miu cần xem qua cấu trúc src/ trước.\n\n{"tool":"internal.list_files","arguments":{"path":"src","limit":50}}';
-        if (calls === 2) return '{"tool":"internal.list_files","arguments":{"path":"src","limit":50}}';
         return '{"answer":"Em đã xem cấu trúc src rồi, đây là nhận xét đầu tiên."}';
       },
       mcpToolRunner: async (options) => {
@@ -1968,8 +1967,8 @@ test("handleTelegramUpdate repairs tool JSON when the model adds prose before it
 
     assert.equal(result, "replied");
     assert.deepEqual(toolRequests, [{ tool: "internal.list_files", arguments: { path: "src", limit: 50 } }]);
-    assert.deepEqual(sentMessages, [{ chatId: 777, text: "Em đã xem cấu trúc src rồi, đây là nhận xét đầu tiên." }]);
-    assert.deepEqual(editedMessages, []);
+    assert.deepEqual(sentMessages, [{ chatId: 777, text: "Miu is listing files in src" }]);
+    assert.deepEqual(editedMessages, [{ chatId: 777, messageId: 1000, text: "Em đã xem cấu trúc src rồi, đây là nhận xét đầu tiên." }]);
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
   }

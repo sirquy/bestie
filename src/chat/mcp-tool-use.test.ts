@@ -132,6 +132,20 @@ test("buildAgentToolResultMessage guides empty and failed internal tool results"
   assert.match(failed, /use \{"answer":"\.\.\."\}/);
 });
 
+test("buildAgentToolResultMessage gives MCP-specific retry guidance", () => {
+  const missingServer = buildAgentToolResultMessage("missing/read_file", { ok: false, status: "fail", message: "MCP server not found: missing" });
+  const unlistedTool = buildAgentToolResultMessage("composio/search", { ok: false, status: "fail", message: "MCP tool composio/search is not configured in the local allowlist." });
+  const badArgs = buildAgentToolResultMessage("composio/search", { ok: false, status: "fail", message: "MCP server composio failed: invalid arguments for search" });
+
+  assert.match(missingServer, /internal\.mcp_list_servers/);
+  assert.match(missingServer, /exact listed server\/tool name/);
+  assert.match(unlistedTool, /internal\.mcp_list_tools/);
+  assert.match(unlistedTool, /"server":"composio"/);
+  assert.match(unlistedTool, /"connect":true/);
+  assert.match(badArgs, /inspect the exact tool schema/);
+  assert.match(badArgs, /Do not repeat the same failing request unchanged/);
+});
+
 test("buildAgentToolResultMessage explains blocked knowledge policy diagnostics", () => {
   const message = buildAgentToolResultMessage("internal.remember_knowledge", {
     ok: false,
@@ -258,11 +272,10 @@ test("parseMcpToolRequest accepts internal read tool requests", () => {
   });
 });
 
-test("parseMcpToolRequestResult rejects supported tool JSON mixed with prose", () => {
+test("parseMcpToolRequestResult accepts supported tool JSON mixed with prose", () => {
   const result = parseMcpToolRequestResult('Để review code, Miu cần xem qua src trước.\n\n{"tool":"internal.list_files","arguments":{"path":"src","limit":50}}');
 
-  assert.equal(result.kind, "invalid");
-  assert.match(result.kind === "invalid" ? result.message : "", /entire assistant message/);
+  assert.deepEqual(result, { kind: "valid", request: { tool: "internal.list_files", arguments: { path: "src", limit: 50 } } });
 });
 
 test("parseMcpToolRequest rejects chatter and invalid tool requests", () => {
@@ -295,11 +308,19 @@ test("buildAgentToolDecisionMessage requires completed answers or tool execution
   assert.match(message, /call the tool instead of describing the edit/);
 });
 
-test("parseAgentToolDecisionResult rejects supported tool JSON mixed with prose", () => {
-  const result = parseAgentToolDecisionResult('Đọc hết trước đã:\n\n{"tool":"internal.list_files","arguments":{"path":"src/channels","limit":50}}');
+test("parseAgentToolDecisionResult gives parse-error retry guidance for malformed tool JSON", () => {
+  const result = parseAgentToolDecisionResult('{"tool":"internal.list_files","arguments":{"path":"src",}}');
 
   assert.equal(result.kind, "invalid");
-  assert.match(result.kind === "invalid" ? result.message : "", /Tool decisions must be JSON/);
+  assert.match(result.kind === "invalid" ? result.message : "", /could not be parsed/);
+  assert.match(result.kind === "invalid" ? result.message : "", /Retry with valid JSON/);
+  assert.match(result.kind === "invalid" ? result.message : "", /no trailing commas/);
+});
+
+test("parseAgentToolDecisionResult accepts supported tool JSON mixed with prose", () => {
+  const result = parseAgentToolDecisionResult('Đọc hết trước đã:\n\n{"tool":"internal.list_files","arguments":{"path":"src/channels","limit":50}}');
+
+  assert.deepEqual(result, { kind: "tool", request: { tool: "internal.list_files", arguments: { path: "src/channels", limit: 50 } } });
 });
 
 test("parseMcpToolRequestResult allows normal final answers that mention tools", () => {
@@ -2019,12 +2040,12 @@ test("completeWithAgentTools keeps writing until all requested files are created
   }
 });
 
-test("completeWithAgentTools repairs tool JSON mixed with final prose", async () => {
+test("completeWithAgentTools executes tool JSON mixed with final prose", async () => {
   const paths = await createTempPaths();
   await mkdir(paths.appDir, { recursive: true });
+  const toolRequests: unknown[] = [];
   const responses = [
     '{"tool":"internal.list_files","arguments":{"path":"src","limit":5}}\nĐã list xong nha.',
-    '{"tool":"internal.list_files","arguments":{"path":"src","limit":5}}',
     '{"answer":"Final after clean tool call"}',
   ];
 
@@ -2035,15 +2056,65 @@ test("completeWithAgentTools repairs tool JSON mixed with final prose", async ()
       apiKey: "test-key",
       messages: [{ role: "user", content: "list src" }],
       chatCompletion: async (_config, _apiKey, options) => {
-        if (responses.length === 2) {
-          assert.match(String(options.messages.at(-1)?.content ?? ""), /not an executable tool-loop decision|exactly one JSON object/);
+        if (responses.length === 1) {
+          assert.match(String(options.messages.at(-1)?.content ?? ""), /Tool result for internal\.list_files/);
         }
         return responses.shift() ?? '{"answer":"Final"}';
       },
-      toolRunner: async () => ({ ok: true, status: "pass", message: "listed", result: { entries: [] } }),
+      toolRunner: async (options) => {
+        toolRequests.push(options.request);
+        return { ok: true, status: "pass", message: "listed", result: { entries: [] } };
+      },
     });
 
     assert.equal(answer, "Final after clean tool call");
+    assert.deepEqual(toolRequests, [{ tool: "internal.list_files", arguments: { path: "src", limit: 5 } }]);
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("completeWithAgentTools turns tool runner exceptions into retryable tool results", async () => {
+  const paths = await createTempPaths();
+  const requests: unknown[] = [];
+  const activities: unknown[] = [];
+
+  try {
+    const answer = await completeWithAgentTools({
+      config: createConfig(),
+      paths,
+      apiKey: "test-key",
+      messages: [{ role: "user", content: "read from mcp" }],
+      chatCompletion: async (_config, _apiKey, options) => {
+        requests.push(options.messages);
+        if (requests.length === 1) return '{"tool":"mcp.read","server":"fs","name":"read_file","arguments":{"path":"note.txt"}}';
+
+        const latestMessages = JSON.stringify(options.messages);
+        assert.match(latestMessages, /Tool runtime error for fs\/read_file: boom/);
+        assert.match(latestMessages, /The MCP call failed/);
+        assert.match(latestMessages, /internal\.mcp_list_tools/);
+        return '{"tool":"internal.mcp_list_tools","arguments":{"server":"fs","connect":true}}';
+      },
+      maxToolCalls: 2,
+      onToolActivity: (activity) => {
+        activities.push(activity);
+      },
+      toolRunner: async (options) => {
+        if (options.request.tool === "mcp.read") throw new Error("boom");
+        return { ok: true, status: "pass", message: "listed", result: { tools: [{ name: "read_file" }] } };
+      },
+    });
+
+    assert.match(answer, /Tool loop stopped after 2 tool calls/);
+    assert.deepEqual(
+      activities.map((activity) => ({ phase: (activity as { phase: string }).phase, ok: (activity as { ok?: boolean }).ok, status: (activity as { status?: string }).status })),
+      [
+        { phase: "start", ok: undefined, status: undefined },
+        { phase: "finish", ok: false, status: "fail" },
+        { phase: "start", ok: undefined, status: undefined },
+        { phase: "finish", ok: true, status: "pass" },
+      ],
+    );
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
   }

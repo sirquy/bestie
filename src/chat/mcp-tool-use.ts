@@ -188,9 +188,7 @@ export async function completeWithAgentTools(options: CompleteWithAgentToolsOpti
     try {
       toolResult = await toolRunner({ config: currentConfig, paths: options.paths, request: decision.request, approver: options.approver, policy: options.policy, apiKey: options.apiKey, chatCompletion: options.chatCompletion, runtimeContext: options.runtimeContext, subagentDepth: options.subagentDepth ?? 0 });
     } catch (error) {
-      const durationMs = Date.now() - startedAt;
-      await notifyToolActivity(options, { phase: "finish", callIndex: toolCallCount + 1, toolName, label, ok: false, status: "fail", durationMs });
-      throw error;
+      toolResult = { ok: false, status: "fail", message: `Tool runtime error for ${toolName}: ${formatUnknownError(error)}` };
     }
     const durationMs = Date.now() - startedAt;
     await notifyToolActivity(options, { phase: "finish", callIndex: toolCallCount + 1, toolName, label, ok: toolResult.ok, status: toolResult.status, durationMs });
@@ -218,11 +216,10 @@ export function parseMcpToolRequestResult(text: string): McpToolRequestParseResu
   const fenced = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
   const rawJson = fenced?.[1] ?? extractToolRequestJson(trimmed);
 
-  if (!fenced && rawJson !== trimmed && looksLikeMixedToolJson(trimmed)) {
-    return { kind: "invalid", message: "Tool request JSON must be the entire assistant message, with no prose before or after it." };
-  }
-
   if (!rawJson?.startsWith("{") || !rawJson.endsWith("}")) {
+    if (looksLikeMixedToolJson(trimmed)) {
+      return { kind: "invalid", message: "A tool request was mentioned, but the runtime could not find one complete JSON object. Retry with exactly one supported tool JSON object such as {\"tool\":\"internal.mcp_list_servers\",\"arguments\":{}} or {\"tool\":\"mcp.read\",\"server\":\"server-name\",\"name\":\"tool-name\",\"arguments\":{}}." };
+    }
     return { kind: "none" };
   }
 
@@ -246,13 +243,17 @@ export function parseMcpToolRequestResult(text: string): McpToolRequestParseResu
     }
 
     return { kind: "valid", request: { tool: "mcp.read", server: parsed.server, name: parsed.name, arguments: args } };
-  } catch {
-    return { kind: "invalid", message: "Tool request JSON could not be parsed. Reply with normal text or the exact MCP read JSON schema." };
+  } catch (error) {
+    return { kind: "invalid", message: `Tool request JSON could not be parsed: ${formatUnknownError(error)}. Retry with valid JSON only, using double-quoted keys/strings, no trailing commas, and one of the supported schemas.` };
   }
 }
 
 function extractToolRequestJson(text: string): string | undefined {
-  return text.startsWith("{") && text.endsWith("}") ? text : undefined;
+  if (text.startsWith("{") && text.endsWith("}")) {
+    return text;
+  }
+
+  return extractEmbeddedJsonObject(text, (value) => isRecord(value) && typeof value.tool === "string");
 }
 
 function looksLikeMixedToolJson(text: string): boolean {
@@ -265,6 +266,9 @@ export function parseAgentToolDecisionResult(text: string): AgentToolDecisionPar
   const rawJson = fenced?.[1] ?? extractToolDecisionJson(trimmed);
 
   if (!rawJson?.startsWith("{") || !rawJson.endsWith("}")) {
+    if (looksLikeMixedToolJson(trimmed)) {
+      return { kind: "invalid", message: "A tool decision was mentioned, but the runtime could not find one complete JSON object. Retry with exactly one JSON object and no prose." };
+    }
     return { kind: "invalid", message: "Tool decisions must be JSON with either {\"answer\":\"...\"} or a supported tool request." };
   }
 
@@ -284,8 +288,8 @@ export function parseAgentToolDecisionResult(text: string): AgentToolDecisionPar
     }
 
     return { kind: "invalid", message: toolResult.kind === "invalid" ? toolResult.message : "Tool decisions must include answer or a supported tool request." };
-  } catch {
-    return { kind: "invalid", message: "Tool decision JSON could not be parsed." };
+  } catch (error) {
+    return { kind: "invalid", message: `Tool decision JSON could not be parsed: ${formatUnknownError(error)}. Retry with valid JSON only: use double-quoted keys/strings, no trailing commas, and either {\"answer\":\"...\"} or one supported tool request.` };
   }
 }
 
@@ -294,7 +298,70 @@ function extractToolDecisionJson(text: string): string | undefined {
     return text;
   }
 
-  return extractToolRequestJson(text);
+  return extractEmbeddedJsonObject(text, (value) => isRecord(value) && (typeof value.answer === "string" || typeof value.tool === "string"));
+}
+
+function extractEmbeddedJsonObject(text: string, acceptsParsedValue: (value: unknown) => boolean): string | undefined {
+  for (const candidate of extractBalancedJsonObjects(text)) {
+    try {
+      const parsed = JSON.parse(candidate) as unknown;
+      if (acceptsParsedValue(parsed)) {
+        return candidate;
+      }
+    } catch {
+      if (looksLikeMixedToolJson(candidate)) {
+        return candidate;
+      }
+    }
+  }
+
+  return undefined;
+}
+
+function extractBalancedJsonObjects(text: string): string[] {
+  const candidates: string[] = [];
+  let start = -1;
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index];
+
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+      } else if (char === "\\") {
+        escaped = true;
+      } else if (char === '"') {
+        inString = false;
+      }
+      continue;
+    }
+
+    if (char === '"') {
+      inString = true;
+      continue;
+    }
+
+    if (char === "{") {
+      if (depth === 0) {
+        start = index;
+      }
+      depth += 1;
+      continue;
+    }
+
+    if (char === "}" && depth > 0) {
+      depth -= 1;
+      if (depth === 0 && start >= 0) {
+        candidates.push(text.slice(start, index + 1));
+        start = -1;
+      }
+    }
+  }
+
+  return candidates;
 }
 
 function isStreamedPlainFinalResponse(options: CompleteWithAgentToolsOptions, text: string): boolean {
@@ -463,11 +530,46 @@ function buildRepeatedSuccessfulToolAnswer(toolName: string, toolResult: McpTool
 }
 
 function buildToolResultRecoveryHint(toolName: string, toolResult: McpToolCallResult): string | undefined {
+  if (isMcpToolResultName(toolName) && !toolResult.ok) {
+    return buildMcpToolRecoveryHint(toolName, toolResult);
+  }
+
   if (!toolName.startsWith("internal.") || toolResult.ok || toolResult.message !== "Path does not exist.") {
     return undefined;
   }
 
   return "If this missing path blocks the request and another tool call is still useful, use internal.list_files on the nearest existing parent directory or internal.search_files for the likely file name. If no adjacent lookup is useful, return {\"answer\":\"...\"} explaining the missing path.";
+}
+
+function isMcpToolResultName(toolName: string): boolean {
+  return !toolName.startsWith("internal.") && toolName.includes("/");
+}
+
+function buildMcpToolRecoveryHint(toolName: string, toolResult: McpToolCallResult): string {
+  const [serverName] = toolName.split("/", 1);
+  const message = toolResult.message;
+
+  if (/MCP server not found/i.test(message)) {
+    return `The MCP server name was not found. In the next tool decision, use {"tool":"internal.mcp_list_servers","arguments":{}} to inspect configured server names, then retry mcp.read with an exact listed server/tool name or return {"answer":"..."} if no suitable server exists.`;
+  }
+
+  if (/not configured in the local allowlist|no configured tool/i.test(message)) {
+    return `The MCP server exists, but this tool is not locally allowlisted. In the next tool decision, use {"tool":"internal.mcp_list_tools","arguments":{"server":"${serverName}","connect":true}} to discover available tools and configured categories, then retry mcp.read only with an exact read-classified tool or return {"answer":"..."} explaining that the tool needs classification.`;
+  }
+
+  if (/only read tools can be called|categorized as/i.test(message)) {
+    return "This MCP tool is not classified as read-only, so the current runtime must not call it. Do not retry the same mcp.read request. Return {\"answer\":\"...\"} explaining that the MCP tool category blocks execution, or use a read-only adjacent tool if one is clearly available.";
+  }
+
+  if (/missing env var|authorization|auth|token|login/i.test(message)) {
+    return `The MCP server appears to need missing authentication or secret configuration. Do not invent credentials. In the next tool decision, either use {"tool":"internal.mcp_list_servers","arguments":{}} or {"tool":"internal.mcp_list_tools","arguments":{"server":"${serverName}","connect":true}} if configuration inspection is useful, or return {"answer":"..."} asking the user to complete login/configuration.`;
+  }
+
+  if (/invalid|argument|schema|params|parameter/i.test(message)) {
+    return `The MCP call likely failed because the arguments or tool name were wrong. In the next tool decision, use {"tool":"internal.mcp_list_tools","arguments":{"server":"${serverName}","connect":true}} to inspect the exact tool schema when useful, then retry mcp.read with corrected JSON arguments. Do not repeat the same failing request unchanged.`;
+  }
+
+  return `The MCP call failed. In the next tool decision, either use {"tool":"internal.mcp_list_tools","arguments":{"server":"${serverName}","connect":true}} to re-check available tools, retry mcp.read only if you can correct the server/tool/arguments, or return {"answer":"..."} explaining the limitation. Do not repeat the same failing MCP request unchanged.`;
 }
 
 function isEmptyToolResult(result: unknown): boolean {
@@ -487,7 +589,11 @@ export function formatToolRequestName(request: { tool: string; server?: string; 
 }
 
 export function buildInvalidMcpToolRequestMessage(message: string): string {
-  return `The previous assistant message is not an executable tool-loop decision: ${message}\nReply with exactly one JSON object and no extra text: either {"answer":"final answer text"} for a completed answer, or a supported internal/MCP tool request for work that still needs execution. Do not describe what you will do next. Do not wrap JSON in prose or markdown fences. If the user requested an action and a supported tool can perform it, return that tool request instead of advice.`;
+  return `The previous assistant message is not an executable tool-loop decision: ${message}\nRetry immediately with exactly one JSON object and no extra text: either {"answer":"final answer text"} for a completed answer, or a supported internal/MCP tool request for work that still needs execution. Use valid JSON with double-quoted keys/strings, no trailing commas, and an object-valued arguments field. Do not describe what you will do next. Do not wrap JSON in prose or markdown fences. If the user requested an action and a supported tool can perform it, return that tool request instead of advice. Useful MCP recovery tools: {"tool":"internal.mcp_list_servers","arguments":{}} and {"tool":"internal.mcp_list_tools","arguments":{"server":"server-name","connect":true}}. MCP read schema: {"tool":"mcp.read","server":"server-name","name":"tool-name","arguments":{}}.`;
+}
+
+function formatUnknownError(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 export function formatToolActivityLabel(request: AgentToolRequest): string {
