@@ -46,8 +46,7 @@ Phase Now config started with non-secret `agent` and `llm` fields. The current l
     "ownerName": "Owner",
     "language": "vi",
     "timeZone": "Asia/Bangkok",
-    "toneIntensity": 7,
-    "emojiLevel": "light"
+    "toneIntensity": 7
   },
   "llm": {
     "primary": "openai/gpt-4o-mini",
@@ -94,12 +93,19 @@ Phase Now config started with non-secret `agent` and `llm` fields. The current l
     "apiKeyEnv": "BESTIE_TRANSCRIPTION_API_KEY",
     "timeoutMs": 60000
   },
+  "speech": {
+    "provider": "elevenlabs",
+    "apiKeyEnv": "ELEVENLABS_API_KEY",
+    "voiceId": "EXAMPLE_VOICE_ID",
+    "modelId": "eleven_multilingual_v2",
+    "outputFormat": "ogg_48000_128",
+    "timeoutMs": 120000
+  },
   "memory": {
-    "provider": "sqlite",
     "writePolicy": "ask",
-    "sqlitePath": "~/.bestie/data/memory.sqlite",
-    "zepEnabled": false,
-    "zepApiKeyEnv": "ZEP_API_KEY"
+    "deletePolicy": "ask",
+    "retrievalPolicy": "governed",
+    "recentMessageLimit": 20
   },
   "workspace": {
     "defaultPath": "~/.bestie/workspace",
@@ -185,6 +191,8 @@ LLM config rules:
 - `llm.modelCatalog[modelRef].profile` chooses which auth profile backs a model ref. When absent in future generated config, runtime falls back to `llm.authProfile`; current validation expects an explicit catalog object.
 - Runtime provider labels are `openai`/`chatgpt` for OpenAI Chat Completions, `anthropic`/`claude` for Anthropic Messages, `gemini` for native Google Gemini through `@google/genai`, and `openai-compatible` for custom OpenAI-compatible endpoints or Ollama.
 - Fallbacks are model refs, not repeated endpoint objects. Put endpoint/auth details in profiles and map model refs through `modelCatalog`.
+
+Memory config controls local memory policy only. The SQLite database path is derived from runtime paths as `~/.bestie/data/memory.sqlite`; optional Zep remains later work and is not configured by the current schema.
 
 Use `bestie llm providers` to list supported providers with adapter capabilities and `bestie llm models --provider <provider>` to inspect built-in model refs. Use `bestie llm setup` to configure this block and merge API-key secrets into `.env`. The command adds or updates a profile and model catalog entry; it preserves the current `llm.primary` unless `--set-default` is passed. Use `bestie llm models add --model provider/model --profile provider:mode` and `bestie llm models remove --model provider/model` to manage configured custom model refs; omitted `--profile` defaults to `llm.authProfile`. Use `bestie llm test --model provider/model` to test a configured model without switching primary. Use `bestie llm profiles list`, `bestie llm profiles show --profile provider:mode`, and `bestie llm profiles remove --profile provider:mode` to inspect or remove inactive profiles; removing a profile also removes model catalog entries that point to it. Use `bestie llm fallbacks list`, `bestie llm fallbacks add --model provider/model`, and `bestie llm fallbacks remove --model provider/model` to manage fallback order; fallback refs must already exist in `llm.modelCatalog`. The command supports Anthropic, ChatGPT/OpenAI, Groq, OpenRouter, Custom OpenAI-compatible, Custom Anthropic-compatible, local Ollama, Gemini API key, and Antigravity as a future OAuth provider. OAuth setup fails clearly until each provider has a real browser/device flow; Bestie does not scaffold placeholder OAuth tokens.
 

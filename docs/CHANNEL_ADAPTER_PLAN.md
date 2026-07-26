@@ -1,13 +1,13 @@
 # Channel Adapter Plan
 
-Bestie channels should stay small transport adapters around shared runtime behavior. Telegram is the first real channel; this plan defines how to add future channels such as Zalo, WhatsApp, Discord, or web chat without copying Telegram internals.
+Bestie channels should stay small transport adapters around shared runtime behavior. Telegram was the first real channel and Zalo is now implemented as a second local polling channel; this plan defines how to add future channels such as WhatsApp, Discord, or web chat without copying existing transport internals.
 
 ## Current Contract
 
 - `src/channels/registry.ts` owns channel descriptors: display name, config key, native commands, aliases, and capability flags.
 - `src/channels/adapter.ts` owns the type-first runtime adapter contract.
 - `src/channels/noop-adapter.test.ts` is the reference implementation for the contract without real transport code.
-- Telegram remains the production example for long polling, owner checks, Bot API file lookup, upload APIs, and platform quirks.
+- Telegram and Zalo are the current local polling examples. Telegram remains the richest production example for Bot API file lookup, upload APIs, voice replies, and platform quirks.
 
 ## New Channel Checklist
 

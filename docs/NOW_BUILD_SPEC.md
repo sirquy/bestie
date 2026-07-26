@@ -2,7 +2,7 @@
 
 ## Goal
 
-Build the smallest working slice that proves the Bestie character feels alive before the project invests in Telegram, Zep, installer, UI, MCP, or avatar/voice work. This spec is the historical contract for Phase Now; the current project has since moved into a broader local MVP with config v2, provider profiles, Telegram/Zalo, cron, local memory, Doctor, permission-gated tools, installed skills, npm update checks, daemon/service management, and MCP read foundations.
+Build the smallest working slice that proves the Bestie character feels alive before the project invests in Telegram, Zep, installer, UI, MCP, or avatar/voice work. This spec is the historical contract for Phase Now; the current project has since moved into a broader local MVP with config v2, provider profiles, Telegram/Zalo, cron, local memory, Doctor, permission-gated tools, installed skills, npm update checks, daemon/service management, local web console, and MCP read foundations.
 
 Phase Now delivered a terminal-based chat loop with a configurable character prompt, LLM provider calls, minimal onboarding/config wizard, and basic logs for local development. The shipped implementation now supports OpenAI/ChatGPT, Anthropic Claude, generic OpenAI-compatible endpoints, Groq, OpenRouter, Ollama, and native Gemini API-key mode.
 
@@ -199,7 +199,7 @@ Terminal user input
   -> redacted log event
 ```
 
-Original Phase Now did not introduce channel, memory, tool, MCP, or UI dependencies into the chat loop. The current code now has a narrow local-memory integration for approved recall, `internal.search_memories` lookup, and config-gated `internal.remember_memory` writes; channel/tool/MCP/UI work remains out of scope.
+Original Phase Now did not introduce channel, memory, tool, MCP, or UI dependencies into the chat loop. The current code has since added local memory recall and writes, permission-gated internal tools, classified read-only MCP calls, Telegram/Zalo/cron runtimes, and a localhost UI shell around shared runtime services. Broader external/destructive tool use, hosted UI, optional Zep, and named multi-agent orchestration remain out of current scope.
 
 ## Failure States
 
@@ -225,7 +225,7 @@ Original Phase Now did not introduce channel, memory, tool, MCP, or UI dependenc
 - Logs are written for command start, provider test result, chat request success/failure, and handled errors.
 - Logs redact API keys and token-like values.
 - Provider fallback diagnostics are available without exposing secrets: raw structured attempts stay in local logs, while `/providers` redacts and truncates displayed error text.
-- No Telegram, Zep, MCP, plugin, installer, avatar, voice, or UI code was required for the original phase. Telegram/Zalo, local SQLite memory, cron, Doctor, tools, MCP read foundations, installed skills, installer/update flows, daemon/service management, and Telegram voice helpers were added after this phase as local MVP work.
+- No Telegram, Zep, MCP, plugin, installer, avatar, voice, or UI code was required for the original phase. Telegram/Zalo, local SQLite memory, cron, Doctor, tools, MCP read foundations, installed skills, local web console, installer/update flows, daemon/service management, and Telegram voice helpers were added after this phase as local MVP work.
 
 ## Validation Plan
 
@@ -379,7 +379,7 @@ Acceptance criteria:
 - Chat starts after valid onboarding.
 - Chat exits cleanly.
 - Replies use the character voice.
-- No memory, Telegram, tool, MCP, or UI dependencies are introduced.
+- Historical Phase Now only: no memory, Telegram, tool, MCP, or UI dependencies are introduced. Current local MVP work intentionally supersedes this constraint through scoped runtime services.
 
 Validation:
 

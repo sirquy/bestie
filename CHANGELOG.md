@@ -8,8 +8,8 @@ This project follows semantic versioning after the first public package release.
 
 ### Added
 
-- Local web console through `bestie ui`, including runtime status, Doctor, Provider Hub, Character Studio, Memory Center, Channel Hub, Approvals, MCP Hub, Tools & Permissions, and Settings panels.
-- UI APIs for providers, character, memory, channels, approvals, MCP, tools, and low-risk settings, with confirmation-gated write actions and redacted secret handling.
+- Local web console through `bestie ui`, including Chat sessions, Doctor, Provider Hub, Character Studio, Memory Center, Knowledge Graph, Channel Hub, Approvals, MCP Hub, Tools & Permissions, Skills, and Settings panels.
+- UI APIs for chat sessions, providers, character, memory, knowledge graph, channels, approvals, MCP, tools, skills, and low-risk settings, with confirmation-gated write actions and redacted secret handling.
 - Modern inline SVG icon treatment for the local web console navigation, panel headings, actions, provider presets, and dynamic rows.
 - Browser-level UI smoke coverage through Playwright with `npm run smoke:ui:browser` and aggregate `npm run smoke:ui:all`, including desktop/mobile screenshot and layout assertions.
 

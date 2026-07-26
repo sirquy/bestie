@@ -171,7 +171,7 @@ CREATE TABLE memory_hygiene_snapshots (
 
 ## User Controls
 
-Commands/future UI should support:
+Commands and the local UI should support:
 
 - inspect memory
 - pause and resume memory writes/recall

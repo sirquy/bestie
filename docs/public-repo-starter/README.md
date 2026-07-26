@@ -8,7 +8,7 @@ The project is early and intentionally practical: it focuses on a small local ru
 
 - A TypeScript CLI for building and running a personalized AI companion.
 - Vietnamese-first by default, but configurable for other language modes.
-- OpenAI-compatible for LLM providers, with local config for model, base URL, and API key environment variable names.
+- Configurable LLM providers, including OpenAI-compatible endpoints, OpenAI/ChatGPT, Anthropic Claude, Groq, OpenRouter, Ollama, and native Gemini API key.
 - Designed around privacy controls, local logs, explicit permissions, and user-owned memory.
 
 ## What Bestie Is Not
@@ -22,13 +22,14 @@ Bestie is under active development. The local CLI foundation includes:
 - Terminal chat
 - Character prompt loading
 - Minimal onboarding
-- OpenAI-compatible chat provider calls
+- OpenAI-compatible, OpenAI/ChatGPT, Anthropic Claude, Groq, OpenRouter, Ollama, and native Gemini chat provider calls
 - Doctor diagnostics
 - Local SQLite memory foundation
 - Telegram and Zalo local polling
 - Cron schedules and a local scheduler runtime
 - Manual daemon management for `telegram`, `zalo`, `cron`, or `all`
 - Linux user service management through one `bestie.service` runtime for configured service targets
+- Local web console through `bestie ui` for chat, Doctor, providers, character, memory, knowledge graph, channels, approvals, MCP, tools, skills, and settings
 - Permission-gated local read/write/action tools
 - Bounded internal subagent spawning for focused helper investigations
 - SDK-backed MCP server config, OAuth login, tool discovery, classification, and classified read calls
@@ -36,13 +37,13 @@ Bestie is under active development. The local CLI foundation includes:
 - `bestie update` and throttled update notices for new npm versions
 - Character regression evals
 
-Some roadmap items are intentionally not ready yet: hosted mode, broad external actions, plugin marketplace, production UI, avatar/body layer, and unrestricted tool execution.
+Some roadmap items are intentionally not ready yet: hosted mode, broad external actions, plugin marketplace, hosted/production UI, avatar/body layer, optional Zep, and unrestricted tool execution.
 
 ## Requirements
 
 - Node.js 24
 - npm
-- An OpenAI-compatible provider API key for chat
+- An LLM provider API key for chat
 - Optional: Telegram bot token for Telegram mode
 
 ## Quickstart
@@ -53,6 +54,7 @@ npm run build
 npm run dev -- onboard
 npm run dev -- doctor
 npm run dev -- chat
+npm run dev -- ui
 ```
 
 For a local user install:
@@ -62,6 +64,7 @@ For a local user install:
 bestie onboard
 bestie doctor
 bestie chat
+bestie ui
 ```
 
 For npm install:
@@ -71,6 +74,7 @@ npm install -g bestie-agent
 bestie onboard
 bestie doctor
 bestie chat
+bestie ui
 ```
 
 Useful runtime commands:
@@ -82,6 +86,9 @@ bestie daemon restart --channel all
 bestie daemon restart --channel cron
 bestie service install
 bestie service status
+bestie ui
+bestie ui --port 8717
+bestie ui --port 0 --no-open
 bestie cron list
 bestie mcp list
 bestie mcp add demo --url https://mcp.example.com/mcp
@@ -111,10 +118,26 @@ Example provider config:
 ```json
 {
   "llm": {
-    "provider": "openai-compatible",
-    "baseUrl": "https://api.example.com/v1",
-    "model": "provider-model-name",
-    "apiKeyEnv": "OPENAI_API_KEY"
+    "primary": "openai/gpt-4o-mini",
+    "fallbacks": ["gemini/gemini-2.5-flash"],
+    "authProfile": "openai:api-key",
+    "profiles": {
+      "openai:api-key": {
+        "provider": "openai",
+        "mode": "api-key",
+        "baseUrl": "https://api.openai.com/v1",
+        "apiKeyEnv": "OPENAI_API_KEY"
+      },
+      "gemini:api-key": {
+        "provider": "gemini",
+        "mode": "api-key",
+        "apiKeyEnv": "GEMINI_API_KEY"
+      }
+    },
+    "modelCatalog": {
+      "openai/gpt-4o-mini": { "profile": "openai:api-key" },
+      "gemini/gemini-2.5-flash": { "profile": "gemini:api-key" }
+    }
   }
 }
 ```
@@ -127,10 +150,24 @@ See `docs/CONFIG_SPEC.md` for full config details.
 npm run build
 npm test
 npm run smoke
+npm run smoke:ui
+npm run smoke:ui:all
 npm run eval:character
 ```
 
-Use focused tests while iterating, then run the full suite before opening a pull request.
+Use focused tests while iterating, then run the full suite before opening a pull request. `npm run smoke:ui` runs the API/static UI smoke; `npm run smoke:ui:all` also launches a headless browser and checks hydrated desktop/mobile layouts.
+
+## Local Web Console
+
+Run the local console with:
+
+```bash
+bestie ui
+```
+
+By default it binds to `127.0.0.1` and opens the browser. Use `bestie ui --no-open` for terminal-only sessions, `bestie ui --port 8717` for a fixed port, or `bestie ui --port 0 --no-open` for smoke-friendly dynamic ports.
+
+The console uses the same `~/.bestie/` runtime files as the CLI. It shows chat sessions, runtime health, provider setup, character editing, memory and knowledge graph views, channel controls, approvals, MCP summaries, tool permissions, skills, and low-risk settings. It reports secret presence and env var names only; raw `.env` values are not returned by UI APIs.
 
 ## Safety And Privacy
 

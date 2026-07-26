@@ -21,7 +21,7 @@ The UI starts as a localhost-only control center for the current npm CLI/runtime
 - No multi-user auth model.
 - No plugin marketplace.
 - No avatar/body layer beyond reserved visual space.
-- No full Telegram/Zalo/web replacement chat surface.
+- No hosted Telegram/Zalo/web replacement chat surface; the local console may include a persisted local chat/session test surface for debugging and owner workflows.
 - No direct secret display after a secret is saved.
 - No Doctor fix, memory delete, service restart, or destructive action without explicit confirmation.
 
@@ -57,7 +57,7 @@ bestie ui --port 0 --no-open
 
 Shipped panels:
 
-- Runtime status and top-level metrics.
+- Local Chat surface with sessions, search/filter, retry, replay, fork, import/export, attachments, run inspector, command palette, and SSE streaming.
 - Doctor checks and confirmation-gated safe fixes.
 - Provider Hub with presets, setup, primary model, fallback add/remove, and test primary.
 - Character Studio for `character.json` and `system-prompt.md` edits.
@@ -67,6 +67,7 @@ Shipped panels:
 - Approvals Hub for pending permission decisions without exposing payload JSON, including guarded execution for queued local UI actions.
 - MCP Hub with server cards, transports, auth/env metadata, tool categories, and tool names.
 - Tools & Permissions with policy counts, per-tool policy rows, workspace paths, and exec timeout.
+- Skills manager for local `~/.bestie/skills/<skill-name>/SKILL.md` create/edit/rename/delete flows.
 - Settings for low-risk agent and memory policy edits.
 
 Current implementation paths:
@@ -80,7 +81,7 @@ src/ui/home/client-script.ts
 src/ui/home/styles.ts
 ```
 
-The Home client script is served as `/assets/home.js`; it is not inlined into the HTML shell.
+The Home client script is served as `/assets/home.js`; it is not inlined into the HTML shell. Cytoscape is served from the installed package as `/assets/cytoscape.min.js` for the Knowledge Graph panel. There is no separate UI bundler or `dist/ui/web` output yet.
 
 Current validation commands:
 
@@ -107,10 +108,9 @@ Design principles:
 Suggested first visual structure:
 
 ```text
-Top rail: Bestie identity, active model, runtime health
-Left nav: Home, Character, Providers, Doctor, Memory, Channels, Logs, Chat Test
+Left nav: Chat, Doctor, Providers, Character, Memory, Knowledge, Channels, Approvals, MCP, Tools, Skills, Settings
 Main panel: selected workflow
-Right rail: recent warnings, missing secrets, fallback health, last Doctor summary
+Inline panels: status, warnings, details, inspectors, confirmations, and toasts inside the active workflow
 ```
 
 ## Architecture
@@ -122,7 +122,7 @@ src/cli/commands/ui.ts
   -> src/ui/server.ts
     -> src/ui/api/*.ts
       -> existing runtime / llm / memory / doctor / channels services
-    -> static assets from dist/ui/web
+    -> HTML shell plus `/assets/home.js` and `/assets/cytoscape.min.js`
 ```
 
 Recommended paths:
@@ -149,7 +149,7 @@ Backend:
 
 - Start with Node's built-in `node:http` server unless route complexity justifies a dependency.
 - Keep routes explicit and JSON-only under `/api/*`.
-- Serve static files from a built UI directory.
+- Serve the HTML shell and explicit static assets from the Node server until a dedicated frontend bundle exists.
 - Support `--port 0` for tests.
 
 Frontend direction:
@@ -162,8 +162,8 @@ Frontend direction:
 
 Package impact:
 
-- UI assets must be included in npm package files once implemented.
-- Add `ui:build` and wire it into `build` or `prepack` only after the first UI app exists.
+- The current UI assets are TypeScript string modules compiled into `dist/ui/**` and included by the existing package `files` rule.
+- Add `ui:build` and wire it into `build` or `prepack` only after a separate frontend app/bundler exists.
 - Keep `bestie ui --no-open --port 0` smoke-friendly.
 
 ## Local Security Model

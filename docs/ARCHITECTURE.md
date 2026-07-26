@@ -1,10 +1,10 @@
 # Architecture
 
-This document describes the current long-term architecture and the local-development runtime that now exists. Phase Now terminal chat/onboarding is complete; the codebase is in local MVP hardening with Telegram, Zalo, cron, daemon/service management, local SQLite memory, Doctor, permission-gated tools, bounded internal subagents, installed skills, npm update checks, and SDK-backed MCP setup plus classified read calls implemented for local development.
+This document describes the current long-term architecture and the local-development runtime that now exists. Phase Now terminal chat/onboarding is complete; the codebase is in local MVP hardening with Telegram, Zalo, cron, daemon/service management, local SQLite memory, Doctor, permission-gated tools, bounded internal subagents, installed skills, npm update checks, the localhost web console, and SDK-backed MCP setup plus classified read calls implemented for local development.
 
 ## Overview
 
-Bestie is a local-first, self-hostable agent runtime. The core runtime is shared by the CLI, Telegram, Zalo, cron, MCP read foundations, installed skills, and future UI/multi-agent features.
+Bestie is a local-first, self-hostable agent runtime. The core runtime is shared by the CLI, Telegram, Zalo, cron, the local web console, MCP read foundations, installed skills, and future hosted UI/multi-agent features.
 
 ```text
 User / Channel
@@ -38,11 +38,12 @@ Owns user-facing commands:
 - `service`
 - `tools`
 - `mcp`
+- `ui`
 - `skills`
 - `update`
 - future backup/restore commands
 
-Current local development includes `onboard`, `chat`, `status`, `logs`, `doctor`, `memory`, `channels`, `cron`, `daemon`, `service`, `skills`, `tools`, `mcp`, and `update` commands. Backup/restore remain later milestones.
+Current local development includes `onboard`, `chat`, `status`, `logs`, `doctor`, `memory`, `channels`, `cron`, `daemon`, `service`, `ui`, `skills`, `tools`, `mcp`, and `update` commands. Backup/restore remain later milestones.
 
 CLI should call runtime services, not duplicate business logic.
 
@@ -56,7 +57,7 @@ Coordinates one turn:
 4. send response
 5. store redacted operational logs
 
-The current runtime also includes approved local memory recall, explicit memory writes, permission-gated tools, a multi-step tool loop, bounded internal subagents for focused helper investigations, and Doctor diagnostics. Broader write/external/destructive tool maturity, Zep, UI, and named multi-agent orchestration remain later work.
+The current runtime also includes approved local memory recall, explicit memory writes, permission-gated tools, a multi-step tool loop, bounded internal subagents for focused helper investigations, Doctor diagnostics, and a localhost UI shell around runtime APIs. Broader write/external/destructive tool maturity, optional Zep, hosted/product UI, and named multi-agent orchestration remain later work.
 
 ### Character System
 

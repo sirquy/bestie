@@ -4,7 +4,7 @@
 
 Define the architecture for the Phase Now slice: terminal chat, character prompt, minimal onboarding/config wizard, LLM provider calls, and basic logs.
 
-The architecture must prove character quality quickly while leaving clean seams for later Telegram, memory, Doctor, installer, and UI work.
+The architecture had to prove character quality quickly while leaving clean seams for later Telegram, memory, Doctor, installer, and UI work. Those later local MVP seams are now in active use by the shipped runtime.
 
 ## Source Of Truth
 
@@ -20,7 +20,7 @@ If these files conflict, prefer them in that order.
 
 Phase Now is a local CLI application.
 
-This boundary is historical for the original Phase Now slice. Later local MVP work has since implemented Telegram/Zalo channels, cron, SQLite memory, permission-gated tools, MCP foundations, installer/update flows, daemon management, and one-service systemd integration.
+This boundary is historical for the original Phase Now slice. Later local MVP work has since implemented Telegram/Zalo channels, cron, SQLite memory, permission-gated tools, MCP foundations, installer/update flows, local web console, daemon management, and one-service systemd integration.
 
 Inside boundary:
 
@@ -31,7 +31,7 @@ Inside boundary:
 - LLM provider request/response handling.
 - Redacted local logging.
 
-Outside boundary:
+Outside boundary for original Phase Now:
 
 - Telegram, Discord, web chat, and other channels.
 - SQLite memory and Zep memory.
@@ -159,7 +159,7 @@ Responsibilities:
 
 ## Data And File Model
 
-Use local development paths for Phase Now:
+Use local development paths for Phase Now. Installed/current runtime usage resolves the same shape under `~/.bestie/` by default:
 
 ```text
 .bestie/

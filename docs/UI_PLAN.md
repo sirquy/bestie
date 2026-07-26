@@ -1,34 +1,54 @@
-# Bestie - Future UI Plan
+# Bestie - UI Plan
 
-This UI is not part of the immediate MVP, but it is a required future direction. `PROJECT.md` remains the source of truth when scope or priority conflicts appear.
+The first local web console is now part of the shipped local MVP through `bestie ui`. This document tracks the implemented localhost console and the future product UI direction. `PROJECT.md` remains the source of truth when scope or priority conflicts appear.
 
 ## Goal
 
-Create a local web console and later product UI for configuring, managing, diagnosing, and embodying the Bestie.
+Keep improving the local web console and later product UI for configuring, managing, diagnosing, and embodying the Bestie.
 
 The UI should feel like a character studio / companion control center, not a boring admin dashboard.
 
-## Recommended UI Phases
+## UI Phases
 
-1. CLI first: `bestie onboard`, `bestie doctor`, `bestie status`.
-2. Local web console: `bestie ui` opens `localhost`.
-3. Character Studio: visual personality/avatar/tone setup.
-4. Memory Center: inspect/edit/delete/export memories, including Zep status.
-5. Provider & Channel Hub: connect LLMs, Zep, Telegram, Discord, web chat.
-6. Doctor UI: visual health checks and safe repair buttons.
-7. Avatar/voice/body layer.
+1. CLI first: `bestie onboard`, `bestie doctor`, `bestie status` - shipped.
+2. Local web console: `bestie ui` opens `localhost` - shipped as a zero-dependency Node HTTP console.
+3. Character Studio: basic character and system prompt editing - shipped; visual/avatar-heavy authoring remains future work.
+4. Memory Center: active memory search, pending approvals, and local knowledge graph - shipped; full edit/delete/export and optional Zep status remain future work.
+5. Provider & Channel Hub: LLM provider setup plus Telegram, Zalo, cron, daemon and approval surfaces - shipped for local workflows; Discord/web chat and hosted channel setup remain future work.
+6. Doctor UI: visual health checks and confirmation-gated safe fixes - shipped for the local console.
+7. Avatar/voice/body layer - future work.
 
-## First UI MVP
+## Current Local Console
 
-When UI work starts, build:
+Current command surface:
 
-- Home/status screen
-- Character editor
-- Provider setup
-- Telegram setup
-- Doctor screen
-- Logs screen
-- Chat test panel
+```bash
+bestie ui
+bestie ui --port 8717
+bestie ui --port 0 --no-open
+```
+
+Current panels:
+
+- Chat session surface with local conversation history, retry/replay/fork/import/export, attachments, run inspector, and command palette.
+- Doctor screen with confirmation-gated safe fixes.
+- Provider Hub with presets, setup, primary model, fallbacks, and model test.
+- Character Studio for `character.json` and `system-prompt.md`.
+- Memory Center with search and pending memory approval.
+- Knowledge Graph with map, review, trust, search, graph actions, and approval-gated writes.
+- Channel Hub for Telegram, Zalo, cron, daemon actions, and cron logs.
+- Approvals Hub for pending permission decisions.
+- MCP Hub for server, tool, auth, and transport summaries.
+- Tools & Permissions for internal tool policies and workspace paths.
+- Skills manager for local `~/.bestie/skills` editing.
+- Settings for low-risk agent and memory policy edits.
+
+Validation:
+
+```bash
+npm run smoke:ui
+npm run smoke:ui:all
+```
 
 ## Design Direction
 
@@ -45,7 +65,7 @@ The UI should reuse runtime services used by the CLI.
 
 ```text
 runtime services -> CLI
-runtime services -> local web API
+runtime services -> local web API -> shipped localhost console
 runtime services -> future hosted UI
 ```
 

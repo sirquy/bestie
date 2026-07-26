@@ -19,15 +19,15 @@ Status: completed for local development and shipped through the npm CLI.
 - Telegram/Zalo reliability fixes discovered by daily local use
 - skills and update-command polish when it improves owner workflows
 
-Status: local MVP foundation complete. Terminal chat, onboarding, local SQLite memory, Doctor, Telegram/Zalo local polling, cron, daemon management for `telegram|zalo|cron|all`, one `bestie.service` systemd runtime, permission-gated local tools, bounded internal subagents, SDK-backed MCP setup plus classified read calls, installed skills, provider catalog/management CLI, npm update checks, Telegram real-bot smoke, and one-command installer smoke exist for local development.
+Status: local MVP foundation complete. Terminal chat, onboarding, local SQLite memory, Doctor, Telegram/Zalo local polling, cron, daemon management for `telegram|zalo|cron|all`, one `bestie.service` systemd runtime, permission-gated local tools, bounded internal subagents, SDK-backed MCP setup plus classified read calls, installed skills, provider catalog/management CLI, local web console, npm update checks, Telegram real-bot smoke, and one-command installer smoke exist for local development.
 
 ## Later
 
 - fuller onboarding
 - optional Zep memory
 - backup/restore/migration
-- local web console
-- Doctor UI
+- polish the shipped local web console when it improves real owner workflows
+- hosted/product UI beyond the local console
 - broader tools after permissions have been exercised in terminal, Telegram, and Zalo
 
 ## Future
@@ -41,9 +41,9 @@ Status: local MVP foundation complete. Terminal chat, onboarding, local SQLite m
 
 ## Hard Rules
 
-- The original Phase Now excluded Telegram, memory, Zep, MCP/ACP, plugins, installer, UI, avatar, voice, hosted/SaaS, analytics, and telemetry. The current local MVP has since implemented Telegram, Zalo, cron, local memory, Doctor, permission-gated tools, bounded internal subagents, MCP setup/read foundations, installer, skills, update checks, daemon management, and one-service systemd integration.
+- The original Phase Now excluded Telegram, memory, Zep, MCP/ACP, plugins, installer, UI, avatar, voice, hosted/SaaS, analytics, and telemetry. The current local MVP has since implemented Telegram, Zalo, cron, local memory, Doctor, permission-gated tools, bounded internal subagents, MCP setup/read foundations, installer, skills, update checks, local web console, daemon management, and one-service systemd integration.
 - Zep after SQLite
 - MCP/ACP after Doctor + permissions
-- UI after CLI basics
+- product/hosted UI after the shipped local console proves useful
 - installer after onboarding works
 - no public marketing claims about consciousness/therapy/romance

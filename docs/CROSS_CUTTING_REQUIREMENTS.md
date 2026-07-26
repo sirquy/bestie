@@ -56,10 +56,16 @@ Support import/export/fork/reset later.
 
 ## 5. Update, Migration, Backup, Rollback
 
-Future commands:
+Current local command:
 
 ```bash
 bestie update
+bestie update --apply
+```
+
+Future commands:
+
+```bash
 bestie backup
 bestie restore <backup-file>
 bestie migrate
@@ -70,7 +76,7 @@ Always backup before risky update/migration.
 
 ## 6. Observability And Debugging
 
-Current local development includes readable redacted operational logs, Doctor diagnostics, JSON Doctor report contracts, smoke scripts, Telegram redacted transcript smoke, and permission audit logs. The rest of this section is future observability scope.
+Current local development includes readable redacted operational logs, Doctor diagnostics, JSON Doctor report contracts, smoke scripts, Telegram redacted transcript smoke, local UI smoke/browser visual checks, provider fallback diagnostics, and permission audit logs. The rest of this section is future observability scope.
 
 Future requirements:
 

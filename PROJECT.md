@@ -23,7 +23,8 @@ Current local MVP status:
 - Supports configurable LLM provider profiles and model refs, including OpenAI/ChatGPT, Anthropic Claude, Groq, OpenRouter, local Ollama, custom OpenAI-compatible endpoints, and native Gemini API-key mode.
 - Logs provider failures, fallback attempts, memory updates, permission decisions, and runtime diagnostics with secret redaction.
 - Loads installed skills from `~/.bestie/skills` and supports SDK-backed MCP setup plus classified read calls.
-- Can later evolve into broader UI, hosted mode, avatar/body, optional Zep, and broader external actions.
+- Ships a localhost web console through `bestie ui` for chat, Doctor, providers, character, memory, knowledge graph, channels, approvals, MCP, tools, skills, and settings.
+- Can later evolve into hosted/product UI, avatar/body, optional Zep, and broader external actions.
 
 Do not let the local MVP become a fully autonomous public agent. Keep power behind explicit config, Doctor checks, permission review, and redacted logs.
 
@@ -224,7 +225,7 @@ Terminal / Telegram / Zalo / Cron
       -> Redacted logs + memory reasoning
 ```
 
-The original v1 sketch mentioned Telegram or web chat. The shipped local MVP currently prioritizes terminal, Telegram, Zalo, cron, daemon/service, SQLite memory, Doctor, MCP read foundations, and installed skills. Web UI, hosted mode, avatar/body, optional Zep, and broad external execution remain later work.
+The original v1 sketch mentioned Telegram or web chat. The shipped local MVP currently prioritizes terminal, Telegram, Zalo, cron, daemon/service, SQLite memory, Doctor, local web console, MCP read foundations, and installed skills. Hosted/product UI, avatar/body, optional Zep, and broad external execution remain later work.
 
 Main components:
 
@@ -547,7 +548,7 @@ The user should only answer simple questions:
 - What vibe should it have?
 - Which LLM provider do you want to use?
 - What is your API key?
-- Do you want memory? If yes, enter Zep API key.
+- Do you want local memory on, paused, or approval-gated?
 - Which channel should it connect to first?
 
 The product should hide technical complexity behind a clear onboarding wizard.
@@ -607,24 +608,33 @@ Suggested stack:
 
 ### LLM
 
-Support OpenAI-compatible providers first.
+Current local runtime supports provider-profile model refs across OpenAI/ChatGPT, Anthropic Claude, Groq, OpenRouter, Ollama, custom OpenAI-compatible endpoints, and native Gemini API-key mode.
 
-Primary provider options:
-
-- QuotaCheap OpenAI-compatible endpoint
-- OpenAI
-- OpenRouter
-- Local OpenAI-compatible endpoint later
-
-Config should look like:
+Config uses `llm.primary`, `llm.profiles`, and `llm.modelCatalog`:
 
 ```json
 {
   "llm": {
-    "provider": "openai-compatible",
-    "baseUrl": "https://api.openai.com/v1",
-    "apiKeyEnv": "OPENAI_API_KEY",
-    "model": "provider-model-name"
+    "primary": "openai/gpt-4o-mini",
+    "fallbacks": ["gemini/gemini-2.5-flash"],
+    "authProfile": "openai:api-key",
+    "profiles": {
+      "openai:api-key": {
+        "provider": "openai",
+        "mode": "api-key",
+        "baseUrl": "https://api.openai.com/v1",
+        "apiKeyEnv": "OPENAI_API_KEY"
+      },
+      "gemini:api-key": {
+        "provider": "gemini",
+        "mode": "api-key",
+        "apiKeyEnv": "GEMINI_API_KEY"
+      }
+    },
+    "modelCatalog": {
+      "openai/gpt-4o-mini": { "profile": "openai:api-key" },
+      "gemini/gemini-2.5-flash": { "profile": "gemini:api-key" }
+    }
   }
 }
 ```
@@ -633,22 +643,21 @@ Config should look like:
 
 Default:
 
-- SQLite local memory for simple install.
+- SQLite local memory at `~/.bestie/data/memory.sqlite` for simple install.
 
 Optional:
 
-- Zep for graph/long-term memory.
+- Zep for graph/long-term memory later.
 
 Config:
 
 ```json
 {
   "memory": {
-    "provider": "sqlite",
-    "zep": {
-      "enabled": false,
-      "apiKeyEnv": "ZEP_API_KEY"
-    }
+    "writePolicy": "ask",
+    "deletePolicy": "ask",
+    "retrievalPolicy": "governed",
+    "recentMessageLimit": 20
   }
 }
 ```
@@ -716,20 +725,22 @@ Runtime data remains under `~/.bestie/`.
 User data path:
 
 ```text
-~/.config/bestie/
+~/.bestie/
 ```
 
 Local database path:
 
 ```text
-~/.local/share/bestie/memory.sqlite
+~/.bestie/data/memory.sqlite
 ```
 
 Logs path:
 
 ```text
-~/.local/state/bestie/logs/
+~/.bestie/logs/
 ```
+
+XDG-style config/data/state paths remain a possible future packaging target, not the current runtime layout.
 
 ## 23. Installer Safety Rules
 
@@ -801,8 +812,7 @@ Welcome
   -> choose tone intensity
   -> choose LLM provider
   -> enter LLM API key
-  -> choose memory provider
-  -> optionally enter Zep API key
+  -> choose local memory policy
   -> connect first channel
   -> send test message
   -> start service
@@ -851,11 +861,14 @@ Questions:
 
 Questions:
 
-1. Memory mode:
-   - local only
-   - Zep
-   - local + Zep
-2. If Zep:
+1. Local memory write policy:
+   - ask
+   - allow
+   - deny
+2. Local memory retrieval policy:
+   - full
+   - governed
+3. Optional Zep setup remains later:
    - enter Zep API key
    - test connection
    - create/get Zep user
@@ -877,7 +890,7 @@ Questions:
 Main config:
 
 ```text
-~/.config/bestie/config.json
+~/.bestie/config.json
 ```
 
 Example:
@@ -907,9 +920,10 @@ Example:
     }
   },
   "memory": {
-    "provider": "sqlite",
-    "zepEnabled": false,
-    "zepApiKeyEnv": "ZEP_API_KEY"
+    "writePolicy": "ask",
+    "deletePolicy": "ask",
+    "retrievalPolicy": "governed",
+    "recentMessageLimit": 20
   },
   "channels": {
     "telegram": {
@@ -924,14 +938,13 @@ Example:
 Secrets:
 
 ```text
-~/.config/bestie/.env
+~/.bestie/.env
 ```
 
 Example:
 
 ```bash
 OPENAI_API_KEY=...
-ZEP_API_KEY=...
 TELEGRAM_BOT_TOKEN=...
 ```
 
@@ -1087,7 +1100,8 @@ Avoid overpromising:
 
 ### Milestone 6 - Zep Optional Memory
 
-- ask for Zep API key
+- add optional Zep setup after local SQLite memory is stable
+- ask for Zep API key only in that setup flow
 - create/get user/thread
 - write messages
 - retrieve context block
@@ -1133,19 +1147,18 @@ These are explicit owner requirements to preserve for future planning.
 - The installer should set up the environment, install Bestie, and launch an onboarding wizard.
 - Onboarding should let users create/configure their own agent character.
 - Onboarding should collect or connect required providers:
-  - Zep API key / memory provider
+  - local memory policy now, with optional Zep memory later
   - LLM provider and API key
-  - chat channel provider such as Telegram first
+  - chat channel providers such as Telegram and Zalo
   - future channels later
 - The owner trusts the implementation order to the agent/developer judgment. The docs should preserve requirements, but actual build order should follow the safest practical sequence.
-- Current recommended sequence remains:
+- Current local MVP sequence has reached:
   1. character + terminal chat loop
   2. onboarding wizard
-  3. Telegram channel
-  4. local memory
-  5. one-command installer
-  6. optional Zep integration
-  7. avatar/voice/body layer
+  3. provider-profile LLM setup
+  4. local memory, Doctor, and permissions
+  5. Telegram, Zalo, cron, daemon/service, installer/update, skills, MCP read foundations, and local web console
+  6. optional Zep, hosted/product UI, and avatar/voice/body layer later
 
 Principle:
 
@@ -1303,19 +1316,19 @@ For the first MVP, implement these checks:
 
 Then expand doctor as each subsystem is added.
 
-## 34. Future Agent UI Plan
+## 34. Agent UI Plan
 
-Owner requirement: the product needs a future UI plan for configuring, managing, and interacting with the Bestie. This is not part of the immediate MVP, but it must be preserved so the product direction does not stay CLI-only forever.
+Owner requirement: the product needs a UI plan for configuring, managing, and interacting with the Bestie. The first localhost console now ships through `bestie ui`; this section preserves both the implemented local surface and the future hosted/product direction.
 
 The UI should make the agent feel like a character with a home, not just a settings panel.
 
 ### UI Product Goals
 
-The future UI should help users:
+The UI should help users:
 
 - create their bestie character visually
 - configure personality, tone, boundaries, and memory
-- connect LLM providers, Zep, and chat channels
+- connect LLM providers and chat channels, with optional Zep later
 - inspect agent health through Doctor
 - review logs and conversation issues
 - manage memories safely
@@ -1346,7 +1359,9 @@ Avoid:
 
 #### Phase UI-0 - CLI First
 
-No full UI yet.
+Status: shipped.
+
+The CLI remains the durable fallback and scripting surface.
 
 Keep CLI commands usable:
 
@@ -1357,11 +1372,11 @@ bestie status
 bestie logs
 ```
 
-The CLI should produce enough structured output that a future UI can reuse the same service APIs.
+The CLI should keep producing enough structured output that the UI can reuse the same service APIs.
 
 #### Phase UI-1 - Local Web Console
 
-Add a local web UI running on localhost.
+Status: shipped as a zero-dependency Node HTTP console.
 
 Example:
 
@@ -1369,26 +1384,28 @@ Example:
 bestie ui
 ```
 
-Then open:
+It binds to `127.0.0.1` by default and opens a localhost URL. Smoke runs can use:
 
-```text
-http://localhost:3737
+```bash
+bestie ui --port 0 --no-open
 ```
 
-Core screens:
+Current shipped panels:
 
-1. Welcome / onboarding
-2. Character setup
-3. LLM provider setup
-4. Memory provider setup
-5. Channel setup
-6. Doctor status
-7. Logs
-8. Basic chat test panel
+1. Chat session surface with local session history, retry/replay/fork/import/export, attachments, run inspector, and command palette.
+2. Doctor status and confirmation-gated safe fixes.
+3. Provider setup with presets, primary model, fallbacks, and model tests.
+4. Character setup for `character.json` and `system-prompt.md`.
+5. Memory search and pending memory review.
+6. Knowledge graph map, review, trust, search, and approval-gated graph actions.
+7. Channel setup for Telegram, Zalo, cron, daemon actions, and cron logs.
+8. Approvals, MCP, Tools & Permissions, Skills, and Settings panels.
 
 This should be the first real UI because it avoids cloud auth complexity.
 
 #### Phase UI-2 - Character Studio
+
+Status: partially shipped.
 
 Make the character creation experience visual and fun.
 
@@ -1425,6 +1442,8 @@ Screens:
 
 #### Phase UI-3 - Memory Center
 
+Status: partially shipped.
+
 Add memory management.
 
 Screens:
@@ -1444,6 +1463,8 @@ Important rule:
 Memory UI must make the user feel in control. If the agent remembers things without transparency, it becomes creepy.
 
 #### Phase UI-4 - Channel & Provider Hub
+
+Status: partially shipped.
 
 Make integrations easy.
 
@@ -1474,6 +1495,8 @@ Each connection should show:
 - test button
 
 #### Phase UI-5 - Doctor UI
+
+Status: shipped for local Doctor reports and safe fixes.
 
 Expose `bestie doctor` visually.
 
@@ -1578,7 +1601,8 @@ Do not build hosted UI first.
 
 Recommended for future:
 
-- Vite + React or SvelteKit
+- Keep the current plain HTML/CSS/client JS console until a framework removes real complexity.
+- Vite + React or SvelteKit later if the form surface outgrows the static shell.
 - Tailwind or custom CSS variables
 - Local API served by the agent backend
 - SQLite-backed config/memory APIs
@@ -1597,18 +1621,20 @@ src/runtime services
 
 Do not duplicate business logic inside UI components.
 
-### UI MVP Scope
+### Current UI Scope
 
-When UI work begins, build only:
+The local UI milestone currently includes:
 
 1. local web console
 2. character editor
 3. provider config screen
-4. Telegram config screen
+4. Telegram/Zalo/cron channel hub
 5. doctor screen
-6. chat test screen
+6. chat/session surface
+7. memory and knowledge graph surfaces
+8. approvals, MCP, tools, skills, and settings surfaces
 
-Leave memory center/avatar studio for later if needed.
+Leave avatar/body, hosted accounts, optional Zep UI, and broad external action UI for later.
 
 ### UI Principle
 
@@ -1840,7 +1866,7 @@ Future config:
 
 ### UI Implications
 
-Future UI should include:
+The current local web console already includes MCP, Approvals, Doctor, and runtime log surfaces. Continued local UI polish and future hosted/product UI should preserve:
 
 - MCP server list
 - MCP tool permissions
@@ -1851,7 +1877,7 @@ Future UI should include:
 - Approval queue
 - Logs per tool/agent call
 
-This should live under future UI sections:
+These surfaces should keep living under sections like:
 
 ```text
 Providers / MCP
@@ -2238,7 +2264,7 @@ Focus:
 - fuller onboarding
 - Zep optional memory
 - update checks shipped locally; backup/restore/migration remain later hardening
-- local web UI
+- local web console polish and hosted/product UI exploration
 
 Goal:
 
@@ -2248,7 +2274,7 @@ Goal:
 
 Focus:
 
-- MCP
+- broader MCP execution categories beyond classified reads
 - ACP/multi-agent
 - plugin system
 - persona templates/marketplace

@@ -6,7 +6,7 @@ Telegram is the first real chat channel after terminal chat. The MVP should prov
 
 ## Scope
 
-Current implementation status: config schema, setup command, enabled-only Doctor checks, owner-only update handler, grammY-backed Telegram client, polling loop with capped exponential backoff and recovery logging, LLM-backed owner text replies, formatted Telegram replies, MVP slash commands, native command registration, typing keepalive, basic owner attachment download into the local workspace with caption, metadata, and text-like preview forwarding, Telegram conversation persistence, memory controls, Doctor summary rendering, edited tool activity progress, explicit Telegram read-tool permission policy, pending approval request storage, approval decision recording without action execution, and redacted transcript smoke validation exist. Opt-in real-bot smoke with a fresh owner message has passed for local development.
+Current implementation status: config schema, setup command, enabled-only Doctor checks, owner-only update handler, grammY-backed Telegram client, polling loop with capped exponential backoff and recovery logging, LLM-backed owner text replies, formatted Telegram replies, slash commands, native command registration, typing keepalive, owner attachment download into the local workspace with caption, metadata, text-like preview forwarding, optional image input, optional voice transcription, optional voice replies, Telegram conversation persistence, memory controls, Doctor summary rendering, edited tool activity progress, explicit Telegram read-tool permission policy, pending approval request storage, approval decision recording without action execution, daemon/service integration, and redacted transcript smoke validation exist. Opt-in real-bot smoke with a fresh owner message has passed for local development.
 
 Build a local polling bot that runs from the CLI:
 
@@ -50,9 +50,9 @@ Out of scope for MVP:
 
 - Webhooks.
 - Hosted/SaaS deployment.
-- systemd service setup.
+- separate per-channel systemd units. The current local service uses one `bestie.service` that can run Telegram, Zalo, cron, and future service targets together.
 - Multi-user groups.
-- Inline keyboards beyond approval prompts, sticker/voice/image/file content understanding beyond local download and metadata, payments, or public bot discovery.
+- Inline keyboards beyond approval prompts, rich sticker/video understanding beyond local download and metadata, payments, or public bot discovery.
 - Public/external/write/destructive tools or unclassified MCP actions. Classified read-only internal/MCP tools are implemented for local development behind the permission gate.
 
 ## Config
@@ -150,7 +150,7 @@ bestie channels telegram
 
 The adapter should stay thin. Shared behavior belongs in runtime/chat services so terminal and Telegram do not drift.
 
-Channel-facing metadata belongs in the shared channel registry rather than in handler-local constants. Telegram is the first descriptor-backed channel; future Zalo, WhatsApp, or similar channels should add descriptors for display name, config key, native commands, aliases, and capability flags before adding transport code. Transport-specific handlers may still own API details such as polling, message IDs, or upload formats.
+Channel-facing metadata belongs in the shared channel registry rather than in handler-local constants. Telegram was the first descriptor-backed channel, and Zalo now uses the same descriptor pattern. Future WhatsApp, Discord, web chat, or similar channels should add descriptors for display name, config key, native commands, aliases, and capability flags before adding transport code. Transport-specific handlers may still own API details such as polling, message IDs, or upload formats.
 
 Attachment handling is adapter-driven on top of shared channel primitives. Telegram maps Bot API attachment metadata into the shared pipeline, but reusable behavior lives outside the Telegram handler:
 
@@ -161,7 +161,7 @@ Attachment handling is adapter-driven on top of shared channel primitives. Teleg
 - `src/channels/audio-transcription.ts` normalizes, truncates, and labels provider, platform, or fallback audio transcripts.
 - `src/channels/attachment-prompt.ts` formats the LLM-facing attachment prompt with channel display name, preview, transcript provenance, and retained-file guidance.
 
-Future Zalo, WhatsApp, or similar channels should avoid copying Telegram attachment logic. A new channel should provide transport adapters for metadata mapping, file lookup/download, platform-provided transcript text when available, and channel-specific user-facing error messages; the shared pipeline should continue to own validation, byte limits, local persistence, preview parsing, vision gating, transcript shaping, retention, and prompt formatting.
+Zalo and future channels should avoid copying Telegram attachment logic. A channel should provide transport adapters for metadata mapping, file lookup/download, platform-provided transcript text when available, and channel-specific user-facing error messages; the shared pipeline should continue to own validation, byte limits, local persistence, preview parsing, vision gating, transcript shaping, retention, and prompt formatting.
 
 Channel adapter contracts should stay explicit and type-first. `src/channels/adapter.ts` defines the shared shape for future channel runtimes: a `ChannelRuntimeAdapter` combines the channel descriptor, optional attachment adapter, and outbound adapter. Attachment adapters map raw transport messages into `processChannelAttachment` results. Outbound adapters provide response-controller and activity-controller options. This contract is intentionally small; channel implementations should still own transport authentication, polling/webhook mechanics, and raw API quirks.
 

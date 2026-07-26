@@ -8,20 +8,19 @@ Core direction:
 - one-command installer
 - onboarding wizard
 - user-created character
-- OpenAI-compatible LLM provider setup
-- optional Zep memory
-- Telegram first, more channels later
+- provider-profile LLM setup across OpenAI/ChatGPT, Anthropic Claude, OpenAI-compatible endpoints, Groq, OpenRouter, Ollama, and native Gemini API-key mode
+- local SQLite memory, with optional Zep later
+- terminal, Telegram, Zalo, cron, daemon/service, and local web console surfaces
 - safe local-first MVP
 
-Recommended build order:
+Implemented local MVP order:
 
 1. Terminal chat with character prompt.
 2. Onboarding wizard.
-3. Telegram bot.
-4. Local SQLite memory.
-5. One-command installer.
-6. Optional Zep memory.
-7. Avatar/voice/body layer.
+3. Provider profiles and fallback diagnostics.
+4. Local SQLite memory, Doctor, and permission-gated tools.
+5. Telegram, Zalo, cron, daemon/service, installer/update, skills, MCP read foundations, and local web console.
+6. Optional Zep, hosted/product UI, and avatar/voice/body layer remain later product work.
 
 ## Owner Direction Snapshot
 
@@ -31,7 +30,7 @@ The owner explicitly wants this to become a shareable/self-hosted product, not j
 - automatic environment setup
 - onboarding wizard
 - agent character creation
-- Zep API key setup
+- optional Zep setup later
 - LLM provider setup
 - channel connection setup
 

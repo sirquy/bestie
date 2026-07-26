@@ -27,7 +27,7 @@ Bestie is under active development. The local CLI foundation includes:
 - Local SQLite memory foundation
 - Telegram and Zalo local polling
 - Cron schedules and a local scheduler runtime
-- Local web console through `bestie ui` for runtime status, Doctor, providers, character, memory, channels, approvals, MCP, tools, and settings
+- Local web console through `bestie ui` for chat sessions, Doctor, providers, character, memory, knowledge graph, channels, approvals, MCP, tools, skills, and settings
 - Manual daemon management for `telegram`, `zalo`, `cron`, or `all`
 - Linux user service management through one `bestie.service` runtime for configured service targets
 - Permission-gated local read/write/action tools
@@ -194,7 +194,7 @@ bestie ui
 
 By default it binds to `127.0.0.1` and opens the browser. Use `bestie ui --no-open` for terminal-only sessions, `bestie ui --port 8717` for a fixed port, or `bestie ui --port 0 --no-open` for smoke-friendly dynamic ports.
 
-The console uses the same `~/.bestie/` runtime files as the CLI. It shows runtime health, provider setup, character editing, memory review, channel controls, approvals, MCP summaries, tool permissions, and low-risk settings. It reports secret presence and env var names only; raw `.env` values are not returned by UI APIs.
+The console uses the same `~/.bestie/` runtime files as the CLI. It shows chat sessions, runtime health, provider setup, character editing, memory and knowledge graph views, channel controls, approvals, MCP summaries, tool permissions, skills, and low-risk settings. It reports secret presence and env var names only; raw `.env` values are not returned by UI APIs.
 
 ## Safety And Privacy
 

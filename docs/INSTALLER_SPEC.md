@@ -4,7 +4,7 @@
 
 Make Bestie installable by a technical-but-not-project-local user with one command, then hand off into the existing onboarding-first flow.
 
-The installer should not add new product scope. It should only make the current local CLI, onboarding, Doctor, Telegram/Zalo, cron, memory, service command, skills, update, MCP, and permission-gated tool foundation easier to bootstrap.
+The installer should not add new product scope. It should only make the current local CLI, onboarding, Doctor, Telegram/Zalo, cron, memory, service command, local web console, skills, update, MCP, and permission-gated tool foundation easier to bootstrap.
 
 ## MVP Command
 
