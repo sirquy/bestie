@@ -74,15 +74,15 @@
   "dependencies": {
     "@elevenlabs/elevenlabs-js": "^2.57.0",
     "@google/genai": "^2.12.0",
-    "@grammyjs/types": "^3.28.0",
+    "@grammyjs/types": "^4.0.0",
     "@inquirer/prompts": "^8.5.2",
     "@modelcontextprotocol/sdk": "^1.29.0",
-    "better-sqlite3": "^12.11.1",
-    "commander": "^14.0.3",
+    "better-sqlite3": "^13.0.1",
+    "commander": "^15.0.0",
     "cytoscape": "^3.34.0",
     "grammy": "^1.44.0",
     "iso-639-1": "^3.1.6",
     "mammoth": "^1.12.0",
-    "pdf-parse": "^1.1.1"
+    "pdf-parse": "^2.4.5"
   }
 }
