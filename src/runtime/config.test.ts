@@ -270,6 +270,37 @@ test("validateConfig accepts optional ElevenLabs speech provider", () => {
   });
 });
 
+test("validateConfig accepts optional media generation providers", () => {
+  const config = validateConfig({
+    ...validConfig,
+    generation: {
+      image: {
+        provider: "openai-compatible",
+        baseUrl: "https://media.example.com/v1",
+        model: "image-model",
+        apiKeyEnv: "BESTIE_IMAGE_API_KEY",
+        timeoutMs: 90_000,
+      },
+      video: {
+        provider: "openai-compatible",
+        baseUrl: "https://media.example.com/v1",
+        model: "video-model",
+        apiKeyEnv: "BESTIE_VIDEO_API_KEY",
+        endpointPath: "/custom/videos",
+      },
+    },
+  });
+
+  assert.deepEqual(config.generation?.image, {
+    provider: "openai-compatible",
+    baseUrl: "https://media.example.com/v1",
+    model: "image-model",
+    apiKeyEnv: "BESTIE_IMAGE_API_KEY",
+    timeoutMs: 90_000,
+  });
+  assert.equal(config.generation?.video?.endpointPath, "/custom/videos");
+});
+
 test("validateConfig accepts optional speech fallbacks", () => {
   const config = validateConfig({
     ...validConfig,

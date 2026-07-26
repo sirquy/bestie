@@ -29,7 +29,7 @@ Telegram has a pending approval foundation: when an action requires approval, it
 
 ## Prompt Injection
 
-External content from web, MCP, documents, or tools is untrusted.
+External content from web, MCP, documents, media generation providers, or tools is untrusted.
 
 Rules:
 

@@ -49,6 +49,15 @@ type LocalWhisperTranscriptionConfig = {
 };
 export type TranscriptionProviderConfig = OpenAiCompatibleTranscriptionConfig | ElevenLabsTranscriptionConfig | LocalWhisperTranscriptionConfig;
 
+export type MediaGenerationProviderConfig = {
+  provider: "openai-compatible";
+  baseUrl: string;
+  model: string;
+  apiKeyEnv: string;
+  endpointPath?: string;
+  timeoutMs?: number;
+};
+
 type OpenAiCompatibleSpeechProviderConfig = {
   provider: "openai-compatible";
   baseUrl: string;
@@ -89,6 +98,10 @@ export interface AppConfig {
   };
   transcription?: TranscriptionProviderConfig & { fallbacks?: TranscriptionProviderConfig[] };
   speech?: SpeechProviderConfig & { fallbacks?: SpeechProviderConfig[] };
+  generation?: {
+    image?: MediaGenerationProviderConfig;
+    video?: MediaGenerationProviderConfig;
+  };
   channels?: {
     telegram?: {
       enabled: boolean;
@@ -240,6 +253,7 @@ export function validateConfig(config: unknown): AppConfig {
   const channels = optionalChannels(config.channels);
   const transcription = optionalTranscription(config.transcription);
   const speech = optionalSpeech(config.speech);
+  const generation = optionalGeneration(config.generation);
   const memory = optionalMemory(config.memory);
   const workspace = optionalWorkspace(config.workspace);
   const mcp = optionalMcp(config.mcp, config.mcpServers);
@@ -266,11 +280,41 @@ export function validateConfig(config: unknown): AppConfig {
     },
     ...(transcription === undefined ? {} : { transcription }),
     ...(speech === undefined ? {} : { speech }),
+    ...(generation === undefined ? {} : { generation }),
     ...(channels === undefined ? {} : { channels }),
     ...(memory === undefined ? {} : { memory }),
     ...(workspace === undefined ? {} : { workspace }),
     ...(mcp === undefined ? {} : { mcp }),
     ...(internalTools === undefined ? {} : { internalTools }),
+  };
+}
+
+function optionalGeneration(value: unknown): AppConfig["generation"] | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  const generation = requireRecord(value, "generation");
+  return {
+    ...(generation.image === undefined ? {} : { image: parseMediaGenerationProvider(generation.image, "generation.image") }),
+    ...(generation.video === undefined ? {} : { video: parseMediaGenerationProvider(generation.video, "generation.video") }),
+  };
+}
+
+function parseMediaGenerationProvider(value: unknown, path: string): MediaGenerationProviderConfig {
+  const provider = requireRecord(value, path);
+  const providerName = requireString(provider.provider, `${path}.provider`);
+  if (providerName !== "openai-compatible") {
+    throw new InvalidConfigError(`${path}.provider must be openai-compatible.`);
+  }
+
+  return {
+    provider: providerName,
+    baseUrl: requireString(provider.baseUrl, `${path}.baseUrl`),
+    model: requireString(provider.model, `${path}.model`),
+    apiKeyEnv: requireString(provider.apiKeyEnv, `${path}.apiKeyEnv`),
+    ...(provider.endpointPath === undefined ? {} : { endpointPath: requireString(provider.endpointPath, `${path}.endpointPath`) }),
+    ...(provider.timeoutMs === undefined ? {} : { timeoutMs: optionalPositiveInteger(provider.timeoutMs, `${path}.timeoutMs`) }),
   };
 }
 

@@ -27,7 +27,7 @@ Goal: prove the character feels alive.
 
 ## Next
 
-Status: completed for local development. Local SQLite memory, basic memory policy, status, Doctor MVP, Telegram/Zalo channel runtimes, cron, daemon/service management, permission-gated local tools, bounded internal subagents, SDK-backed MCP setup plus classified read calls, installed skills, npm update checks, native Gemini API-key setup, provider catalog/CLI management, local web console, and opt-in Telegram real-bot smoke are implemented and validated for local development.
+Status: completed for local development. Local SQLite memory, basic memory policy, status, Doctor MVP, Telegram/Zalo channel runtimes, cron, daemon/service management, permission-gated local tools, image/video generation tools, bounded internal subagents, SDK-backed MCP setup plus classified read calls, installed skills, npm update checks, native Gemini API-key setup, provider catalog/CLI management, local web console, and opt-in Telegram real-bot smoke are implemented and validated for local development.
 
 Build:
 
@@ -41,6 +41,7 @@ Build:
 - status command
 - MVP Doctor checks and safe local fixes
 - first permission layer and read-only local tool foundation
+- permission-gated `internal.image_generate` and `internal.video_generate` tools for configured media generation providers
 - bounded `internal.spawn_subagent` helper investigations inside the existing tool loop
 - MCP add/list/show/test/tools/classify/login/call commands, remote HTTP OAuth setup, and classified read calls for trusted local workflows
 - installed skills from `~/.bestie/skills`

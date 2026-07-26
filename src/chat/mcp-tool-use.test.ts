@@ -527,6 +527,34 @@ test("runAgentToolRequest rejects nested subagents", async () => {
   }
 });
 
+test("runAgentToolRequest recognizes image and video generation tools", async () => {
+  const paths = await createTempPaths();
+
+  try {
+    const missingImageConfig = await runAgentToolRequest({
+      config: { ...createConfig(), generation: undefined },
+      paths,
+      request: { tool: "internal.image_generate", arguments: { prompt: "A small moon" } },
+    });
+    assert.equal(missingImageConfig.ok, false);
+    assert.match(missingImageConfig.message, /generation\.image is not configured/);
+
+    const missingVideoSecret = await runAgentToolRequest({
+      config: {
+        ...createConfig(),
+        generation: { video: { provider: "openai-compatible", baseUrl: "https://media.example.com/v1", model: "video-model", apiKeyEnv: "BESTIE_VIDEO_API_KEY" } },
+        internalTools: { policies: { "internal.video_generate": "allow" } },
+      },
+      paths,
+      request: { tool: "internal.video_generate", arguments: { prompt: "A small wave" } },
+    });
+    assert.equal(missingVideoSecret.ok, false);
+    assert.match(missingVideoSecret.message, /BESTIE_VIDEO_API_KEY is missing/);
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
 test("runAgentToolRequest runs git_status for an allowed external repo path", async () => {
   const paths = await createTempPaths();
   const externalRepo = await mkdtemp(resolve(tmpdir(), "bestie-external-git-"));

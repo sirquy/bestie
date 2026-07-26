@@ -123,6 +123,7 @@ Deliverables:
 - redacted audit logging for permission decisions
 - internal read tools for files, file search, logs, memories, multi-file reads, Markdown bundles, and read-only git status/diff/log context
 - bounded internal action tools for file write, exact text edit, git-compatible patch apply, local exec, and process listing, each governed by per-tool `allow`, `ask`, or `deny` config
+- `internal.image_generate` and `internal.video_generate` tools for configured OpenAI-compatible media providers, saving outputs under the agent workspace and governed by the same per-tool policy model
 - bounded HTTP(S) URL reads for setup links, including MCP docs/package pages, governed by per-tool `allow`, `ask`, or `deny` config
 - terminal and Telegram multi-step tool loop for internal read tools, local action tools, and classified MCP reads
 - MCP add/list/show/test/tools/classify/login/call commands backed by `@modelcontextprotocol/sdk`
@@ -135,7 +136,7 @@ Acceptance:
 - repo-scale Markdown summaries can use bounded internal bundle reads
 - MCP env values are not printed
 - unclassified or risky tool categories do not execute silently
-- write, patch, exec, and process tools obey explicit `internalTools.policies` and default to conservative behavior when no per-tool policy is configured
+- write, patch, exec, process, and media generation tools obey explicit `internalTools.policies` and default to conservative behavior when no per-tool policy is configured
 
 ## Milestone 6 - One-Command Installer
 

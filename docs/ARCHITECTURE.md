@@ -1,6 +1,6 @@
 # Architecture
 
-This document describes the current long-term architecture and the local-development runtime that now exists. Phase Now terminal chat/onboarding is complete; the codebase is in local MVP hardening with Telegram, Zalo, cron, daemon/service management, local SQLite memory, Doctor, permission-gated tools, bounded internal subagents, installed skills, npm update checks, the localhost web console, and SDK-backed MCP setup plus classified read calls implemented for local development.
+This document describes the current long-term architecture and the local-development runtime that now exists. Phase Now terminal chat/onboarding is complete; the codebase is in local MVP hardening with Telegram, Zalo, cron, daemon/service management, local SQLite memory, Doctor, permission-gated tools, image/video generation tools, bounded internal subagents, installed skills, npm update checks, the localhost web console, and SDK-backed MCP setup plus classified read calls implemented for local development.
 
 ## Overview
 
@@ -57,7 +57,7 @@ Coordinates one turn:
 4. send response
 5. store redacted operational logs
 
-The current runtime also includes approved local memory recall, explicit memory writes, permission-gated tools, a multi-step tool loop, bounded internal subagents for focused helper investigations, Doctor diagnostics, and a localhost UI shell around runtime APIs. Broader write/external/destructive tool maturity, optional Zep, hosted/product UI, and named multi-agent orchestration remain later work.
+The current runtime also includes approved local memory recall, explicit memory writes, permission-gated tools, provider-backed image/video generation, a multi-step tool loop, bounded internal subagents for focused helper investigations, Doctor diagnostics, and a localhost UI shell around runtime APIs. Broader write/external/destructive tool maturity, optional Zep, hosted/product UI, and named multi-agent orchestration remain later work.
 
 ### Character System
 
@@ -149,7 +149,9 @@ Every action beyond text reply should pass through a permission classifier:
 - money/payment
 - unknown
 
-Current local foundation allows trusted read-only actions, asks or denies riskier categories by default, logs decisions with secret redaction, and exposes internal read tools for terminal and Telegram.
+Current local foundation allows trusted read-only actions, asks or denies riskier categories by default, logs decisions with secret redaction, and exposes internal read, write/action, and media generation tools for terminal and channels.
+
+Media generation tools use `generation.image` and `generation.video` config blocks with API key env var names, call OpenAI-compatible provider endpoints, and save generated assets under the agent workspace. `internal.image_generate` and `internal.video_generate` are classified as external-write actions by default, so they require an explicit per-tool allow policy or channel/terminal approval.
 
 ### MCP / Plugins / Multi-Agent
 

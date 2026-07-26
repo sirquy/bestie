@@ -199,7 +199,7 @@ Terminal user input
   -> redacted log event
 ```
 
-Original Phase Now did not introduce channel, memory, tool, MCP, or UI dependencies into the chat loop. The current code has since added local memory recall and writes, permission-gated internal tools, classified read-only MCP calls, Telegram/Zalo/cron runtimes, and a localhost UI shell around shared runtime services. Broader external/destructive tool use, hosted UI, optional Zep, and named multi-agent orchestration remain out of current scope.
+Original Phase Now did not introduce channel, memory, tool, MCP, or UI dependencies into the chat loop. The current code has since added local memory recall and writes, permission-gated internal tools, provider-backed image/video generation, classified read-only MCP calls, Telegram/Zalo/cron runtimes, and a localhost UI shell around shared runtime services. Broader external/destructive tool use, hosted UI, optional Zep, and named multi-agent orchestration remain out of current scope.
 
 ## Failure States
 

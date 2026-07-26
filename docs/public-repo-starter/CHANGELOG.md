@@ -14,7 +14,7 @@ This project follows semantic versioning after the first public package release.
 - Local SQLite memory, knowledge graph, approvals, governance, and inspection commands.
 - Telegram, Zalo, cron, daemon, and one-service Linux user runtime foundations.
 - Local web console through `bestie ui` with chat, Doctor, providers, character, memory, knowledge graph, channels, approvals, MCP, tools, skills, and settings panels.
-- Permission-gated local tools, bounded internal subagents, installed skills, SDK-backed MCP setup/read foundations, and npm update checks.
+- Permission-gated local tools, image/video generation tools, bounded internal subagents, installed skills, SDK-backed MCP setup/read foundations, and npm update checks.
 - Character regression evals and smoke scripts for CLI, Doctor, channels, installer, MCP, and UI.
 
 ### Security

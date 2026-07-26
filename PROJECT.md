@@ -19,7 +19,7 @@ Current local MVP status:
 - Runs as terminal chat, Telegram polling, Zalo polling, cron schedules, daemon targets, and one Linux user service.
 - Has a strong Vietnamese-first personality stored in editable local character and prompt files.
 - Remembers basic facts and preferences through local SQLite memory with inspect, search, approval, hygiene, and governance commands.
-- Can chat casually, reflect, advise, brainstorm, challenge bad ideas, and use permission-gated local tools.
+- Can chat casually, reflect, advise, brainstorm, challenge bad ideas, and use permission-gated local tools, including configured image/video generation tools.
 - Supports configurable LLM provider profiles and model refs, including OpenAI/ChatGPT, Anthropic Claude, Groq, OpenRouter, local Ollama, custom OpenAI-compatible endpoints, and native Gemini API-key mode.
 - Logs provider failures, fallback attempts, memory updates, permission decisions, and runtime diagnostics with secret redaction.
 - Loads installed skills from `~/.bestie/skills` and supports SDK-backed MCP setup plus classified read calls.

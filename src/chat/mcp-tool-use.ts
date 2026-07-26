@@ -15,6 +15,7 @@ import { applyPatchTool, editLocalFileTool, execLocalTool, listProcessesTool, wr
 import { analyzeKnowledgeGraphTool, analyzeMemoriesTool, inspectKnowledgeEntityTool, inspectMemoryTool, listActiveMemoriesTool, listLocalFilesTool, planKnowledgeGraphReviewTool, planMemoryHygieneTool, planMemoryRebalanceTool, readGitDiffTool, readGitLogTool, readGitStatusTool, readLocalFileTool, readManyLocalFilesTool, readMarkdownBundleTool, readMemoryHygieneTrendTool, readRecentAppLogsTool, searchKnowledgeGraphTool, searchLocalFilesTool, searchMemoriesTool, type MemoryAnalysisMode } from "../tools/local-read-tools.js";
 import { readUrlTool } from "../tools/web-read-tools.js";
 import { addCronScheduleTool, listCronSchedulesTool, removeCronScheduleTool, toggleCronScheduleTool, triggerCronScheduleTool, updateCronScheduleTool } from "../tools/cron-tools.js";
+import { imageGenerateTool, videoGenerateTool } from "../tools/media-generation-tools.js";
 
 const CRON_SCHEDULE_PROMPT_GUIDANCE = '- When creating or updating a cron schedule, the cron prompt must be the future task itself, written as a standalone instruction the isolated cron runner can execute later. Never store your current reply, a success message, the schedule ID, next_run_at, or text like "I created the schedule" in the prompt. For example, if the user asks "check YouTube and summarize every day at 17:00", store a prompt like "Check the configured YouTube channel for new content and summarize the findings for the user." Then, after the tool succeeds, answer the user with the schedule confirmation separately. Use update_cron_schedule for changing an existing schedule, remove_cron_schedule/toggle_cron_schedule for changing schedule state, and trigger_cron_schedule only when the user wants to run an existing cron job now. Do not trigger a newly created schedule just to prove it exists unless the user explicitly asks for an immediate run.';
 
@@ -79,6 +80,8 @@ export const INTERNAL_TOOL_NAMES = [
   "internal.exec",
   "internal.list_processes",
   "internal.spawn_subagent",
+  "internal.image_generate",
+  "internal.video_generate",
   "internal.list_memories",
   "internal.search_memories",
   "internal.inspect_memory",
@@ -402,6 +405,8 @@ export function buildMcpToolInstructions(config: AppConfig, runtimeContext?: str
     'internal.exec {"command":"npm","args":["test"],"cwd":".","timeoutMs":30000}',
     'internal.list_processes {"limit":20}',
     'internal.spawn_subagent {"task":"focused task for a helper agent","name":"optional short name","maxToolCalls":20}',
+    'internal.image_generate {"prompt":"image prompt","size":"1024x1024","quality":"standard|hd|auto","style":"vivid|natural","count":1,"outputPath":"optional relative workspace path.png"}',
+    'internal.video_generate {"prompt":"video prompt","durationSeconds":5,"aspectRatio":"16:9","size":"optional provider size","count":1,"outputPath":"optional relative workspace path.mp4"}',
     'internal.list_memories {}',
     'internal.search_memories {"query":"memory search text"}',
     'internal.inspect_memory {"id":1}',
@@ -668,6 +673,14 @@ export function formatToolActivityLabel(request: AgentToolRequest): string {
 
   if (request.tool === "internal.list_processes") {
     return "processes";
+  }
+
+  if (request.tool === "internal.image_generate") {
+    return "image generation";
+  }
+
+  if (request.tool === "internal.video_generate") {
+    return "video generation";
   }
 
   if (request.tool === "internal.remember_memory") {
@@ -943,6 +956,20 @@ export async function runAgentToolRequest(options: RunAgentToolRequestOptions): 
 
   if (options.request.tool === "internal.spawn_subagent") {
     return runSubagentTool(options, args);
+  }
+
+  if (options.request.tool === "internal.image_generate") {
+    const prompt = stringArg(args.prompt);
+    if (!prompt) return { ok: false, status: "fail", message: "internal.image_generate requires arguments.prompt." };
+    const result = await imageGenerateTool({ config: options.config, paths: options.paths, env: await loadEnvFile(options.paths), approver: options.approver, prompt, size: stringArg(args.size), quality: stringArg(args.quality), style: stringArg(args.style), count: numberArg(args.count), outputPath: stringArg(args.outputPath) });
+    return { ok: result.allowed, status: result.allowed ? "pass" : "fail", message: result.reason, result };
+  }
+
+  if (options.request.tool === "internal.video_generate") {
+    const prompt = stringArg(args.prompt);
+    if (!prompt) return { ok: false, status: "fail", message: "internal.video_generate requires arguments.prompt." };
+    const result = await videoGenerateTool({ config: options.config, paths: options.paths, env: await loadEnvFile(options.paths), approver: options.approver, prompt, durationSeconds: numberArg(args.durationSeconds), aspectRatio: stringArg(args.aspectRatio), size: stringArg(args.size), count: numberArg(args.count), outputPath: stringArg(args.outputPath) });
+    return { ok: result.allowed, status: result.allowed ? "pass" : "fail", message: result.reason, result };
   }
 
   if (options.request.tool === "internal.list_memories") {

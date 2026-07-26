@@ -36,7 +36,7 @@ Installed skills:
 
 ## config.json
 
-Phase Now config started with non-secret `agent` and `llm` fields. The current local build uses config version 2 with canonical LLM model refs, auth profiles, and a small model catalog. Optional `transcription`, `speech`, `memory.writePolicy`, `memory.deletePolicy`, `memory.retrievalPolicy`, `workspace`, `internalTools`, `channels`, and `mcp` fields are supported as features are enabled.
+Phase Now config started with non-secret `agent` and `llm` fields. The current local build uses config version 2 with canonical LLM model refs, auth profiles, and a small model catalog. Optional `transcription`, `speech`, `generation`, `memory.writePolicy`, `memory.deletePolicy`, `memory.retrievalPolicy`, `workspace`, `internalTools`, `channels`, and `mcp` fields are supported as features are enabled.
 
 ```json
 {
@@ -101,6 +101,23 @@ Phase Now config started with non-secret `agent` and `llm` fields. The current l
     "outputFormat": "ogg_48000_128",
     "timeoutMs": 120000
   },
+  "generation": {
+    "image": {
+      "provider": "openai-compatible",
+      "baseUrl": "https://media.example.com/v1",
+      "model": "image-model",
+      "apiKeyEnv": "BESTIE_IMAGE_API_KEY",
+      "timeoutMs": 120000
+    },
+    "video": {
+      "provider": "openai-compatible",
+      "baseUrl": "https://media.example.com/v1",
+      "model": "video-model",
+      "apiKeyEnv": "BESTIE_VIDEO_API_KEY",
+      "endpointPath": "/videos/generations",
+      "timeoutMs": 300000
+    }
+  },
   "memory": {
     "writePolicy": "ask",
     "deletePolicy": "ask",
@@ -118,6 +135,8 @@ Phase Now config started with non-secret `agent` and `llm` fields. The current l
       "internal.apply_patch": "ask",
       "internal.exec": "ask",
       "internal.list_processes": "allow",
+      "internal.image_generate": "ask",
+      "internal.video_generate": "ask",
       "internal.read_url": "ask"
     },
     "exec": {
@@ -268,7 +287,7 @@ For compatibility with common MCP config snippets, a top-level `mcpServers` obje
 
 ## .env
 
-Onboarding writes the LLM API key. Channel, speech, transcription, and MCP secrets are added only when those features are configured.
+Onboarding writes the LLM API key. Channel, speech, transcription, media generation, and MCP secrets are added only when those features are configured.
 
 ```bash
 OPENAI_API_KEY=
@@ -296,7 +315,7 @@ Set `NO_COLOR=1` to disable ANSI colors in human-facing tables, badges, and prog
 
 `workspace.defaultPath` controls where relative write/edit/exec paths land. It defaults to `~/.bestie/workspace` so ad hoc agent-created files do not pollute the project root. Generic `list_files` and `search_files` requests for `.` also inspect this workspace by default. Explicit project paths such as `src`, `docs`, `README.md`, or the absolute project root still inspect the repository so the agent can review code when asked. `workspace.externalPaths` is an explicit allowlist for absolute paths outside the project root and agent workspace; without it, internal file tools reject external paths. Git read tools also accept explicit `path` or `repoPath` values when they resolve through this workspace allowlist.
 
-`internalTools.policies` controls individual built-in tools with `allow`, `ask`, or `deny`. Local read tools default to `allow`; web reads, writes, patches, exec, process listing, and subagent spawning default to the permission layer's conservative behavior unless explicitly allowed. Supported policy keys include `internal.read_url`, `internal.write_file`, `internal.edit_file`, `internal.apply_patch`, `internal.exec`, `internal.list_processes`, and `internal.spawn_subagent`. `internalTools.exec.timeoutMs` controls the default timeout for `internal.exec` when the model does not pass a per-call timeout; per-call timeouts still override it, and runtime clamps exec timeouts to a bounded maximum. `internal.read_url` is limited to HTTP(S) pages with bounded timeout and reads full response content by default; callers can pass a positive `maxBytes` only when they intentionally want a preview. The write/edit tools resolve relative paths in the agent workspace and can access configured external paths; patch tools apply git-compatible diffs from the project root; exec runs without a shell, from the agent workspace by default, with bounded timeout and output. `internal.spawn_subagent` runs a one-level helper tool loop with a scoped task and bounded max tool calls. File tools ignore `.git`, `node_modules`, `dist`, and `coverage`.
+`internalTools.policies` controls individual built-in tools with `allow`, `ask`, or `deny`. Local read tools default to `allow`; web reads, writes, patches, exec, process listing, subagent spawning, and media generation default to the permission layer's conservative behavior unless explicitly allowed. Supported policy keys include `internal.read_url`, `internal.write_file`, `internal.edit_file`, `internal.apply_patch`, `internal.exec`, `internal.list_processes`, `internal.spawn_subagent`, `internal.image_generate`, and `internal.video_generate`. `internalTools.exec.timeoutMs` controls the default timeout for `internal.exec` when the model does not pass a per-call timeout; per-call timeouts still override it, and runtime clamps exec timeouts to a bounded maximum. `internal.read_url` is limited to HTTP(S) pages with bounded timeout and reads full response content by default; callers can pass a positive `maxBytes` only when they intentionally want a preview. The write/edit tools resolve relative paths in the agent workspace and can access configured external paths; patch tools apply git-compatible diffs from the project root; exec runs without a shell, from the agent workspace by default, with bounded timeout and output. `internal.image_generate` and `internal.video_generate` call configured external media generation providers and save generated files under the agent workspace, usually `~/.bestie/workspace/media/generated/...`; secrets stay in `.env` through `generation.image.apiKeyEnv` and `generation.video.apiKeyEnv`. `internal.spawn_subagent` runs a one-level helper tool loop with a scoped task and bounded max tool calls. File tools ignore `.git`, `node_modules`, `dist`, and `coverage`.
 
 ## character.json
 
