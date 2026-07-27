@@ -27,6 +27,7 @@ try {
   const brandColor = await page.locator(".brand strong").evaluate((element) => getComputedStyle(element).color);
   if (brandColor !== "rgb(238, 246, 237)") throw new Error(`Sidebar brand title should be light, got ${brandColor}`);
   await assertPanel(page, `${server.url}/#provider-panel`, "#provider-panel", "openai/test-model via openai-compatible", ["ChatGPT", "Gemini", "Set primary"]);
+  await assertCharacterPanel(page, `${server.url}/#character-panel`);
   await assertMemoryPanel(page, `${server.url}/#memory-panel`);
   await assertKnowledgePanel(page, `${server.url}/#knowledge-panel`);
   await assertChannelPanel(page, `${server.url}/#channel-panel`);
@@ -52,7 +53,7 @@ try {
 }
 
 async function assertVisualLayouts(page, baseUrl, outputDir) {
-  const panels = ["chat-panel", "provider-panel", "knowledge-panel", "channel-panel", "approvals-panel", "mcp-panel", "tools-panel", "skills-panel"];
+  const panels = ["chat-panel", "provider-panel", "character-panel", "knowledge-panel", "channel-panel", "approvals-panel", "mcp-panel", "tools-panel", "skills-panel"];
   const viewports = [
     { name: "desktop", width: 1280, height: 900 },
     { name: "mobile", width: 390, height: 844 },
@@ -67,6 +68,30 @@ async function assertVisualLayouts(page, baseUrl, outputDir) {
       await assertScreenshot(page, resolve(outputDir, `${viewport.name}-${panelId}.png`));
     }
   }
+}
+
+async function assertCharacterPanel(page, url) {
+  await assertPanel(page, url, "#character-panel", "Bestie / vi-first", ["Character Studio", "Tone Lab", "Prompt Workbench"]);
+  await page.waitForSelector("#character-form");
+  await page.waitForSelector("#character-live-preview >> text=Bestie");
+  await page.fill('#character-form input[name="name"]', "Miu Studio");
+  await page.locator('#character-form input[name="warmthLevel"]').fill("9");
+  await page.waitForFunction(() => document.querySelector("#character-json")?.value?.includes('"name": "Miu Studio"') && document.querySelector("#character-json")?.value?.includes('"warmthLevel": 9'));
+  await page.waitForSelector("#character-live-preview >> text=Miu Studio");
+  await page.click('#character-panel [data-segment-target="character-prompt-workbench"]');
+  await page.waitForSelector("#character-prompt-workbench.active");
+  await page.click("#character-sync-prompt");
+  await page.waitForFunction(() => document.querySelector("#character-prompt")?.value?.includes("You are Miu Studio") && document.querySelector("#character-prompt-outline")?.textContent?.includes("Core Voice"));
+  await page.click("#character-insert-guardrails");
+  await page.waitForFunction(() => document.querySelector("#character-prompt")?.value?.includes("Safety Guardrails"));
+  await page.click('#character-panel [data-segment-target="character-raw"]');
+  await page.waitForSelector("#character-raw.active");
+  await page.waitForFunction(() => document.querySelector("#character-prompt-raw")?.value?.includes("Safety Guardrails"));
+  await page.click("#character-save");
+  await page.waitForSelector("#confirm-dialog[open]");
+  await page.click('#confirm-dialog button[value="confirm"]');
+  await page.waitForSelector(".toast.show >> text=Character saved.");
+  await page.waitForSelector("#character-panel >> text=Miu Studio");
 }
 
 async function assertMemoryPanel(page, url) {

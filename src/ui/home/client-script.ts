@@ -20,6 +20,7 @@ const icons = {
   spark: "M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8L12 3Z",
   terminal: "M4 17l6-5-6-5m8 10h8",
   layers: "M12 2 3 7l9 5 9-5-9-5Zm-9 10 9 5 9-5M3 17l9 5 9-5",
+  user: "M20 21a8 8 0 0 0-16 0m12-13a4 4 0 1 1-8 0 4 4 0 0 1 8 0Z",
   square: "M5 5h14v14H5Z",
   x: "M18 6 6 18M6 6l12 12",
 };
@@ -1417,20 +1418,182 @@ function loadCharacter() {
     .then((character) => {
       state.character = character;
       const parsed = character.character?.parsed;
-      setValue("#character-panel .value", parsed ? parsed.name + ' / ' + parsed.language : "Character file missing or invalid.");
-      const tone = parsed?.tone ?? {};
+      setValue("#character-panel .value", parsed ? parsed.name + ' / ' + parsed.language + ' / prompt ' + text(character.prompt?.bytes ?? 0) + ' bytes' : "Character file missing or invalid.");
       setBody("#character-panel", [
-        row("Prompt bytes", character.prompt?.bytes ?? 0, ""),
-        row("Roast", parsed?.tone?.roastLevel ?? "-", ""),
-        row("Warmth", parsed?.tone?.warmthLevel ?? "-", "good"),
-        '<form id="character-form" class="stack"><div class="control-grid"><label>Tên<input name="name" value="' + escapeHtml(parsed?.name) + '"></label><label>Owner<input name="ownerName" value="' + escapeHtml(parsed?.ownerName) + '"></label><label>Language<input name="language" value="' + escapeHtml(parsed?.language) + '"></label></div><div class="slider-grid"><label>Roast<input name="roastLevel" type="range" min="0" max="10" value="' + escapeHtml(tone.roastLevel ?? 0) + '"></label><label>Warmth<input name="warmthLevel" type="range" min="0" max="10" value="' + escapeHtml(tone.warmthLevel ?? 0) + '"></label><label>Bluntness<input name="bluntnessLevel" type="range" min="0" max="10" value="' + escapeHtml(tone.bluntnessLevel ?? 0) + '"></label><label>Chaos<input name="chaosLevel" type="range" min="0" max="10" value="' + escapeHtml(tone.chaosLevel ?? 0) + '"></label></div></form>',
-        '<label class="stack">character.json<textarea id="character-json" spellcheck="false">' + escapeHtml(character.character?.text ?? "") + '</textarea></label>',
-        '<label class="stack">system-prompt.md<textarea id="character-prompt" spellcheck="false">' + escapeHtml(character.prompt?.text ?? "") + '</textarea></label>',
+        renderCharacterStudioHeader(character),
+        '<div class="segmented character-segments" role="tablist" aria-label="Character Studio views"><button class="active" data-segment-target="character-compose" type="button">Studio</button><button data-segment-target="character-prompt-workbench" type="button">Prompt</button><button data-segment-target="character-raw" type="button">Raw files</button></div>',
+        '<div class="segment active" id="character-compose">' + renderCharacterCompose(character) + '</div>',
+        '<div class="segment" id="character-prompt-workbench">' + renderCharacterPromptWorkbench(character) + '</div>',
+        '<div class="segment" id="character-raw">' + renderCharacterRawEditors(character) + '</div>',
       ].join(""));
       bindCharacterControls();
       renderChatTranscriptIntoPanel();
     })
     .catch(() => setValue("#character-panel .value", "Unable to load character."));
+}
+
+function renderCharacterStudioHeader(character) {
+  const parsed = character.character?.parsed ?? {};
+  const tone = parsed.tone ?? {};
+  const promptText = character.prompt?.text ?? "";
+  const safetyCount = (parsed.boundaries?.neverJokeAbout ?? []).length + (parsed.boundaries?.dropJokesWhen ?? []).length;
+  const identityReady = Boolean(parsed.name && parsed.ownerName && parsed.language);
+  const promptReady = promptText.trim().length > 0;
+  const warmth = Number(tone.warmthLevel ?? 0);
+  const roast = Number(tone.roastLevel ?? 0);
+  const vibe = warmth >= 7 && roast <= 4 ? "ấm và sắc" : roast >= 7 ? "cà khịa mạnh" : Number(tone.chaosLevel ?? 0) >= 7 ? "năng lượng cao" : "cân bằng";
+  return '<div class="character-hero"><div class="character-avatar"><span>' + escapeHtml(characterInitials(parsed.name)) + '</span></div><div class="character-hero-copy"><div class="eyebrow">' + icon("spark") + ' Character Studio</div><h2>' + escapeHtml(parsed.name ?? "Bestie") + '</h2><p>Thiết kế giọng nói, ranh giới, độ sắc và prompt vận hành của nhân vật cục bộ.</p><div class="pill-row"><span class="pill good">' + escapeHtml(vibe) + '</span><span class="pill">' + escapeHtml(parsed.language ?? "language?") + '</span><span class="pill">owner: ' + escapeHtml(parsed.ownerName ?? "-") + '</span></div></div><div class="character-health"><span class="' + (identityReady ? "good" : "warn") + '"><strong>' + (identityReady ? "OK" : "Thiếu") + '</strong><small>identity</small></span><span class="' + (promptReady ? "good" : "bad") + '"><strong>' + escapeHtml(character.prompt?.bytes ?? 0) + '</strong><small>prompt bytes</small></span><span class="' + (safetyCount >= 4 ? "good" : "warn") + '"><strong>' + escapeHtml(safetyCount) + '</strong><small>boundaries</small></span><span><strong>' + escapeHtml((parsed.personality ?? []).length) + '</strong><small>traits</small></span></div></div>';
+}
+
+function renderCharacterCompose(character) {
+  const parsed = character.character?.parsed ?? {};
+  const tone = parsed.tone ?? {};
+  return '<div class="character-studio-layout"><form id="character-form" class="character-builder"><section class="character-card character-identity-card"><div class="character-card-head"><div><div class="label">' + icon("user") + ' Nhận diện</div><strong>Hồ sơ nhân vật</strong></div><span class="pill good">live draft</span></div><div class="control-grid"><label>Tên nhân vật<input name="name" value="' + escapeHtml(parsed.name ?? "") + '"></label><label>Owner<input name="ownerName" value="' + escapeHtml(parsed.ownerName ?? "") + '"></label><label>Ngôn ngữ<input name="language" value="' + escapeHtml(parsed.language ?? "") + '"></label><label>Múi giờ<input name="timeZone" value="' + escapeHtml(parsed.timeZone ?? "") + '" placeholder="Asia/Bangkok"></label></div><label class="stack">Personality traits<textarea name="personality" class="compact-textarea" spellcheck="false">' + escapeHtml(characterListValue(parsed.personality)) + '</textarea></label></section><section class="character-card"><div class="character-card-head"><div><div class="label">' + icon("sliders") + ' Tone Lab</div><strong>Điều chỉnh khí chất</strong></div><span class="pill" id="character-tone-label">' + escapeHtml(characterToneLabel(tone)) + '</span></div><div class="character-tone-grid">' + renderCharacterSlider("roastLevel", "Roast", tone.roastLevel ?? 0, "Độ cà khịa") + renderCharacterSlider("warmthLevel", "Warmth", tone.warmthLevel ?? 0, "Độ ấm") + renderCharacterSlider("bluntnessLevel", "Bluntness", tone.bluntnessLevel ?? 0, "Độ thẳng") + renderCharacterSlider("chaosLevel", "Chaos", tone.chaosLevel ?? 0, "Độ nghịch") + '</div></section><section class="character-card"><div class="character-card-head"><div><div class="label">' + icon("shield") + ' Ranh giới</div><strong>An toàn và chuyển giọng</strong></div><span class="pill warn">persona-safe</span></div><div class="character-boundary-grid"><label class="stack">Không đùa về<textarea name="neverJokeAbout" class="compact-textarea" spellcheck="false">' + escapeHtml(characterListValue(parsed.boundaries?.neverJokeAbout)) + '</textarea></label><label class="stack">Bỏ joke khi<textarea name="dropJokesWhen" class="compact-textarea" spellcheck="false">' + escapeHtml(characterListValue(parsed.boundaries?.dropJokesWhen)) + '</textarea></label></div></section></form><aside class="character-preview-card"><div class="character-card-head"><div><div class="label">' + icon("activity") + ' Preview</div><strong>Giọng hiện tại</strong></div><button id="character-refresh-preview" type="button">' + icon("refresh") + '<span>Làm mới</span></button></div><div id="character-live-preview" class="character-live-preview">' + renderCharacterPreview(parsed) + '</div><div id="character-health-list" class="character-health-list">' + renderCharacterHealthList(character) + '</div></aside></div>';
+}
+
+function renderCharacterSlider(name, label, value, caption) {
+  const safeValue = Math.max(0, Math.min(10, Number(value ?? 0)));
+  return '<label class="character-slider"><span><strong>' + escapeHtml(label) + '</strong><small>' + escapeHtml(caption) + '</small><b data-character-slider-value="' + escapeHtml(name) + '">' + escapeHtml(safeValue) + '</b></span><input name="' + escapeHtml(name) + '" type="range" min="0" max="10" value="' + escapeHtml(safeValue) + '"></label>';
+}
+
+function renderCharacterPromptWorkbench(character) {
+  const promptText = character.prompt?.text ?? "";
+  return '<div class="character-workbench"><section class="character-card"><div class="character-card-head"><div><div class="label">' + icon("terminal") + ' Prompt Workbench</div><strong>system-prompt.md</strong></div><div class="pill-row"><button id="character-insert-guardrails" type="button">' + icon("shield") + '<span>Thêm guardrails</span></button><button id="character-sync-prompt" type="button">' + icon("spark") + '<span>Tạo draft prompt</span></button></div></div><textarea id="character-prompt" class="character-prompt-editor" spellcheck="false">' + escapeHtml(promptText) + '</textarea></section><aside class="character-card"><div class="label">' + icon("brain") + ' Prompt anatomy</div>' + renderCharacterPromptStats(promptText) + '<div id="character-prompt-outline" class="character-outline">' + renderCharacterPromptOutline(promptText) + '</div></aside></div>';
+}
+
+function renderCharacterRawEditors(character) {
+  return '<div class="character-raw-grid"><label class="stack">character.json<textarea id="character-json" class="character-code-editor" spellcheck="false">' + escapeHtml(character.character?.text ?? "") + '</textarea></label><label class="stack">system-prompt.md mirror<textarea id="character-prompt-raw" class="character-code-editor" spellcheck="false">' + escapeHtml(character.prompt?.text ?? "") + '</textarea></label></div>';
+}
+
+function characterInitials(name) {
+  return text(name).split(/\\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join("").toUpperCase() || "B";
+}
+
+function characterListValue(value) {
+  return Array.isArray(value) ? value.join(", ") : "";
+}
+
+function characterListFromInput(value) {
+  return text(value).split(/[\\n,]/).map((item) => item.trim()).filter(Boolean);
+}
+
+function characterToneLabel(tone) {
+  const roast = Number(tone?.roastLevel ?? 0);
+  const warmth = Number(tone?.warmthLevel ?? 0);
+  const bluntness = Number(tone?.bluntnessLevel ?? 0);
+  const chaos = Number(tone?.chaosLevel ?? 0);
+  if (warmth >= 8 && roast <= 4) return "ấm, tỉnh, dễ tin";
+  if (roast >= 7 && bluntness >= 7) return "sắc, gắt, cần giữ ranh giới";
+  if (chaos >= 7) return "nhiều năng lượng";
+  if (bluntness >= 7) return "thẳng và thực dụng";
+  return "cân bằng";
+}
+
+function renderCharacterPreview(parsed) {
+  const tone = parsed?.tone ?? {};
+  const name = parsed?.name ?? "Bestie";
+  const owner = parsed?.ownerName ?? "bạn";
+  const roast = Number(tone.roastLevel ?? 0);
+  const warmth = Number(tone.warmthLevel ?? 0);
+  const opening = warmth >= 7 ? "Tớ sẽ giữ giọng ấm trước," : "Tớ sẽ vào thẳng vấn đề,";
+  const edge = roast >= 6 ? " vẫn có chút cà khịa đủ thân nhưng không làm đau." : " ưu tiên rõ ràng và không diễn.";
+  return '<div class="character-bubble"><strong>' + escapeHtml(name) + '</strong><p>' + escapeHtml(opening + ' ' + owner + '. Khi cần thì nói thật, khi căng thì hạ joke,' + edge) + '</p></div><div class="character-preview-metrics"><span><strong>' + escapeHtml(tone.roastLevel ?? 0) + '</strong><small>roast</small></span><span><strong>' + escapeHtml(tone.warmthLevel ?? 0) + '</strong><small>warmth</small></span><span><strong>' + escapeHtml(tone.bluntnessLevel ?? 0) + '</strong><small>blunt</small></span><span><strong>' + escapeHtml(tone.chaosLevel ?? 0) + '</strong><small>chaos</small></span></div>';
+}
+
+function renderCharacterHealthList(character) {
+  const parsed = character.character?.parsed ?? {};
+  const prompt = character.prompt?.text ?? "";
+  const checks = [
+    { label: "Identity", ok: Boolean(parsed.name && parsed.ownerName && parsed.language), detail: "Tên, owner, ngôn ngữ" },
+    { label: "Prompt", ok: prompt.trim().length > 0, detail: text(character.prompt?.bytes ?? 0) + " bytes" },
+    { label: "Safety", ok: (parsed.boundaries?.dropJokesWhen ?? []).length >= 2 && (parsed.boundaries?.neverJokeAbout ?? []).length >= 2, detail: "Ranh giới rõ" },
+    { label: "Tone", ok: Number(parsed.tone?.warmthLevel ?? 0) >= 5, detail: characterToneLabel(parsed.tone) },
+  ];
+  return checks.map((check) => '<div class="character-health-row"><span class="dot ' + (check.ok ? "good" : "warn") + '"></span><strong>' + escapeHtml(check.label) + '</strong><small>' + escapeHtml(check.detail) + '</small></div>').join("");
+}
+
+function renderCharacterPromptStats(promptText) {
+  const sections = (promptText.match(/^##?\\s+/gm) ?? []).length;
+  const lines = promptText ? promptText.split("\\n").length : 0;
+  return '<div class="character-prompt-stats"><span><strong>' + escapeHtml(promptText.length) + '</strong><small>chars</small></span><span><strong>' + escapeHtml(lines) + '</strong><small>lines</small></span><span><strong>' + escapeHtml(sections) + '</strong><small>sections</small></span></div>';
+}
+
+function renderCharacterPromptOutline(promptText) {
+  const headings = promptText.split("\\n").filter((line) => line.startsWith("#")).slice(0, 8);
+  if (!headings.length) return '<div class="character-outline-empty">Chưa có heading trong prompt.</div>';
+  return headings.map((heading) => '<div class="character-outline-row">' + icon("clip") + '<span>' + escapeHtml(heading.replace(/^#+\\s*/, "")) + '</span></div>').join("");
+}
+
+function parseCharacterDraft() {
+  try {
+    return JSON.parse(document.querySelector("#character-json")?.value || "{}");
+  } catch {
+    return null;
+  }
+}
+
+function syncCharacterDraftFromForm() {
+  const current = parseCharacterDraft();
+  const formElement = document.querySelector("#character-form");
+  if (!current || !formElement) {
+    setValue("#character-panel .value", "Fix character JSON before using form controls.");
+    return;
+  }
+  const form = new FormData(formElement);
+  current.name = text(form.get("name")).trim();
+  current.ownerName = text(form.get("ownerName")).trim();
+  current.language = text(form.get("language")).trim();
+  const timeZone = text(form.get("timeZone")).trim();
+  if (timeZone && timeZone !== "-") current.timeZone = timeZone;
+  else delete current.timeZone;
+  current.personality = characterListFromInput(form.get("personality"));
+  current.tone = {
+    ...(current.tone ?? {}),
+    roastLevel: Number(form.get("roastLevel")),
+    warmthLevel: Number(form.get("warmthLevel")),
+    bluntnessLevel: Number(form.get("bluntnessLevel")),
+    chaosLevel: Number(form.get("chaosLevel")),
+  };
+  current.boundaries = {
+    ...(current.boundaries ?? {}),
+    neverJokeAbout: characterListFromInput(form.get("neverJokeAbout")),
+    dropJokesWhen: characterListFromInput(form.get("dropJokesWhen")),
+  };
+  document.querySelector("#character-json").value = JSON.stringify(current, null, 2) + "\\n";
+  document.querySelectorAll("[data-character-slider-value]").forEach((target) => {
+    const key = target.dataset.characterSliderValue;
+    target.textContent = text(current.tone?.[key] ?? 0);
+  });
+  setValue("#character-tone-label", characterToneLabel(current.tone));
+  const preview = document.querySelector("#character-live-preview");
+  if (preview) preview.innerHTML = renderCharacterPreview(current);
+  setValue("#character-panel .value", current.name + ' / ' + current.language + ' / draft updated');
+}
+
+function buildCharacterPromptDraft(character) {
+  const parsed = character ?? parseCharacterDraft() ?? {};
+  const tone = parsed.tone ?? {};
+  return [
+    'You are ' + text(parsed.name) + ', an AI companion for ' + text(parsed.ownerName) + '.',
+    '',
+    '## Core Voice',
+    '- Language: ' + text(parsed.language) + '.',
+    '- Personality: ' + characterListValue(parsed.personality) + '.',
+    '- Be warm, direct, useful, and emotionally aware.',
+    '',
+    '## Tone Controls',
+    '- Roast level: ' + text(tone.roastLevel) + '/10.',
+    '- Warmth level: ' + text(tone.warmthLevel) + '/10.',
+    '- Bluntness level: ' + text(tone.bluntnessLevel) + '/10.',
+    '- Chaos level: ' + text(tone.chaosLevel) + '/10.',
+    '',
+    '## Safety And Boundaries',
+    '- Drop jokes when: ' + characterListValue(parsed.boundaries?.dropJokesWhen) + '.',
+    '- Never joke about: ' + characterListValue(parsed.boundaries?.neverJokeAbout) + '.',
+    '- Do not claim to be human, conscious, a therapist, a romantic partner, or perfect memory.',
+    '- Never be cruel, humiliating, hateful, sexually explicit, or unsafe.',
+    '',
+  ].join("\\n");
 }
 
 function loadMemory() {
@@ -1532,25 +1695,51 @@ function updateProviderSetupFields(provider) {
 }
 
 function bindCharacterControls() {
-  document.querySelector("#character-form")?.addEventListener("input", () => {
-    try {
-      const current = JSON.parse(document.querySelector("#character-json")?.value || "{}");
-      const form = new FormData(document.querySelector("#character-form"));
-      current.name = text(form.get("name"));
-      current.ownerName = text(form.get("ownerName"));
-      current.language = text(form.get("language"));
-      current.tone = {
-        ...(current.tone ?? {}),
-        roastLevel: Number(form.get("roastLevel")),
-        warmthLevel: Number(form.get("warmthLevel")),
-        bluntnessLevel: Number(form.get("bluntnessLevel")),
-        chaosLevel: Number(form.get("chaosLevel")),
-      };
-      document.querySelector("#character-json").value = JSON.stringify(current, null, 2) + "\\n";
-    } catch {
-      setValue("#character-panel .value", "Fix character JSON before using form controls.");
-    }
+  document.querySelectorAll("#character-panel [data-segment-target]").forEach((button) => button.addEventListener("click", () => activateSegment("#character-panel", button.dataset.segmentTarget)));
+  document.querySelector("#character-form")?.addEventListener("input", syncCharacterDraftFromForm);
+  document.querySelector("#character-refresh-preview")?.addEventListener("click", () => {
+    syncCharacterDraftFromForm();
+    showToast("Preview updated.", "good");
   });
+  document.querySelector("#character-sync-prompt")?.addEventListener("click", () => {
+    syncCharacterDraftFromForm();
+    const draft = buildCharacterPromptDraft();
+    const prompt = document.querySelector("#character-prompt");
+    const raw = document.querySelector("#character-prompt-raw");
+    if (prompt) prompt.value = draft;
+    if (raw) raw.value = draft;
+    updateCharacterPromptWorkbench();
+    showToast("Draft prompt generated.", "good");
+  });
+  document.querySelector("#character-insert-guardrails")?.addEventListener("click", () => {
+    const guardrails = '\\n## Safety Guardrails\\n- Drop jokes during grief, panic, self-harm, or vulnerable moments.\\n- Never be cruel, humiliating, hateful, sexually explicit, or unsafe.\\n- Do not claim to be human, conscious, a therapist, a romantic partner, or perfect memory.\\n';
+    const prompt = document.querySelector("#character-prompt");
+    const raw = document.querySelector("#character-prompt-raw");
+    if (prompt && !prompt.value.includes("## Safety Guardrails")) prompt.value = prompt.value.trimEnd() + guardrails;
+    if (raw) raw.value = prompt?.value ?? raw.value;
+    updateCharacterPromptWorkbench();
+    showToast("Guardrails added.", "good");
+  });
+  document.querySelector("#character-prompt")?.addEventListener("input", () => {
+    const raw = document.querySelector("#character-prompt-raw");
+    if (raw) raw.value = document.querySelector("#character-prompt")?.value ?? "";
+    updateCharacterPromptWorkbench();
+  });
+  document.querySelector("#character-prompt-raw")?.addEventListener("input", () => {
+    const prompt = document.querySelector("#character-prompt");
+    if (prompt) prompt.value = document.querySelector("#character-prompt-raw")?.value ?? "";
+    updateCharacterPromptWorkbench();
+  });
+  document.querySelector("#character-json")?.addEventListener("input", () => {
+    const current = parseCharacterDraft();
+    setValue("#character-panel .value", current ? text(current.name) + ' / JSON draft' : "Fix character JSON before saving.");
+  });
+}
+
+function updateCharacterPromptWorkbench() {
+  const promptText = document.querySelector("#character-prompt")?.value ?? "";
+  const outline = document.querySelector("#character-prompt-outline");
+  if (outline) outline.innerHTML = renderCharacterPromptOutline(promptText);
 }
 
 function updateFallback(action) {
@@ -1588,6 +1777,29 @@ function loadKnowledgeGraph() {
     .catch(() => setValue("#knowledge-panel .value", "Không thể tải đồ thị."));
 }
 
+function renderKnowledgeWorkspaceHeader(graph) {
+  const trust = graph.trust ?? {};
+  const issueCount = graph.review?.issueCount ?? 0;
+  const score = graph.analysis?.score ?? trust.averageScore ?? 100;
+  const tone = score >= 80 && !issueCount ? "good" : issueCount ? "warn" : "";
+  return '<div class="knowledge-workspace-head"><div><div class="eyebrow">' + icon("brain") + ' Knowledge Constellation</div><h2>Không gian tri thức</h2><p>Trạng thái đồ thị tri thức cục bộ.</p></div><div class="knowledge-health"><span class="knowledge-health-score ' + tone + '">' + escapeHtml(score) + '</span><span><strong>' + escapeHtml(issueCount) + '</strong><small>cần rà soát</small></span><span><strong>' + escapeHtml(trust.conflicting ?? 0) + '</strong><small>xung đột</small></span><span><strong>' + escapeHtml(trust.stale ?? 0) + '</strong><small>cũ</small></span></div></div>';
+}
+
+function renderKnowledgeMapStatus(graph) {
+  const trust = graph.trust ?? {};
+  const analysis = graph.analysis ?? {};
+  return '<div class="knowledge-map-status"><span><strong>' + escapeHtml(graph.counts?.entities ?? 0) + '</strong><small>thực thể</small></span><span><strong>' + escapeHtml(graph.counts?.relations ?? 0) + '</strong><small>liên kết</small></span><span><strong>' + escapeHtml(graph.counts?.pending ?? 0) + '</strong><small>đang chờ</small></span><span><strong>' + escapeHtml(trust.lowTrust ?? 0) + '</strong><small>tin cậy thấp</small></span><span><strong>' + escapeHtml(analysis.conflictingRelations?.length ?? 0) + '</strong><small>nhóm xung đột</small></span></div>';
+}
+
+function renderKnowledgeActivityStrip(graph) {
+  const events = [
+    ...(graph.review?.suggestions ?? []).slice(0, 4).map((suggestion) => ({ title: suggestion.title, detail: suggestion.reason, tone: suggestion.priority === "high" ? "warn" : suggestion.priority === "medium" ? "good" : "" })),
+    ...(graph.pending ?? []).slice(0, 3).map((item) => ({ title: 'Pending #' + item.id, detail: item.payloadSummary, tone: "warn" })),
+  ].slice(0, 6);
+  if (!events.length) return '<div class="knowledge-activity-strip"><span class="dot good"></span><strong>Đồ thị đang ổn</strong><small>Không có mục cần rà soát trong mẫu hiện tại.</small></div>';
+  return '<div class="knowledge-activity-strip">' + events.map((event) => '<span class="knowledge-activity-chip"><span class="dot ' + (event.tone ?? "") + '"></span><strong>' + escapeHtml(event.title) + '</strong><small>' + escapeHtml(event.detail) + '</small></span>').join("") + '</div>';
+}
+
 function renderKnowledgeGraphPanel(graph, mode) {
   loadKnowledgeMapPreferences();
   state.knowledgeGraph = graph;
@@ -1611,9 +1823,10 @@ function renderKnowledgeGraphPanel(graph, mode) {
   const graphSummary = '<div class="summary-strip knowledge-map-summary"><span><strong>' + escapeHtml(graph.counts?.entities ?? 0) + '</strong><small>Thực thể</small></span><span><strong>' + escapeHtml(graph.counts?.relations ?? 0) + '</strong><small>Liên kết</small></span><span><strong>' + escapeHtml(graph.counts?.pending ?? 0) + '</strong><small>Đang chờ</small></span><span><strong>' + escapeHtml(graph.trust?.averageScore ?? graph.analysis?.score ?? 100) + '</strong><small>Độ tin cậy</small></span></div>';
   const graphSegments = '<div class="segmented knowledge-map-segments" role="tablist" aria-label="Các chế độ đồ thị tri thức"><button class="active" data-segment-target="knowledge-map" type="button">Bản đồ</button><button data-segment-target="knowledge-review" type="button">Rà soát</button><button data-segment-target="knowledge-trust" type="button">Độ tin cậy</button><button data-segment-target="knowledge-search-view" type="button">Tìm kiếm</button></div>';
   setBody("#knowledge-panel", [
+    renderKnowledgeWorkspaceHeader(graph),
     graphSummary,
     graphSegments,
-    '<div class="segment active" id="knowledge-map"><div class="knowledge-map-shell" data-knowledge-drawer="' + escapeHtml(state.knowledgeDrawer) + '" data-knowledge-overlay="' + (state.knowledgeOverlayCollapsed ? "collapsed" : "expanded") + '"><div class="knowledge-map-overlay"><div class="knowledge-map-overlay-head"><button data-knowledge-overlay-toggle type="button" title="Bật/tắt công cụ bản đồ">' + icon(state.knowledgeOverlayCollapsed ? "sliders" : "x") + '<span>' + (state.knowledgeOverlayCollapsed ? "Công cụ" : "Ẩn") + '</span></button><span class="pill" id="knowledge-visible-count">đồ thị hiển thị</span><button data-knowledge-graph-action="fit" type="button" title="Vừa khung đồ thị">' + icon("activity") + '<span>Vừa khung</span></button><button data-knowledge-drawer-open="inspector" type="button" title="Mở chi tiết">' + icon("sliders") + '<span>Chi tiết</span></button></div>' + graphSummary + graphSegments + renderKnowledgeMapToolbar(entities, relations) + '</div><div class="knowledge-canvas"><div id="knowledge-provenance-overlay" class="knowledge-provenance-overlay" aria-live="polite">' + renderKnowledgeProvenanceOverlay(graph) + '</div><div id="knowledge-cytoscape" class="knowledge-cytoscape" role="img" aria-label="Bản đồ tri thức"></div></div><aside class="knowledge-drawer" aria-label="Drawer đồ thị tri thức"><div class="knowledge-drawer-head"><div><div class="label" id="knowledge-drawer-title">' + escapeHtml(state.knowledgeDrawer === "list" ? "Mục đồ thị" : "Inspector") + '</div><div class="subvalue">' + escapeHtml(state.knowledgeDrawer === "list" ? "Thực thể và liên kết" : "Mục đồ thị đã chọn") + '</div></div><button data-knowledge-drawer-close type="button" aria-label="Đóng">' + icon("x") + '</button></div><div class="knowledge-drawer-view knowledge-drawer-list"><div id="knowledge-drawer-list" class="stack">' + renderKnowledgeDrawerList(graph) + '</div></div><div class="knowledge-drawer-view knowledge-drawer-inspector"><div id="knowledge-inspector" class="knowledge-inspector">' + renderKnowledgeInspector(graph) + '</div></div></aside></div></div>',
+    '<div class="segment active" id="knowledge-map"><div class="knowledge-map-shell" data-knowledge-drawer="' + escapeHtml(state.knowledgeDrawer) + '" data-knowledge-overlay="' + (state.knowledgeOverlayCollapsed ? "collapsed" : "expanded") + '"><div class="knowledge-map-overlay"><div class="knowledge-map-overlay-head"><button data-knowledge-overlay-toggle type="button" title="Bật/tắt công cụ bản đồ">' + icon(state.knowledgeOverlayCollapsed ? "sliders" : "x") + '<span>' + (state.knowledgeOverlayCollapsed ? "Công cụ" : "Ẩn") + '</span></button><span class="pill" id="knowledge-visible-count">đồ thị hiển thị</span><button data-knowledge-graph-action="fit" type="button" title="Vừa khung đồ thị">' + icon("activity") + '<span>Vừa khung</span></button><button data-knowledge-drawer-open="inspector" type="button" title="Mở chi tiết">' + icon("sliders") + '<span>Chi tiết</span></button></div>' + graphSummary + graphSegments + renderKnowledgeMapToolbar(entities, relations) + '</div><div class="knowledge-canvas"><div class="knowledge-canvas-head">' + renderKnowledgeMapStatus(graph) + '<span id="knowledge-hover-status" class="knowledge-hover-status">Chưa có tiêu điểm</span></div><div id="knowledge-provenance-overlay" class="knowledge-provenance-overlay" aria-live="polite">' + renderKnowledgeProvenanceOverlay(graph) + '</div><div id="knowledge-cytoscape" class="knowledge-cytoscape" role="img" aria-label="Bản đồ tri thức"></div>' + renderKnowledgeActivityStrip(graph) + '</div><aside class="knowledge-drawer" aria-label="Drawer đồ thị tri thức"><div class="knowledge-drawer-head"><div><div class="label" id="knowledge-drawer-title">' + escapeHtml(state.knowledgeDrawer === "list" ? "Mục đồ thị" : "Inspector") + '</div><div class="subvalue">' + escapeHtml(state.knowledgeDrawer === "list" ? "Thực thể và liên kết" : "Mục đồ thị đã chọn") + '</div></div><button data-knowledge-drawer-close type="button" aria-label="Đóng">' + icon("x") + '</button></div><div class="knowledge-drawer-view knowledge-drawer-list"><div id="knowledge-drawer-list" class="stack">' + renderKnowledgeDrawerList(graph) + '</div></div><div class="knowledge-drawer-view knowledge-drawer-inspector"><div id="knowledge-inspector" class="knowledge-inspector">' + renderKnowledgeInspector(graph) + '</div></div></aside></div></div>',
     '<div class="segment" id="knowledge-review">' + renderKnowledgeReviewControls(graph) + '<div class="knowledge-detail-layout"><div class="stack">' + (suggestions.map((suggestion) => renderKnowledgeSuggestion(suggestion, suggestion.index, graph)).join("") || row("Review", "sạch với bộ lọc hiện tại", "good")) + renderKnowledgePendingReviewSection(pending) + '</div><div id="knowledge-review-inspector" class="knowledge-inspector">' + renderKnowledgeInspector(graph) + '</div></div></div>',
     '<div class="segment" id="knowledge-trust">' + renderKnowledgeTrustDashboard(graph) + '</div>',
     '<div class="segment" id="knowledge-search-view"><div class="control-grid"><input id="knowledge-search" placeholder="Tìm kiếm đồ thị"><button id="knowledge-search-run" type="button">Tìm kiếm</button></div><div class="knowledge-detail-layout"><div id="knowledge-search-results" class="stack">' + (mode === "search" ? renderKnowledgeSearchResults(graph) : row("Tìm kiếm", "sẵn sàng", "")) + '</div><div id="knowledge-search-inspector" class="knowledge-inspector">' + renderKnowledgeInspector(graph) + '</div></div></div>',
@@ -1793,15 +2006,25 @@ function renderKnowledgeCytoscapeGraph(entities, relations) {
     maxZoom: 2.2,
     wheelSensitivity: 0.18,
     style: [
-      { selector: "node", style: { "background-color": "#5ed4c4", "border-color": "rgba(238, 246, 237, 0.78)", "border-width": 2, color: "#eef6ed", "font-family": "Trebuchet MS, Verdana, sans-serif", "font-size": 11, "font-weight": 800, height: "data(size)", label: "data(label)", "min-zoomed-font-size": 8, "overlay-opacity": 0, "text-background-color": "rgba(8, 13, 11, 0.82)", "text-background-opacity": 1, "text-background-padding": 3, "text-margin-y": 8, "text-valign": "bottom", width: "data(size)" } },
+      { selector: "node", style: { "background-color": "#5ed4c4", "border-color": "rgba(238, 246, 237, 0.78)", "border-width": 2, color: "#eef6ed", "font-family": "Trebuchet MS, Verdana, sans-serif", "font-size": 11, "font-weight": 800, height: "data(size)", label: "data(label)", "min-zoomed-font-size": 8, "overlay-opacity": 0, "shadow-blur": 18, "shadow-color": "rgba(94, 212, 196, 0.28)", "shadow-opacity": 0.75, "shadow-offset-x": 0, "shadow-offset-y": 0, "text-background-color": "rgba(8, 13, 11, 0.82)", "text-background-opacity": 1, "text-background-padding": 3, "text-margin-y": 8, "text-valign": "bottom", width: "data(size)" } },
       { selector: "node.person", style: { "background-color": "#e0b257" } },
       { selector: "node.project", style: { "background-color": "#64d487" } },
       { selector: "node.preference", style: { "background-color": "#f0b35d" } },
       { selector: "node.topic", style: { "background-color": "#8aa8ff" } },
+      { selector: "node.low-trust", style: { "border-color": "#f0b35d", "border-style": "dashed", "border-width": 3, "shadow-color": "rgba(240, 179, 93, 0.34)" } },
+      { selector: "node.stale", style: { opacity: 0.56 } },
+      { selector: "node.needs-source", style: { "border-color": "#ff8b8b", "border-width": 3 } },
+      { selector: "node.conflict", style: { "border-color": "#ff8b8b", "border-width": 4, "shadow-color": "rgba(255, 139, 139, 0.44)" } },
+      { selector: "node.recent", style: { "shadow-blur": 26, "shadow-color": "rgba(224, 178, 87, 0.42)" } },
       { selector: "node.cluster", style: { "border-color": "#eef6ed", "border-opacity": 0.84, "border-width": 4, "font-size": 12, "height": "data(size)", "shape": "round-rectangle", "text-margin-y": 10, "width": "data(size)" } },
       { selector: "edge", style: { "curve-style": "bezier", "font-family": "Trebuchet MS, Verdana, sans-serif", "font-size": 10, "font-weight": 800, label: "data(label)", "line-color": "rgba(238, 246, 237, 0.28)", opacity: "data(opacity)", "target-arrow-color": "rgba(238, 246, 237, 0.38)", "target-arrow-shape": "triangle", "text-background-color": "rgba(8, 13, 11, 0.88)", "text-background-opacity": 1, "text-background-padding": 2, "text-rotation": "autorotate", "text-wrap": "wrap", "width": "data(width)" } },
+      { selector: "edge.low-trust", style: { "line-color": "#f0b35d", "line-style": "dashed", "target-arrow-color": "#f0b35d" } },
+      { selector: "edge.conflict", style: { "line-color": "#ff8b8b", "target-arrow-color": "#ff8b8b", opacity: 0.92, width: 2.3 } },
+      { selector: "edge.stale", style: { opacity: 0.36 } },
+      { selector: "edge.recent", style: { "line-color": "#e0b257", "target-arrow-color": "#e0b257" } },
       { selector: ".filtered", style: { display: "none" } },
       { selector: ".dimmed", style: { opacity: 0.14 } },
+      { selector: ".hovered", style: { opacity: 1 } },
       { selector: "node.highlighted", style: { "border-color": "#e0b257", "border-width": 4 } },
       { selector: "edge.highlighted", style: { "line-color": "#e0b257", "target-arrow-color": "#e0b257", opacity: 1, width: 2.2 } },
       { selector: ":selected", style: { "border-color": "#e0b257", "border-width": 4, "line-color": "#e0b257", "target-arrow-color": "#e0b257", opacity: 1 } },
@@ -1834,6 +2057,8 @@ function renderKnowledgeCytoscapeGraph(entities, relations) {
       applyKnowledgeGraphFilters();
     }
   });
+  cy.on("mouseover", "node, edge", (event) => previewKnowledgeGraphElement(event.target));
+  cy.on("mouseout", "node, edge", () => clearKnowledgeGraphPreview());
   ["drag", "pan", "zoom", "grab", "free", "tapstart"].forEach((eventName) => cy.on(eventName, () => { state.knowledgeLastGraphInteraction = Date.now(); }));
   state.knowledgeCytoscape = cy;
   window.__bestieKnowledgeGraph = { cy, select: selectKnowledgeGraphById };
@@ -1863,13 +2088,28 @@ function buildKnowledgeCytoscapeElements(entities, relations) {
     const relationCount = relationCounts.get(Number(node.id)) ?? Number(node.trust?.relationCount ?? 0);
     const trustBonus = node.trust?.level === "high" ? 4 : node.trust?.level === "low" ? -2 : 1;
     const size = Math.max(24, Math.min(58, 25 + Math.min(22, relationCount * 5) + Math.round(Math.max(0, Math.min(1, confidence)) * 7) + trustBonus));
-    return { data: { id: "entity-" + node.id, entityId: Number(node.id), kind, scope: String(node.scope ?? "session"), trust: String(node.trust?.level ?? "medium"), relationCount, label: String(node.canonicalName ?? ("Entity " + node.id)), searchText: [node.canonicalName, node.kind, node.scope, ...(node.aliases ?? [])].join(" "), size }, classes: kind };
+    const classes = [kind, knowledgeTrustClass(node.trust), node.trust?.stale ? "stale" : "", node.trust?.needsSource ? "needs-source" : "", node.trust?.conflicting ? "conflict" : "", knowledgeIsRecent(node.updatedAt ?? node.createdAt, node.trust) ? "recent" : ""].filter(Boolean).join(" ");
+    return { data: { id: "entity-" + node.id, entityId: Number(node.id), kind, scope: String(node.scope ?? "session"), trust: String(node.trust?.level ?? "medium"), relationCount, score: Number(node.trust?.score ?? 100), label: String(node.canonicalName ?? ("Entity " + node.id)), searchText: [node.canonicalName, node.kind, node.scope, ...(node.aliases ?? [])].join(" "), size }, classes };
   });
   const edgeElements = (relations ?? []).filter((relation) => nodeIds.has(Number(relation.sourceEntityId)) && nodeIds.has(Number(relation.targetEntityId))).slice(0, 80).map((relation) => {
     const confidence = Math.max(0, Math.min(1, Number(relation.confidence ?? 0.55)));
-    return { data: { id: "relation-" + relation.id, source: "entity-" + relation.sourceEntityId, target: "entity-" + relation.targetEntityId, relationId: Number(relation.id), kind: "relation", scope: String(relation.scope ?? "session"), trust: String(relation.trust?.level ?? "medium"), confidence, label: String(relation.relationType ?? "related"), searchText: [relation.sourceName, relation.relationType, relation.targetName, relation.scope, relation.evidence].join(" "), opacity: 0.32 + confidence * 0.52, width: 0.45 + confidence * 0.95 } };
+    const classes = [knowledgeTrustClass(relation.trust), relation.trust?.stale ? "stale" : "", relation.trust?.needsSource ? "needs-source" : "", relation.trust?.conflicting ? "conflict" : "", knowledgeIsRecent(relation.updatedAt ?? relation.createdAt, relation.trust) ? "recent" : ""].filter(Boolean).join(" ");
+    return { data: { id: "relation-" + relation.id, source: "entity-" + relation.sourceEntityId, target: "entity-" + relation.targetEntityId, relationId: Number(relation.id), kind: "relation", scope: String(relation.scope ?? "session"), trust: String(relation.trust?.level ?? "medium"), confidence, score: Number(relation.trust?.score ?? Math.round(confidence * 100)), label: String(relation.relationType ?? "related"), searchText: [relation.sourceName, relation.relationType, relation.targetName, relation.scope, relation.evidence].join(" "), opacity: 0.32 + confidence * 0.52, width: 0.45 + confidence * 0.95 }, classes };
   });
   return { elements: [...nodeElements, ...edgeElements], nodeCount: nodeElements.length, edgeCount: edgeElements.length };
+}
+
+function knowledgeTrustClass(trust) {
+  if (trust?.level === "low") return "low-trust";
+  if (trust?.level === "high") return "high-trust";
+  return "medium-trust";
+}
+
+function knowledgeIsRecent(value, trust) {
+  if (Number(trust?.ageDays ?? 99) <= 7) return true;
+  if (!value) return false;
+  const date = new Date(value);
+  return !Number.isNaN(date.getTime()) && Date.now() - date.getTime() < 7 * 24 * 60 * 60 * 1000;
 }
 
 function buildKnowledgeClusterElements(nodes, relations, nodeIds) {
@@ -2331,6 +2571,45 @@ function applyKnowledgeGraphSelectionHighlight() {
   cy.elements().not(neighborhood).not(".filtered").addClass("dimmed");
   neighborhood.addClass("highlighted");
   item.select();
+}
+
+function previewKnowledgeGraphElement(element) {
+  const cy = state.knowledgeCytoscape;
+  if (!cy || !element?.length) return;
+  state.knowledgeLastGraphInteraction = Date.now();
+  cy.elements().removeClass("hovered preview-dimmed");
+  const neighborhood = element.isNode?.() ? element.closedNeighborhood().not(".filtered") : element.union(element.connectedNodes()).not(".filtered");
+  cy.elements().not(neighborhood).not(".filtered").addClass("dimmed preview-dimmed");
+  neighborhood.addClass("hovered");
+  updateKnowledgeHoverStatus(element);
+}
+
+function clearKnowledgeGraphPreview() {
+  const cy = state.knowledgeCytoscape;
+  if (!cy) return;
+  cy.elements(".preview-dimmed").removeClass("dimmed preview-dimmed");
+  cy.elements().removeClass("hovered");
+  applyKnowledgeGraphSelectionHighlight();
+  const status = document.querySelector("#knowledge-hover-status");
+  if (status) status.textContent = state.selectedKnowledge ? "Đang giữ lựa chọn" : "Chưa có tiêu điểm";
+}
+
+function updateKnowledgeHoverStatus(element) {
+  const status = document.querySelector("#knowledge-hover-status");
+  if (!status) return;
+  if (element.isNode?.()) {
+    const label = element.data("label") ?? "Entity";
+    const kind = element.data("kind") ?? "node";
+    const trust = element.data("trust") ?? "medium";
+    const relationCount = element.data("relationCount") ?? element.connectedEdges?.().not(".filtered").length ?? 0;
+    status.textContent = label + " / " + kind + " / " + relationCount + " liên kết / tin cậy " + trust;
+    return;
+  }
+  const label = element.data("label") ?? "relation";
+  const confidence = element.data("confidence") ?? "?";
+  const source = element.source?.().data("label") ?? "source";
+  const target = element.target?.().data("label") ?? "target";
+  status.textContent = source + " --" + label + "--> " + target + " / độ tin cậy " + confidence;
 }
 
 function bindKnowledgeGraphInteractiveControls() {
