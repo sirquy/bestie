@@ -51,6 +51,7 @@ import { ZALO_CHANNEL, formatChannelHelpCommands } from "./registry.js";
 import { createChannelResponseController } from "./response-controller.js";
 import { formatChannelToolProgress, shouldShowToolProgress } from "./tool-progress.js";
 import { createChannelVoiceTranscriber, type ChannelVoiceTranscriber } from "./voice.js";
+import type { AgentOutboundFileSender } from "../tools/channel-send-tools.js";
 import { basename, extname } from "node:path";
 
 const ZALO_API_BASE_URL = "https://bot-api.zaloplatforms.com";
@@ -166,7 +167,15 @@ export interface ZaloClient {
   getFile?(fileId: string): Promise<ZaloFileInfo>;
   downloadFile?(filePath: string): Promise<Uint8Array>;
   sendMessage(chatId: string, text: string): Promise<ZaloSentMessage | void>;
+  sendPhoto?(chatId: string, photo: Uint8Array, options?: ZaloSendFileOptions): Promise<ZaloSentMessage | void>;
+  sendDocument?(chatId: string, document: Uint8Array, options?: ZaloSendFileOptions): Promise<ZaloSentMessage | void>;
   sendChatAction(chatId: string, action: "typing"): Promise<void>;
+}
+
+export interface ZaloSendFileOptions {
+  fileName?: string;
+  mimeType?: string;
+  caption?: string;
 }
 
 export interface ZaloSentMessage {
@@ -232,6 +241,14 @@ export class ZaloHttpClient implements ZaloClient {
 
   async sendMessage(chatId: string, text: string): Promise<ZaloSentMessage | void> {
     return this.call<ZaloSentMessage | void>("sendMessage", { chat_id: chatId, text });
+  }
+
+  async sendPhoto(chatId: string, photo: Uint8Array, options: ZaloSendFileOptions = {}): Promise<ZaloSentMessage | void> {
+    return this.call<ZaloSentMessage | void>("sendPhoto", { chat_id: chatId, file_name: options.fileName ?? "bestie-photo.jpg", mime_type: options.mimeType, caption: options.caption, data: Buffer.from(photo).toString("base64") });
+  }
+
+  async sendDocument(chatId: string, document: Uint8Array, options: ZaloSendFileOptions = {}): Promise<ZaloSentMessage | void> {
+    return this.call<ZaloSentMessage | void>("sendDocument", { chat_id: chatId, file_name: options.fileName ?? "bestie-file.bin", mime_type: options.mimeType, caption: options.caption, data: Buffer.from(document).toString("base64") });
   }
 
   async sendChatAction(chatId: string, action: "typing"): Promise<void> {
@@ -400,6 +417,7 @@ export async function handleZaloUpdate(update: ZaloUpdate, options: ZaloUpdateHa
       streamFinalResponse: true,
       onToolActivity: async (activity) => handleZaloToolActivity(response, activity, options.config.agent.name),
       runtimeContext,
+      outboundFileSender: createZaloOutboundFileSender(options.client, incoming.chatId),
     });
     typing.stop();
     await response.replyFinal(assistantText);
@@ -472,6 +490,36 @@ export function createZaloOutboundAdapter(client: ZaloClient): ChannelOutboundAd
     }),
     createActivityOptions: (chatId, action) => ({ client, chatId, action, refreshMs: 4_000 }),
   };
+}
+
+function createZaloOutboundFileSender(client: ZaloClient, currentChatId: string): AgentOutboundFileSender {
+  return {
+    async sendPhoto(payload) {
+      if (!client.sendPhoto) {
+        throw new Error("Zalo client does not support sending photos.");
+      }
+      const chatId = resolveZaloOutboundChatId(payload.channel, currentChatId);
+      const sent = normalizeZaloSentMessage(await client.sendPhoto(chatId, payload.bytes, { fileName: payload.fileName, mimeType: payload.mimeType, caption: payload.caption }));
+      return { channel: `zalo:${chatId}`, target: chatId, ...(sent?.messageId === undefined ? {} : { messageId: sent.messageId }) };
+    },
+    async sendFile(payload) {
+      if (!client.sendDocument) {
+        throw new Error("Zalo client does not support sending files.");
+      }
+      const chatId = resolveZaloOutboundChatId(payload.channel, currentChatId);
+      const sent = normalizeZaloSentMessage(await client.sendDocument(chatId, payload.bytes, { fileName: payload.fileName, mimeType: payload.mimeType, caption: payload.caption }));
+      return { channel: `zalo:${chatId}`, target: chatId, ...(sent?.messageId === undefined ? {} : { messageId: sent.messageId }) };
+    },
+  };
+}
+
+function resolveZaloOutboundChatId(channel: string | undefined, currentChatId: string): string {
+  if (channel === undefined || channel.trim() === "" || channel === "current") return currentChatId;
+  const match = /^zalo:(.+)$/.exec(channel.trim());
+  if (!match?.[1]) {
+    throw new Error('Zalo outbound files require channel "zalo:<chatId>" or the current channel.');
+  }
+  return match[1];
 }
 
 function getZaloAttachment(message: ZaloMessage): ZaloAttachmentSummary | undefined {
@@ -825,7 +873,7 @@ async function handleZaloSlashCommand(text: string, chatId: string, options: Zal
         await options.client.sendMessage(chatId, `Approval request ${approvalDecision.id} is no longer pending. It may have already been handled or expired.`);
         return true;
       }
-      const actionResult = await executeApprovedAction(store, approval, approvalDecision.decision, { config: options.config, paths: options.paths });
+      const actionResult = await executeApprovedAction(store, approval, approvalDecision.decision, { config: options.config, paths: options.paths, outboundFileSender: createZaloOutboundFileSender(options.client, chatId) });
       await options.client.sendMessage(chatId, actionResult.message);
       return true;
     } finally {

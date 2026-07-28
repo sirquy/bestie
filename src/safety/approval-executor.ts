@@ -2,6 +2,7 @@ import type { PendingActionApproval } from "../memory/sqlite-store.js";
 import type { SqliteMemoryStore } from "../memory/sqlite-store.js";
 import { isInternalToolName, runAgentToolRequest } from "../chat/mcp-tool-use.js";
 import type { AgentToolRequest } from "../chat/mcp-tool-use.js";
+import type { AgentOutboundFileSender } from "../tools/channel-send-tools.js";
 import type { McpToolCallResult } from "../mcp/connection.js";
 import type { AppConfig } from "../runtime/config.js";
 import type { RuntimePaths } from "../runtime/paths.js";
@@ -17,7 +18,7 @@ export interface ApprovalExecutionResult {
   toolResult?: McpToolCallResult;
 }
 
-export async function executeApprovedAction(store: SqliteMemoryStore, approval: PendingActionApproval, decision: ApprovalDecision, options?: { config?: AppConfig; paths?: RuntimePaths }): Promise<ApprovalExecutionResult> {
+export async function executeApprovedAction(store: SqliteMemoryStore, approval: PendingActionApproval, decision: ApprovalDecision, options?: { config?: AppConfig; paths?: RuntimePaths; outboundFileSender?: AgentOutboundFileSender }): Promise<ApprovalExecutionResult> {
   const currentApproval = store.getPendingActionApprovalById(approval.id);
   if (!currentApproval || (decision === "approve" && currentApproval.status !== "approved") || (decision === "deny" && currentApproval.status !== "denied")) {
     return { status: "invalid", shortText: "Approval is not executable.", message: `Approval ${approval.id} is not in an executable state.` };
@@ -32,7 +33,7 @@ export async function executeApprovedAction(store: SqliteMemoryStore, approval: 
   }
 
   if (approval.payloadJson && options?.config && options.paths) {
-    return executeInternalToolApproval(store, approval, decision, { config: options.config, paths: options.paths });
+    return executeInternalToolApproval(store, approval, decision, { config: options.config, paths: options.paths, outboundFileSender: options.outboundFileSender });
   }
 
   return {
@@ -45,7 +46,7 @@ export async function executeApprovedAction(store: SqliteMemoryStore, approval: 
   };
 }
 
-async function executeInternalToolApproval(store: SqliteMemoryStore, approval: PendingActionApproval, decision: ApprovalDecision, options: { config: AppConfig; paths: RuntimePaths }): Promise<ApprovalExecutionResult> {
+async function executeInternalToolApproval(store: SqliteMemoryStore, approval: PendingActionApproval, decision: ApprovalDecision, options: { config: AppConfig; paths: RuntimePaths; outboundFileSender?: AgentOutboundFileSender }): Promise<ApprovalExecutionResult> {
   if (decision === "deny") {
     return { status: "denied", shortText: "Action denied.", message: `Approval ${approval.status}: ${approval.id}.` };
   }
@@ -60,7 +61,7 @@ async function executeInternalToolApproval(store: SqliteMemoryStore, approval: P
   }
 
   const toolConfig = { ...options.config, internalTools: { ...options.config.internalTools, policies: { ...(options.config.internalTools?.policies ?? {}), [request.tool]: "allow" as const } } };
-  const result = await runAgentToolRequest({ config: toolConfig, paths: options.paths, request });
+  const result = await runAgentToolRequest({ config: toolConfig, paths: options.paths, request, outboundFileSender: options.outboundFileSender });
 
   return {
     status: result.ok ? "executed" : "invalid",

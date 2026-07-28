@@ -68,6 +68,7 @@ import { buildChannelAudioTranscriptResult, buildChannelProvidedAudioTranscriptR
 import { TELEGRAM_CHANNEL, formatChannelHelpCommands } from "./registry.js";
 import { createChannelResponseController } from "./response-controller.js";
 import { formatChannelToolProgress, shouldShowToolProgress } from "./tool-progress.js";
+import type { AgentOutboundFileSender } from "../tools/channel-send-tools.js";
 
 export type TelegramUpdate = Update;
 type TelegramChatAction = Parameters<Bot["api"]["sendChatAction"]>[1];
@@ -80,6 +81,8 @@ export interface TelegramClient {
   getFile?(fileId: string): Promise<TelegramFileInfo>;
   downloadFile?(filePath: string): Promise<Uint8Array>;
   sendMessage(chatId: number, text: string, options?: TelegramSendMessageOptions): Promise<TelegramSentMessage | void>;
+  sendPhoto?(chatId: number, photo: Uint8Array, options?: TelegramSendPhotoOptions): Promise<TelegramSentMessage | void>;
+  sendDocument?(chatId: number, document: Uint8Array, options?: TelegramSendDocumentOptions): Promise<TelegramSentMessage | void>;
   sendAudio?(chatId: number, audio: Uint8Array, options?: TelegramSendAudioOptions): Promise<void>;
   sendVoice?(chatId: number, voice: Uint8Array, options?: TelegramSendVoiceOptions): Promise<void>;
   editMessageText(chatId: number, messageId: number, text: string): Promise<void>;
@@ -107,6 +110,18 @@ export interface TelegramSentMessage {
 export interface TelegramSendAudioOptions {
   fileName?: string;
   mimeType?: string;
+}
+
+export interface TelegramSendPhotoOptions {
+  fileName?: string;
+  mimeType?: string;
+  caption?: string;
+}
+
+export interface TelegramSendDocumentOptions {
+  fileName?: string;
+  mimeType?: string;
+  caption?: string;
 }
 
 export interface TelegramSendVoiceOptions {
@@ -323,6 +338,16 @@ export class TelegramHttpClient implements TelegramClient {
     return { messageId: message.message_id };
   }
 
+  async sendPhoto(chatId: number, photo: Uint8Array, options: TelegramSendPhotoOptions = {}): Promise<TelegramSentMessage | void> {
+    const message = await this.bot.api.sendPhoto(chatId, new InputFile(Buffer.from(photo), options.fileName ?? "bestie-photo.jpg"), { caption: options.caption ? formatTelegramMessageText(options.caption) : undefined, parse_mode: options.caption ? "HTML" : undefined });
+    return { messageId: message.message_id };
+  }
+
+  async sendDocument(chatId: number, document: Uint8Array, options: TelegramSendDocumentOptions = {}): Promise<TelegramSentMessage | void> {
+    const message = await this.bot.api.sendDocument(chatId, new InputFile(Buffer.from(document), options.fileName ?? "bestie-file.bin"), { caption: options.caption ? formatTelegramMessageText(options.caption) : undefined, parse_mode: options.caption ? "HTML" : undefined });
+    return { messageId: message.message_id };
+  }
+
   async sendAudio(chatId: number, audio: Uint8Array, options: TelegramSendAudioOptions = {}): Promise<void> {
     await this.bot.api.sendAudio(chatId, new InputFile(Buffer.from(audio), options.fileName ?? "bestie-reply.mp3"));
   }
@@ -511,6 +536,7 @@ export async function handleTelegramUpdate(update: TelegramUpdate, options: Tele
       streamFinalResponse: true,
       onToolActivity: handleToolActivity,
       runtimeContext: buildTelegramRuntimeToolContext(decision.incoming),
+      outboundFileSender: createTelegramOutboundFileSender(options.client, chatId),
     });
     typing.stop();
     await response.replyFinal(assistantText);
@@ -890,7 +916,8 @@ async function handleTelegramCallbackQuery(update: TelegramUpdate, options: Tele
     }
 
     try {
-      const actionResult = await executeApprovedAction(store, approval, decision.decision, { config: options.config, paths: options.paths });
+      const callbackLocation = getCallbackMessageLocation(callbackQuery.message);
+      const actionResult = await executeApprovedAction(store, approval, decision.decision, { config: options.config, paths: options.paths, outboundFileSender: callbackLocation ? createTelegramOutboundFileSender(options.client, callbackLocation.chatId) : undefined });
       await appendLog({ event: "telegram_approval_execution", detail: { id: approval.id, action: approval.action, decision: decision.decision, status: actionResult.status, message: actionResult.message } }, { paths: options.paths });
       await options.client.answerCallbackQuery?.(callbackQuery.id, actionResult.shortText);
       await replyToTelegramCallbackSource(options.client, callbackQuery.message, actionResult.message, options.paths);
@@ -1123,6 +1150,36 @@ export function createTelegramOutboundAdapter(client: TelegramClient, refreshMs 
     }),
     createActivityOptions: (chatId, action) => ({ client, chatId, action, refreshMs }),
   };
+}
+
+function createTelegramOutboundFileSender(client: TelegramClient, currentChatId: number): AgentOutboundFileSender {
+  return {
+    async sendPhoto(payload) {
+      if (!client.sendPhoto) {
+        throw new Error("Telegram client does not support sending photos.");
+      }
+      const chatId = resolveTelegramOutboundChatId(payload.channel, currentChatId);
+      const sent = await client.sendPhoto(chatId, payload.bytes, { fileName: payload.fileName, mimeType: payload.mimeType, caption: payload.caption });
+      return { channel: `telegram:${chatId}`, target: String(chatId), ...(sent?.messageId === undefined ? {} : { messageId: sent.messageId }) };
+    },
+    async sendFile(payload) {
+      if (!client.sendDocument) {
+        throw new Error("Telegram client does not support sending files.");
+      }
+      const chatId = resolveTelegramOutboundChatId(payload.channel, currentChatId);
+      const sent = await client.sendDocument(chatId, payload.bytes, { fileName: payload.fileName, mimeType: payload.mimeType, caption: payload.caption });
+      return { channel: `telegram:${chatId}`, target: String(chatId), ...(sent?.messageId === undefined ? {} : { messageId: sent.messageId }) };
+    },
+  };
+}
+
+function resolveTelegramOutboundChatId(channel: string | undefined, currentChatId: number): number {
+  if (channel === undefined || channel.trim() === "" || channel === "current") return currentChatId;
+  const match = /^telegram:(-?\d+)$/.exec(channel.trim());
+  if (!match) {
+    throw new Error('Telegram outbound files require channel "telegram:<chatId>" or the current channel.');
+  }
+  return Number(match[1]);
 }
 
 function findTelegramChunkBoundary(text: string, limit: number): number {
@@ -1463,7 +1520,7 @@ async function handleTelegramSlashCommand(text: string, chatId: number, options:
         return true;
       }
 
-      const actionResult = await executeApprovedAction(store, approval, approvalDecision.decision, { config: options.config, paths: options.paths });
+      const actionResult = await executeApprovedAction(store, approval, approvalDecision.decision, { config: options.config, paths: options.paths, outboundFileSender: createTelegramOutboundFileSender(options.client, chatId) });
       await options.client.sendMessage(chatId, actionResult.message);
       return true;
     } finally {

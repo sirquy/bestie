@@ -246,6 +246,22 @@ test("parseMcpToolRequest accepts internal read tool requests", () => {
     tool: "internal.read_url",
     arguments: { url: "https://example.com/mcp" },
   });
+  assert.deepEqual(parseMcpToolRequest('{"tool":"internal.browser_open","arguments":{"url":"http://127.0.0.1:8717/"}}'), {
+    tool: "internal.browser_open",
+    arguments: { url: "http://127.0.0.1:8717/" },
+  });
+  assert.deepEqual(parseMcpToolRequest('{"tool":"internal.browser_click","arguments":{"selector":"button","risk":"external_write","reason":"submit form"}}'), {
+    tool: "internal.browser_click",
+    arguments: { selector: "button", risk: "external_write", reason: "submit form" },
+  });
+  assert.deepEqual(parseMcpToolRequest('{"tool":"internal.send_photo","arguments":{"path":"image.png","caption":"done"}}'), {
+    tool: "internal.send_photo",
+    arguments: { path: "image.png", caption: "done" },
+  });
+  assert.deepEqual(parseMcpToolRequest('{"tool":"internal.send_file","arguments":{"path":"report.pdf","channel":"telegram:777"}}'), {
+    tool: "internal.send_file",
+    arguments: { path: "report.pdf", channel: "telegram:777" },
+  });
   assert.deepEqual(parseMcpToolRequest('{"tool":"internal.exec","arguments":{"command":"node","args":["--version"]}}'), {
     tool: "internal.exec",
     arguments: { command: "node", args: ["--version"] },
@@ -422,6 +438,41 @@ test("runAgentToolRequest runs internal search_files without MCP config", async 
     assert.equal(result.ok, true);
     assert.match(JSON.stringify(result.result), /workspace\.log/);
     assert.doesNotMatch(JSON.stringify(result.result), /app\.log/);
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("runAgentToolRequest sends outbound photos and files through the channel sender", async () => {
+  const paths = await createTempPaths();
+  const sent: Array<{ kind: string; fileName: string; channel?: string; bytes: number }> = [];
+
+  try {
+    await mkdir(paths.workspaceDir, { recursive: true });
+    await import("node:fs/promises").then((fs) => fs.writeFile(resolve(paths.workspaceDir, "image.png"), Buffer.from([1, 2, 3])));
+    await import("node:fs/promises").then((fs) => fs.writeFile(resolve(paths.workspaceDir, "report.txt"), "hello\n"));
+    const config = { ...createConfig(), mcp: undefined, internalTools: { policies: { "internal.send_photo": "allow" as const, "internal.send_file": "allow" as const } } };
+    const outboundFileSender = {
+      sendPhoto: async (payload: { fileName: string; channel?: string; bytes: Uint8Array }) => {
+        sent.push({ kind: "photo", fileName: payload.fileName, channel: payload.channel, bytes: payload.bytes.byteLength });
+        return { channel: payload.channel ?? "telegram:123", target: "123", messageId: 7 };
+      },
+      sendFile: async (payload: { fileName: string; channel?: string; bytes: Uint8Array }) => {
+        sent.push({ kind: "file", fileName: payload.fileName, channel: payload.channel, bytes: payload.bytes.byteLength });
+        return { channel: payload.channel ?? "telegram:123", target: "123", messageId: 8 };
+      },
+    };
+
+    const photo = await runAgentToolRequest({ config, paths, outboundFileSender, request: { tool: "internal.send_photo", arguments: { path: "image.png", caption: "Here" } } });
+    const file = await runAgentToolRequest({ config, paths, outboundFileSender, request: { tool: "internal.send_file", arguments: { path: "report.txt", channel: "telegram:123" } } });
+
+    assert.equal(photo.ok, true);
+    assert.equal(file.ok, true);
+    assert.deepEqual(sent, [
+      { kind: "photo", fileName: "image.png", channel: undefined, bytes: 3 },
+      { kind: "file", fileName: "report.txt", channel: "telegram:123", bytes: 6 },
+    ]);
+    assert.match(JSON.stringify(photo.result), /messageId/);
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
   }

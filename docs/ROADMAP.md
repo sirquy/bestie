@@ -18,6 +18,16 @@ Status: completed for local development and shipped through the npm CLI.
 - Doctor/local diagnostics polish only when it protects install or real use
 - Telegram/Zalo reliability fixes discovered by daily local use
 - skills and update-command polish when it improves owner workflows
+- agent safety gates checklist before broader autonomy:
+  - sandbox every tool/action with least-privilege filesystem, network, process, and external-service access
+  - define permission scopes per tool, channel, workflow, and MCP category before execution
+  - require explicit approval gates for public, destructive, financial, credential, or external-write actions
+  - write audit logs for tool calls, prompts, inputs, outputs, approvals, denials, retries, and resulting IDs/permalinks
+  - add incident reports for failed, blocked, ambiguous, duplicate, unsafe, or user-reported bad actions
+  - support kill switches, cron disable/toggle, workflow pause, and credential revocation paths
+  - add controlled browser tools only behind safety gates: isolated browser profile/session, domain allowlist, screenshot evidence, audit logs, and approval before submit/purchase/delete/public changes
+  - verify action results after execution and record verification gaps instead of assuming success
+  - review safety metrics regularly: denied actions, approval bypass attempts, duplicate jobs, failed verifications, and policy violations
 
 Status: local MVP foundation complete. Terminal chat, onboarding, local SQLite memory, Doctor, Telegram/Zalo local polling, cron, daemon management for `telegram|zalo|cron|all`, one `bestie.service` systemd runtime, permission-gated local tools, bounded internal subagents, SDK-backed MCP setup plus classified read calls, installed skills, provider catalog/management CLI, local web console, npm update checks, Telegram real-bot smoke, and one-command installer smoke exist for local development.
 

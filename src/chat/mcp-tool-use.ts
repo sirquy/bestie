@@ -16,6 +16,8 @@ import { analyzeKnowledgeGraphTool, analyzeMemoriesTool, inspectKnowledgeEntityT
 import { readUrlTool } from "../tools/web-read-tools.js";
 import { addCronScheduleTool, listCronSchedulesTool, removeCronScheduleTool, toggleCronScheduleTool, triggerCronScheduleTool, updateCronScheduleTool } from "../tools/cron-tools.js";
 import { imageGenerateTool, videoGenerateTool } from "../tools/media-generation-tools.js";
+import { clickBrowserPageTool, openBrowserPageTool, resetBrowserSessionTool, screenshotBrowserPageTool, snapshotBrowserPageTool, typeBrowserPageTool, type BrowserActionRisk } from "../tools/browser-tools.js";
+import { sendFileTool, sendPhotoTool, type AgentOutboundFileSender } from "../tools/channel-send-tools.js";
 
 const CRON_SCHEDULE_PROMPT_GUIDANCE = '- When creating or updating a cron schedule, the cron prompt must be the future task itself, written as a standalone instruction the isolated cron runner can execute later. Never store your current reply, a success message, the schedule ID, next_run_at, or text like "I created the schedule" in the prompt. For example, if the user asks "check YouTube and summarize every day at 17:00", store a prompt like "Check the configured YouTube channel for new content and summarize the findings for the user." Then, after the tool succeeds, answer the user with the schedule confirmation separately. Use update_cron_schedule for changing an existing schedule, remove_cron_schedule/toggle_cron_schedule for changing schedule state, and trigger_cron_schedule only when the user wants to run an existing cron job now. Do not trigger a newly created schedule just to prove it exists unless the user explicitly asks for an immediate run.';
 
@@ -49,6 +51,7 @@ export interface CompleteWithAgentToolsOptions {
   onToolActivity?: AgentToolActivityHandler;
   runtimeContext?: string;
   subagentDepth?: number;
+  outboundFileSender?: AgentOutboundFileSender;
 }
 
 export interface McpToolRequest {
@@ -66,6 +69,14 @@ export const INTERNAL_TOOL_NAMES = [
   "internal.search_files",
   "internal.read_logs",
   "internal.read_url",
+  "internal.browser_open",
+  "internal.browser_snapshot",
+  "internal.browser_click",
+  "internal.browser_type",
+  "internal.browser_screenshot",
+  "internal.browser_reset",
+  "internal.send_photo",
+  "internal.send_file",
   "internal.git_status",
   "internal.git_diff",
   "internal.git_log",
@@ -144,6 +155,7 @@ export interface RunAgentToolRequestOptions extends Omit<RunMcpToolRequestOption
   chatCompletion?: AgentToolChatCompletionRunner;
   runtimeContext?: string;
   subagentDepth?: number;
+  outboundFileSender?: AgentOutboundFileSender;
 }
 
 const DEFAULT_MAX_AGENT_TOOL_CALLS = 250;
@@ -189,7 +201,7 @@ export async function completeWithAgentTools(options: CompleteWithAgentToolsOpti
     await notifyToolActivity(options, { phase: "start", callIndex: toolCallCount + 1, toolName, label });
     let toolResult: McpToolCallResult;
     try {
-      toolResult = await toolRunner({ config: currentConfig, paths: options.paths, request: decision.request, approver: options.approver, policy: options.policy, apiKey: options.apiKey, chatCompletion: options.chatCompletion, runtimeContext: options.runtimeContext, subagentDepth: options.subagentDepth ?? 0 });
+      toolResult = await toolRunner({ config: currentConfig, paths: options.paths, request: decision.request, approver: options.approver, policy: options.policy, apiKey: options.apiKey, chatCompletion: options.chatCompletion, runtimeContext: options.runtimeContext, subagentDepth: options.subagentDepth ?? 0, outboundFileSender: options.outboundFileSender });
     } catch (error) {
       toolResult = { ok: false, status: "fail", message: `Tool runtime error for ${toolName}: ${formatUnknownError(error)}` };
     }
@@ -391,6 +403,14 @@ export function buildMcpToolInstructions(config: AppConfig, runtimeContext?: str
     'internal.search_files {"query":"*.log","path":"optional/path","limit":20}',
     'internal.read_logs {"lines":40}',
     'internal.read_url {"url":"https://example.com/mcp-docs","maxBytes":0,"timeoutMs":10000}',
+    'internal.browser_open {"url":"https://example.com/page","width":1280,"height":900,"timeoutMs":15000}',
+    'internal.browser_snapshot {"timeoutMs":15000}',
+    'internal.browser_click {"selector":"button[type=submit]","text":"optional accessible text","role":"button|link|textbox|checkbox|menuitem","index":0}',
+    'internal.browser_type {"selector":"input[name=q]","text":"text to type","clear":true,"submit":false,"sensitive":false}',
+    'internal.browser_screenshot {}',
+    'internal.browser_reset {}',
+    'internal.send_photo {"path":"workspace/or/allowed/image.png","caption":"optional caption","channel":"optional telegram:<chatId>|zalo:<chatId>","fileName":"optional.png","mimeType":"image/png"}',
+    'internal.send_file {"path":"workspace/or/allowed/file.pdf","caption":"optional caption","channel":"optional telegram:<chatId>|zalo:<chatId>","fileName":"optional.pdf","mimeType":"application/pdf"}',
     'internal.git_status {"path":"optional/repo/path"}',
     'internal.git_diff {"path":"optional/repo/path","staged":false,"maxBytes":98304}',
     'internal.git_log {"path":"optional/repo/path","limit":10}',
@@ -639,6 +659,30 @@ export function formatToolActivityLabel(request: AgentToolRequest): string {
     return stringArg(args.url) ?? "url";
   }
 
+  if (request.tool === "internal.browser_open") {
+    return stringArg(args.url) ?? "browser";
+  }
+
+  if (request.tool === "internal.browser_snapshot" || request.tool === "internal.browser_screenshot") {
+    return "browser page";
+  }
+
+  if (request.tool === "internal.browser_click") {
+    return stringArg(args.selector) ?? stringArg(args.text) ?? stringArg(args.role) ?? "browser click";
+  }
+
+  if (request.tool === "internal.browser_type") {
+    return stringArg(args.selector) ?? "browser field";
+  }
+
+  if (request.tool === "internal.browser_reset") {
+    return "browser session";
+  }
+
+  if (request.tool === "internal.send_photo" || request.tool === "internal.send_file") {
+    return stringArg(args.path) ?? "outbound file";
+  }
+
   if (request.tool === "internal.git_status") {
     return stringArg(args.repoPath) ?? stringArg(args.path) ?? "git status";
   }
@@ -863,6 +907,54 @@ export async function runAgentToolRequest(options: RunAgentToolRequestOptions): 
     if (!url) return { ok: false, status: "fail", message: "internal.read_url requires arguments.url." };
     const result = await readUrlTool({ config: options.config, paths: options.paths, url, maxBytes: numberArg(args.maxBytes), timeoutMs: numberArg(args.timeoutMs), approver: options.approver });
     return { ok: result.allowed, status: result.allowed ? "pass" : "fail", message: result.reason, result: { url: result.url, statusCode: result.statusCode, contentType: result.contentType, content: result.content, truncated: result.truncated } };
+  }
+
+  if (options.request.tool === "internal.browser_open") {
+    const url = stringArg(args.url);
+    if (!url) return { ok: false, status: "fail", message: "internal.browser_open requires arguments.url." };
+    const result = await openBrowserPageTool({ config: options.config, paths: options.paths, approver: options.approver, url, width: numberArg(args.width), height: numberArg(args.height), timeoutMs: numberArg(args.timeoutMs) });
+    return { ok: result.allowed, status: result.allowed ? "pass" : "fail", message: result.reason, result };
+  }
+
+  if (options.request.tool === "internal.browser_snapshot") {
+    const result = await snapshotBrowserPageTool({ config: options.config, paths: options.paths, approver: options.approver, timeoutMs: numberArg(args.timeoutMs) });
+    return { ok: result.allowed, status: result.allowed ? "pass" : "fail", message: result.reason, result };
+  }
+
+  if (options.request.tool === "internal.browser_click") {
+    const result = await clickBrowserPageTool({ config: options.config, paths: options.paths, approver: options.approver, selector: stringArg(args.selector), text: stringArg(args.text), role: browserRoleArg(args.role), index: zeroBasedNumberArg(args.index), risk: browserActionRiskArg(args.risk), reason: stringArg(args.reason), timeoutMs: numberArg(args.timeoutMs) });
+    return { ok: result.allowed, status: result.allowed ? "pass" : "fail", message: result.reason, result };
+  }
+
+  if (options.request.tool === "internal.browser_type") {
+    const text = stringArg(args.text);
+    if (text === undefined) return { ok: false, status: "fail", message: "internal.browser_type requires arguments.text." };
+    const result = await typeBrowserPageTool({ config: options.config, paths: options.paths, approver: options.approver, selector: stringArg(args.selector), text, clear: booleanArg(args.clear), submit: booleanArg(args.submit), sensitive: booleanArg(args.sensitive), reason: stringArg(args.reason), timeoutMs: numberArg(args.timeoutMs) });
+    return { ok: result.allowed, status: result.allowed ? "pass" : "fail", message: result.reason, result: { ...result, ...(booleanArg(args.sensitive) ? { text: "[redacted]" } : {}) } };
+  }
+
+  if (options.request.tool === "internal.browser_screenshot") {
+    const result = await screenshotBrowserPageTool({ config: options.config, paths: options.paths, approver: options.approver, timeoutMs: numberArg(args.timeoutMs) });
+    return { ok: result.allowed, status: result.allowed ? "pass" : "fail", message: result.reason, result };
+  }
+
+  if (options.request.tool === "internal.browser_reset") {
+    const result = await resetBrowserSessionTool({ config: options.config, paths: options.paths, approver: options.approver });
+    return { ok: result.allowed, status: result.allowed ? "pass" : "fail", message: result.reason, result };
+  }
+
+  if (options.request.tool === "internal.send_photo") {
+    const path = stringArg(args.path);
+    if (!path) return { ok: false, status: "fail", message: "internal.send_photo requires arguments.path." };
+    const result = await sendPhotoTool({ config: options.config, paths: options.paths, approver: options.approver, outboundFileSender: options.outboundFileSender, path, channel: stringArg(args.channel), caption: stringArg(args.caption), fileName: stringArg(args.fileName), mimeType: stringArg(args.mimeType) });
+    return { ok: result.allowed, status: result.allowed ? "pass" : "fail", message: result.reason, result };
+  }
+
+  if (options.request.tool === "internal.send_file") {
+    const path = stringArg(args.path);
+    if (!path) return { ok: false, status: "fail", message: "internal.send_file requires arguments.path." };
+    const result = await sendFileTool({ config: options.config, paths: options.paths, approver: options.approver, outboundFileSender: options.outboundFileSender, path, channel: stringArg(args.channel), caption: stringArg(args.caption), fileName: stringArg(args.fileName), mimeType: stringArg(args.mimeType) });
+    return { ok: result.allowed, status: result.allowed ? "pass" : "fail", message: result.reason, result };
   }
 
   if (options.request.tool === "internal.git_status") {
@@ -1149,6 +1241,7 @@ async function runSubagentTool(options: RunAgentToolRequestOptions, args: Record
     maxToolCalls,
     runtimeContext: options.runtimeContext,
     subagentDepth: (options.subagentDepth ?? 0) + 1,
+    outboundFileSender: options.outboundFileSender,
   });
 
   return { ok: true, status: "pass", message: `Subagent ${name} completed.`, result: { name, task, answer } };
@@ -2076,6 +2169,18 @@ function stringArg(value: unknown): string | undefined {
 
 function numberArg(value: unknown): number | undefined {
   return Number.isInteger(value) && Number(value) > 0 ? Number(value) : undefined;
+}
+
+function zeroBasedNumberArg(value: unknown): number | undefined {
+  return Number.isInteger(value) && Number(value) >= 0 ? Number(value) : undefined;
+}
+
+function browserActionRiskArg(value: unknown): BrowserActionRisk | undefined {
+  return value === "read" || value === "external_write" || value === "public_action" || value === "destructive" || value === "money" ? value : undefined;
+}
+
+function browserRoleArg(value: unknown): "button" | "link" | "textbox" | "checkbox" | "menuitem" | undefined {
+  return value === "button" || value === "link" || value === "textbox" || value === "checkbox" || value === "menuitem" ? value : undefined;
 }
 
 function memoryIdsArg(value: unknown): number[] {

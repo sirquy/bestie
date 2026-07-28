@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import test from "node:test";
@@ -180,6 +180,46 @@ test("executeApprovedAction executes stored internal tool payloads", async () =>
     assert.equal(result.status, "executed");
     assert.match(result.message, /Executed internal\.write_file/);
     assert.equal(await readFile(resolve(paths.workspaceDir, "note.txt"), "utf8"), "approved\n");
+  } finally {
+    store.close();
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("executeApprovedAction replays approved outbound file payloads with a channel sender", async () => {
+  const paths = await createTempPaths();
+  const store = await SqliteMemoryStore.open(paths);
+  let sentFileName = "";
+
+  try {
+    await mkdir(paths.workspaceDir, { recursive: true });
+    await writeFile(resolve(paths.workspaceDir, "report.txt"), "approved file\n");
+    const approval = store.addPendingActionApproval({
+      channel: "telegram",
+      category: "external_write",
+      action: "internal.send_file",
+      target: "telegram:777",
+      payloadJson: JSON.stringify({ tool: "internal.send_file", arguments: { path: "report.txt", channel: "telegram:777" } }),
+    });
+    const approved = store.approvePendingActionApproval(approval.id);
+
+    assert.ok(approved);
+    const result = await executeApprovedAction(store, approved, "approve", {
+      config: createConfig(),
+      paths,
+      outboundFileSender: {
+        sendPhoto: async () => { throw new Error("should not send photo"); },
+        sendFile: async (payload) => {
+          sentFileName = payload.fileName;
+          return { channel: payload.channel ?? "telegram:777", target: "777", messageId: 99 };
+        },
+      },
+    });
+
+    assert.equal(result.status, "executed");
+    assert.match(result.message, /Executed internal\.send_file/);
+    assert.equal(sentFileName, "report.txt");
+    assert.match(JSON.stringify(result.toolResult?.result), /99/);
   } finally {
     store.close();
     await rm(paths.rootDir, { recursive: true, force: true });
