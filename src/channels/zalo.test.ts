@@ -110,6 +110,48 @@ test("ZaloHttpClient treats string timeout code as no updates", async () => {
   assert.deepEqual(await client.getUpdates(undefined, 20), []);
 });
 
+test("ZaloHttpClient sends documents through Zalo Bot API message attachments", async () => {
+  const calls: Array<{ url: string; init?: RequestInit }> = [];
+  const client = new ZaloHttpClient("bot-token", async (input, init) => {
+    calls.push({ url: String(input), init });
+    return jsonResponse({ ok: true, result: { messageId: "321" } });
+  });
+
+  const sent = await client.sendDocument("user-1", new Uint8Array([1, 2, 3]), { fileName: "report.txt", mimeType: "text/plain", caption: "Here" });
+
+  assert.deepEqual(sent, { messageId: "321" });
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0]?.url, "https://bot-api.zaloplatforms.com/botbot-token/sendMessage");
+  assert.equal(calls[0]?.init?.method, "POST");
+  assert.deepEqual(calls[0]?.init?.headers, { "content-type": "application/json" });
+  assert.deepEqual(JSON.parse(String(calls[0]?.init?.body)), {
+    chat_id: "user-1",
+    text: "Here",
+    attachments: [{ type: "file", url: "data:text/plain;base64,AQID", file_name: "report.txt", mime_type: "text/plain", size: 3 }],
+  });
+});
+
+test("ZaloHttpClient sends photos through Zalo Bot API JSON photo field", async () => {
+  const calls: Array<{ url: string; init?: RequestInit }> = [];
+  const client = new ZaloHttpClient("bot-token", async (input, init) => {
+    calls.push({ url: String(input), init });
+    return jsonResponse({ ok: true, result: { message_id: "654" } });
+  });
+
+  const sent = await client.sendPhoto("user-1", new Uint8Array([137, 80, 78, 71]), { fileName: "image.png", mimeType: "image/png", caption: "Look" });
+
+  assert.deepEqual(sent, { message_id: "654" });
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0]?.url, "https://bot-api.zaloplatforms.com/botbot-token/sendPhoto");
+  assert.equal(calls[0]?.init?.method, "POST");
+  assert.deepEqual(calls[0]?.init?.headers, { "content-type": "application/json" });
+  assert.deepEqual(JSON.parse(String(calls[0]?.init?.body)), {
+    chat_id: "user-1",
+    photo: "data:image/png;base64,iVBORw==",
+    caption: "Look",
+  });
+});
+
 test("ZaloHttpClient treats empty getUpdates result as no updates", async () => {
   const client = new ZaloHttpClient("test-token", async () => jsonResponse({ ok: true, result: { count: 0 } }));
 
@@ -711,6 +753,53 @@ test("handleZaloUpdate uses friendly tool progress labels", async () => {
     assert.equal(result, "replied");
     assert.ok(sent.some((message) => /Miu is reading file notes\.md/.test(message.text)));
     assert.equal(sent.some((message) => /internal\.read_file/.test(message.text)), false);
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("handleZaloUpdate sends outbound files and photos through the Zalo client", async () => {
+  const paths = await createTempPaths();
+  const sent: Array<{ chatId: string; text: string }> = [];
+  const sentDocuments: Array<{ chatId: string; bytes: number[]; fileName?: string; mimeType?: string; caption?: string }> = [];
+  const sentPhotos: Array<{ chatId: string; bytes: number[]; fileName?: string; mimeType?: string; caption?: string }> = [];
+  let callCount = 0;
+  const client: ZaloClient = {
+    ...createRecordingClient(sent),
+    sendDocument: async (chatId, bytes, options) => {
+      sentDocuments.push({ chatId, bytes: [...bytes], fileName: options?.fileName, mimeType: options?.mimeType, caption: options?.caption });
+      return { messageId: "doc-1" };
+    },
+    sendPhoto: async (chatId, bytes, options) => {
+      sentPhotos.push({ chatId, bytes: [...bytes], fileName: options?.fileName, mimeType: options?.mimeType, caption: options?.caption });
+      return { messageId: "photo-1" };
+    },
+  };
+
+  try {
+    await writeRuntimeFiles(paths);
+    await mkdir(paths.workspaceDir, { recursive: true });
+    await writeFile(resolve(paths.workspaceDir, "report.txt"), "hello file");
+    await writeFile(resolve(paths.workspaceDir, "image.png"), new Uint8Array([137, 80, 78, 71]));
+
+    const result = await handleZaloUpdate(
+      { update_id: 1, message: { from: { id: "owner-1" }, chat: { id: "chat-1" }, text: "send the files" } },
+      {
+        config,
+        paths,
+        client,
+        chatCompletion: async () => {
+          callCount += 1;
+          if (callCount === 1) return '{"tool":"internal.send_file","arguments":{"path":"report.txt","caption":"Report"}}';
+          if (callCount === 2) return '{"tool":"internal.send_photo","arguments":{"path":"image.png","caption":"Image"}}';
+          return '{"answer":"sent"}';
+        },
+      },
+    );
+
+    assert.equal(result, "replied");
+    assert.deepEqual(sentDocuments, [{ chatId: "chat-1", bytes: [...Buffer.from("hello file")], fileName: "report.txt", mimeType: "text/plain", caption: "Report" }]);
+    assert.deepEqual(sentPhotos, [{ chatId: "chat-1", bytes: [137, 80, 78, 71], fileName: "image.png", mimeType: "image/png", caption: "Image" }]);
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
   }

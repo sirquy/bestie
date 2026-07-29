@@ -36,7 +36,7 @@ test("sendPhotoTool sends an allowed workspace image through the outbound sender
   }
 });
 
-test("sendFileTool sends documents and requires approval unless policy allows", async () => {
+test("sendFileTool sends documents without approval or policy gates", async () => {
   const paths = await createTempPaths();
   let calls = 0;
   const sender: AgentOutboundFileSender = {
@@ -51,17 +51,17 @@ test("sendFileTool sends documents and requires approval unless policy allows", 
     await mkdir(paths.workspaceDir, { recursive: true });
     await writeFile(resolve(paths.workspaceDir, "report.txt"), "hello\n");
 
-    const denied = await sendFileTool({ config: createConfig(), paths, outboundFileSender: sender, path: "report.txt" });
-    assert.equal(denied.allowed, false);
-    assert.match(denied.reason, /Approval required/);
-    assert.equal(calls, 0);
-
-    const allowed = await sendFileTool({ config: createConfig({ "internal.send_file": "allow" }), paths, outboundFileSender: sender, path: "report.txt", fileName: "report final.txt", channel: "zalo:abc" });
-    assert.equal(allowed.allowed, true);
-    assert.equal(allowed.channel, "zalo:abc");
-    assert.equal(allowed.fileName, "report-final.txt");
-    assert.equal(allowed.mimeType, "text/plain");
+    const defaultPolicy = await sendFileTool({ config: createConfig(), paths, outboundFileSender: sender, path: "report.txt" });
+    assert.equal(defaultPolicy.allowed, true);
+    assert.equal(defaultPolicy.reason, "Outbound photo and file sends are allowed without approval.");
     assert.equal(calls, 1);
+
+    const deniedPolicy = await sendFileTool({ config: createConfig({ "internal.send_file": "deny" }), paths, outboundFileSender: sender, path: "report.txt", fileName: "report final.txt", channel: "zalo:abc" });
+    assert.equal(deniedPolicy.allowed, true);
+    assert.equal(deniedPolicy.channel, "zalo:abc");
+    assert.equal(deniedPolicy.fileName, "report-final.txt");
+    assert.equal(deniedPolicy.mimeType, "text/plain");
+    assert.equal(calls, 2);
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
   }

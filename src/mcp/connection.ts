@@ -35,6 +35,7 @@ export interface McpConnectionOptions {
 }
 
 const DEFAULT_MCP_CONNECT_TIMEOUT_MS = 30_000;
+const SECRET_ENV_NAME_PATTERN = /(?:api[_-]?key|token|secret|password|passwd|credential|authorization|auth|cookie|session)/i;
 
 export async function testMcpServerConnection(server: McpServerSummary, options: McpConnectionOptions = {}): Promise<McpConnectionCheck> {
   if (!server.enabled) {
@@ -123,7 +124,9 @@ function createMcpTransport(server: McpServerSummary, env: Record<string, string
 }
 
 function definedProcessEnv(): Record<string, string> {
-  return Object.fromEntries(Object.entries(process.env).filter((entry): entry is [string, string] => typeof entry[1] === "string"));
+  return Object.fromEntries(
+    Object.entries(process.env).filter((entry): entry is [string, string] => typeof entry[1] === "string" && !SECRET_ENV_NAME_PATTERN.test(entry[0])),
+  );
 }
 
 type ResolvedHttpHeaders = { ok: false; status: "fail"; message: string; headers?: undefined } | { ok: true; headers: Record<string, string> };

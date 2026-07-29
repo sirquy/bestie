@@ -9,6 +9,8 @@ export type MemoryWritePolicy = "allow" | "ask" | "deny";
 export type MemoryDeletePolicy = "allow" | "ask" | "deny";
 export type MemoryRetrievalPolicy = "full" | "governed";
 export type InternalToolPolicy = "allow" | "ask" | "deny";
+export type WorkspaceExternalPathAccess = "read" | "write" | "readwrite";
+export type WorkspaceExternalPathConfig = string | { path: string; access?: WorkspaceExternalPathAccess };
 type OpenAiCompatibleSpeechConfig = Extract<NonNullable<AppConfig["speech"]>, { provider: "openai-compatible" }>;
 
 export type LlmAuthMode = "api-key" | "oauth" | "local";
@@ -150,7 +152,7 @@ export interface AppConfig {
   };
   workspace?: {
     defaultPath?: string;
-    externalPaths?: string[];
+    externalPaths?: WorkspaceExternalPathConfig[];
   };
   mcp?: {
     servers: Array<{
@@ -516,14 +518,31 @@ function optionalWorkspace(value: unknown): AppConfig["workspace"] | undefined {
   const defaultPath = workspace.defaultPath === undefined ? undefined : requireString(workspace.defaultPath, "workspace.defaultPath");
   const externalPaths = workspace.externalPaths;
 
-  if (externalPaths !== undefined && (!Array.isArray(externalPaths) || externalPaths.some((path) => typeof path !== "string" || path.trim().length === 0))) {
-    throw new InvalidConfigError("workspace.externalPaths must be an array of non-empty strings.");
+  if (externalPaths !== undefined && !Array.isArray(externalPaths)) {
+    throw new InvalidConfigError("workspace.externalPaths must be an array of non-empty strings or access objects.");
+  }
+
+  if (externalPaths?.some((path) => !isValidWorkspaceExternalPath(path))) {
+    throw new InvalidConfigError("workspace.externalPaths must be an array of non-empty strings or objects with path and access read|write|readwrite.");
   }
 
   return {
     ...(defaultPath === undefined ? {} : { defaultPath }),
     ...(externalPaths === undefined ? {} : { externalPaths }),
   };
+}
+
+function isValidWorkspaceExternalPath(value: unknown): value is WorkspaceExternalPathConfig {
+  if (typeof value === "string") {
+    return value.trim().length > 0;
+  }
+  if (!isRecord(value)) {
+    return false;
+  }
+  if (typeof value.path !== "string" || value.path.trim().length === 0) {
+    return false;
+  }
+  return value.access === undefined || value.access === "read" || value.access === "write" || value.access === "readwrite";
 }
 
 function optionalInternalTools(value: unknown): AppConfig["internalTools"] | undefined {

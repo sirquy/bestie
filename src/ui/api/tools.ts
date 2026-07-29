@@ -1,4 +1,4 @@
-import { loadConfig, writeConfig, type AppConfig, type InternalToolPolicy } from "../../runtime/config.js";
+import { loadConfig, writeConfig, type AppConfig, type InternalToolPolicy, type WorkspaceExternalPathConfig } from "../../runtime/config.js";
 import { getRuntimePaths, type RuntimePaths } from "../../runtime/paths.js";
 
 export interface UiToolsSummary {
@@ -33,12 +33,17 @@ export async function getUiToolsSummary(paths: RuntimePaths = getRuntimePaths())
     workspace: {
       ...(config.workspace?.defaultPath ? { defaultPath: config.workspace.defaultPath } : {}),
       externalPathCount: config.workspace?.externalPaths?.length ?? 0,
-      externalPaths: [...(config.workspace?.externalPaths ?? [])],
+      externalPaths: (config.workspace?.externalPaths ?? []).map(formatExternalPathSummary),
     },
     exec: {
       ...(config.internalTools?.exec?.timeoutMs !== undefined ? { timeoutMs: config.internalTools.exec.timeoutMs } : {}),
     },
   };
+}
+
+function formatExternalPathSummary(value: WorkspaceExternalPathConfig): string {
+  if (typeof value === "string") return value;
+  return value.access ? `${value.path} (${value.access})` : value.path;
 }
 
 export async function updateUiToolPolicy(options: { tool: string; policy: InternalToolPolicy; paths?: RuntimePaths }): Promise<UiToolsSummary> {

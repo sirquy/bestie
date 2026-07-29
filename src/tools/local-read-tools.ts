@@ -7,7 +7,7 @@ import { promisify } from "node:util";
 import { readRecentLogs } from "../runtime/logger.js";
 import type { AppConfig } from "../runtime/config.js";
 import type { RuntimePaths } from "../runtime/paths.js";
-import { formatWorkspaceRelativePath, resolveWorkspacePath } from "../runtime/workspace.js";
+import { formatWorkspaceRelativePath, resolveSandboxPath } from "../runtime/workspace.js";
 import { reviewActionPermission, type PermissionApprover, type PermissionPolicy } from "../safety/permission-policy.js";
 import { analyzeKnowledgeGraph, planKnowledgeGraphReview, type KnowledgeGraphAnalysis, type KnowledgeGraphReviewPlan } from "../memory/knowledge-governance.js";
 import { planMemoryRebalance, type MemoryRebalanceRecommendation } from "../memory/rebalance.js";
@@ -706,7 +706,7 @@ export async function readLocalFileTool(options: LocalToolOptions & { path: stri
     return { allowed: false, reason: permission.reason };
   }
 
-  const resolvedPath = resolveReadableProjectPath(options, options.path);
+  const resolvedPath = await resolveReadableProjectPath(options, options.path);
   const relativePath = relative(options.paths.rootDir, resolvedPath);
   if (isIgnoredProjectPath(relativePath)) {
     return { allowed: false, reason: "Path is in an ignored directory.", path: resolvedPath };
@@ -750,7 +750,7 @@ export async function listLocalFilesTool(options: LocalToolOptions & { path?: st
     return { allowed: false, reason: permission.reason, entries: [] };
   }
 
-  const resolvedPath = resolveReadableListPath(options, requestedPath);
+  const resolvedPath = await resolveReadableListPath(options, requestedPath);
   const directoryStat = await statReadableProjectPath(resolvedPath);
   if (!directoryStat) {
     if (isDefaultListPath(requestedPath)) {
@@ -803,7 +803,7 @@ export async function searchLocalFilesTool(options: LocalToolOptions & { query: 
     return { allowed: false, reason: "internal.search_files requires a non-empty query.", matches: [] };
   }
 
-  const resolvedPath = resolveReadableListPath(options, requestedPath);
+  const resolvedPath = await resolveReadableListPath(options, requestedPath);
   const rootStat = await statReadableProjectPath(resolvedPath);
   if (!rootStat) {
     if (isDefaultListPath(requestedPath)) {
@@ -890,7 +890,7 @@ export async function readManyLocalFilesTool(options: LocalToolOptions & { paths
     let resolvedPath: string;
 
     try {
-      resolvedPath = resolveReadableProjectPath(options, inputPath);
+      resolvedPath = await resolveReadableProjectPath(options, inputPath);
     } catch (error) {
       skipped.push({ path: inputPath, reason: error instanceof Error ? error.message : "Path could not be resolved." });
       continue;
@@ -957,7 +957,7 @@ export async function readMarkdownBundleTool(options: LocalToolOptions & { path?
     return { allowed: false, reason: permission.reason, files: [], skipped: [], totalBytes: 0, manifest: [], truncatedFiles: [] };
   }
 
-  const resolvedPath = resolveReadableProjectPath(options, requestedPath);
+  const resolvedPath = await resolveReadableProjectPath(options, requestedPath);
   const rootStat = await statReadableProjectPath(resolvedPath);
   if (!rootStat) {
     return { allowed: false, reason: "Path does not exist.", files: [], skipped: [], totalBytes: 0, manifest: [], truncatedFiles: [] };
@@ -1192,8 +1192,8 @@ function isIgnoredProjectPath(relativePath: string): boolean {
   return relativePath.split(/[\\/]/).some(shouldSkipSearchEntry);
 }
 
-function resolveReadableProjectPath(options: LocalToolOptions, inputPath: string): string {
-  return resolveWorkspacePath({ config: options.config, paths: options.paths, inputPath, defaultBase: "root", access: "read" });
+function resolveReadableProjectPath(options: LocalToolOptions, inputPath: string): Promise<string> {
+  return resolveSandboxPath({ config: options.config, paths: options.paths, inputPath, defaultBase: "root", access: "read" });
 }
 
 async function resolveGitReadDirectory(options: LocalToolOptions): Promise<string> {
@@ -1203,7 +1203,7 @@ async function resolveGitReadDirectory(options: LocalToolOptions): Promise<strin
       ? options.path
       : undefined;
   if (requestedPath?.trim()) {
-    return resolveWorkspacePath({ config: options.config, paths: options.paths, inputPath: requestedPath, defaultBase: "root", access: "read" });
+    return resolveSandboxPath({ config: options.config, paths: options.paths, inputPath: requestedPath, defaultBase: "root", access: "read" });
   }
 
   const explicitWorkspace = process.env.BESTIE_WORKSPACE_DIR ?? options.config?.workspace?.defaultPath;
@@ -1231,9 +1231,9 @@ async function isGitWorkingTree(directory: string): Promise<boolean> {
   }
 }
 
-function resolveReadableListPath(options: LocalToolOptions, inputPath: string): string {
+function resolveReadableListPath(options: LocalToolOptions, inputPath: string): Promise<string> {
   const defaultBase = isDefaultListPath(inputPath) ? "workspace" : "root";
-  return resolveWorkspacePath({ config: options.config, paths: options.paths, inputPath, defaultBase, access: "read" });
+  return resolveSandboxPath({ config: options.config, paths: options.paths, inputPath, defaultBase, access: "read" });
 }
 
 function isDefaultListPath(inputPath: string): boolean {

@@ -207,6 +207,7 @@ export async function completeWithAgentTools(options: CompleteWithAgentToolsOpti
     }
     const durationMs = Date.now() - startedAt;
     await notifyToolActivity(options, { phase: "finish", callIndex: toolCallCount + 1, toolName, label, ok: toolResult.ok, status: toolResult.status, durationMs });
+    await appendLog({ event: "agent_tool_call", detail: { tool: toolName, label, ok: toolResult.ok, status: toolResult.status, durationMs, message: truncateLogMessage(toolResult.message) } }, { paths: options.paths });
     if (toolResult.ok) {
       completedToolResults.set(toolSignature, { toolName, result: toolResult });
       currentConfig = await (options.reloadConfig?.() ?? loadConfig(options.paths)).catch(() => currentConfig);
@@ -619,6 +620,10 @@ export function buildInvalidMcpToolRequestMessage(message: string): string {
 
 function formatUnknownError(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function truncateLogMessage(message: string): string {
+  return message.length <= 500 ? message : `${message.slice(0, 500)}...`;
 }
 
 export function formatToolActivityLabel(request: AgentToolRequest): string {

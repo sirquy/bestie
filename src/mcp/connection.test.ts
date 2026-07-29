@@ -108,6 +108,45 @@ process.stdin.on("data", (chunk) => {
   }
 });
 
+test("stdio MCP servers inherit scrubbed process env plus explicit server env", async () => {
+  const rootDir = await mkdtemp(resolve(tmpdir(), "bestie-mcp-env-test-"));
+  const originalOpenAiKey = process.env.OPENAI_API_KEY;
+  const originalVisible = process.env.BESTIE_VISIBLE_TEST_VALUE;
+
+  try {
+    process.env.OPENAI_API_KEY = "sk-process-secret";
+    process.env.BESTIE_VISIBLE_TEST_VALUE = "visible";
+    const serverPath = resolve(rootDir, "server.mjs");
+    await writeFile(
+      serverPath,
+      `process.stdin.setEncoding("utf8");
+process.stdin.on("data", (chunk) => {
+  for (const line of chunk.trim().split(/\\r?\\n/)) {
+    if (!line) continue;
+    const request = JSON.parse(line);
+    if (request.method === "initialize") {
+      process.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: request.id, result: { protocolVersion: "2024-11-05", capabilities: {}, serverInfo: { name: "fake", version: "0.0.0" } } }) + "\\n");
+    }
+    if (request.method === "tools/list") {
+      process.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: request.id, result: { tools: [{ name: "env", description: JSON.stringify({ secret: process.env.OPENAI_API_KEY || null, explicit: process.env.EXPLICIT_SECRET_TOKEN || null, visible: process.env.BESTIE_VISIBLE_TEST_VALUE || null }), inputSchema: { type: "object" } }] } }) + "\\n");
+    }
+  }
+});
+`,
+    );
+
+    const result = await listMcpServerTools({ ...server("fake", process.execPath, [serverPath]), env: { EXPLICIT_SECRET_TOKEN: "configured-secret" } }, { timeoutMs: 1_000 });
+    assert.equal(result.ok, true);
+    assert.deepEqual(JSON.parse(result.tools[0]?.description ?? "{}"), { secret: null, explicit: "configured-secret", visible: "visible" });
+  } finally {
+    if (originalOpenAiKey === undefined) delete process.env.OPENAI_API_KEY;
+    else process.env.OPENAI_API_KEY = originalOpenAiKey;
+    if (originalVisible === undefined) delete process.env.BESTIE_VISIBLE_TEST_VALUE;
+    else process.env.BESTIE_VISIBLE_TEST_VALUE = originalVisible;
+    await rm(rootDir, { recursive: true, force: true });
+  }
+});
+
 test("remote HTTP MCP servers initialize, list tools, call tools, and map secret headers from env", async () => {
   const requests: Array<{ method?: string; header?: string }> = [];
   const httpServer = createServer(async (request: IncomingMessage, response: ServerResponse) => {

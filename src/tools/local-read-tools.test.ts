@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import test from "node:test";
@@ -327,6 +327,41 @@ test("readLocalFileTool allows configured external paths", async () => {
 
     assert.equal(result.allowed, true);
     assert.equal(result.content, "external read\n");
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+    await rm(externalDir, { recursive: true, force: true });
+  }
+});
+
+test("readLocalFileTool requires explicit read access for external paths", async () => {
+  const paths = await createTempPaths();
+  const externalDir = await mkdtemp(resolve(tmpdir(), "bestie-local-read-writeonly-external-"));
+
+  try {
+    await writeFile(resolve(externalDir, "note.txt"), "external read\n");
+    await assert.rejects(
+      () => readLocalFileTool({ config: createConfig({ externalPaths: [{ path: externalDir, access: "write" }] }), paths, path: resolve(externalDir, "note.txt") }),
+      /outside the project, agent workspace, and configured external read paths/,
+    );
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+    await rm(externalDir, { recursive: true, force: true });
+  }
+});
+
+test("readLocalFileTool rejects workspace symlinks that resolve outside the sandbox", async () => {
+  const paths = await createTempPaths();
+  const externalDir = await mkdtemp(resolve(tmpdir(), "bestie-local-read-symlink-external-"));
+
+  try {
+    await mkdir(paths.workspaceDir, { recursive: true });
+    await writeFile(resolve(externalDir, "secret.txt"), "outside\n");
+    await symlink(resolve(externalDir, "secret.txt"), resolve(paths.workspaceDir, "secret-link.txt"));
+
+    await assert.rejects(
+      () => readLocalFileTool({ paths, path: resolve(paths.workspaceDir, "secret-link.txt") }),
+      /resolves outside the project, agent workspace, and configured external read paths/,
+    );
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
     await rm(externalDir, { recursive: true, force: true });

@@ -404,9 +404,9 @@ test("validateConfig accepts optional memory policies", () => {
 });
 
 test("validateConfig accepts optional workspace config", () => {
-  const config = validateConfig({ ...validConfig, workspace: { defaultPath: ".bestie/workspace", externalPaths: ["../shared", "/tmp/bestie-shared"] } });
+  const config = validateConfig({ ...validConfig, workspace: { defaultPath: ".bestie/workspace", externalPaths: ["../shared", { path: "/tmp/bestie-shared", access: "read" }, { path: "/tmp/bestie-output", access: "write" }] } });
 
-  assert.deepEqual(config.workspace, { defaultPath: ".bestie/workspace", externalPaths: ["../shared", "/tmp/bestie-shared"] });
+  assert.deepEqual(config.workspace, { defaultPath: ".bestie/workspace", externalPaths: ["../shared", { path: "/tmp/bestie-shared", access: "read" }, { path: "/tmp/bestie-output", access: "write" }] });
 });
 
 test("validateConfig accepts optional internal tool policies", () => {
@@ -654,7 +654,8 @@ test("validateConfig rejects invalid memory write policy", () => {
 
 test("validateConfig rejects invalid workspace config", () => {
   assert.throws(() => validateConfig({ ...validConfig, workspace: { defaultPath: "" } }), /workspace.defaultPath must be a non-empty string/);
-  assert.throws(() => validateConfig({ ...validConfig, workspace: { externalPaths: ["ok", ""] } }), /workspace.externalPaths must be an array of non-empty strings/);
+  assert.throws(() => validateConfig({ ...validConfig, workspace: { externalPaths: ["ok", ""] } }), /workspace.externalPaths must be an array of non-empty strings or objects/);
+  assert.throws(() => validateConfig({ ...validConfig, workspace: { externalPaths: [{ path: "ok", access: "execute" }] } }), /workspace.externalPaths must be an array of non-empty strings or objects/);
 });
 
 test("validateConfig rejects invalid internal tool policies", () => {

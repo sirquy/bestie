@@ -1,10 +1,10 @@
 import { readFile, stat } from "node:fs/promises";
 import { basename, extname } from "node:path";
 
-import type { AppConfig, InternalToolPolicy } from "../runtime/config.js";
+import type { AppConfig } from "../runtime/config.js";
 import type { RuntimePaths } from "../runtime/paths.js";
-import { resolveWorkspacePath } from "../runtime/workspace.js";
-import { reviewActionPermission, type PermissionApprover } from "../safety/permission-policy.js";
+import { resolveSandboxPath } from "../runtime/workspace.js";
+import type { PermissionApprover } from "../safety/permission-policy.js";
 
 export type OutboundChannelName = "telegram" | "zalo";
 export type OutboundAttachmentKind = "photo" | "file";
@@ -59,6 +59,7 @@ export interface ChannelSendToolResult {
 const MAX_OUTBOUND_FILE_BYTES = 50 * 1024 * 1024;
 const MAX_CAPTION_BYTES = 1024;
 const PHOTO_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
+const CHANNEL_SEND_ALLOWED_REASON = "Outbound photo and file sends are allowed without approval.";
 
 export async function sendPhotoTool(options: ChannelSendToolOptions & OutboundFilePayload): Promise<ChannelSendToolResult> {
   return sendOutboundFile({ kind: "photo", toolName: "internal.send_photo", options });
@@ -82,7 +83,7 @@ async function sendOutboundFile(input: { kind: OutboundAttachmentKind; toolName:
     return { allowed: false, reason: `Caption exceeds ${MAX_CAPTION_BYTES} bytes.` };
   }
 
-  const resolvedPath = resolveWorkspacePath({ config: options.config, paths: options.paths, inputPath: path, defaultBase: "workspace", access: "read" });
+  const resolvedPath = await resolveSandboxPath({ config: options.config, paths: options.paths, inputPath: path, defaultBase: "workspace", access: "read" });
   const fileStat = await stat(resolvedPath).catch((error: NodeJS.ErrnoException) => (error.code === "ENOENT" ? undefined : Promise.reject(error)));
   if (!fileStat?.isFile()) {
     return { allowed: false, reason: "Path does not exist or is not a file.", path: resolvedPath };
@@ -97,9 +98,6 @@ async function sendOutboundFile(input: { kind: OutboundAttachmentKind; toolName:
     return { allowed: false, reason: `internal.send_photo requires an image file (${[...PHOTO_MIME_TYPES].join(", ")}).`, path: resolvedPath, fileName, mimeType };
   }
 
-  const permission = await reviewSendPermission(options, toolName, options.channel ?? "current channel", { path, channel: options.channel, fileName, mimeType, caption: options.caption });
-  if (!permission.allowed) return { ...permission, path: resolvedPath, fileName, mimeType };
-
   const bytes = await readFile(resolvedPath);
   const payload: ResolvedOutboundFilePayload = {
     channel: options.channel,
@@ -111,23 +109,7 @@ async function sendOutboundFile(input: { kind: OutboundAttachmentKind; toolName:
   };
   const sent = kind === "photo" ? await options.outboundFileSender.sendPhoto(payload) : await options.outboundFileSender.sendFile(payload);
 
-  return { allowed: true, reason: permission.reason, channel: sent.channel, target: sent.target, messageId: sent.messageId, path: resolvedPath, fileName, mimeType, bytes: bytes.byteLength };
-}
-
-async function reviewSendPermission(options: ChannelSendToolOptions, toolName: "internal.send_photo" | "internal.send_file", target: string, payload: Record<string, unknown>): Promise<{ allowed: boolean; reason: string }> {
-  const configured = getInternalToolPolicy(options.config, toolName);
-  if (configured === "deny") return { allowed: false, reason: `${toolName} is denied by config.` };
-  if (configured === "allow") return { allowed: true, reason: `${toolName} is allowed by config.` };
-
-  const permission = await reviewActionPermission(
-    { category: "external_write", action: toolName, target, reason: "Send a local photo or file through the current channel.", trusted: false, payloadJson: JSON.stringify({ tool: toolName, arguments: payload }) },
-    { paths: options.paths, approver: options.approver, policy: { allowTrustedRead: false, allowLocalWrite: false } },
-  );
-  return { allowed: permission.decision === "allow", reason: permission.reason };
-}
-
-function getInternalToolPolicy(config: AppConfig, toolName: string): InternalToolPolicy | undefined {
-  return config.internalTools?.policies?.[toolName];
+  return { allowed: true, reason: CHANNEL_SEND_ALLOWED_REASON, channel: sent.channel, target: sent.target, messageId: sent.messageId, path: resolvedPath, fileName, mimeType, bytes: bytes.byteLength };
 }
 
 function safeFileName(value: string | undefined): string | undefined {

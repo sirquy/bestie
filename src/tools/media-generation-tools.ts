@@ -4,7 +4,7 @@ import { dirname, extname, resolve } from "node:path";
 
 import type { AppConfig, InternalToolPolicy, MediaGenerationProviderConfig } from "../runtime/config.js";
 import type { RuntimePaths } from "../runtime/paths.js";
-import { getAgentWorkspacePath, resolveWorkspacePath } from "../runtime/workspace.js";
+import { getAgentWorkspacePath, resolveSandboxPath } from "../runtime/workspace.js";
 import { reviewActionPermission, type PermissionApprover } from "../safety/permission-policy.js";
 
 export interface MediaGenerationToolOptions {
@@ -146,7 +146,7 @@ async function materializeGeneratedMediaItem(input: { item: GeneratedMediaItem; 
     throw new Error(`Generated ${input.kind} exceeds ${MAX_GENERATED_ASSET_BYTES} bytes.`);
   }
 
-  const path = resolveGeneratedMediaPath(input.options, input.kind, downloaded.mimeType, input.outputPath, input.index, input.total);
+  const path = await resolveGeneratedMediaPath(input.options, input.kind, downloaded.mimeType, input.outputPath, input.index, input.total);
   await mkdir(dirname(path), { recursive: true });
   await writeFile(path, downloaded.bytes, { mode: 0o600 });
   return { path, mimeType: downloaded.mimeType, bytes: downloaded.bytes.length, ...(downloaded.sourceUrl === undefined ? {} : { sourceUrl: downloaded.sourceUrl }), ...(input.item.revisedPrompt === undefined ? {} : { revisedPrompt: input.item.revisedPrompt }) };
@@ -217,11 +217,11 @@ function buildProviderEndpoint(provider: MediaGenerationProviderConfig, kind: Me
   return `${baseUrl}${endpointPath}`;
 }
 
-function resolveGeneratedMediaPath(options: MediaGenerationToolOptions, kind: MediaKind, mimeType: string, outputPath: string | undefined, index: number, total: number): string {
+async function resolveGeneratedMediaPath(options: MediaGenerationToolOptions, kind: MediaKind, mimeType: string, outputPath: string | undefined, index: number, total: number): Promise<string> {
   const extension = extensionForMimeType(mimeType, kind);
   if (outputPath) {
     const indexedPath = total > 1 ? appendIndexBeforeExtension(outputPath, index + 1) : outputPath;
-    return ensureExtension(resolveWorkspacePath({ config: options.config, paths: options.paths, inputPath: indexedPath, defaultBase: "workspace", access: "write" }), extension);
+    return ensureExtension(await resolveSandboxPath({ config: options.config, paths: options.paths, inputPath: indexedPath, defaultBase: "workspace", access: "write" }), extension);
   }
 
   return resolve(getAgentWorkspacePath(options.config, options.paths), "media", "generated", kind === "image" ? "images" : "videos", `${new Date().toISOString().replace(/[:.]/g, "-")}-${randomUUID()}${extension}`);

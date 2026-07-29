@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 
 import { DEFAULT_INTERNAL_EXEC_TIMEOUT_MS, type AppConfig, type InternalToolPolicy } from "../runtime/config.js";
 import type { RuntimePaths } from "../runtime/paths.js";
-import { getAgentWorkspacePath, resolveWorkspacePath } from "../runtime/workspace.js";
+import { getAgentWorkspacePath, resolveSandboxPath } from "../runtime/workspace.js";
 import { reviewActionPermission, type ActionCategory, type PermissionApprover } from "../safety/permission-policy.js";
 
 export interface LocalActionToolOptions {
@@ -48,6 +48,7 @@ const MAX_EDIT_BYTES = 256 * 1024;
 const MAX_PATCH_BYTES = 256 * 1024;
 const MAX_EXEC_OUTPUT_BYTES = 48 * 1024;
 const MAX_EXEC_TIMEOUT_MS = 10 * 60_000;
+const SECRET_ENV_NAME_PATTERN = /(?:api[_-]?key|token|secret|password|passwd|credential|authorization|auth|cookie|session)/i;
 
 export async function writeLocalFileTool(options: LocalActionToolOptions & { path: string; content: string; overwrite?: boolean }): Promise<LocalFileWriteResult> {
   const permission = await reviewInternalToolPermission(options, "internal.write_file", "local_write", options.path, "Write a local project file requested by the agent.");
@@ -58,7 +59,7 @@ export async function writeLocalFileTool(options: LocalActionToolOptions & { pat
     return { allowed: false, reason: `Content exceeds ${MAX_WRITE_BYTES} bytes.` };
   }
 
-  const resolvedPath = resolveLocalActionPath(options, options.path);
+  const resolvedPath = await resolveLocalActionPath(options, options.path);
   if (isIgnoredProjectPath(relative(options.paths.rootDir, resolvedPath))) {
     return { allowed: false, reason: "Path is in an ignored directory.", path: resolvedPath };
   }
@@ -80,7 +81,7 @@ export async function editLocalFileTool(options: LocalActionToolOptions & { path
     return { allowed: false, reason: "internal.edit_file requires non-empty oldText." };
   }
 
-  const resolvedPath = resolveLocalActionPath(options, options.path);
+  const resolvedPath = await resolveLocalActionPath(options, options.path);
   if (isIgnoredProjectPath(relative(options.paths.rootDir, resolvedPath))) {
     return { allowed: false, reason: "Path is in an ignored directory.", path: resolvedPath };
   }
@@ -131,7 +132,7 @@ export async function execLocalTool(options: LocalActionToolOptions & { command:
     return { allowed: false, reason: "internal.exec requires command.", stdout: "", stderr: "", timedOut: false };
   }
   const args = Array.isArray(options.args) ? options.args.filter((arg): arg is string => typeof arg === "string") : [];
-  const cwd = options.cwd ? resolveLocalActionPath(options, options.cwd) : getAgentWorkspacePath(options.config, options.paths);
+  const cwd = options.cwd ? await resolveLocalActionPath(options, options.cwd) : getAgentWorkspacePath(options.config, options.paths);
   await mkdir(cwd, { recursive: true });
   const requestedTimeoutMs = options.timeoutMs ?? options.config.internalTools?.exec?.timeoutMs ?? DEFAULT_INTERNAL_EXEC_TIMEOUT_MS;
   const timeoutMs = Math.min(Math.max(requestedTimeoutMs, 1), MAX_EXEC_TIMEOUT_MS);
@@ -259,8 +260,8 @@ function getInternalToolPolicy(config: AppConfig, toolName: string, category: Ac
   return category === "read" ? "allow" : "ask";
 }
 
-function resolveLocalActionPath(options: LocalActionToolOptions, inputPath: string): string {
-  return resolveWorkspacePath({ config: options.config, paths: options.paths, inputPath, defaultBase: "workspace", access: "write" });
+function resolveLocalActionPath(options: LocalActionToolOptions, inputPath: string): Promise<string> {
+  return resolveSandboxPath({ config: options.config, paths: options.paths, inputPath, defaultBase: "workspace", access: "write" });
 }
 
 function resolveInternalExecCommand(command: string, args: string[]): { command: string; args: string[] } {
@@ -323,7 +324,15 @@ function runProcess(command: string, args: string[], cwd: string, input: string 
 function buildInternalExecEnv(): NodeJS.ProcessEnv {
   const nodeBinDir = dirname(process.execPath);
   const existingPath = process.env.PATH ?? "";
-  return { ...process.env, PATH: existingPath.split(":").includes(nodeBinDir) ? existingPath : `${nodeBinDir}${existingPath ? `:${existingPath}` : ""}` };
+  const sanitizedEnv: NodeJS.ProcessEnv = {};
+  for (const [name, value] of Object.entries(process.env)) {
+    if (value === undefined || SECRET_ENV_NAME_PATTERN.test(name)) {
+      continue;
+    }
+    sanitizedEnv[name] = value;
+  }
+  sanitizedEnv.PATH = existingPath.split(":").includes(nodeBinDir) ? existingPath : `${nodeBinDir}${existingPath ? `:${existingPath}` : ""}`;
+  return sanitizedEnv;
 }
 
 function appendBounded(existing: string, chunk: string): string {

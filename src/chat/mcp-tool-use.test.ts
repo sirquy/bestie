@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import test from "node:test";
@@ -1997,6 +1997,11 @@ test("completeWithAgentTools supports multiple internal tool calls before final 
     ]);
     assert.equal(requests.length, 3);
     assert.match(JSON.stringify(requests[2]), /Tool result for internal.read_file/);
+    const logText = await readFile(paths.appLogPath, "utf8");
+    assert.equal((logText.match(/agent_tool_call/g) ?? []).length, 2);
+    assert.match(logText, /internal.search_files/);
+    assert.match(logText, /internal.read_file/);
+    assert.doesNotMatch(logText, /\"content\":\"hello\"/);
     assert.deepEqual(
       activities.map((activity) => ({ phase: (activity as { phase: string }).phase, label: (activity as { label: string }).label })),
       [

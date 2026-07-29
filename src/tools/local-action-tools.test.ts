@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import test from "node:test";
@@ -167,6 +167,33 @@ test("execLocalTool exposes the current Node bin directory for npm commands", as
   }
 });
 
+test("execLocalTool scrubs secret-like environment variables", async () => {
+  const paths = await createTempPaths();
+  const originalOpenAiKey = process.env.OPENAI_API_KEY;
+  const originalPlain = process.env.BESTIE_VISIBLE_TEST_VALUE;
+
+  try {
+    process.env.OPENAI_API_KEY = "sk-test-secret";
+    process.env.BESTIE_VISIBLE_TEST_VALUE = "visible";
+    const result = await execLocalTool({
+      config: createConfig({ "internal.exec": "allow" }),
+      paths,
+      command: process.execPath,
+      args: ["-e", "console.log(JSON.stringify({ secret: process.env.OPENAI_API_KEY || null, plain: process.env.BESTIE_VISIBLE_TEST_VALUE || null }))"],
+    });
+
+    assert.equal(result.allowed, true);
+    assert.equal(result.exitCode, 0);
+    assert.deepEqual(JSON.parse(result.stdout), { secret: null, plain: "visible" });
+  } finally {
+    if (originalOpenAiKey === undefined) delete process.env.OPENAI_API_KEY;
+    else process.env.OPENAI_API_KEY = originalOpenAiKey;
+    if (originalPlain === undefined) delete process.env.BESTIE_VISIBLE_TEST_VALUE;
+    else process.env.BESTIE_VISIBLE_TEST_VALUE = originalPlain;
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
 test("local action tools use the default agent workspace for relative paths", async () => {
   const paths = await createTempPaths();
 
@@ -208,6 +235,48 @@ test("local action tools allow configured external paths", async () => {
 
     assert.equal(result.allowed, true);
     assert.equal(await readFile(resolve(externalDir, "note.txt"), "utf8"), "external\n");
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+    await rm(externalDir, { recursive: true, force: true });
+  }
+});
+
+test("local action tools require explicit write access outside the agent workspace", async () => {
+  const paths = await createTempPaths();
+  const externalDir = await mkdtemp(resolve(tmpdir(), "bestie-local-action-readonly-external-"));
+
+  try {
+    await assert.rejects(
+      () => writeLocalFileTool({ config: createConfig({ "internal.write_file": "allow" }), paths, path: resolve(paths.rootDir, "project-note.txt"), content: "nope\n" }),
+      /outside the project, agent workspace, and configured external write paths/,
+    );
+
+    await assert.rejects(
+      () => writeLocalFileTool({ config: { ...createConfig({ "internal.write_file": "allow" }), workspace: { externalPaths: [{ path: externalDir, access: "read" }] } }, paths, path: resolve(externalDir, "note.txt"), content: "nope\n" }),
+      /outside the project, agent workspace, and configured external write paths/,
+    );
+
+    const written = await writeLocalFileTool({ config: { ...createConfig({ "internal.write_file": "allow" }), workspace: { externalPaths: [{ path: externalDir, access: "write" }] } }, paths, path: resolve(externalDir, "note.txt"), content: "external write\n" });
+    assert.equal(written.allowed, true);
+    assert.equal(await readFile(resolve(externalDir, "note.txt"), "utf8"), "external write\n");
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+    await rm(externalDir, { recursive: true, force: true });
+  }
+});
+
+test("local action tools reject workspace symlinks that resolve outside the sandbox", async () => {
+  const paths = await createTempPaths();
+  const externalDir = await mkdtemp(resolve(tmpdir(), "bestie-local-action-symlink-external-"));
+
+  try {
+    await mkdir(paths.workspaceDir, { recursive: true });
+    await symlink(externalDir, resolve(paths.workspaceDir, "outside-link"), "dir");
+
+    await assert.rejects(
+      () => writeLocalFileTool({ config: createConfig({ "internal.write_file": "allow" }), paths, path: "outside-link/note.txt", content: "escaped\n" }),
+      /resolves outside the project, agent workspace, and configured external write paths/,
+    );
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
     await rm(externalDir, { recursive: true, force: true });

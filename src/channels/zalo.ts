@@ -244,11 +244,15 @@ export class ZaloHttpClient implements ZaloClient {
   }
 
   async sendPhoto(chatId: string, photo: Uint8Array, options: ZaloSendFileOptions = {}): Promise<ZaloSentMessage | void> {
-    return this.call<ZaloSentMessage | void>("sendPhoto", { chat_id: chatId, file_name: options.fileName ?? "bestie-photo.jpg", mime_type: options.mimeType, caption: options.caption, data: Buffer.from(photo).toString("base64") });
+    return this.call<ZaloSentMessage | void>("sendPhoto", { chat_id: chatId, photo: toZaloDataUrl(photo, options.mimeType ?? "image/jpeg"), ...(options.caption ? { caption: options.caption } : {}) });
   }
 
   async sendDocument(chatId: string, document: Uint8Array, options: ZaloSendFileOptions = {}): Promise<ZaloSentMessage | void> {
-    return this.call<ZaloSentMessage | void>("sendDocument", { chat_id: chatId, file_name: options.fileName ?? "bestie-file.bin", mime_type: options.mimeType, caption: options.caption, data: Buffer.from(document).toString("base64") });
+    return this.call<ZaloSentMessage | void>("sendMessage", {
+      chat_id: chatId,
+      ...(options.caption ? { text: options.caption } : {}),
+      attachments: [{ type: "file", url: toZaloDataUrl(document, options.mimeType ?? "application/octet-stream"), file_name: options.fileName ?? "bestie-file.bin", mime_type: options.mimeType ?? "application/octet-stream", size: document.byteLength }],
+    });
   }
 
   async sendChatAction(chatId: string, action: "typing"): Promise<void> {
@@ -1490,6 +1494,10 @@ function splitZaloMessage(text: string): string[] {
   return chunks;
 }
 
+function toZaloDataUrl(bytes: Uint8Array, mimeType: string): string {
+  return `data:${mimeType};base64,${Buffer.from(bytes).toString("base64")}`;
+}
+
 function normalizeZaloSentMessage(message: ZaloSentMessage | void): { messageId?: number } | void {
   if (!message || message.messageId === undefined) {
     return undefined;
@@ -1659,9 +1667,16 @@ function parseZaloMemoryCommand(text: string): "list" | "tiers" | "rebalance" | 
   return undefined;
 }
 
-async function readJsonResponse(response: Response): Promise<{ ok?: boolean; result?: unknown; description?: unknown; error_code?: unknown }> {
+interface ZaloJsonResponse {
+  ok?: boolean;
+  result?: unknown;
+  description?: unknown;
+  error_code?: unknown;
+}
+
+async function readJsonResponse(response: Response): Promise<ZaloJsonResponse> {
   try {
-    return await response.json() as { ok?: boolean; result?: unknown; description?: unknown; error_code?: unknown };
+    return await response.json() as ZaloJsonResponse;
   } catch {
     return { ok: response.ok, description: response.statusText };
   }
