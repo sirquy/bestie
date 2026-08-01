@@ -707,7 +707,7 @@ export async function readLocalFileTool(options: LocalToolOptions & { path: stri
   }
 
   const resolvedPath = await resolveReadableProjectPath(options, options.path);
-  const relativePath = relative(options.paths.rootDir, resolvedPath);
+  const relativePath = formatWorkspaceRelativePath(options.config, options.paths, resolvedPath);
   if (isIgnoredProjectPath(relativePath)) {
     return { allowed: false, reason: "Path is in an ignored directory.", path: resolvedPath };
   }
@@ -896,7 +896,7 @@ export async function readManyLocalFilesTool(options: LocalToolOptions & { paths
       continue;
     }
 
-    const relativePath = relative(options.paths.rootDir, resolvedPath);
+    const relativePath = formatWorkspaceRelativePath(options.config, options.paths, resolvedPath);
 
     if (isIgnoredProjectPath(relativePath)) {
       skipped.push({ path: relativePath, reason: "Path is in an ignored directory." });

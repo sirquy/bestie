@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { mkdtemp, rm, stat } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { platform, tmpdir } from "node:os";
 import { resolve } from "node:path";
 import test from "node:test";
 
@@ -45,7 +45,9 @@ test("appendLog redacts known secrets and writes private log file", async () => 
     const text = lines.join("\n");
 
     assert.equal(lines.length, 1);
-    assert.equal(logMode, 0o600);
+    if (platform() !== "win32") {
+      assert.equal(logMode, 0o600);
+    }
     assert(!text.includes("sk-test-secret"));
     assert(!text.includes("abcdefghijklmnopqrstuvwxyz1234567890"));
     assert(text.includes("[REDACTED]"));

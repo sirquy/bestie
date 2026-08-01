@@ -1,3 +1,6 @@
+import { existsSync } from "node:fs";
+import { delimiter, isAbsolute, resolve } from "node:path";
+
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
@@ -117,9 +120,14 @@ function createMcpTransport(server: McpServerSummary, env: Record<string, string
     return { ok: false, status: "fail", message: `MCP server ${server.name} has no command configured.` };
   }
 
+  const processEnv = { ...definedProcessEnv(), ...server.env };
+  if (!canResolveCommand(server.command, processEnv)) {
+    return { ok: false, status: "fail", message: `MCP server ${server.name} could not start: command ${server.command} was not found.` };
+  }
+
   return {
     ok: true,
-    transport: new StdioClientTransport({ command: server.command, args: server.args, env: { ...definedProcessEnv(), ...server.env }, stderr: "pipe" }),
+    transport: new StdioClientTransport({ command: server.command, args: server.args, env: processEnv, stderr: "pipe" }),
   };
 }
 
@@ -143,12 +151,30 @@ function resolveHttpHeaders(server: McpServerSummary, env: Record<string, string
   return { ok: true, headers };
 }
 
+function canResolveCommand(command: string, env: NodeJS.ProcessEnv): boolean {
+  if (command.includes("/") || command.includes("\\") || isAbsolute(command)) {
+    return existsSync(command);
+  }
+
+  const extensions = process.platform === "win32" ? ["", ".exe", ".cmd", ".bat"] : [""];
+  for (const pathEntry of (env.PATH ?? process.env.PATH ?? "").split(delimiter)) {
+    if (!pathEntry) continue;
+    for (const extension of extensions) {
+      if (existsSync(resolve(pathEntry, `${command}${extension}`))) {
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+
 function formatMcpSdkError(server: McpServerSummary, error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
   if (/timed out|timeout/i.test(message)) {
     return `MCP server ${server.name} did not respond within the configured timeout.`;
   }
-  if (/ENOENT|spawn/i.test(message)) {
+  if (/ENOENT|spawn|Connection closed/i.test(message)) {
     return `MCP server ${server.name} could not start: ${message}`;
   }
   return `MCP server ${server.name} failed: ${message}`;

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { platform, tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { promisify } from "node:util";
 import test from "node:test";
@@ -711,12 +711,20 @@ test("nested command help is available for channels and MCP", async () => {
   assert.match(telegramHelp.stdout, /voice\s+Alias cho lệnh voice dùng chung/);
 });
 
-test("linked bin entrypoint runs through npm symlinks", async () => {
+test("linked bin entrypoint runs through npm symlinks", async (t) => {
   const linkedBin = await mkdtemp(resolve(tmpdir(), "bestie-linked-bin-test-"));
   const symlinkPath = resolve(linkedBin, "bestie");
 
   try {
-    await symlink(resolve(process.cwd(), "dist/cli/index.js"), symlinkPath);
+    try {
+      await symlink(resolve(process.cwd(), "dist/cli/index.js"), symlinkPath);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "EPERM") {
+        t.skip("Symlink creation requires elevated permissions on this Windows environment.");
+        return;
+      }
+      throw error;
+    }
     const { stdout } = await execFileAsync(symlinkPath, ["--help"], { env: { ...process.env, BESTIE_BANNER: "static" } });
 
     assert.match(stdout, /Usage:/);
@@ -733,9 +741,11 @@ async function captureMain(argv: string[], env: Record<string, string> = {}): Pr
   const stdout: string[] = [];
   const stderr: string[] = [];
 
-  for (const key of Object.keys(env)) {
+  const effectiveEnv = platform() === "win32" && env.HOME && !env.USERPROFILE ? { ...env, USERPROFILE: env.HOME } : env;
+
+  for (const key of Object.keys(effectiveEnv)) {
     originalEnv[key] = process.env[key];
-    process.env[key] = env[key];
+    process.env[key] = effectiveEnv[key];
   }
 
   console.log = (message?: unknown) => stdout.push(String(message ?? ""));

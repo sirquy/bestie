@@ -1,6 +1,8 @@
 import { spawn } from "node:child_process";
+import { platform } from "node:os";
+import { existsSync } from "node:fs";
 import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
-import { dirname, isAbsolute, relative, resolve } from "node:path";
+import { delimiter, dirname, isAbsolute, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { DEFAULT_INTERNAL_EXEC_TIMEOUT_MS, type AppConfig, type InternalToolPolicy } from "../runtime/config.js";
@@ -152,6 +154,10 @@ export async function listProcessesTool(options: LocalActionToolOptions & { limi
 }
 
 function readProcessList(limit: number): Promise<LocalProcessListResult["processes"]> {
+  return platform() === "win32" ? readWindowsProcessList(limit) : readPosixProcessList(limit);
+}
+
+function readPosixProcessList(limit: number): Promise<LocalProcessListResult["processes"]> {
   return new Promise((resolvePromise) => {
     const child = spawn("ps", ["-eo", "pid=,ppid=,comm=,args="], { shell: false, stdio: ["ignore", "pipe", "ignore"] });
     const processes: LocalProcessListResult["processes"] = [];
@@ -190,6 +196,49 @@ function readProcessList(limit: number): Promise<LocalProcessListResult["process
     child.once("error", finish);
     child.once("exit", finish);
   });
+}
+
+function readWindowsProcessList(limit: number): Promise<LocalProcessListResult["processes"]> {
+  return new Promise((resolvePromise) => {
+    const child = spawn("tasklist.exe", ["/FO", "CSV", "/NH"], { shell: false, stdio: ["ignore", "pipe", "ignore"] });
+    const processes: LocalProcessListResult["processes"] = [];
+    let output = "";
+    let settled = false;
+    const timer = setTimeout(() => {
+      child.kill("SIGTERM");
+      finish();
+    }, 5_000);
+
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      for (const line of output.split(/\r?\n/)) {
+        const process = parseTaskListLine(line);
+        if (process) processes.push(process);
+        if (processes.length >= limit) break;
+      }
+      if (processes.length === 0) {
+        processes.push({ pid: process.pid, ppid: 0, command: process.title || "node", args: "" });
+      }
+      resolvePromise(processes);
+    };
+
+    child.stdout.setEncoding("utf8");
+    child.stdout.on("data", (chunk) => {
+      output += chunk;
+    });
+    child.once("error", finish);
+    child.once("exit", finish);
+  });
+}
+
+function parseTaskListLine(line: string): LocalProcessListResult["processes"][number] | undefined {
+  const columns = line.match(/"([^"]*)"(?:,|$)/g)?.map((column) => column.replace(/^"|",?$/g, ""));
+  if (!columns || columns.length < 2) return undefined;
+  const pid = Number(columns[1]);
+  if (!Number.isFinite(pid)) return undefined;
+  return { pid, ppid: 0, command: columns[0] ?? "", args: "" };
 }
 
 async function reviewInternalToolPermission(
@@ -265,11 +314,23 @@ function resolveLocalActionPath(options: LocalActionToolOptions, inputPath: stri
 }
 
 function resolveInternalExecCommand(command: string, args: string[]): { command: string; args: string[] } {
-  if (command !== "bestie") {
-    return { command, args };
+  if (command === "bestie") {
+    return { command: process.execPath, args: [fileURLToPath(new URL("../cli/index.js", import.meta.url)), ...args] };
   }
 
-  return { command: process.execPath, args: [fileURLToPath(new URL("../cli/index.js", import.meta.url)), ...args] };
+  if (platform() === "win32" && command === "npm") {
+    const npmCliPath = resolve(dirname(process.execPath), "node_modules", "npm", "bin", "npm-cli.js");
+    if (existsSync(npmCliPath)) {
+      return { command: process.execPath, args: [npmCliPath, ...args] };
+    }
+    return { command: "npm.cmd", args };
+  }
+
+  if (platform() === "win32" && ["npx", "pnpm", "yarn"].includes(command)) {
+    return { command: `${command}.cmd`, args };
+  }
+
+  return { command, args };
 }
 
 function isIgnoredProjectPath(relativePath: string): boolean {
@@ -331,7 +392,7 @@ function buildInternalExecEnv(): NodeJS.ProcessEnv {
     }
     sanitizedEnv[name] = value;
   }
-  sanitizedEnv.PATH = existingPath.split(":").includes(nodeBinDir) ? existingPath : `${nodeBinDir}${existingPath ? `:${existingPath}` : ""}`;
+  sanitizedEnv.PATH = existingPath.split(delimiter).includes(nodeBinDir) ? existingPath : `${nodeBinDir}${existingPath ? `${delimiter}${existingPath}` : ""}`;
   return sanitizedEnv;
 }
 

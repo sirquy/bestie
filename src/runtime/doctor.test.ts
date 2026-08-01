@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { chmod, mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { platform, tmpdir } from "node:os";
 import { delimiter, resolve } from "node:path";
 import test from "node:test";
 
@@ -74,10 +74,13 @@ test("runDoctor --fix repairs broad local file permissions without exposing secr
 
     const report = await runDoctor(paths, { fix: true });
 
-    assert.equal(report.fixes.find((fix) => fix.name === ".env permissions")?.status, "fixed");
-    assert.equal(report.fixes.find((fix) => fix.name === "Log file permissions")?.status, "fixed");
-    assert.equal((await stat(paths.envPath)).mode & 0o777, 0o600);
-    assert.equal((await stat(paths.appLogPath)).mode & 0o777, 0o600);
+    const expectedPermissionFix = platform() === "win32" ? "skipped" : "fixed";
+    assert.equal(report.fixes.find((fix) => fix.name === ".env permissions")?.status, expectedPermissionFix);
+    assert.equal(report.fixes.find((fix) => fix.name === "Log file permissions")?.status, expectedPermissionFix);
+    if (platform() !== "win32") {
+      assert.equal((await stat(paths.envPath)).mode & 0o777, 0o600);
+      assert.equal((await stat(paths.appLogPath)).mode & 0o777, 0o600);
+    }
     assert.doesNotMatch(JSON.stringify(report), /sk-test-secret/);
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
@@ -438,8 +441,10 @@ test("runDoctor fails broad .env permissions without exposing secrets", async ()
     const report = await runDoctor(paths);
     const permissionsCheck = report.checks.find((check) => check.name === ".env permissions");
 
-    assert.equal(permissionsCheck?.status, "fail");
-    assert.match(permissionsCheck?.message ?? "", /too broad/);
+    assert.equal(permissionsCheck?.status, platform() === "win32" ? "pass" : "fail");
+    if (platform() !== "win32") {
+      assert.match(permissionsCheck?.message ?? "", /too broad/);
+    }
     assert.doesNotMatch(JSON.stringify(report), /sk-test-secret/);
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
@@ -457,8 +462,10 @@ test("runDoctor fails broad log file permissions", async () => {
     const report = await runDoctor(paths);
     const permissionsCheck = report.checks.find((check) => check.name === "Log file permissions");
 
-    assert.equal(permissionsCheck?.status, "fail");
-    assert.match(permissionsCheck?.message ?? "", /too broad/);
+    assert.equal(permissionsCheck?.status, platform() === "win32" ? "pass" : "fail");
+    if (platform() !== "win32") {
+      assert.match(permissionsCheck?.message ?? "", /too broad/);
+    }
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
   }
@@ -973,9 +980,14 @@ test("runDoctor fails when Telegram voice replies are enabled without a speech p
 
 test("runDoctor can run an opt-in Telegram speech round trip test", async () => {
   const paths = await createTempPaths();
+  const oldPath = process.env.PATH;
 
   try {
     await mkdir(paths.appDir, { recursive: true });
+    await mkdir(resolve(paths.rootDir, "bin"), { recursive: true });
+    await writeFile(resolve(paths.rootDir, "bin/ffmpeg"), "#!/usr/bin/env bash\nexit 0\n", { mode: 0o755 });
+    await chmod(resolve(paths.rootDir, "bin/ffmpeg"), 0o755);
+    process.env.PATH = `${resolve(paths.rootDir, "bin")}${delimiter}${oldPath ?? ""}`;
     await writeConfig(
       {
         version: 2,
@@ -1018,6 +1030,7 @@ test("runDoctor can run an opt-in Telegram speech round trip test", async () => 
     assert.equal(speechTest?.status, "pass");
     assert.match(speechTest?.message ?? "", /audio\/ogg/);
   } finally {
+    process.env.PATH = oldPath;
     await rm(paths.rootDir, { recursive: true, force: true });
   }
 });

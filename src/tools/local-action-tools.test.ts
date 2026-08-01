@@ -66,7 +66,7 @@ test("applyPatchTool applies git-compatible patches when allowed", async () => {
     ].join("\n");
     const result = await applyPatchTool({ config: createConfig({ "internal.apply_patch": "allow" }), paths, patch });
     assert.equal(result.allowed, true);
-    assert.equal(await readFile(resolve(paths.rootDir, "note.txt"), "utf8"), "hello patched\n");
+    assert.equal((await readFile(resolve(paths.rootDir, "note.txt"), "utf8")).replace(/\r\n/g, "\n"), "hello patched\n");
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
   }
@@ -265,13 +265,21 @@ test("local action tools require explicit write access outside the agent workspa
   }
 });
 
-test("local action tools reject workspace symlinks that resolve outside the sandbox", async () => {
+test("local action tools reject workspace symlinks that resolve outside the sandbox", async (t) => {
   const paths = await createTempPaths();
   const externalDir = await mkdtemp(resolve(tmpdir(), "bestie-local-action-symlink-external-"));
 
   try {
     await mkdir(paths.workspaceDir, { recursive: true });
-    await symlink(externalDir, resolve(paths.workspaceDir, "outside-link"), "dir");
+    try {
+      await symlink(externalDir, resolve(paths.workspaceDir, "outside-link"), "dir");
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "EPERM") {
+        t.skip("Symlink creation requires elevated permissions on this Windows environment.");
+        return;
+      }
+      throw error;
+    }
 
     await assert.rejects(
       () => writeLocalFileTool({ config: createConfig({ "internal.write_file": "allow" }), paths, path: "outside-link/note.txt", content: "escaped\n" }),

@@ -1,5 +1,5 @@
 import { mkdir, unlink, writeFile } from "node:fs/promises";
-import { dirname, resolve } from "node:path";
+import { dirname, posix, resolve, sep } from "node:path";
 
 export type ChannelAttachmentKind = "photo" | "document" | "voice" | "audio" | "video" | "sticker";
 
@@ -71,7 +71,15 @@ export function buildChannelAttachmentPath(input: ChannelAttachmentPathInput): s
   const channelName = sanitizeChannelFileName(input.channelName);
   const updateId = sanitizeChannelFileName(String(input.updateId));
   const messageId = sanitizeChannelFileName(String(input.messageId));
-  return resolve(input.workspaceDir, "media", "inbound", `${channelName}-${updateId}-${messageId}-${input.kind}-${baseName}${input.extension}`);
+  const fileName = `${channelName}-${updateId}-${messageId}-${input.kind}-${baseName}${input.extension}`;
+  if (input.workspaceDir.startsWith("/") && sep === "\\") {
+    return posix.join(input.workspaceDir, "media", "inbound", fileName);
+  }
+  return formatPortablePath(resolve(input.workspaceDir, "media", "inbound", fileName));
+}
+
+function formatPortablePath(value: string): string {
+  return sep === "\\" ? value.replace(/\\/g, "/") : value;
 }
 
 export function isAllowedChannelAttachmentMimeType(mimeType: string | undefined, allowedMimeTypes: string[]): boolean {

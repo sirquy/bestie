@@ -349,14 +349,22 @@ test("readLocalFileTool requires explicit read access for external paths", async
   }
 });
 
-test("readLocalFileTool rejects workspace symlinks that resolve outside the sandbox", async () => {
+test("readLocalFileTool rejects workspace symlinks that resolve outside the sandbox", async (t) => {
   const paths = await createTempPaths();
   const externalDir = await mkdtemp(resolve(tmpdir(), "bestie-local-read-symlink-external-"));
 
   try {
     await mkdir(paths.workspaceDir, { recursive: true });
     await writeFile(resolve(externalDir, "secret.txt"), "outside\n");
-    await symlink(resolve(externalDir, "secret.txt"), resolve(paths.workspaceDir, "secret-link.txt"));
+    try {
+      await symlink(resolve(externalDir, "secret.txt"), resolve(paths.workspaceDir, "secret-link.txt"));
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "EPERM") {
+        t.skip("Symlink creation requires elevated permissions on this Windows environment.");
+        return;
+      }
+      throw error;
+    }
 
     await assert.rejects(
       () => readLocalFileTool({ paths, path: resolve(paths.workspaceDir, "secret-link.txt") }),

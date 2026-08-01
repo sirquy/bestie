@@ -1,5 +1,5 @@
 import { realpath, stat } from "node:fs/promises";
-import { dirname, isAbsolute, relative, resolve } from "node:path";
+import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
 
 import type { AppConfig, WorkspaceExternalPathAccess, WorkspaceExternalPathConfig } from "./config.js";
 import type { RuntimePaths } from "./paths.js";
@@ -48,10 +48,10 @@ export async function resolveSandboxPath(options: { config?: AppConfig; paths: R
 export function formatWorkspaceRelativePath(config: AppConfig | undefined, paths: RuntimePaths, absolutePath: string): string {
   const workspacePath = getAgentWorkspacePath(config, paths);
   if (isInsidePath(absolutePath, workspacePath)) {
-    return relative(workspacePath, absolutePath) || ".";
+    return formatPortablePath(relative(workspacePath, absolutePath) || ".");
   }
   if (isInsidePath(absolutePath, paths.rootDir)) {
-    return relative(paths.rootDir, absolutePath) || ".";
+    return formatPortablePath(relative(paths.rootDir, absolutePath) || ".");
   }
 
   for (const externalPath of config?.workspace?.externalPaths ?? []) {
@@ -62,6 +62,10 @@ export function formatWorkspaceRelativePath(config: AppConfig | undefined, paths
   }
 
   return absolutePath;
+}
+
+function formatPortablePath(value: string): string {
+  return sep === "\\" ? value.replace(/\\/g, "/") : value;
 }
 
 function findAllowedExternalRoot(config: AppConfig | undefined, paths: RuntimePaths, absolutePath: string): string | undefined {

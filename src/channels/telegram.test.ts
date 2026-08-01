@@ -2192,7 +2192,7 @@ test("handleTelegramUpdate executes approved edit and patch action payloads", as
       "",
     ].join("\n");
     await requestAndApproveTelegramTool(paths, JSON.stringify({ tool: "internal.apply_patch", arguments: { patch } }), "internal.apply_patch");
-    assert.equal(await readFile(resolve(paths.rootDir, "telegram-patch.txt"), "utf8"), "hello patched\n");
+    assert.equal((await readFile(resolve(paths.rootDir, "telegram-patch.txt"), "utf8")).replace(/\r\n/g, "\n"), "hello patched\n");
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
   }
