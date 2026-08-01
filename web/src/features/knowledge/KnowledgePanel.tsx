@@ -35,6 +35,7 @@ interface RelationEditDraft {
 
 export function KnowledgePanel({ data, loading, onData, onLoading }: KnowledgePanelProps): ReactElement {
   const [query, setQuery] = useState("");
+  const [inventoryView, setInventoryView] = useState<"entities" | "relations">("entities");
   const [mergePrimaryId, setMergePrimaryId] = useState("");
   const [mergeDuplicateId, setMergeDuplicateId] = useState("");
   const [reason, setReason] = useState("");
@@ -134,55 +135,62 @@ export function KnowledgePanel({ data, loading, onData, onLoading }: KnowledgePa
         <KnowledgeMetric label="Status" value={data.state.paused ? "paused" : "active"} tone={data.state.paused ? "warn" : "good"} />
       </div>
 
-      <Card className="border-white/10 bg-background/35">
-        <CardHeader className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-          <div>
-            <CardTitle className="flex items-center gap-2"><Database className="size-5" /> Knowledge database</CardTitle>
-            <CardDescription>{data.database.path}</CardDescription>
+      <Card className="overflow-hidden border-white/10 bg-background/35" id="knowledge-cytoscape">
+        <CardHeader className="gap-4 border-b border-white/10 bg-gradient-to-r from-white/[0.06] via-white/[0.02] to-transparent">
+          <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
+            <div className="min-w-0">
+              <CardTitle className="flex items-center gap-2 text-xl"><GitBranch className="size-5" /> 3D Knowledge Map</CardTitle>
+              <CardDescription className="mt-2 max-w-3xl">Primary spatial view for entities, relation edges, confidence, scope, sensitivity, and trust.</CardDescription>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Badge variant={data.database.exists ? "secondary" : "destructive"}>{data.database.exists ? "database ready" : "database missing"}</Badge>
+              <Badge variant={data.state.paused ? "destructive" : "outline"}>{data.state.paused ? "paused" : "active"}</Badge>
+              <Button variant="outline" onClick={() => void reload()} disabled={loading}><RefreshCw className={loading ? "animate-spin" : ""} /> Reload</Button>
+            </div>
           </div>
-          <div className="flex flex-wrap gap-2">
-            <Badge variant={data.database.exists ? "secondary" : "destructive"}>{data.database.exists ? "exists" : "missing"}</Badge>
-            <Badge variant={data.state.paused ? "destructive" : "outline"}>{data.state.paused ? "paused" : "active"}</Badge>
-            <Button variant="outline" onClick={() => void reload()} disabled={loading}><RefreshCw className={loading ? "animate-spin" : ""} /> Reload</Button>
-          </div>
-        </CardHeader>
-        <CardContent className="grid gap-3">
-          <form className="grid gap-2 md:grid-cols-[1fr_auto]" onSubmit={(event) => void search(event)}>
+          <form className="grid gap-2 lg:grid-cols-[minmax(0,1fr)_auto]" onSubmit={(event) => void search(event)}>
             <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search entities, relations, and pending knowledge" />
-            <Button type="submit" disabled={loading}><Search /> Search</Button>
+            <Button type="submit" disabled={loading}><Search /> Search graph</Button>
           </form>
           {data.query ? <p className="text-sm text-muted-foreground">Search query: <span className="text-foreground">{data.query}</span></p> : null}
+        </CardHeader>
+        <CardContent className="grid gap-4 p-3 md:p-4">
+          <KnowledgeMap3D entities={data.entities} relations={data.relations} />
         </CardContent>
       </Card>
 
-      <div className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
-        <Card className="border-white/10 bg-background/35" id="knowledge-cytoscape">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2"><GitBranch className="size-5" /> 3D Knowledge Map</CardTitle>
-            <CardDescription>Spatial map of entities, relation edges, confidence, scope, and sensitivity.</CardDescription>
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,0.95fr)_minmax(24rem,0.7fr)]">
+        <Card className="border-white/10 bg-background/35">
+          <CardHeader className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div>
+              <CardTitle className="flex items-center gap-2"><Database className="size-5" /> Knowledge inventory</CardTitle>
+              <CardDescription>Browse one type at a time to keep review focused.</CardDescription>
+            </div>
+            <div className="flex rounded-2xl border border-white/10 bg-background/40 p-1 text-sm">
+              <button type="button" className={`rounded-xl px-3 py-1.5 transition ${inventoryView === "entities" ? "bg-secondary text-foreground" : "text-muted-foreground hover:text-foreground"}`} onClick={() => setInventoryView("entities")}>Entities <span className="ml-1 text-xs opacity-70">{data.entities.length}</span></button>
+              <button type="button" className={`rounded-xl px-3 py-1.5 transition ${inventoryView === "relations" ? "bg-secondary text-foreground" : "text-muted-foreground hover:text-foreground"}`} onClick={() => setInventoryView("relations")}>Relations <span className="ml-1 text-xs opacity-70">{data.relations.length}</span></button>
+            </div>
           </CardHeader>
-          <CardContent className="grid gap-4">
-            <KnowledgeMap3D entities={data.entities} relations={data.relations} />
-            <Separator />
-            <section className="grid gap-3">
-              <div className="flex items-center justify-between gap-2"><h3 className="text-sm font-semibold uppercase tracking-[0.16em] text-muted-foreground">Entities</h3><Badge variant="outline">{data.entities.length}</Badge></div>
-              {data.entities.length ? data.entities.map((entity) => <EntityRow key={entity.id} entity={entity} loading={loading} onForget={(id) => postAction({ action: "forget_entity", id, reason }, `Forget entity #${id}? This may require approval.`)} />) : <EmptyText>No entities found.</EmptyText>}
-            </section>
-            <Separator />
-            <section className="grid gap-3">
-              <div className="flex items-center justify-between gap-2"><h3 className="text-sm font-semibold uppercase tracking-[0.16em] text-muted-foreground">Relations</h3><Badge variant="outline">{data.relations.length}</Badge></div>
-              {data.relations.length ? data.relations.map((relation) => <RelationRow key={relation.id} relation={relation} loading={loading} onForget={(id) => postAction({ action: "forget_relation", id, reason }, `Forget relation #${id}? This may require approval.`)} />) : <EmptyText>No relations found.</EmptyText>}
-            </section>
+          <CardContent className="grid gap-3">
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-white/10 bg-card/40 px-3 py-2 text-xs text-muted-foreground">
+              <span>{inventoryView === "entities" ? "Entity names, kind, scope, confidence, and trust." : "Relation path, type, evidence preview, confidence, and trust."}</span>
+              <Badge variant="outline">{inventoryView === "entities" ? data.entities.length : data.relations.length} shown</Badge>
+            </div>
+            <div className="no-scrollbar grid max-h-[38rem] gap-2 overflow-auto pr-1">
+              {inventoryView === "entities"
+                ? data.entities.length ? data.entities.map((entity) => <EntityRow key={entity.id} entity={entity} loading={loading} onForget={(id) => postAction({ action: "forget_entity", id, reason }, `Forget entity #${id}? This may require approval.`)} />) : <EmptyText>No entities found.</EmptyText>
+                : data.relations.length ? data.relations.map((relation) => <RelationRow key={relation.id} relation={relation} loading={loading} onForget={(id) => postAction({ action: "forget_relation", id, reason }, `Forget relation #${id}? This may require approval.`)} />) : <EmptyText>No relations found.</EmptyText>}
+            </div>
           </CardContent>
         </Card>
 
-        <div className="grid gap-4">
+        <div className="grid content-start gap-4">
           <Card className="border-white/10 bg-background/35">
             <CardHeader>
               <CardTitle className="flex items-center gap-2"><ShieldAlert className="size-5" /> Pending review</CardTitle>
               <CardDescription>Approve, reject, or sanitize extracted knowledge before it lands in memory.</CardDescription>
             </CardHeader>
-            <CardContent className="grid gap-3">
+            <CardContent className="no-scrollbar grid max-h-80 gap-3 overflow-auto pr-1">
               {data.pending.length ? data.pending.map((item) => <PendingRow key={item.id} item={item} loading={loading} onAction={runPendingAction} />) : <EmptyText>No pending knowledge items.</EmptyText>}
             </CardContent>
           </Card>
@@ -190,7 +198,7 @@ export function KnowledgePanel({ data, loading, onData, onLoading }: KnowledgePa
           <Card className="border-white/10 bg-background/35">
             <CardHeader>
               <CardTitle className="flex items-center gap-2"><Sparkles className="size-5" /> Graph actions</CardTitle>
-              <CardDescription>Actions are confirmation-gated and may enter the approval queue.</CardDescription>
+              <CardDescription>Confirmation-gated cleanup and relation edits.</CardDescription>
             </CardHeader>
             <CardContent className="grid gap-4">
               <div className="grid gap-2">
@@ -198,7 +206,7 @@ export function KnowledgePanel({ data, loading, onData, onLoading }: KnowledgePa
                 <Textarea id="knowledge-reason" value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Optional reason for audit trail" rows={2} />
               </div>
               <form className="grid gap-3" onSubmit={(event) => void mergeEntities(event)}>
-                <div className="grid gap-2 md:grid-cols-2">
+                <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
                   <EntitySelect id="knowledge-primary-entity" label="Primary entity" value={mergePrimaryId} onChange={setMergePrimaryId} entities={entityOptions} />
                   <EntitySelect id="knowledge-duplicate-entity" label="Duplicate entity" value={mergeDuplicateId} onChange={setMergeDuplicateId} entities={entityOptions} />
                 </div>
@@ -210,10 +218,10 @@ export function KnowledgePanel({ data, loading, onData, onLoading }: KnowledgePa
                   <Label htmlFor="knowledge-relation-select">Relation</Label>
                   <Select id="knowledge-relation-select" value={relationDraft.relationId} onChange={(event) => setRelationDraft((current) => ({ ...current, relationId: event.target.value }))} data-knowledge-select="relation">
                     <option value="">Choose relation</option>
-                    {relationOptions.map((relation) => <option key={relation.id} value={relation.id}>#{relation.id} {relation.sourceName} → {relation.targetName}</option>)}
+                    {relationOptions.map((relation) => <option key={relation.id} value={relation.id}>#{relation.id} {relation.sourceName} ? {relation.targetName}</option>)}
                   </Select>
                 </div>
-                <div className="grid gap-2 md:grid-cols-3">
+                <div className="grid gap-2 md:grid-cols-3 xl:grid-cols-1 2xl:grid-cols-3">
                   <Input value={relationDraft.confidence} onChange={(event) => setRelationDraft((current) => ({ ...current, confidence: event.target.value }))} placeholder="confidence 0-1" inputMode="decimal" />
                   <Select value={relationDraft.scope} onChange={(event) => setRelationDraft((current) => ({ ...current, scope: event.target.value as RelationEditDraft["scope"] }))}>
                     <option value="">Scope</option><option value="core">core</option><option value="project">project</option><option value="session">session</option>
@@ -360,7 +368,7 @@ function KnowledgeMap3D({ entities, relations }: { entities: KnowledgeEntity[]; 
   return (
     <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-[radial-gradient(circle_at_50%_20%,rgba(166,244,172,0.15),transparent_18rem),radial-gradient(circle_at_80%_65%,rgba(255,181,91,0.10),transparent_18rem),linear-gradient(135deg,rgba(255,255,255,0.06),rgba(255,255,255,0.01))]" data-knowledge-map-3d>
       <div className="absolute left-4 top-4 z-10 flex flex-wrap gap-2 text-xs"><Badge variant="secondary">{graphData.nodes.length} nodes</Badge><Badge variant="outline">{graphData.links.length} links</Badge><Badge variant="outline">WebGL force map</Badge></div>
-      <div ref={containerRef} className="h-[34rem] w-full" data-knowledge-map-canvas />
+      <div ref={containerRef} className="h-[42rem] w-full" data-knowledge-map-canvas />
       <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 bg-gradient-to-t from-background/90 via-background/45 to-transparent p-4 pt-16">
         <div className="grid gap-2 text-xs text-muted-foreground md:grid-cols-3">
           <span>Drag to orbit ? scroll to zoom ? click node to focus</span><span>Particles show relation direction and confidence</span><span>Red = sensitive, green/blue = normal scoped memory</span>
@@ -421,38 +429,30 @@ function createKnowledgeNodeObject(node: KnowledgeGraphNode, three: typeof THREE
 
 function EntityRow({ entity, loading, onForget }: { entity: KnowledgeEntity; loading: boolean; onForget: (id: number) => Promise<void> }): ReactElement {
   return (
-    <div className="knowledge-row rounded-2xl border border-white/10 bg-card/60 p-4 text-sm">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <p className="font-semibold">#{entity.id} {entity.canonicalName}</p>
-          <p className="mt-1 text-muted-foreground">{entity.kind}{entity.aliases.length ? ` / aliases: ${entity.aliases.join(", ")}` : ""}</p>
+    <div className="knowledge-row rounded-2xl border border-white/10 bg-card/55 p-3 text-sm transition hover:border-primary/30 hover:bg-card/75">
+      <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
+        <div className="min-w-0">
+          <p className="truncate font-semibold">#{entity.id} {entity.canonicalName}</p>
+          <p className="mt-1 truncate text-xs text-muted-foreground">{entity.kind}{entity.aliases.length ? ` · ${entity.aliases.slice(0, 3).join(", ")}${entity.aliases.length > 3 ? "…" : ""}` : ""}</p>
         </div>
-        <div className="flex flex-wrap gap-2"><Badge variant="outline">{entity.scope}</Badge><Badge variant={entity.sensitivity === "sensitive" ? "destructive" : "secondary"}>{entity.sensitivity}</Badge></div>
+        <div className="flex flex-wrap items-center gap-2 md:justify-end"><Badge variant="outline">{entity.scope}</Badge><Badge variant={entity.sensitivity === "sensitive" ? "destructive" : "secondary"}>{entity.sensitivity}</Badge><Badge variant="outline">{formatPercent(entity.confidence)}</Badge><Button size="sm" variant="ghost" onClick={() => void onForget(entity.id)} disabled={loading} data-knowledge-action="forget_entity"><Trash2 /> Forget</Button></div>
       </div>
-      <Separator className="my-3" />
-      <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-muted-foreground">
-        <span>confidence {formatPercent(entity.confidence)} / trust {formatTrust(entity.trust)} / updated {formatDate(entity.updatedAt)}</span>
-        <Button size="sm" variant="outline" onClick={() => void onForget(entity.id)} disabled={loading} data-knowledge-action="forget_entity"><Trash2 /> Forget</Button>
-      </div>
+      <p className="mt-2 text-xs text-muted-foreground">trust {formatTrust(entity.trust)} · updated {formatDate(entity.updatedAt)}</p>
     </div>
   );
 }
 
 function RelationRow({ relation, loading, onForget }: { relation: KnowledgeRelation; loading: boolean; onForget: (id: number) => Promise<void> }): ReactElement {
   return (
-    <div className="knowledge-row rounded-2xl border border-white/10 bg-card/60 p-4 text-sm">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <p className="font-semibold">#{relation.id} {relation.sourceName} <span className="text-muted-foreground">{relation.relationType}</span> {relation.targetName}</p>
-          <p className="mt-1 text-muted-foreground">{relation.evidence || "No evidence text."}</p>
+    <div className="knowledge-row rounded-2xl border border-white/10 bg-card/55 p-3 text-sm transition hover:border-primary/30 hover:bg-card/75">
+      <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
+        <div className="min-w-0">
+          <p className="truncate font-semibold">#{relation.id} {relation.sourceName} <span className="text-muted-foreground">→ {relation.targetName}</span></p>
+          <p className="mt-1 truncate text-xs text-muted-foreground"><span className="text-foreground/80">{relation.relationType}</span>{relation.evidence ? ` · ${relation.evidence}` : " · No evidence text."}</p>
         </div>
-        <div className="flex flex-wrap gap-2"><Badge variant="outline">{relation.scope}</Badge><Badge variant={relation.sensitivity === "sensitive" ? "destructive" : "secondary"}>{relation.sensitivity}</Badge></div>
+        <div className="flex flex-wrap items-center gap-2 md:justify-end"><Badge variant="outline">{relation.scope}</Badge><Badge variant={relation.sensitivity === "sensitive" ? "destructive" : "secondary"}>{relation.sensitivity}</Badge><Badge variant="outline">{formatPercent(relation.confidence)}</Badge><Button size="sm" variant="ghost" onClick={() => void onForget(relation.id)} disabled={loading} data-knowledge-action="forget_relation"><Link2Off /> Forget</Button></div>
       </div>
-      <Separator className="my-3" />
-      <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-muted-foreground">
-        <span>confidence {formatPercent(relation.confidence)} / trust {formatTrust(relation.trust)} / updated {formatDate(relation.updatedAt)}</span>
-        <Button size="sm" variant="outline" onClick={() => void onForget(relation.id)} disabled={loading} data-knowledge-action="forget_relation"><Link2Off /> Forget</Button>
-      </div>
+      <p className="mt-2 text-xs text-muted-foreground">trust {formatTrust(relation.trust)} · updated {formatDate(relation.updatedAt)}</p>
     </div>
   );
 }
