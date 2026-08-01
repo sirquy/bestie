@@ -136,6 +136,10 @@ async function assertKnowledgePanel(page) {
   await expectPath(page, "/knowledge");
   await page.waitForSelector('[data-knowledge-summary="true"]');
   await page.waitForSelector("#knowledge-cytoscape");
+  await page.waitForSelector('[data-knowledge-map-3d]');
+  await page.waitForSelector('[data-knowledge-map-canvas] canvas');
+  await page.waitForSelector('[data-knowledge-map-node]', { state: "attached" });
+  await page.waitForSelector('[data-knowledge-map-edge]', { state: "attached" });
   await page.waitForSelector(".knowledge-row");
   await page.waitForSelector('[data-knowledge-action="approve_pending"]');
   await page.waitForSelector('[data-knowledge-select="knowledge-primary-entity"]');
