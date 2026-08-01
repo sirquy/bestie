@@ -175,12 +175,14 @@ function App(): ReactElement {
   const ActiveIcon = selectedPanel.icon;
 
   return (
-    <div className="min-h-screen p-4 md:p-6 lg:p-8">
-      <div className={cn("mx-auto grid max-w-7xl gap-4 transition-[grid-template-columns] duration-300", sidebarCollapsed ? "lg:grid-cols-[5.25rem_1fr]" : "lg:grid-cols-[18rem_1fr]")}>
-        <aside className={cn("self-start rounded-3xl border border-white/10 bg-card/80 shadow-glow backdrop-blur transition-all duration-300 lg:sticky lg:top-8 lg:max-h-[calc(100vh-4rem)] lg:overflow-y-auto", sidebarCollapsed ? "p-3" : "p-4")} data-sidebar-state={sidebarCollapsed ? "collapsed" : "expanded"}>
+    <div className="relative min-h-screen overflow-x-hidden p-3 md:p-5 lg:p-8">
+      <div className="pointer-events-none fixed inset-0 -z-10 bg-[radial-gradient(circle_at_20%_0%,rgba(166,244,172,0.12),transparent_24rem),radial-gradient(circle_at_100%_20%,rgba(255,181,91,0.12),transparent_26rem)]" />
+      <div className="pointer-events-none fixed inset-x-8 top-0 -z-10 h-px bg-gradient-to-r from-transparent via-primary/50 to-transparent" />
+      <div className="mx-auto max-w-[92rem]">
+        <aside className={cn("no-scrollbar rounded-[1.75rem] border border-white/10 bg-card/70 shadow-glow ring-1 ring-white/5 backdrop-blur-xl transition-all duration-300 lg:fixed lg:bottom-8 lg:left-[max(2rem,calc((100vw-92rem)/2+2rem))] lg:top-8 lg:z-30 lg:overflow-y-auto", sidebarCollapsed ? "p-3 lg:w-[5.25rem]" : "p-4 lg:w-[18rem]")} data-sidebar-state={sidebarCollapsed ? "collapsed" : "expanded"}>
           <div className={cn("mb-6 flex items-center gap-3", sidebarCollapsed ? "flex-col justify-center" : "justify-between")}>
             <div className={cn("flex items-center gap-3", sidebarCollapsed ? "justify-center" : "")}>
-              <div className="flex size-12 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-lg">
+              <div className="flex size-12 items-center justify-center rounded-2xl bg-gradient-to-br from-primary to-accent text-primary-foreground shadow-lg shadow-primary/20 ring-1 ring-white/30">
                 <Sparkles className="size-6" />
               </div>
               <div className={cn("min-w-0 transition-opacity duration-200", sidebarCollapsed ? "hidden" : "block")}>
@@ -190,7 +192,7 @@ function App(): ReactElement {
             </div>
             <Button
               aria-label={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-              className="shrink-0"
+              className="shrink-0 border-white/10 bg-background/50 hover:bg-secondary/80"
               data-sidebar-toggle
               size="icon"
               title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
@@ -201,14 +203,14 @@ function App(): ReactElement {
               {sidebarCollapsed ? <ChevronsRight /> : <ChevronsLeft />}
             </Button>
           </div>
-          <nav className="grid gap-1">
+          <nav className="grid gap-1.5">
             {panels.map((panel) => {
               const Icon = panel.icon;
               return (
                 <Button
                   asChild
                   key={panel.id}
-                  className={cn("justify-start", sidebarCollapsed ? "lg:justify-center lg:px-0" : "")}
+                  className={cn("h-10 justify-start rounded-2xl text-muted-foreground transition-all hover:bg-secondary/70 hover:text-foreground", activePanel === panel.id ? "bg-secondary/90 text-foreground shadow-sm ring-1 ring-primary/20" : "", sidebarCollapsed ? "lg:justify-center lg:px-0" : "")}
                   variant={activePanel === panel.id ? "secondary" : "ghost"}
                 >
                   <a
@@ -231,7 +233,7 @@ function App(): ReactElement {
           </nav>
           <Button
             aria-label={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-            className="mt-3 w-full lg:hidden"
+            className="mt-3 w-full rounded-2xl border-white/10 bg-background/50 lg:hidden"
             data-sidebar-toggle-mobile
             type="button"
             variant="outline"
@@ -242,20 +244,23 @@ function App(): ReactElement {
           </Button>
         </aside>
 
-        <main className="grid gap-4">
-          <Card className="border-white/10 bg-card/80 backdrop-blur">
-            <CardHeader>
+        <main className={cn("grid min-w-0 gap-4 transition-[margin] duration-300", sidebarCollapsed ? "lg:ml-[6.25rem]" : "lg:ml-[19rem]")}>
+          <Card className="overflow-hidden rounded-[1.75rem] border-white/10 bg-card/70 shadow-2xl shadow-black/20 ring-1 ring-white/5 backdrop-blur-xl">
+            <CardHeader className="border-b border-white/10 bg-gradient-to-r from-white/[0.06] via-white/[0.03] to-transparent">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <CardTitle className="flex items-center gap-2"><ActiveIcon className="size-5" /> {selectedPanel.title}</CardTitle>
-                  <CardDescription>{selectedPanel.description}</CardDescription>
+                  <CardTitle className="flex items-center gap-3 text-xl">
+                    <span className="flex size-10 items-center justify-center rounded-2xl bg-primary/10 text-primary ring-1 ring-primary/20"><ActiveIcon className="size-5" /></span>
+                    {selectedPanel.title}
+                  </CardTitle>
+                  <CardDescription className="mt-2 max-w-3xl">{selectedPanel.description}</CardDescription>
                 </div>
-                <Badge variant={loadingPanels[selectedPanel.id] ? "secondary" : "outline"}>
+                <Badge className="rounded-full border-white/10 bg-background/50 px-3 py-1" variant={loadingPanels[selectedPanel.id] ? "secondary" : "outline"}>
                   {loadingPanels[selectedPanel.id] ? "Loading" : selectedPanel.endpoint ?? "Local"}
                 </Badge>
               </div>
             </CardHeader>
-            <CardContent>
+            <CardContent className="p-4 md:p-6">
               {selectedPanel.id === "chat" ? (
                 activeError ? <ChatPanelError error={activeError} /> : (
                   <ChatPanel

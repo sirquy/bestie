@@ -227,7 +227,7 @@ export function ChatPanel({ data, loading, onData, onLoading }: ChatPanelProps):
                 <label className="flex items-center gap-2 rounded-xl border border-white/10 bg-card/50 p-3 text-sm"><input type="checkbox" checked={memoryEnabled} onChange={(event) => setMemoryEnabled(event.target.checked)} /> Memory</label>
                 <div className="grid gap-1"><Label htmlFor="chat-provider-model">Provider model</Label><Input id="chat-provider-model" value={providerModelRef} onChange={(event) => setProviderModelRef(event.target.value)} placeholder="default" /></div>
               </div>
-              <div className="chat-transcript grid max-h-[44rem] gap-3 overflow-auto rounded-2xl border border-white/10 bg-background/30 p-3" id="chat-transcript">
+              <div className="chat-transcript no-scrollbar grid max-h-[44rem] gap-3 overflow-auto rounded-2xl border border-white/10 bg-background/30 p-3" id="chat-transcript">
                 {visibleMessages.length ? visibleMessages.map((item) => <MessageBubble key={item.id} message={item} onFork={forkAt} />) : <EmptyText>No messages in this session.</EmptyText>}
                 {streaming ? <div className="chat-message rounded-2xl border border-primary/30 bg-primary/10 p-4 text-sm assistant"><div className="mb-2 flex items-center gap-2 font-semibold"><Loader2 className="size-4 animate-spin" /> Bestie is replying</div><p className="whitespace-pre-wrap text-muted-foreground">{streamText || "Thinking..."}</p></div> : null}
               </div>

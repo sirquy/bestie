@@ -28,14 +28,44 @@
 
   * {
     @apply border-border;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+
+  *::-webkit-scrollbar {
+    width: 0;
+    height: 0;
+    display: none;
+  }
+
+  html {
+    @apply scroll-smooth;
   }
 
   body {
-    @apply min-h-screen bg-background text-foreground antialiased;
+    @apply min-h-screen overflow-x-hidden bg-background text-foreground antialiased;
     background:
-      radial-gradient(circle at top left, rgba(166, 244, 172, 0.18), transparent 34rem),
-      radial-gradient(circle at 80% 20%, rgba(255, 181, 91, 0.14), transparent 32rem),
-      linear-gradient(135deg, #11143f 0%, #17113c 45%, #0d1027 100%);
+      radial-gradient(circle at 8% 10%, rgba(166, 244, 172, 0.22), transparent 28rem),
+      radial-gradient(circle at 88% 4%, rgba(255, 181, 91, 0.16), transparent 30rem),
+      radial-gradient(circle at 50% 100%, rgba(119, 97, 255, 0.14), transparent 34rem),
+      linear-gradient(135deg, #090b24 0%, #12133a 42%, #090b20 100%);
+  }
+
+  ::selection {
+    @apply bg-primary/30 text-foreground;
+  }
+}
+
+@layer utilities {
+  .no-scrollbar {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+
+  .no-scrollbar::-webkit-scrollbar {
+    width: 0;
+    height: 0;
+    display: none;
   }
 }
 

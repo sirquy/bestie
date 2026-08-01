@@ -308,7 +308,7 @@ function LibraryDetails({ item, diff }: { item: SkillLibraryItem; diff: SkillLib
       <div className="flex flex-wrap gap-2"><Badge variant="outline">{item.author}</Badge><Badge variant="outline">{item.sourceName}</Badge><Badge variant={item.localChanges ? "destructive" : "secondary"}>{item.localChanges ? "local changes" : item.installed ? "installed" : "not installed"}</Badge></div>
       <p className="text-muted-foreground">{item.changelog || item.preview}</p>
       {item.permissions.length ? <p className="text-muted-foreground">Permissions: {item.permissions.join(", ")}</p> : null}
-      {diff ? <div className="rounded-xl border border-white/10 bg-background/35 p-3"><p className="font-semibold">Diff preview: +{diff.addedLines} / -{diff.removedLines}</p><pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap text-xs text-muted-foreground">{diff.preview.slice(0, 30).map((line) => `${line.kind === "added" ? "+" : line.kind === "removed" ? "-" : " "} ${line.text}`).join("\n")}</pre></div> : null}
+      {diff ? <div className="rounded-xl border border-white/10 bg-background/35 p-3"><p className="font-semibold">Diff preview: +{diff.addedLines} / -{diff.removedLines}</p><pre className="no-scrollbar mt-2 max-h-48 overflow-auto whitespace-pre-wrap text-xs text-muted-foreground">{diff.preview.slice(0, 30).map((line) => `${line.kind === "added" ? "+" : line.kind === "removed" ? "-" : " "} ${line.text}`).join("\n")}</pre></div> : null}
     </div>
   );
 }
