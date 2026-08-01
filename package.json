@@ -6,6 +6,7 @@
   "files": [
     "dist/**/*.js",
     "!dist/**/*.test.js",
+    "dist/ui/web/**/*",
     "assets/**/*",
     "README.md",
     "LICENSE",
@@ -15,7 +16,8 @@
     "bestie": "dist/cli/index.js"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json && chmod 755 dist/cli/index.js",
+    "build": "tsc -p tsconfig.json && npm run build:ui && chmod 755 dist/cli/index.js",
+    "build:ui": "tsc -p web/tsconfig.json --noEmit && vite build --config web/vite.config.ts",
     "clean": "rm -rf dist",
     "dev": "tsx src/cli/index.ts",
     "pack:check": "npm run clean && npm run build && npm pack --dry-run",
@@ -68,9 +70,16 @@
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^20.14.15",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.4",
+    "@vitejs/plugin-react": "^6.0.5",
+    "autoprefixer": "^10.5.4",
     "playwright": "^1.61.1",
+    "postcss": "^8.5.25",
+    "tailwindcss": "^3.4.17",
     "tsx": "^4.16.2",
-    "typescript": "^5.5.4"
+    "typescript": "^5.5.4",
+    "vite": "^8.2.0"
   },
   "dependencies": {
     "@elevenlabs/elevenlabs-js": "^2.57.0",
@@ -78,12 +87,19 @@
     "@grammyjs/types": "^3.28.0",
     "@inquirer/prompts": "^8.5.2",
     "@modelcontextprotocol/sdk": "^1.29.0",
+    "@radix-ui/react-slot": "^1.3.3",
     "better-sqlite3": "^12.11.1",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
     "commander": "^14.0.3",
     "cytoscape": "^3.34.0",
     "grammy": "^1.44.0",
     "iso-639-1": "^3.1.6",
+    "lucide-react": "^1.28.0",
     "mammoth": "^1.12.0",
-    "pdf-parse": "^1.1.1"
+    "pdf-parse": "^1.1.1",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "tailwind-merge": "^3.6.0"
   }
 }

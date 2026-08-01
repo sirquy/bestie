@@ -26,6 +26,7 @@ const require = createRequire(import.meta.url);
 const CYTOSCAPE_SCRIPT_PATH = require.resolve("cytoscape/dist/cytoscape.min.js");
 const BESTIE_ICON_PNG_PATH = fileURLToPath(new URL("../../assets/bestie-app-icon.png", import.meta.url));
 const BESTIE_ICON_ICO_PATH = fileURLToPath(new URL("../../assets/bestie-app-icon.ico", import.meta.url));
+const UI_WEB_INDEX_PATH = fileURLToPath(new URL("./web/index.html", import.meta.url));
 
 export interface UiServerOptions {
   host?: string;
@@ -85,7 +86,8 @@ async function handleRequestAsync(request: IncomingMessage, response: ServerResp
   }
 
   if (method === "GET" && url.pathname === "/") {
-    sendHtml(response, renderHomePage());
+    const reactHome = await readOptionalTextFile(UI_WEB_INDEX_PATH);
+    sendHtml(response, reactHome ?? renderHomePage());
     return;
   }
 
@@ -107,6 +109,14 @@ async function handleRequestAsync(request: IncomingMessage, response: ServerResp
   if (method === "GET" && (url.pathname === "/assets/bestie-app-icon.ico" || url.pathname === "/favicon.ico")) {
     sendBinary(response, await readFile(BESTIE_ICON_ICO_PATH), "image/x-icon");
     return;
+  }
+
+  if (method === "GET" && url.pathname.startsWith("/assets/")) {
+    const asset = await readUiWebAsset(url.pathname);
+    if (asset) {
+      sendBinary(response, asset.body, asset.contentType);
+      return;
+    }
   }
 
   if (method === "GET" && url.pathname === "/manifest.webmanifest") {
@@ -862,6 +872,46 @@ function sendJson(response: ServerResponse, statusCode: number, body: unknown): 
     "content-type": "application/json; charset=utf-8",
   });
   response.end(`${JSON.stringify(body)}\n`);
+}
+
+async function readOptionalTextFile(path: string): Promise<string | undefined> {
+  try {
+    return await readFile(path, "utf8");
+  } catch (error: unknown) {
+    if (isFileNotFoundError(error)) return undefined;
+    throw error;
+  }
+}
+
+async function readUiWebAsset(pathname: string): Promise<{ body: Buffer; contentType: string } | undefined> {
+  const normalizedPath = pathname.replace(/^\/+/, "");
+  if (!normalizedPath.startsWith("assets/") || normalizedPath.includes("..") || normalizedPath.includes("\\")) {
+    return undefined;
+  }
+
+  try {
+    return {
+      body: await readFile(fileURLToPath(new URL(`./web/${normalizedPath}`, import.meta.url))),
+      contentType: contentTypeForPath(normalizedPath),
+    };
+  } catch (error: unknown) {
+    if (isFileNotFoundError(error)) return undefined;
+    throw error;
+  }
+}
+
+function isFileNotFoundError(error: unknown): boolean {
+  return typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT";
+}
+
+function contentTypeForPath(path: string): string {
+  if (path.endsWith(".css")) return "text/css; charset=utf-8";
+  if (path.endsWith(".js") || path.endsWith(".mjs")) return "text/javascript; charset=utf-8";
+  if (path.endsWith(".svg")) return "image/svg+xml";
+  if (path.endsWith(".png")) return "image/png";
+  if (path.endsWith(".ico")) return "image/x-icon";
+  if (path.endsWith(".woff2")) return "font/woff2";
+  return "application/octet-stream";
 }
 
 function sendSseHeaders(response: ServerResponse): void {
