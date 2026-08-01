@@ -56,7 +56,7 @@ export function ApprovalsPanel({ data, loading, onData, onLoading }: ApprovalsPa
       <Alert className="border-accent/40 bg-accent/10">
         <ClipboardCheck className="size-4" />
         <AlertTitle>Approvals are loading</AlertTitle>
-        <AlertDescription>Reading pending action approvals from local memory storage.</AlertDescription>
+        <AlertDescription>Loading actions that need your review.</AlertDescription>
       </Alert>
     );
   }
@@ -68,18 +68,18 @@ export function ApprovalsPanel({ data, loading, onData, onLoading }: ApprovalsPa
 
       <div className="grid gap-3 md:grid-cols-3">
         <Metric label="Pending" value={String(data.count)} tone={data.count ? "warn" : "good"} />
-        <Metric label="Database" value={data.databaseExists ? "ready" : "missing"} tone={data.databaseExists ? "good" : "warn"} />
-        <Metric label="Review mode" value="confirm gated" tone="good" />
+        <Metric label="Review queue" value={data.databaseExists ? "ready" : "not ready"} tone={data.databaseExists ? "good" : "warn"} />
+        <Metric label="Review mode" value="approval required" tone="good" />
       </div>
 
       <Card className="border-white/10 bg-background/35">
         <CardHeader className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
           <div>
-            <CardTitle className="flex items-center gap-2"><ShieldCheck className="size-5" /> Pending approvals</CardTitle>
+            <CardTitle className="flex items-center gap-2"><ShieldCheck className="size-5" /> Needs approval</CardTitle>
             <CardDescription>External, destructive, public, or sensitive actions wait here for explicit review.</CardDescription>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Badge variant={data.databaseExists ? "secondary" : "destructive"}><Database className="mr-1 size-3" /> {data.databaseExists ? "database ready" : "database missing"}</Badge>
+            <Badge variant={data.databaseExists ? "secondary" : "destructive"}><Database className="mr-1 size-3" /> {data.databaseExists ? "ready" : "not ready"}</Badge>
             <Button variant="outline" onClick={() => void reload()} disabled={loading}><RefreshCw className={loading ? "animate-spin" : ""} /> Reload</Button>
           </div>
         </CardHeader>

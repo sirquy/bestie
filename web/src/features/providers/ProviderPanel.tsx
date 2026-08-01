@@ -78,20 +78,20 @@ export function ProviderPanel({ data, loading, onData, onLoading }: ProviderPane
 
   async function setPrimary(): Promise<void> {
     if (!effectiveSelectedModel) return;
-    if (!await confirmDialog(`Set ${effectiveSelectedModel} as the primary model?`)) return;
+    if (!await confirmDialog(`Set ${effectiveSelectedModel} as the main model?`)) return;
     await runAction(() => fetchJson<ProviderSummary>("/api/providers/primary", { method: "POST", body: JSON.stringify({ modelRef: effectiveSelectedModel }) }));
   }
 
   async function updateFallback(action: "add" | "remove"): Promise<void> {
     if (!effectiveSelectedModel) return;
     const verb = action === "add" ? "Add" : "Remove";
-    if (!await confirmDialog(`${verb} ${effectiveSelectedModel} ${action === "add" ? "to" : "from"} fallbacks?`)) return;
+    if (!await confirmDialog(`${verb} ${effectiveSelectedModel} ${action === "add" ? "to" : "from"} backups?`)) return;
     await runAction(() => fetchJson<ProviderSummary>("/api/providers/fallbacks", { method: "POST", body: JSON.stringify({ action, modelRef: effectiveSelectedModel }) }));
   }
 
   async function setupProvider(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
-    if (!await confirmDialog(`Save provider ${form.provider}/${form.model}?`)) return;
+    if (!await confirmDialog(`Save connection ${form.provider}/${form.model}?`)) return;
     await runAction(() => fetchJson<ProviderSummary>("/api/providers/setup", {
       method: "POST",
       body: JSON.stringify({
@@ -111,8 +111,8 @@ export function ProviderPanel({ data, loading, onData, onLoading }: ProviderPane
     return (
       <Alert className="border-accent/40 bg-accent/10">
         <PlugZap className="size-4" />
-        <AlertTitle>Provider Hub is loading</AlertTitle>
-        <AlertDescription>Reading provider profiles and model catalog from the local runtime API.</AlertDescription>
+        <AlertTitle>AI models are loading</AlertTitle>
+        <AlertDescription>Loading your saved AI model choices.</AlertDescription>
       </Alert>
     );
   }
@@ -127,12 +127,12 @@ export function ProviderPanel({ data, loading, onData, onLoading }: ProviderPane
       {testResult ? <ProviderTestNotice result={testResult} /> : null}
 
       <div className="grid gap-3 lg:grid-cols-3">
-        <ProviderCandidateCard title="Primary" candidate={data.primary} featured />
+        <ProviderCandidateCard title="Main model" candidate={data.primary} featured />
         <Card className="border-white/10 bg-background/35 lg:col-span-2">
           <CardHeader className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
             <div>
-              <CardTitle className="flex items-center gap-2"><Route className="size-5" /> Model routing</CardTitle>
-              <CardDescription>Set the primary model, test it, or manage fallback order.</CardDescription>
+              <CardTitle className="flex items-center gap-2"><Route className="size-5" /> AI model choices</CardTitle>
+              <CardDescription>Choose the main AI model and backup options.</CardDescription>
             </div>
             <Button variant="outline" onClick={() => void reload()} disabled={loading}>
               <RefreshCw className={loading ? "animate-spin" : ""} />
@@ -145,14 +145,14 @@ export function ProviderPanel({ data, loading, onData, onLoading }: ProviderPane
                 {modelOptions.map((model) => <option key={model.modelRef} value={model.modelRef}>{model.modelRef}</option>)}
               </Select>
               <Button onClick={() => void testProvider()} disabled={loading || !effectiveSelectedModel} variant="outline"><TestTube2 /> Test</Button>
-              <Button onClick={() => void setPrimary()} disabled={loading || !effectiveSelectedModel}><Star /> Set primary</Button>
-              <Button onClick={() => void updateFallback("add")} disabled={loading || !effectiveSelectedModel} variant="secondary">Add fallback</Button>
+              <Button onClick={() => void setPrimary()} disabled={loading || !effectiveSelectedModel}><Star /> Set main</Button>
+              <Button onClick={() => void updateFallback("add")} disabled={loading || !effectiveSelectedModel} variant="secondary">Add backup</Button>
             </div>
             <div className="flex flex-wrap gap-2">
-              <Button onClick={() => void updateFallback("remove")} disabled={loading || !effectiveSelectedModel} variant="outline">Remove fallback</Button>
+              <Button onClick={() => void updateFallback("remove")} disabled={loading || !effectiveSelectedModel} variant="outline">Remove backup</Button>
               <Badge variant="outline">{data.models.length} models</Badge>
-              <Badge variant="outline">{data.profiles.length} profiles</Badge>
-              <Badge variant="outline">{data.fallbacks.length} fallbacks</Badge>
+              <Badge variant="outline">{data.profiles.length} connections</Badge>
+              <Badge variant="outline">{data.fallbacks.length} backups</Badge>
             </div>
           </CardContent>
         </Card>
@@ -161,7 +161,7 @@ export function ProviderPanel({ data, loading, onData, onLoading }: ProviderPane
       <div className="grid gap-4 xl:grid-cols-[1fr_1fr]">
         <Card className="border-white/10 bg-background/35">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2"><KeyRound className="size-5" /> Provider setup</CardTitle>
+            <CardTitle className="flex items-center gap-2"><KeyRound className="size-5" /> Service setup</CardTitle>
             <CardDescription>{activePreset.note}</CardDescription>
           </CardHeader>
           <CardContent>
@@ -174,25 +174,25 @@ export function ProviderPanel({ data, loading, onData, onLoading }: ProviderPane
                 <FormField label="Mode"><Select value={form.mode} onChange={(event) => setFormValue(setForm, "mode", event.target.value)}><option value="api-key">api-key</option><option value="local">local</option></Select></FormField>
                 <FormField label="Model"><Input value={form.model} onChange={(event) => setFormValue(setForm, "model", event.target.value)} /></FormField>
                 {!isGemini ? <FormField label="Base URL"><Input value={form.baseUrl} onChange={(event) => setFormValue(setForm, "baseUrl", event.target.value)} placeholder="https://api.example.com/v1" /></FormField> : null}
-                {!isLocal ? <FormField label="API key env"><Input value={form.apiKeyEnv} onChange={(event) => setFormValue(setForm, "apiKeyEnv", event.target.value)} placeholder="GEMINI_API_KEY" /></FormField> : null}
-                {!isLocal ? <FormField label="Secret value"><Input value={form.secret} onChange={(event) => setFormValue(setForm, "secret", event.target.value)} type="password" placeholder="Saved to .env, never displayed" /></FormField> : null}
+                {!isLocal ? <FormField label="Credential name"><Input value={form.apiKeyEnv} onChange={(event) => setFormValue(setForm, "apiKeyEnv", event.target.value)} placeholder="GEMINI_API_KEY" /></FormField> : null}
+                {!isLocal ? <FormField label="Secret value"><Input value={form.secret} onChange={(event) => setFormValue(setForm, "secret", event.target.value)} type="password" placeholder="Saved securely and hidden after save" /></FormField> : null}
               </div>
               <label className="flex items-center gap-2 text-sm text-muted-foreground">
                 <input checked={form.setDefault} onChange={(event) => setForm((current) => ({ ...current, setDefault: event.target.checked }))} type="checkbox" />
-                Set as primary model after saving
+                Set as main model after saving
               </label>
-              <Button className="w-fit" type="submit" disabled={loading}><Save /> Save provider</Button>
+              <Button className="w-fit" type="submit" disabled={loading}><Save /> Save connection</Button>
             </form>
           </CardContent>
         </Card>
 
         <Card className="border-white/10 bg-background/35">
           <CardHeader>
-            <CardTitle>Fallbacks</CardTitle>
-            <CardDescription>Configured fallback candidates, in runtime order.</CardDescription>
+            <CardTitle>Backup models</CardTitle>
+            <CardDescription>Models Bestie can try if the main one is unavailable.</CardDescription>
           </CardHeader>
           <CardContent className="grid gap-3">
-            {data.fallbacks.length ? data.fallbacks.map((candidate) => <ProviderCandidateRow key={candidate.modelRef} candidate={candidate} />) : <p className="text-sm text-muted-foreground">No fallback models configured.</p>}
+            {data.fallbacks.length ? data.fallbacks.map((candidate) => <ProviderCandidateRow key={candidate.modelRef} candidate={candidate} />) : <p className="text-sm text-muted-foreground">No backup models added yet.</p>}
           </CardContent>
         </Card>
       </div>
@@ -213,7 +213,7 @@ function ProviderError({ message }: { message: string }): ReactElement {
   return (
     <Alert variant="destructive">
       <AlertCircle className="size-4" />
-      <AlertTitle>Provider request failed</AlertTitle>
+      <AlertTitle>AI model request failed</AlertTitle>
       <AlertDescription>{message}</AlertDescription>
     </Alert>
   );
@@ -223,7 +223,7 @@ function ProviderTestNotice({ result }: { result: ProviderTestResult }): ReactEl
   return (
     <Alert className={result.ok ? "border-primary/40 bg-primary/10" : "border-destructive/40 bg-destructive/10"}>
       {result.ok ? <CheckCircle2 className="size-4" /> : <AlertCircle className="size-4" />}
-      <AlertTitle>{result.ok ? "Provider test passed" : "Provider test failed"}</AlertTitle>
+      <AlertTitle>{result.ok ? "Model test passed" : "Model test failed"}</AlertTitle>
       <AlertDescription>{result.message ?? result.modelRef}{result.latencyMs ? ` (${result.latencyMs}ms)` : ""}</AlertDescription>
     </Alert>
   );
@@ -234,9 +234,9 @@ function ProviderCandidateCard({ title, candidate, featured = false }: { title: 
     <Card className={featured ? "border-primary/30 bg-primary/10" : "border-white/10 bg-background/35"}>
       <CardHeader>
         <CardTitle className="flex items-center gap-2"><PlugZap className="size-5" /> {title}</CardTitle>
-        <CardDescription>{candidate?.authProfile ?? "No model configured"}</CardDescription>
+        <CardDescription>{candidate?.authProfile ?? "No model selected yet"}</CardDescription>
       </CardHeader>
-      <CardContent>{candidate ? <ProviderCandidateRow candidate={candidate} /> : <p className="text-sm text-muted-foreground">Provider configuration is missing.</p>}</CardContent>
+      <CardContent>{candidate ? <ProviderCandidateRow candidate={candidate} /> : <p className="text-sm text-muted-foreground">This service is not set up yet.</p>}</CardContent>
     </Card>
   );
 }
@@ -253,7 +253,7 @@ function ProviderCandidateRow({ candidate }: { candidate: ProviderCandidate }): 
       </div>
       <Separator />
       <p><span className="text-muted-foreground">Base URL:</span> {candidate.baseUrl}</p>
-      {candidate.apiKeyEnv ? <p><span className="text-muted-foreground">API key env:</span> {candidate.apiKeyEnv}</p> : null}
+      {candidate.apiKeyEnv ? <p><span className="text-muted-foreground">Credential name:</span> {candidate.apiKeyEnv}</p> : null}
     </div>
   );
 }
@@ -261,7 +261,7 @@ function ProviderCandidateRow({ candidate }: { candidate: ProviderCandidate }): 
 function ProviderProfileList({ profiles }: { profiles: ProviderProfile[] }): ReactElement {
   return (
     <Card className="border-white/10 bg-background/35">
-      <CardHeader><CardTitle>Profiles</CardTitle><CardDescription>Auth profiles and secret presence.</CardDescription></CardHeader>
+      <CardHeader><CardTitle>Saved connections</CardTitle><CardDescription>Saved connection methods and whether credentials are available.</CardDescription></CardHeader>
       <CardContent className="grid gap-3">
         {profiles.map((profile) => (
           <div key={profile.id} className="rounded-2xl border border-white/10 bg-card/60 p-4 text-sm">
@@ -278,12 +278,12 @@ function ProviderProfileList({ profiles }: { profiles: ProviderProfile[] }): Rea
 function ProviderModelList({ models }: { models: ProviderModel[] }): ReactElement {
   return (
     <Card className="border-white/10 bg-background/35">
-      <CardHeader><CardTitle>Model catalog</CardTitle><CardDescription>Configured model refs and routing markers.</CardDescription></CardHeader>
+      <CardHeader><CardTitle>Available models</CardTitle><CardDescription>Models Bestie can choose from.</CardDescription></CardHeader>
       <CardContent className="grid gap-3">
         {models.map((model) => (
           <div key={model.modelRef} className="flex flex-wrap items-start justify-between gap-2 rounded-2xl border border-white/10 bg-card/60 p-4 text-sm">
             <div><p className="font-semibold">{model.modelRef}</p><p className="text-muted-foreground">{model.profile}</p></div>
-            <div className="flex gap-2">{model.primary ? <Badge>primary</Badge> : null}{model.fallback ? <Badge variant="outline">fallback</Badge> : null}</div>
+            <div className="flex gap-2">{model.primary ? <Badge>main</Badge> : null}{model.fallback ? <Badge variant="outline">backup</Badge> : null}</div>
           </div>
         ))}
       </CardContent>

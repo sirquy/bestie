@@ -36,8 +36,8 @@ export function McpPanel({ data, loading, onData, onLoading }: McpPanelProps): R
     return (
       <Alert className="border-accent/40 bg-accent/10">
         <Plug className="size-4" />
-        <AlertTitle>MCP Hub is loading</AlertTitle>
-        <AlertDescription>Reading configured MCP servers from local config.</AlertDescription>
+        <AlertTitle>Extensions are loading</AlertTitle>
+        <AlertDescription>Loading connected extensions.</AlertDescription>
       </Alert>
     );
   }
@@ -56,13 +56,13 @@ export function McpPanel({ data, loading, onData, onLoading }: McpPanelProps): R
       <Card className="border-white/10 bg-background/35">
         <CardHeader className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
           <div>
-            <CardTitle className="flex items-center gap-2"><Server className="size-5" /> MCP servers</CardTitle>
-            <CardDescription>Read-only server, transport, auth, and tool metadata. Secret values are never rendered.</CardDescription>
+            <CardTitle className="flex items-center gap-2"><Server className="size-5" /> Connected extensions</CardTitle>
+            <CardDescription>Review connected extensions, available tools, and sign-in status. Secret values stay hidden.</CardDescription>
           </div>
           <Button variant="outline" onClick={() => void reload()} disabled={loading}><RefreshCw className={loading ? "animate-spin" : ""} /> Reload</Button>
         </CardHeader>
         <CardContent className="grid gap-4">
-          {data.servers.length ? data.servers.map((server) => <McpServerCard key={server.name} server={server} />) : <p className="rounded-2xl border border-dashed border-white/10 bg-background/25 p-4 text-sm text-muted-foreground">No MCP servers configured.</p>}
+          {data.servers.length ? data.servers.map((server) => <McpServerCard key={server.name} server={server} />) : <p className="rounded-2xl border border-dashed border-white/10 bg-background/25 p-4 text-sm text-muted-foreground">No extensions connected yet.</p>}
         </CardContent>
       </Card>
 
@@ -82,7 +82,7 @@ function McpError({ message }: { message: string }): ReactElement {
   return (
     <Alert variant="destructive">
       <AlertCircle className="size-4" />
-      <AlertTitle>MCP request failed</AlertTitle>
+      <AlertTitle>Extension request failed</AlertTitle>
       <AlertDescription>{message}</AlertDescription>
     </Alert>
   );
@@ -94,15 +94,15 @@ function McpServerCard({ server }: { server: McpServer }): ReactElement {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="text-lg font-semibold">{server.name}</p>
-          <p className="text-muted-foreground">{server.transport} transport</p>
+          <p className="text-muted-foreground">{server.transport} connection</p>
         </div>
         <Badge variant={server.enabled ? "secondary" : "destructive"}>{server.enabled ? "enabled" : "disabled"}</Badge>
       </div>
       <Separator className="my-4" />
       <div className="grid gap-3 md:grid-cols-3">
-        <ConfigFlag label="Command" value={server.commandConfigured ? "configured" : "missing"} />
-        <ConfigFlag label="Args" value={String(server.argCount)} />
-        <ConfigFlag label="URL" value={server.urlConfigured ? "configured" : "missing"} />
+        <ConfigFlag label="Startup" value={server.commandConfigured ? "ready" : "not set"} />
+        <ConfigFlag label="Options" value={String(server.argCount)} />
+        <ConfigFlag label="URL" value={server.urlConfigured ? "ready" : "not set"} />
       </div>
       <ChipSection label="Categories" values={server.tools.categories} attr="data-mcp-categories" />
       <ChipSection label="Tools" values={server.tools.names} attr="data-mcp-tools" />
@@ -114,8 +114,8 @@ function McpToolsSummary({ servers }: { servers: McpServer[] }): ReactElement {
   const toolNames = servers.flatMap((server) => server.tools.names.map((name) => `${server.name}: ${name}`));
   return (
     <Card className="border-white/10 bg-background/35">
-      <CardHeader><CardTitle className="flex items-center gap-2"><Wrench className="size-5" /> Tools</CardTitle><CardDescription>Tool names exposed by configured MCP servers.</CardDescription></CardHeader>
-      <CardContent className="grid gap-2">{toolNames.length ? toolNames.map((name) => <Badge key={name} variant="outline" className="w-fit max-w-full break-all">{name}</Badge>) : <p className="text-sm text-muted-foreground">No MCP tools registered.</p>}</CardContent>
+      <CardHeader><CardTitle className="flex items-center gap-2"><Wrench className="size-5" /> Tools</CardTitle><CardDescription>Tool names exposed by ready Connected extensions.</CardDescription></CardHeader>
+      <CardContent className="grid gap-2">{toolNames.length ? toolNames.map((name) => <Badge key={name} variant="outline" className="w-fit max-w-full break-all">{name}</Badge>) : <p className="text-sm text-muted-foreground">No extension actions available yet.</p>}</CardContent>
     </Card>
   );
 }
@@ -126,7 +126,7 @@ function McpAuthSummary({ servers }: { servers: McpServer[] }): ReactElement {
     <Card className="border-white/10 bg-background/35">
       <CardHeader><CardTitle className="flex items-center gap-2"><KeyRound className="size-5" /> Auth</CardTitle><CardDescription>Env var names and header names only; values stay private.</CardDescription></CardHeader>
       <CardContent className="grid gap-3">
-        {authServers.length ? authServers.map((server) => <AuthServer key={server.name} server={server} />) : <p className="text-sm text-muted-foreground">No MCP auth metadata configured.</p>}
+        {authServers.length ? authServers.map((server) => <AuthServer key={server.name} server={server} />) : <p className="text-sm text-muted-foreground">No extension sign-in details available yet.</p>}
       </CardContent>
     </Card>
   );
@@ -136,12 +136,12 @@ function AuthServer({ server }: { server: McpServer }): ReactElement {
   return (
     <div className="rounded-2xl border border-white/10 bg-card/60 p-4 text-sm">
       <p className="font-semibold">{server.name}</p>
-      <ChipSection label="Env keys" values={server.envKeys} />
+      <ChipSection label="Credential names" values={server.envKeys} />
       <ChipSection label="Header names" values={server.headerNames} />
-      <ChipSection label="Header env names" values={server.headerEnvNames} />
+      <ChipSection label="Header secret names" values={server.headerEnvNames} />
       {server.auth ? (
         <div className="mt-3 rounded-xl border border-white/10 bg-background/40 p-3">
-          <p><span className="text-muted-foreground">OAuth env:</span> {server.auth.envVar}</p>
+          <p><span className="text-muted-foreground">Sign-in credential:</span> {server.auth.envVar}</p>
           {server.auth.headerName ? <p><span className="text-muted-foreground">Header:</span> {server.auth.headerName}</p> : null}
           <ChipSection label="Scopes" values={server.auth.scopes} />
         </div>

@@ -261,7 +261,7 @@ export function ChatPanel({ data, loading, onData, onLoading }: ChatPanelProps):
   const visibleEvents = activeSession?.events ?? [];
 
   if (!data) {
-    return <Alert className="border-accent/40 bg-accent/10"><MessageSquareText className="size-4" /><AlertTitle>Chat is loading</AlertTitle><AlertDescription>Reading local UI chat sessions from SQLite.</AlertDescription></Alert>;
+    return <Alert className="border-accent/40 bg-accent/10"><MessageSquareText className="size-4" /><AlertTitle>Chat is loading</AlertTitle><AlertDescription>Loading your recent conversations.</AlertDescription></Alert>;
   }
 
   return (
@@ -282,8 +282,8 @@ export function ChatPanel({ data, loading, onData, onLoading }: ChatPanelProps):
         </div>
       </div>
 
-      <div className="grid h-[calc(100vh-4.5rem)] min-h-[38rem] gap-3 xl:grid-cols-[var(--chat-session-rail)_minmax(0,1fr)_var(--chat-control-rail)]" style={{ "--chat-session-rail": sessionsCollapsed ? "4.25rem" : "18rem", "--chat-control-rail": controlsCollapsed ? "4.25rem" : "20rem" } as CSSProperties}>
-        <Card className="flex min-h-0 flex-col overflow-hidden border-white/10 bg-background/35">
+      <div className="grid gap-3 xl:h-[calc(100vh-4.5rem)] xl:min-h-[38rem] xl:grid-cols-[var(--chat-session-rail)_minmax(0,1fr)_var(--chat-control-rail)]" style={{ "--chat-session-rail": sessionsCollapsed ? "4.25rem" : "18rem", "--chat-control-rail": controlsCollapsed ? "4.25rem" : "20rem" } as CSSProperties}>
+        <Card className="flex min-h-[18rem] flex-col overflow-hidden border-white/10 bg-background/35 xl:min-h-0">
           <CardHeader className="border-b border-white/10 p-4">
             <div className={`flex items-center gap-2 ${sessionsCollapsed ? "justify-center" : "justify-between"}`}>
               {sessionsCollapsed ? null : <div><CardTitle className="flex items-center gap-2 text-base"><MessageSquareText className="size-4" /> Sessions</CardTitle><CardDescription>Search and switch chats.</CardDescription></div>}
@@ -306,7 +306,7 @@ export function ChatPanel({ data, loading, onData, onLoading }: ChatPanelProps):
           </CardContent>}
         </Card>
 
-        <Card className={`flex min-h-0 flex-col overflow-hidden border-white/10 bg-background/35 ${chatFullscreen ? "fixed inset-3 z-50 bg-background/95 shadow-2xl backdrop-blur-xl md:inset-6" : ""}`} data-chat-fullscreen={chatFullscreen ? "true" : "false"}>
+        <Card className={`flex min-h-[34rem] flex-col overflow-hidden border-white/10 bg-background/35 xl:min-h-0 ${chatFullscreen ? "fixed inset-3 z-50 bg-background/95 shadow-2xl backdrop-blur-xl md:inset-6" : ""}`} data-chat-fullscreen={chatFullscreen ? "true" : "false"}>
           <CardHeader className="relative z-10 shrink-0 border-b border-white/10 bg-background/80 p-4 backdrop-blur">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="min-w-0 flex-1">
@@ -359,7 +359,7 @@ export function ChatPanel({ data, loading, onData, onLoading }: ChatPanelProps):
             {controlsCollapsed ? <CardContent className="flex flex-1 flex-col items-center gap-3 p-3 pt-0"><Settings2 className="size-5 text-muted-foreground" /><Badge variant={visibleEvents.length || timeline.length ? "secondary" : "outline"}>{visibleEvents.length + timeline.length}</Badge></CardContent> : <CardContent className="no-scrollbar grid max-h-[18rem] gap-3 overflow-auto p-4 pt-0">
               <label className="flex items-center justify-between gap-2 rounded-xl border border-white/10 bg-card/50 p-3 text-sm"><span>Tools</span><input type="checkbox" checked={toolsEnabled} onChange={(event) => setToolsEnabled(event.target.checked)} /></label>
               <label className="flex items-center justify-between gap-2 rounded-xl border border-white/10 bg-card/50 p-3 text-sm"><span>Memory</span><input type="checkbox" checked={memoryEnabled} onChange={(event) => setMemoryEnabled(event.target.checked)} /></label>
-              <div className="grid gap-1"><Label htmlFor="chat-provider-model">Provider model</Label><Select id="chat-provider-model" value={providerModelRef} onChange={(event) => setProviderModelRef(event.target.value)}><option value="">default</option>{providerModels.map((model) => <option key={model.modelRef} value={model.modelRef}>{model.modelRef}{model.primary ? " · primary" : model.fallback ? " · fallback" : ""}</option>)}</Select></div>
+              <div className="grid gap-1"><Label htmlFor="chat-provider-model">AI model</Label><Select id="chat-provider-model" value={providerModelRef} onChange={(event) => setProviderModelRef(event.target.value)}><option value="">Best available</option>{providerModels.map((model) => <option key={model.modelRef} value={model.modelRef}>{model.modelRef}{model.primary ? " · primary" : model.fallback ? " · fallback" : ""}</option>)}</Select></div>
               <Button variant="outline" disabled={!activeSession} onClick={() => void deleteSession()}><Trash2 /> Delete session</Button>
             </CardContent>}
           </Card>

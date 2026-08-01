@@ -65,8 +65,8 @@ export function CharacterPanel({ data, loading, onData, onLoading }: CharacterPa
   }
 
   async function save(): Promise<void> {
-    if (!await confirmDialog("Save character.json and system-prompt.md?")) return;
-    await runAction(() => fetchJson<CharacterSummary>("/api/character", { method: "PUT", body: JSON.stringify({ characterText, promptText }) }), "Character files saved.");
+    if (!await confirmDialog("Save Bestie's personality and conversation guide?")) return;
+    await runAction(() => fetchJson<CharacterSummary>("/api/character", { method: "PUT", body: JSON.stringify({ characterText, promptText }) }), "Bestie's personality was saved.");
   }
 
   function updateDraftField(key: "name" | "ownerName" | "language", value: string): void {
@@ -100,7 +100,7 @@ export function CharacterPanel({ data, loading, onData, onLoading }: CharacterPa
       <Alert className="border-accent/40 bg-accent/10">
         <Bot className="size-4" />
         <AlertTitle>Character Studio is loading</AlertTitle>
-        <AlertDescription>Reading editable character files from the local runtime API.</AlertDescription>
+        <AlertDescription>Loading Bestie's personality settings.</AlertDescription>
       </Alert>
     );
   }
@@ -115,7 +115,7 @@ export function CharacterPanel({ data, loading, onData, onLoading }: CharacterPa
           <CardHeader className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
             <div>
               <CardTitle className="flex items-center gap-2"><Bot className="size-5" /> Character Studio</CardTitle>
-              <CardDescription>Edit local character files without duplicating runtime logic.</CardDescription>
+              <CardDescription>Adjust how Bestie sounds and behaves.</CardDescription>
             </div>
             <div className="flex flex-wrap gap-2">
               <Button variant="outline" onClick={() => void reload()} disabled={loading}><RefreshCw className={loading ? "animate-spin" : ""} /> Reload</Button>
@@ -129,12 +129,12 @@ export function CharacterPanel({ data, loading, onData, onLoading }: CharacterPa
                   <p className="text-2xl font-semibold">{stringValue(draft?.name) || data.character.parsed?.name || "Bestie"}</p>
                   <p className="text-sm text-muted-foreground">Owner: {stringValue(draft?.ownerName) || data.character.parsed?.ownerName || "-"}</p>
                 </div>
-                <Badge variant={draft ? "secondary" : "destructive"}>{draft ? stringValue(draft.language) || data.character.parsed?.language || "vi" : "invalid JSON"}</Badge>
+                <Badge variant={draft ? "secondary" : "destructive"}>{draft ? stringValue(draft.language) || data.character.parsed?.language || "vi" : "needs fixing"}</Badge>
               </div>
               <Separator className="my-4" />
               <div className="grid gap-2 text-sm">
-                <FileStatus label="character.json" exists={data.character.exists} path={data.character.path} error={data.character.error} />
-                <FileStatus label="system-prompt.md" exists={data.prompt.exists} path={data.prompt.path} error={data.prompt.error} />
+                <FileStatus label="Personality file" exists={data.character.exists} path={data.character.path} error={data.character.error} />
+                <FileStatus label="Conversation guide" exists={data.prompt.exists} path={data.prompt.path} error={data.prompt.error} />
               </div>
             </div>
 
@@ -152,8 +152,8 @@ export function CharacterPanel({ data, loading, onData, onLoading }: CharacterPa
 
         <Card className="border-white/10 bg-background/35">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2"><FileJson2 className="size-5" /> Character JSON</CardTitle>
-            <CardDescription>Raw editable `character.json`; validation still happens in the existing runtime API.</CardDescription>
+            <CardTitle className="flex items-center gap-2"><FileJson2 className="size-5" /> Personality details</CardTitle>
+            <CardDescription>Edit the structured personality settings. Bestie checks them before saving.</CardDescription>
           </CardHeader>
           <CardContent>
             <Textarea id="character-json" className="min-h-[38rem] font-mono text-xs" spellCheck={false} value={characterText} onChange={(event) => setCharacterText(event.target.value)} />
@@ -164,7 +164,7 @@ export function CharacterPanel({ data, loading, onData, onLoading }: CharacterPa
       <Card className="border-white/10 bg-background/35">
         <CardHeader className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
           <div>
-            <CardTitle className="flex items-center gap-2"><WandSparkles className="size-5" /> Prompt Workbench</CardTitle>
+            <CardTitle className="flex items-center gap-2"><WandSparkles className="size-5" /> Conversation instructions</CardTitle>
             <CardDescription>Edit `system-prompt.md`; empty prompts are rejected by the backend.</CardDescription>
           </div>
           <div className="flex flex-wrap gap-2">

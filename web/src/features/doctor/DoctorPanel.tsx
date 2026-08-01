@@ -28,7 +28,7 @@ export function DoctorPanel({ data, loading, onData, onLoading }: DoctorPanelPro
   }
 
   async function runSafeFixes(): Promise<void> {
-    if (!await confirmDialog("Run Bestie Doctor safe fixes? This can update local runtime files but will not expose secrets.")) return;
+    if (!await confirmDialog("Run safe fixes for common setup issues? Secrets will stay hidden.")) return;
     onLoading(true);
     try {
       onData(await fetchJson<DoctorSummary>("/api/doctor/fix", { method: "POST", body: JSON.stringify({ confirm: true }) }));
@@ -42,7 +42,7 @@ export function DoctorPanel({ data, loading, onData, onLoading }: DoctorPanelPro
       <Alert className="border-accent/40 bg-accent/10">
         <HeartPulse className="size-4" />
         <AlertTitle>Doctor is warming up</AlertTitle>
-        <AlertDescription>Loading live diagnostics from the existing local API.</AlertDescription>
+        <AlertDescription>Checking Bestie's setup and connected features.</AlertDescription>
       </Alert>
     );
   }
@@ -61,8 +61,8 @@ export function DoctorPanel({ data, loading, onData, onLoading }: DoctorPanelPro
       <Card className="border-white/10 bg-background/35">
         <CardHeader className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
           <div>
-            <CardTitle className="flex items-center gap-2"><HeartPulse className="size-5" /> Diagnostic checks</CardTitle>
-            <CardDescription>Same Doctor contract as CLI JSON, rendered through React components.</CardDescription>
+            <CardTitle className="flex items-center gap-2"><HeartPulse className="size-5" /> Health checks</CardTitle>
+            <CardDescription>A friendly health check for setup, memory, channels, and fixes.</CardDescription>
           </div>
           <div className="flex flex-wrap gap-2">
             <Button variant="outline" onClick={() => void reload()} disabled={loading}>
@@ -71,7 +71,7 @@ export function DoctorPanel({ data, loading, onData, onLoading }: DoctorPanelPro
             </Button>
             <Button onClick={() => void runSafeFixes()} disabled={loading || actionableChecks.length === 0}>
               <Wrench />
-              Run safe fixes
+              Fix common issues
             </Button>
           </div>
         </CardHeader>
@@ -83,7 +83,7 @@ export function DoctorPanel({ data, loading, onData, onLoading }: DoctorPanelPro
       {data.report.fixes.length > 0 ? (
         <Card className="border-white/10 bg-background/35">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2"><Wrench className="size-5" /> Fix results</CardTitle>
+            <CardTitle className="flex items-center gap-2"><Wrench className="size-5" /> Fixes applied</CardTitle>
             <CardDescription>Results from the latest confirmation-gated Doctor fix run.</CardDescription>
           </CardHeader>
           <CardContent className="grid gap-3">

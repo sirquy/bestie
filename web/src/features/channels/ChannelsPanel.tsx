@@ -57,35 +57,36 @@ export function ChannelsPanel({ data, loading, onData, onLoading }: ChannelsPane
   }
 
   async function daemon(action: "daemon_start" | "daemon_stop" | "daemon_restart", channel: DaemonChannel): Promise<void> {
-    if (!await confirmDialog(`${action.replace("daemon_", "")} ${channel} daemon?`)) return;
+    const verb = action === "daemon_start" ? "Start" : action === "daemon_stop" ? "Stop" : "Restart";
+    if (!await confirmDialog(`${verb} ${channel} background service?`)) return;
     await runAction(() => postChannelAction({ action, channel, confirm: true }));
   }
 
   async function cronToggle(schedule: CronSchedule): Promise<void> {
     const enabled = !schedule.enabled;
-    if (!await confirmDialog(`${enabled ? "Enable" : "Disable"} cron schedule ${schedule.name}?`)) return;
+    if (!await confirmDialog(`${enabled ? "Enable" : "Disable"} scheduled message ${schedule.name}?`)) return;
     await runAction(() => postChannelAction({ action: "cron_toggle", id: schedule.id, enabled, confirm: true }));
   }
 
   async function cronDelete(schedule: CronSchedule): Promise<void> {
-    if (!await confirmDialog(`Delete cron schedule ${schedule.name}?`)) return;
+    if (!await confirmDialog(`Delete scheduled message ${schedule.name}?`)) return;
     await runAction(() => postChannelAction({ action: "cron_delete", id: schedule.id, confirm: true }));
   }
 
   async function cronTrigger(schedule: CronSchedule): Promise<void> {
-    if (!await confirmDialog(`Trigger cron schedule ${schedule.name} now?`)) return;
+    if (!await confirmDialog(`Trigger scheduled message ${schedule.name} now?`)) return;
     await runAction(() => postChannelAction({ action: "cron_trigger", id: schedule.id, confirm: true }));
   }
 
   async function cronCreate(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
-    if (!await confirmDialog(`Create cron schedule ${draft.name}?`)) return;
-    await runAction(() => postChannelAction({ action: "cron_add", name: draft.name, scheduleType: draft.scheduleType, scheduleValue: draft.scheduleValue, prompt: draft.prompt, channel: draft.channel.trim() || undefined, enabled: draft.enabled, confirm: true }), "Cron schedule saved.");
+    if (!await confirmDialog(`Create scheduled message ${draft.name}?`)) return;
+    await runAction(() => postChannelAction({ action: "cron_add", name: draft.name, scheduleType: draft.scheduleType, scheduleValue: draft.scheduleValue, prompt: draft.prompt, channel: draft.channel.trim() || undefined, enabled: draft.enabled, confirm: true }), "Scheduled message saved.");
   }
 
   if (!data) {
     return (
-      <Alert className="border-accent/40 bg-accent/10"><Cable className="size-4" /><AlertTitle>Channel Hub is loading</AlertTitle><AlertDescription>Reading channels, daemon status, and cron schedules.</AlertDescription></Alert>
+      <Alert className="border-accent/40 bg-accent/10"><Cable className="size-4" /><AlertTitle>Channels are loading</AlertTitle><AlertDescription>Loading connected channels and scheduled messages.</AlertDescription></Alert>
     );
   }
 
@@ -103,7 +104,7 @@ export function ChannelsPanel({ data, loading, onData, onLoading }: ChannelsPane
 
       <Card className="border-white/10 bg-background/35">
         <CardHeader className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-          <div><CardTitle className="flex items-center gap-2"><Cable className="size-5" /> Channels</CardTitle><CardDescription>Telegram/Zalo transport status and daemon controls.</CardDescription></div>
+          <div><CardTitle className="flex items-center gap-2"><Cable className="size-5" /> Channels</CardTitle><CardDescription>Manage Telegram, Zalo, and background delivery.</CardDescription></div>
           <Button variant="outline" onClick={() => void reload()} disabled={loading}><RefreshCw className={loading ? "animate-spin" : ""} /> Reload</Button>
         </CardHeader>
         <CardContent className="grid gap-3 md:grid-cols-2">
@@ -113,7 +114,7 @@ export function ChannelsPanel({ data, loading, onData, onLoading }: ChannelsPane
 
       <div className="grid gap-4 xl:grid-cols-[0.8fr_1.2fr]">
         <Card className="border-white/10 bg-background/35">
-          <CardHeader><CardTitle className="flex items-center gap-2"><CalendarClock className="size-5" /> Add cron</CardTitle><CardDescription>Create a local cron schedule. Actions stay confirmation-gated.</CardDescription></CardHeader>
+          <CardHeader><CardTitle className="flex items-center gap-2"><CalendarClock className="size-5" /> Add cron</CardTitle><CardDescription>Create a local scheduled message. Actions stay confirmation-gated.</CardDescription></CardHeader>
           <CardContent>
             <form className="grid gap-3" onSubmit={(event) => void cronCreate(event)}>
               <FormField label="Name"><Input value={draft.name} onChange={(event) => setDraftValue(setDraft, "name", event.target.value)} /></FormField>
@@ -130,17 +131,17 @@ export function ChannelsPanel({ data, loading, onData, onLoading }: ChannelsPane
         </Card>
 
         <Card className="border-white/10 bg-background/35">
-          <CardHeader><CardTitle>Cron schedules</CardTitle><CardDescription>Database: {data.cron.databaseExists ? "ready" : "missing"}</CardDescription></CardHeader>
+          <CardHeader><CardTitle>Scheduled messages</CardTitle><CardDescription>{data.cron.databaseExists ? "Ready" : "Not ready"}</CardDescription></CardHeader>
           <CardContent className="grid gap-3">
-            {data.cron.schedules.length ? data.cron.schedules.map((schedule) => <CronScheduleCard key={schedule.id} schedule={schedule} loading={loading} onToggle={cronToggle} onDelete={cronDelete} onTrigger={cronTrigger} />) : <p className="rounded-2xl border border-dashed border-white/10 bg-background/25 p-4 text-sm text-muted-foreground">No cron schedules configured.</p>}
+            {data.cron.schedules.length ? data.cron.schedules.map((schedule) => <CronScheduleCard key={schedule.id} schedule={schedule} loading={loading} onToggle={cronToggle} onDelete={cronDelete} onTrigger={cronTrigger} />) : <p className="rounded-2xl border border-dashed border-white/10 bg-background/25 p-4 text-sm text-muted-foreground">No scheduled messages yet.</p>}
           </CardContent>
         </Card>
       </div>
 
       <Card className="border-white/10 bg-background/35">
-        <CardHeader><CardTitle>Cron logs</CardTitle><CardDescription>Recent isolated cron run results.</CardDescription></CardHeader>
+        <CardHeader><CardTitle>Schedule history</CardTitle><CardDescription>Recent scheduled message results.</CardDescription></CardHeader>
         <CardContent className="grid gap-3">
-          {data.cron.logs.length ? data.cron.logs.map((log) => <CronLogRow key={log.id} log={log} />) : <p className="text-sm text-muted-foreground">No cron logs yet.</p>}
+          {data.cron.logs.length ? data.cron.logs.map((log) => <CronLogRow key={log.id} log={log} />) : <p className="text-sm text-muted-foreground">No schedule history yet.</p>}
         </CardContent>
       </Card>
     </div>
@@ -161,7 +162,7 @@ function ChannelCard({ channel, loading, onDaemon }: { channel: ConfiguredChanne
     <div className="rounded-2xl border border-white/10 bg-card/60 p-4 text-sm">
       <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-lg font-semibold">{channel.displayName}</p><p className="text-muted-foreground">{channel.id}</p></div><Badge variant={channel.enabled ? "secondary" : "outline"}>{channel.enabled ? "enabled" : "disabled"}</Badge></div>
       <Separator className="my-3" />
-      <div className="grid gap-2"><StatusLine label="Owner" value={channel.ownerConfigured ? "configured" : "missing"} /><StatusLine label="Secret" value={channel.secretPresent ? "present" : channel.tokenEnv ? `missing ${channel.tokenEnv}` : "not required"} /><StatusLine label="Daemon" value={channel.daemon.pid ? `${channel.daemon.state} pid ${channel.daemon.pid}` : channel.daemon.state} /></div>
+      <div className="grid gap-2"><StatusLine label="Owner" value={channel.ownerConfigured ? "ready" : "not set"} /><StatusLine label="Secret" value={channel.secretPresent ? "ready" : channel.tokenEnv ? "missing" : "not required"} /><StatusLine label="Background service" value={channel.daemon.pid ? `${channel.daemon.state}` : channel.daemon.state} /></div>
       <div className="mt-3 flex flex-wrap gap-2" data-channel-action={channel.id}><Button size="sm" onClick={() => void onDaemon("daemon_start", daemonChannel)} disabled={loading}><Play /> Start</Button><Button size="sm" variant="outline" onClick={() => void onDaemon("daemon_stop", daemonChannel)} disabled={loading}><Square /> Stop</Button><Button size="sm" variant="secondary" onClick={() => void onDaemon("daemon_restart", daemonChannel)} disabled={loading}><RefreshCw /> Restart</Button></div>
     </div>
   );

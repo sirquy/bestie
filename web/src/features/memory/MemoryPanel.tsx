@@ -60,7 +60,7 @@ export function MemoryPanel({ data, loading, onData, onLoading }: MemoryPanelPro
       <Alert className="border-accent/40 bg-accent/10">
         <Brain className="size-4" />
         <AlertTitle>Memory Center is loading</AlertTitle>
-        <AlertDescription>Reading local SQLite memory state from the runtime API.</AlertDescription>
+        <AlertDescription>Loading saved memories and review items.</AlertDescription>
       </Alert>
     );
   }
@@ -82,11 +82,11 @@ export function MemoryPanel({ data, loading, onData, onLoading }: MemoryPanelPro
       <Card className="border-white/10 bg-background/35">
         <CardHeader className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
           <div>
-            <CardTitle className="flex items-center gap-2"><Database className="size-5" /> Memory database</CardTitle>
-            <CardDescription>{data.database.path}</CardDescription>
+            <CardTitle className="flex items-center gap-2"><Database className="size-5" /> Memory store</CardTitle>
+            <CardDescription>Saved privately on this device.</CardDescription>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Badge variant={data.database.exists ? "secondary" : "destructive"}>{data.database.exists ? "exists" : "missing"}</Badge>
+            <Badge variant={data.database.exists ? "secondary" : "destructive"}>{data.database.exists ? "ready" : "not ready"}</Badge>
             <Badge variant={data.state.paused ? "destructive" : "outline"}>{data.state.paused ? "paused" : "active"}</Badge>
             <Button variant="outline" onClick={() => void reload()} disabled={loading}><RefreshCw className={loading ? "animate-spin" : ""} /> Reload</Button>
           </div>
@@ -102,14 +102,14 @@ export function MemoryPanel({ data, loading, onData, onLoading }: MemoryPanelPro
 
       <div className="grid gap-4 xl:grid-cols-[1fr_1fr]">
         <Card className="border-white/10 bg-background/35">
-          <CardHeader><CardTitle>Pending approval</CardTitle><CardDescription>Approve or reject proposed memories before they become active.</CardDescription></CardHeader>
+          <CardHeader><CardTitle>Needs review</CardTitle><CardDescription>Approve or reject proposed memories before they become active.</CardDescription></CardHeader>
           <CardContent className="grid gap-3">
             {data.pending.length ? data.pending.map((item) => <PendingMemoryRow key={item.id} item={item} loading={loading} onAction={updatePending} />) : <EmptyText>No pending memories.</EmptyText>}
           </CardContent>
         </Card>
 
         <Card className="border-white/10 bg-background/35">
-          <CardHeader><CardTitle>Active memories</CardTitle><CardDescription>Latest active memories from local SQLite.</CardDescription></CardHeader>
+          <CardHeader><CardTitle>Active memories</CardTitle><CardDescription>Facts Bestie can use in future conversations.</CardDescription></CardHeader>
           <CardContent className="grid gap-3">
             {data.memories.length ? data.memories.map((item) => <MemoryRow key={item.id} item={item} />) : <EmptyText>No active memories found.</EmptyText>}
           </CardContent>
@@ -117,7 +117,7 @@ export function MemoryPanel({ data, loading, onData, onLoading }: MemoryPanelPro
       </div>
 
       <Card className="border-white/10 bg-background/35">
-        <CardHeader><CardTitle>Conversation summaries</CardTitle><CardDescription>Recent persisted conversation summaries used for recall context.</CardDescription></CardHeader>
+        <CardHeader><CardTitle>Conversation notes</CardTitle><CardDescription>Short notes Bestie can use to remember conversation context.</CardDescription></CardHeader>
         <CardContent className="grid gap-3">
           {data.conversationSummaries.length ? data.conversationSummaries.map((item) => <ConversationSummaryRow key={item.id} item={item} />) : <EmptyText>No conversation summaries yet.</EmptyText>}
         </CardContent>

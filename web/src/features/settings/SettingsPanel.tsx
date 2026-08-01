@@ -91,7 +91,7 @@ export function SettingsPanel({ data, loading, onData, onLoading, onStatusRefres
       <Alert className="border-accent/40 bg-accent/10">
         <Settings className="size-4" />
         <AlertTitle>Settings are loading</AlertTitle>
-        <AlertDescription>Reading low-risk config fields from the local runtime API.</AlertDescription>
+        <AlertDescription>Loading safe preferences you can edit here.</AlertDescription>
       </Alert>
     );
   }
@@ -106,7 +106,7 @@ export function SettingsPanel({ data, loading, onData, onLoading, onStatusRefres
           <CardHeader className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
             <div>
               <CardTitle className="flex items-center gap-2"><Settings className="size-5" /> Settings</CardTitle>
-              <CardDescription>Low-risk agent and memory policy edits backed by `PUT /api/settings`.</CardDescription>
+              <CardDescription>Safe preferences for identity, language, tone, and memory review.</CardDescription>
             </div>
             <Button variant="outline" onClick={() => void reload()} disabled={loading}>
               <RefreshCw className={loading ? "animate-spin" : ""} />
@@ -119,7 +119,7 @@ export function SettingsPanel({ data, loading, onData, onLoading, onStatusRefres
                 <FormField label="Name"><Input name="name" value={draft.name} onChange={(event) => setDraftValue(setDraft, "name", event.target.value)} /></FormField>
                 <FormField label="Owner"><Input name="ownerName" value={draft.ownerName} onChange={(event) => setDraftValue(setDraft, "ownerName", event.target.value)} /></FormField>
                 <FormField label="Language"><Input name="language" value={draft.language} onChange={(event) => setDraftValue(setDraft, "language", event.target.value)} /></FormField>
-                <FormField label="Memory policy">
+                <FormField label="Memory review mode">
                   <Select name="writePolicy" value={draft.writePolicy} onChange={(event) => setDraftValue(setDraft, "writePolicy", event.target.value as MemoryWritePolicy)}>
                     <option value="ask">ask</option>
                     <option value="allow">allow</option>
@@ -154,7 +154,7 @@ export function SettingsPanel({ data, loading, onData, onLoading, onStatusRefres
           <SettingsSummaryCard title="Memory" icon={<Brain className="size-5" />} rows={[
             ["Write policy", data.memory.writePolicy],
           ]} />
-          <SettingsSummaryCard title="Workspace" icon={<FolderOpen className="size-5" />} rows={[
+          <SettingsSummaryCard title="Folders" icon={<FolderOpen className="size-5" />} rows={[
             ["Default path", data.workspace.defaultPath ?? "-"],
             ["External paths", String(data.workspace.externalPathCount)],
           ]} />
@@ -163,14 +163,14 @@ export function SettingsPanel({ data, loading, onData, onLoading, onStatusRefres
 
       <Card className="border-white/10 bg-background/35">
         <CardHeader>
-          <CardTitle>LLM routing summary</CardTitle>
-          <CardDescription>Read-only here; use Provider Hub for model setup and fallbacks.</CardDescription>
+          <CardTitle>AI setup summary</CardTitle>
+          <CardDescription>View only here. Use Providers to change AI service choices.</CardDescription>
         </CardHeader>
         <CardContent className="grid gap-3 md:grid-cols-5">
           <MiniMetric label="Primary" value={data.llm.primary} />
           <MiniMetric label="Auth profile" value={data.llm.authProfile} />
           <MiniMetric label="Fallbacks" value={String(data.llm.fallbackCount)} />
-          <MiniMetric label="Profiles" value={String(data.llm.profileCount)} />
+          <MiniMetric label="Connections" value={String(data.llm.profileCount)} />
           <MiniMetric label="Models" value={String(data.llm.modelCount)} />
         </CardContent>
       </Card>

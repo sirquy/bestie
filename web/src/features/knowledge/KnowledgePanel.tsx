@@ -143,7 +143,7 @@ export function KnowledgePanel({ data, loading, onData, onLoading }: KnowledgePa
               <CardDescription className="mt-2 max-w-3xl">Primary spatial view for entities, relation edges, confidence, scope, sensitivity, and trust.</CardDescription>
             </div>
             <div className="flex flex-wrap gap-2">
-              <Badge variant={data.database.exists ? "secondary" : "destructive"}>{data.database.exists ? "database ready" : "database missing"}</Badge>
+              <Badge variant={data.database.exists ? "secondary" : "destructive"}>{data.database.exists ? "knowledge ready" : "knowledge unavailable"}</Badge>
               <Badge variant={data.state.paused ? "destructive" : "outline"}>{data.state.paused ? "paused" : "active"}</Badge>
               <Button variant="outline" onClick={() => void reload()} disabled={loading}><RefreshCw className={loading ? "animate-spin" : ""} /> Reload</Button>
             </div>
@@ -367,14 +367,14 @@ function KnowledgeMap3D({ entities, relations }: { entities: KnowledgeEntity[]; 
 
   return (
     <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-[radial-gradient(circle_at_50%_20%,rgba(166,244,172,0.15),transparent_18rem),radial-gradient(circle_at_80%_65%,rgba(255,181,91,0.10),transparent_18rem),linear-gradient(135deg,rgba(255,255,255,0.06),rgba(255,255,255,0.01))]" data-knowledge-map-3d>
-      <div className="absolute left-4 top-4 z-10 flex flex-wrap gap-2 text-xs"><Badge variant="secondary">{graphData.nodes.length} nodes</Badge><Badge variant="outline">{graphData.links.length} links</Badge><Badge variant="outline">WebGL force map</Badge></div>
-      <div ref={containerRef} className="h-[42rem] w-full" data-knowledge-map-canvas />
+      <div className="absolute left-4 top-4 z-10 flex flex-wrap gap-2 text-xs"><Badge variant="secondary">{graphData.nodes.length} nodes</Badge><Badge variant="outline">{graphData.links.length} links</Badge><Badge variant="outline">Interactive 3D map</Badge></div>
+      <div ref={containerRef} className="h-[28rem] w-full sm:h-[34rem] xl:h-[42rem]" data-knowledge-map-canvas />
       <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 bg-gradient-to-t from-background/90 via-background/45 to-transparent p-4 pt-16">
         <div className="grid gap-2 text-xs text-muted-foreground md:grid-cols-3">
-          <span>Drag to orbit ? scroll to zoom ? click node to focus</span><span>Particles show relation direction and confidence</span><span>Red = sensitive, green/blue = normal scoped memory</span>
+          <span>Drag to orbit / scroll to zoom / click node to focus</span><span>Particles show relation direction and confidence</span><span>Red = sensitive, green/blue = normal scoped memory</span>
         </div>
       </div>
-      {selectedNode ? <div className="absolute right-4 top-4 z-10 max-w-xs rounded-2xl border border-white/10 bg-background/85 p-3 text-xs shadow-xl backdrop-blur" data-knowledge-map-selected><p className="font-semibold text-foreground">{selectedNode.name}</p><p className="mt-1 text-muted-foreground">{selectedNode.kind} ? {selectedNode.scope} ? confidence {formatPercent(selectedNode.confidence)}</p><p className="mt-1 text-muted-foreground">trust {selectedNode.trust}</p></div> : null}
+      {selectedNode ? <div className="absolute right-4 top-4 z-10 max-w-xs rounded-2xl border border-white/10 bg-background/85 p-3 text-xs shadow-xl backdrop-blur" data-knowledge-map-selected><p className="font-semibold text-foreground">{selectedNode.name}</p><p className="mt-1 text-muted-foreground">{selectedNode.kind} / {selectedNode.scope} / confidence {formatPercent(selectedNode.confidence)}</p><p className="mt-1 text-muted-foreground">trust {selectedNode.trust}</p></div> : null}
       <div className="hidden" data-knowledge-map-node={graphData.nodes[0]?.id ?? "none"} />
       <div className="hidden" data-knowledge-map-edge={graphData.links[0]?.id ?? "none"} />
     </div>

@@ -133,7 +133,7 @@ export function SkillsPanel({ data, loading, onData, onLoading }: SkillsPanelPro
     setLibraryLoading(true);
     try {
       const result = await fetchJson<SkillRemoteRegistryTestResult>("/api/skills/registry/test", { method: "POST", body: JSON.stringify({ confirm: true }) });
-      setActionMessage(result.error ? `Remote registry responded with error: ${result.error}` : result.configured ? "Remote registry test finished." : "No remote registry configured.");
+      setActionMessage(result.error ? `Skill library could not be checked: ${result.error}` : result.configured ? "Skill library is ready." : "No skill library connected yet.");
       await loadLibrary();
     } catch (error: unknown) {
       setActionError(formatError(error));
@@ -162,7 +162,7 @@ export function SkillsPanel({ data, loading, onData, onLoading }: SkillsPanelPro
       <Alert className="border-accent/40 bg-accent/10">
         <WandSparkles className="size-4" />
         <AlertTitle>Skills are loading</AlertTitle>
-        <AlertDescription>Reading installed skills from the local runtime directory.</AlertDescription>
+        <AlertDescription>Loading Bestie's installed skills.</AlertDescription>
       </Alert>
     );
   }
@@ -266,7 +266,7 @@ function InstalledSkillRow({ skill, loading, onOpen, onToggle, onDelete, onRollb
     <div className="skill-row rounded-2xl border border-white/10 bg-card/60 p-4 text-sm" data-skill-row={skill.name}>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div><p className="font-semibold">{skill.name}</p><p className="mt-1 text-muted-foreground">{skill.preview || skill.path}</p></div>
-        <div className="flex flex-wrap gap-2"><Badge variant={skill.enabled ? "secondary" : "outline"}>{skill.enabled ? "enabled" : "disabled"}</Badge>{skill.localChanges ? <Badge variant="destructive">local changes</Badge> : null}</div>
+        <div className="flex flex-wrap gap-2"><Badge variant={skill.enabled ? "secondary" : "outline"}>{skill.enabled ? "enabled" : "disabled"}</Badge>{skill.localChanges ? <Badge variant="destructive">edited locally</Badge> : null}</div>
       </div>
       <Separator className="my-3" />
       <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-muted-foreground">
@@ -300,16 +300,16 @@ function LibrarySkillRow({ item, loading, onOpen, onInstall }: { item: SkillLibr
 }
 
 function SkillDetails({ skill }: { skill: SkillItemResponse }): ReactElement {
-  return <div className="mt-4 rounded-2xl border border-white/10 bg-card/60 p-4 text-sm"><p className="font-semibold">{skill.path}</p><p className="mt-1 text-muted-foreground">Manifest: {skill.manifest?.source ?? "local"}{skill.manifest?.libraryVersion ? ` / ${skill.manifest.libraryVersion}` : ""}</p></div>;
+  return <div className="mt-4 rounded-2xl border border-white/10 bg-card/60 p-4 text-sm"><p className="font-semibold">{skill.path}</p><p className="mt-1 text-muted-foreground">Source: {skill.manifest?.source ?? "local"}{skill.manifest?.libraryVersion ? ` / ${skill.manifest.libraryVersion}` : ""}</p></div>;
 }
 
 function LibraryDetails({ item, diff }: { item: SkillLibraryItem; diff: SkillLibraryDiff | null }): ReactElement {
   return (
     <div className="mt-4 grid gap-3 rounded-2xl border border-white/10 bg-card/60 p-4 text-sm">
-      <div className="flex flex-wrap gap-2"><Badge variant="outline">{item.author}</Badge><Badge variant="outline">{item.sourceName}</Badge><Badge variant={item.localChanges ? "destructive" : "secondary"}>{item.localChanges ? "local changes" : item.installed ? "installed" : "not installed"}</Badge></div>
+      <div className="flex flex-wrap gap-2"><Badge variant="outline">{item.author}</Badge><Badge variant="outline">{item.sourceName}</Badge><Badge variant={item.localChanges ? "destructive" : "secondary"}>{item.localChanges ? "edited locally" : item.installed ? "installed" : "not installed"}</Badge></div>
       <p className="text-muted-foreground">{item.changelog || item.preview}</p>
-      {item.permissions.length ? <p className="text-muted-foreground">Permissions: {item.permissions.join(", ")}</p> : null}
-      {diff ? <div className="rounded-xl border border-white/10 bg-background/35 p-3"><p className="font-semibold">Diff preview: +{diff.addedLines} / -{diff.removedLines}</p><pre className="no-scrollbar mt-2 max-h-48 overflow-auto whitespace-pre-wrap text-xs text-muted-foreground">{diff.preview.slice(0, 30).map((line) => `${line.kind === "added" ? "+" : line.kind === "removed" ? "-" : " "} ${line.text}`).join("\n")}</pre></div> : null}
+      {item.permissions.length ? <p className="text-muted-foreground">Needs access: {item.permissions.join(", ")}</p> : null}
+      {diff ? <div className="rounded-xl border border-white/10 bg-background/35 p-3"><p className="font-semibold">Change preview: +{diff.addedLines} / -{diff.removedLines}</p><pre className="no-scrollbar mt-2 max-h-48 overflow-auto whitespace-pre-wrap text-xs text-muted-foreground">{diff.preview.slice(0, 30).map((line) => `${line.kind === "added" ? "+" : line.kind === "removed" ? "-" : " "} ${line.text}`).join("\n")}</pre></div> : null}
     </div>
   );
 }

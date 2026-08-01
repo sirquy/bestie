@@ -1,4 +1,4 @@
-﻿import type { ReactElement } from "react";
+import type { ReactElement } from "react";
 import { useEffect, useMemo, useState } from "react";
 import {
   Bot,
@@ -13,7 +13,6 @@ import {
   PlugZap,
   Settings,
   ShieldCheck,
-  Sparkles,
   TerminalSquare,
   WandSparkles,
 } from "lucide-react";
@@ -45,6 +44,7 @@ import type { SkillsSummary } from "@/features/skills/types";
 import type { ToolsSummary } from "@/features/tools/types";
 import { fetchJson, type JsonRecord } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import bestieAppIcon from "@/assets/bestie-app-icon.png";
 
 type PanelId =
   | "chat"
@@ -71,18 +71,18 @@ interface PanelDefinition {
 }
 
 const panels: PanelDefinition[] = [
-  { id: "chat", title: "Local Chat", nav: "Chat", route: "/chat", description: "Local chat sessions for testing memory, tools, and response flow.", icon: MessageSquareText, endpoint: "/api/chat/sessions" },
-  { id: "doctor", title: "Doctor", nav: "Doctor", route: "/doctor", description: "Runtime, secrets, memory, channel health, and safe fixes.", icon: HeartPulse, endpoint: "/api/doctor" },
-  { id: "providers", title: "Provider Hub", nav: "Providers", route: "/providers", description: "Primary model, fallbacks, presets, and provider diagnostics.", icon: PlugZap, endpoint: "/api/providers" },
-  { id: "character", title: "Character Studio", nav: "Character", route: "/character", description: "Character file, system prompt, and tone guardrails.", icon: Bot, endpoint: "/api/character" },
-  { id: "memory", title: "Memory Center", nav: "Memory", route: "/memory", description: "Memory search, pending approvals, and hygiene state.", icon: Brain, endpoint: "/api/memory" },
-  { id: "knowledge", title: "Knowledge Graph", nav: "Knowledge", route: "/knowledge", description: "Entity/relation map, trust review, and graph actions.", icon: GitBranch, endpoint: "/api/knowledge-graph" },
-  { id: "channels", title: "Channel Hub", nav: "Channels", route: "/channels", description: "Telegram, Zalo, cron, and daemon channel controls.", icon: Cable, endpoint: "/api/channels" },
+  { id: "chat", title: "Local Chat", nav: "Chat", route: "/chat", description: "Chat with Bestie and continue past conversations.", icon: MessageSquareText, endpoint: "/api/chat/sessions" },
+  { id: "doctor", title: "Doctor", nav: "Doctor", route: "/doctor", description: "Check setup health and fix common issues safely.", icon: HeartPulse, endpoint: "/api/doctor" },
+  { id: "providers", title: "Provider Hub", nav: "Providers", route: "/providers", description: "Choose AI services and manage fallback options.", icon: PlugZap, endpoint: "/api/providers" },
+  { id: "character", title: "Character Studio", nav: "Character", route: "/character", description: "Tune Bestie's personality and conversation style.", icon: Bot, endpoint: "/api/character" },
+  { id: "memory", title: "Memory Center", nav: "Memory", route: "/memory", description: "Review remembered facts and pending updates.", icon: Brain, endpoint: "/api/memory" },
+  { id: "knowledge", title: "Knowledge Graph", nav: "Knowledge", route: "/knowledge", description: "Explore connected knowledge and clean it up.", icon: GitBranch, endpoint: "/api/knowledge-graph" },
+  { id: "channels", title: "Channel Hub", nav: "Channels", route: "/channels", description: "Manage connected channels and scheduled messages.", icon: Cable, endpoint: "/api/channels" },
   { id: "approvals", title: "Approvals", nav: "Approvals", route: "/approvals", description: "Permission-gated pending actions waiting for owner review.", icon: ClipboardCheck, endpoint: "/api/approvals" },
-  { id: "mcp", title: "MCP Hub", nav: "MCP", route: "/mcp", description: "Server, tool, OAuth, and classified read status.", icon: TerminalSquare, endpoint: "/api/mcp" },
-  { id: "tools", title: "Tools & Permissions", nav: "Tools", route: "/tools", description: "Tool policy and allowed external workspace paths.", icon: ShieldCheck, endpoint: "/api/tools" },
-  { id: "skills", title: "Skills", nav: "Skills", route: "/skills", description: "Installed skills, library metadata, and trust/risk review.", icon: WandSparkles, endpoint: "/api/skills" },
-  { id: "settings", title: "Settings", nav: "Settings", route: "/settings", description: "Low-risk agent and memory policy edits.", icon: Settings, endpoint: "/api/settings" },
+  { id: "mcp", title: "Extensions", nav: "Extensions", route: "/mcp", description: "Manage connected extensions and tool access.", icon: TerminalSquare, endpoint: "/api/mcp" },
+  { id: "tools", title: "Tools & Permissions", nav: "Tools", route: "/tools", description: "Review what Bestie can access and do.", icon: ShieldCheck, endpoint: "/api/tools" },
+  { id: "skills", title: "Skills", nav: "Skills", route: "/skills", description: "Manage Bestie's installed abilities.", icon: WandSparkles, endpoint: "/api/skills" },
+  { id: "settings", title: "Settings", nav: "Settings", route: "/settings", description: "Adjust safe preferences for Bestie.", icon: Settings, endpoint: "/api/settings" },
 ];
 
 const defaultPanel = panels[0];
@@ -146,7 +146,7 @@ function App(): ReactElement {
   }, []);
 
   useEffect(() => {
-    document.title = `${selectedPanel.title} · Bestie UI`;
+    document.title = `${selectedPanel.title} · Bestie`;
   }, [selectedPanel]);
 
   useEffect(() => {
@@ -175,20 +175,20 @@ function App(): ReactElement {
       <div className="pointer-events-none fixed inset-0 -z-10 bg-[radial-gradient(circle_at_20%_0%,rgba(166,244,172,0.12),transparent_24rem),radial-gradient(circle_at_100%_20%,rgba(255,181,91,0.12),transparent_26rem)]" />
       <div className="pointer-events-none fixed inset-x-8 top-0 -z-10 h-px bg-gradient-to-r from-transparent via-primary/50 to-transparent" />
       <div className="mx-auto max-w-[92rem]">
-        <aside className={cn("no-scrollbar rounded-[1.5rem] border border-white/10 bg-card/70 shadow-glow ring-1 ring-white/5 backdrop-blur-xl transition-all duration-300 lg:fixed lg:bottom-8 lg:left-[max(2rem,calc((100vw-92rem)/2+2rem))] lg:top-8 lg:z-30 lg:overflow-y-auto", sidebarCollapsed ? "p-2.5 lg:w-[4.75rem]" : "p-3 lg:w-[16rem]")} data-sidebar-state={sidebarCollapsed ? "collapsed" : "expanded"}>
-          <div className={cn("mb-5 flex items-center gap-2.5", sidebarCollapsed ? "flex-col justify-center" : "justify-between")}>
-            <div className={cn("flex items-center gap-2.5", sidebarCollapsed ? "justify-center" : "")}>
-              <div className="flex size-10 items-center justify-center rounded-2xl bg-gradient-to-br from-primary to-accent text-primary-foreground shadow-lg shadow-primary/20 ring-1 ring-white/30">
-                <Sparkles className="size-5" />
+        <aside className={cn("no-scrollbar mb-4 rounded-[1.25rem] border border-white/10 bg-card/70 shadow-glow ring-1 ring-white/5 backdrop-blur-xl transition-all duration-300 sm:rounded-[1.5rem] lg:fixed lg:bottom-8 lg:left-[max(2rem,calc((100vw-92rem)/2+2rem))] lg:top-8 lg:z-30 lg:mb-0 lg:overflow-y-auto", sidebarCollapsed ? "p-3 lg:w-[4.75rem] lg:p-2.5" : "p-3 lg:w-[16rem]")} data-sidebar-state={sidebarCollapsed ? "collapsed" : "expanded"}>
+          <div className={cn("mb-4 flex items-center gap-2.5 sm:mb-5", sidebarCollapsed ? "justify-between lg:flex-col lg:justify-center" : "justify-between")}>
+            <div className={cn("flex min-w-0 items-center gap-2.5", sidebarCollapsed ? "lg:justify-center" : "")}>
+              <div className="flex size-10 items-center justify-center overflow-hidden rounded-2xl bg-white shadow-lg shadow-primary/20 ring-1 ring-white/20">
+                <img src={bestieAppIcon} alt="Bestie Agent" className="size-full object-cover" />
               </div>
-              <div className={cn("min-w-0 transition-opacity duration-200", sidebarCollapsed ? "hidden" : "block")}>
+              <div className={cn("min-w-0 transition-opacity duration-200", sidebarCollapsed ? "lg:hidden" : "block")}>
                 <p className="text-lg font-bold tracking-tight">Bestie</p>
-                <p className="text-xs text-muted-foreground">Local control center</p>
+                <p className="text-xs text-muted-foreground">Personal AI workspace</p>
               </div>
             </div>
             <Button
               aria-label={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-              className="shrink-0 border-white/10 bg-background/50 hover:bg-secondary/80"
+              className="hidden shrink-0 border-white/10 bg-background/50 hover:bg-secondary/80 lg:inline-flex"
               data-sidebar-toggle
               size="icon"
               title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
@@ -199,7 +199,7 @@ function App(): ReactElement {
               {sidebarCollapsed ? <ChevronsRight /> : <ChevronsLeft />}
             </Button>
           </div>
-            <nav className="grid gap-1">
+            <nav className="grid grid-cols-2 gap-1 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-1">
             {panels.map((panel) => {
               const Icon = panel.icon;
               return (

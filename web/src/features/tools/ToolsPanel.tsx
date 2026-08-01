@@ -41,7 +41,7 @@ export function ToolsPanel({ data, loading, onData, onLoading }: ToolsPanelProps
   }
 
   async function updatePolicy(tool: string, policy: ToolPolicy): Promise<void> {
-    await runAction(() => fetchJson<ToolsSummary>("/api/tools/policy", { method: "PUT", body: JSON.stringify({ tool, policy }) }), `${tool} policy set to ${policy}.`);
+    await runAction(() => fetchJson<ToolsSummary>("/api/tools/policy", { method: "PUT", body: JSON.stringify({ tool, policy }) }), "Action rule updated.");
   }
 
   if (!data) {
@@ -49,7 +49,7 @@ export function ToolsPanel({ data, loading, onData, onLoading }: ToolsPanelProps
       <Alert className="border-accent/40 bg-accent/10">
         <ShieldCheck className="size-4" />
         <AlertTitle>Tools are loading</AlertTitle>
-        <AlertDescription>Reading internal tool policies from the local config.</AlertDescription>
+        <AlertDescription>Loading what Bestie can access and do.</AlertDescription>
       </Alert>
     );
   }
@@ -63,36 +63,36 @@ export function ToolsPanel({ data, loading, onData, onLoading }: ToolsPanelProps
         <Metric label="Allow" value={String(data.policies.allow)} tone="good" />
         <Metric label="Ask" value={String(data.policies.ask)} tone="warn" />
         <Metric label="Deny" value={String(data.policies.deny)} tone="bad" />
-        <Metric label="Exec timeout" value={data.exec.timeoutMs === undefined ? "default" : `${data.exec.timeoutMs}ms`} />
+        <Metric label="Action timeout" value={data.exec.timeoutMs === undefined ? "default" : `${data.exec.timeoutMs}ms`} />
       </div>
 
       <div className="grid gap-4 xl:grid-cols-[1fr_0.85fr]">
         <Card className="border-white/10 bg-background/35">
           <CardHeader className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
             <div>
-              <CardTitle className="flex items-center gap-2"><SlidersHorizontal className="size-5" /> Tool policies</CardTitle>
+              <CardTitle className="flex items-center gap-2"><SlidersHorizontal className="size-5" /> Allowed actions</CardTitle>
               <CardDescription>Keep defaults conservative; public, destructive, and external actions should stay approval-gated.</CardDescription>
             </div>
             <Button variant="outline" onClick={() => void reload()} disabled={loading}><RefreshCw className={loading ? "animate-spin" : ""} /> Reload</Button>
           </CardHeader>
           <CardContent className="grid gap-3">
-            {data.policies.entries.length ? data.policies.entries.map((entry) => <ToolPolicyRow key={entry.tool} entry={entry} loading={loading} onUpdate={updatePolicy} />) : <p className="rounded-2xl border border-dashed border-white/10 bg-background/25 p-4 text-sm text-muted-foreground">No explicit tool policies configured.</p>}
+            {data.policies.entries.length ? data.policies.entries.map((entry) => <ToolPolicyRow key={entry.tool} entry={entry} loading={loading} onUpdate={updatePolicy} />) : <p className="rounded-2xl border border-dashed border-white/10 bg-background/25 p-4 text-sm text-muted-foreground">No custom action rules yet.</p>}
           </CardContent>
         </Card>
 
         <div className="grid gap-4">
           <Card className="border-white/10 bg-background/35">
-            <CardHeader><CardTitle className="flex items-center gap-2"><FolderOpen className="size-5" /> Workspace</CardTitle><CardDescription>Readable/writeable boundaries exposed to tools.</CardDescription></CardHeader>
+            <CardHeader><CardTitle className="flex items-center gap-2"><FolderOpen className="size-5" /> Folders</CardTitle><CardDescription>Folders Bestie can read or write when actions are allowed.</CardDescription></CardHeader>
             <CardContent className="grid gap-3 text-sm">
-              <SummaryRow label="Default path" value={data.workspace.defaultPath ?? "-"} />
-              <SummaryRow label="External paths" value={String(data.workspace.externalPathCount)} />
+              <SummaryRow label="Main folder" value={data.workspace.defaultPath ?? "-"} />
+              <SummaryRow label="Extra folders" value={String(data.workspace.externalPathCount)} />
               <Separator />
-              {data.workspace.externalPaths.length ? data.workspace.externalPaths.map((path) => <p key={path} className="break-all rounded-xl border border-white/10 bg-card/60 p-3 text-muted-foreground">{path}</p>) : <p className="text-muted-foreground">No external workspace paths configured.</p>}
+              {data.workspace.externalPaths.length ? data.workspace.externalPaths.map((path) => <p key={path} className="break-all rounded-xl border border-white/10 bg-card/60 p-3 text-muted-foreground">{path}</p>) : <p className="text-muted-foreground">No extra folders added yet.</p>}
             </CardContent>
           </Card>
 
           <Card className="border-white/10 bg-background/35">
-            <CardHeader><CardTitle className="flex items-center gap-2"><TerminalSquare className="size-5" /> Execution</CardTitle><CardDescription>Runtime limits for command execution tools.</CardDescription></CardHeader>
+            <CardHeader><CardTitle className="flex items-center gap-2"><TerminalSquare className="size-5" /> Command safety</CardTitle><CardDescription>Limits for actions that run commands.</CardDescription></CardHeader>
             <CardContent><SummaryRow label="Timeout" value={data.exec.timeoutMs === undefined ? "default" : `${data.exec.timeoutMs}ms`} /></CardContent>
           </Card>
         </div>
