@@ -27,6 +27,7 @@ const CYTOSCAPE_SCRIPT_PATH = require.resolve("cytoscape/dist/cytoscape.min.js")
 const BESTIE_ICON_PNG_PATH = fileURLToPath(new URL("../../assets/bestie-app-icon.png", import.meta.url));
 const BESTIE_ICON_ICO_PATH = fileURLToPath(new URL("../../assets/bestie-app-icon.ico", import.meta.url));
 const UI_WEB_INDEX_PATH = fileURLToPath(new URL("./web/index.html", import.meta.url));
+const UI_WEB_ROUTE_PATHS = new Set(["/chat", "/doctor", "/providers", "/character", "/memory", "/knowledge", "/channels", "/approvals", "/mcp", "/tools", "/skills", "/settings"]);
 
 export interface UiServerOptions {
   host?: string;
@@ -86,8 +87,7 @@ async function handleRequestAsync(request: IncomingMessage, response: ServerResp
   }
 
   if (method === "GET" && url.pathname === "/") {
-    const reactHome = await readOptionalTextFile(UI_WEB_INDEX_PATH);
-    sendHtml(response, reactHome ?? renderHomePage());
+    await sendUiHome(response);
     return;
   }
 
@@ -785,7 +785,22 @@ async function handleRequestAsync(request: IncomingMessage, response: ServerResp
     return;
   }
 
+  if (method === "GET" && isUiWebRoute(url.pathname)) {
+    await sendUiHome(response);
+    return;
+  }
+
   sendJson(response, 404, { ok: false, error: "Not found", code: "UiRouteNotFound" });
+}
+
+async function sendUiHome(response: ServerResponse): Promise<void> {
+  const reactHome = await readOptionalTextFile(UI_WEB_INDEX_PATH);
+  sendHtml(response, reactHome ?? renderHomePage());
+}
+
+function isUiWebRoute(pathname: string): boolean {
+  const normalizedPath = pathname.length > 1 ? pathname.replace(/\/+$/, "") : pathname;
+  return UI_WEB_ROUTE_PATHS.has(normalizedPath);
 }
 
 function isUiChatAttachment(value: unknown): value is { name: string; type?: string; size?: number; content: string } {

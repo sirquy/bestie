@@ -1,14 +1,12 @@
 ﻿import type { ReactElement } from "react";
 import { useEffect, useMemo, useState } from "react";
 import {
-  Activity,
   Bot,
   Brain,
   Cable,
-  CheckCircle2,
-  CircleAlert,
+  ChevronsLeft,
+  ChevronsRight,
   ClipboardCheck,
-  Gauge,
   GitBranch,
   HeartPulse,
   MessageSquareText,
@@ -47,7 +45,8 @@ import type { ProviderSummary } from "@/features/providers/types";
 import type { SettingsSummary } from "@/features/settings/types";
 import type { SkillsSummary } from "@/features/skills/types";
 import type { ToolsSummary } from "@/features/tools/types";
-import { fetchJson, formatError, readRecord, readText, type JsonRecord } from "@/lib/api";
+import { fetchJson, type JsonRecord } from "@/lib/api";
+import { cn } from "@/lib/utils";
 
 type PanelId =
   | "chat"
@@ -67,43 +66,97 @@ interface PanelDefinition {
   id: PanelId;
   title: string;
   nav: string;
+  route: `/${string}`;
   description: string;
   icon: typeof MessageSquareText;
   endpoint?: string;
 }
 
 const panels: PanelDefinition[] = [
-  { id: "chat", title: "Local Chat", nav: "Chat", description: "Local chat sessions for testing memory, tools, and response flow.", icon: MessageSquareText, endpoint: "/api/chat/sessions" },
-  { id: "doctor", title: "Doctor", nav: "Doctor", description: "Runtime, secrets, memory, channel health, and safe fixes.", icon: HeartPulse, endpoint: "/api/doctor" },
-  { id: "providers", title: "Provider Hub", nav: "Providers", description: "Primary model, fallbacks, presets, and provider diagnostics.", icon: PlugZap, endpoint: "/api/providers" },
-  { id: "character", title: "Character Studio", nav: "Character", description: "Character file, system prompt, and tone guardrails.", icon: Bot, endpoint: "/api/character" },
-  { id: "memory", title: "Memory Center", nav: "Memory", description: "Memory search, pending approvals, and hygiene state.", icon: Brain, endpoint: "/api/memory" },
-  { id: "knowledge", title: "Knowledge Graph", nav: "Knowledge", description: "Entity/relation map, trust review, and graph actions.", icon: GitBranch, endpoint: "/api/knowledge-graph" },
-  { id: "channels", title: "Channel Hub", nav: "Channels", description: "Telegram, Zalo, cron, and daemon channel controls.", icon: Cable, endpoint: "/api/channels" },
-  { id: "approvals", title: "Approvals", nav: "Approvals", description: "Permission-gated pending actions waiting for owner review.", icon: ClipboardCheck, endpoint: "/api/approvals" },
-  { id: "mcp", title: "MCP Hub", nav: "MCP", description: "Server, tool, OAuth, and classified read status.", icon: TerminalSquare, endpoint: "/api/mcp" },
-  { id: "tools", title: "Tools & Permissions", nav: "Tools", description: "Tool policy and allowed external workspace paths.", icon: ShieldCheck, endpoint: "/api/tools" },
-  { id: "skills", title: "Skills", nav: "Skills", description: "Installed skills, library metadata, and trust/risk review.", icon: WandSparkles, endpoint: "/api/skills" },
-  { id: "settings", title: "Settings", nav: "Settings", description: "Low-risk agent and memory policy edits.", icon: Settings, endpoint: "/api/settings" },
+  { id: "chat", title: "Local Chat", nav: "Chat", route: "/chat", description: "Local chat sessions for testing memory, tools, and response flow.", icon: MessageSquareText, endpoint: "/api/chat/sessions" },
+  { id: "doctor", title: "Doctor", nav: "Doctor", route: "/doctor", description: "Runtime, secrets, memory, channel health, and safe fixes.", icon: HeartPulse, endpoint: "/api/doctor" },
+  { id: "providers", title: "Provider Hub", nav: "Providers", route: "/providers", description: "Primary model, fallbacks, presets, and provider diagnostics.", icon: PlugZap, endpoint: "/api/providers" },
+  { id: "character", title: "Character Studio", nav: "Character", route: "/character", description: "Character file, system prompt, and tone guardrails.", icon: Bot, endpoint: "/api/character" },
+  { id: "memory", title: "Memory Center", nav: "Memory", route: "/memory", description: "Memory search, pending approvals, and hygiene state.", icon: Brain, endpoint: "/api/memory" },
+  { id: "knowledge", title: "Knowledge Graph", nav: "Knowledge", route: "/knowledge", description: "Entity/relation map, trust review, and graph actions.", icon: GitBranch, endpoint: "/api/knowledge-graph" },
+  { id: "channels", title: "Channel Hub", nav: "Channels", route: "/channels", description: "Telegram, Zalo, cron, and daemon channel controls.", icon: Cable, endpoint: "/api/channels" },
+  { id: "approvals", title: "Approvals", nav: "Approvals", route: "/approvals", description: "Permission-gated pending actions waiting for owner review.", icon: ClipboardCheck, endpoint: "/api/approvals" },
+  { id: "mcp", title: "MCP Hub", nav: "MCP", route: "/mcp", description: "Server, tool, OAuth, and classified read status.", icon: TerminalSquare, endpoint: "/api/mcp" },
+  { id: "tools", title: "Tools & Permissions", nav: "Tools", route: "/tools", description: "Tool policy and allowed external workspace paths.", icon: ShieldCheck, endpoint: "/api/tools" },
+  { id: "skills", title: "Skills", nav: "Skills", route: "/skills", description: "Installed skills, library metadata, and trust/risk review.", icon: WandSparkles, endpoint: "/api/skills" },
+  { id: "settings", title: "Settings", nav: "Settings", route: "/settings", description: "Low-risk agent and memory policy edits.", icon: Settings, endpoint: "/api/settings" },
 ];
 
+const defaultPanel = panels[0];
+const panelsByRoute = new Map<string, PanelDefinition>(panels.map((panel) => [panel.route, panel]));
+const panelsById = new Map(panels.map((panel) => [panel.id, panel]));
+const legacyPanelIds = new Map(panels.map((panel) => [`${panel.id}-panel`, panel.id]));
+const SIDEBAR_COLLAPSED_KEY = "bestie.ui.sidebarCollapsed";
+
+function panelFromLocation(location: Location): PanelDefinition {
+  const legacyHash = location.hash.startsWith("#") ? legacyPanelIds.get(location.hash.slice(1)) : undefined;
+  if (legacyHash) return panelsById.get(legacyHash) ?? defaultPanel;
+  return panelsByRoute.get(normalizeRoute(location.pathname)) ?? defaultPanel;
+}
+
+function normalizeRoute(pathname: string): string {
+  if (pathname === "/") return defaultPanel.route;
+  return pathname.length > 1 ? pathname.replace(/\/+$/, "") : pathname;
+}
+
+function readSidebarCollapsed(): boolean {
+  try {
+    return window.localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "true";
+  } catch {
+    return false;
+  }
+}
+
 function App(): ReactElement {
-  const [activePanel, setActivePanel] = useState<PanelId>("chat");
-  const [status, setStatus] = useState<JsonRecord | null>(null);
+  const [activePanel, setActivePanel] = useState<PanelId>(() => panelFromLocation(window.location).id);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(readSidebarCollapsed);
   const [panelData, setPanelData] = useState<Record<string, JsonRecord>>({});
   const [panelErrors, setPanelErrors] = useState<Record<string, unknown>>({});
   const [loadingPanels, setLoadingPanels] = useState<Record<string, boolean>>({});
-  const [error, setError] = useState<string | null>(null);
 
   const selectedPanel = useMemo(() => panels.find((panel) => panel.id === activePanel) ?? panels[0], [activePanel]);
 
+  function navigateToPanel(panel: PanelDefinition, mode: "push" | "replace" = "push"): void {
+    if (activePanel !== panel.id) setActivePanel(panel.id);
+    const nextUrl = `${panel.route}${window.location.search}`;
+    if (normalizeRoute(window.location.pathname) === panel.route && !window.location.hash) return;
+    window.history[mode === "replace" ? "replaceState" : "pushState"]({ panelId: panel.id }, "", nextUrl);
+  }
+
   function refreshStatus(): void {
-    void fetchJson("/api/status").then(setStatus).catch((fetchError: unknown) => setError(formatError(fetchError)));
+    void fetchJson("/api/status").catch(() => undefined);
   }
 
   useEffect(() => {
-    refreshStatus();
+    const panel = panelFromLocation(window.location);
+    setActivePanel(panel.id);
+    if (window.location.hash || window.location.pathname === "/") {
+      window.history.replaceState({ panelId: panel.id }, "", `${panel.route}${window.location.search}`);
+    }
+
+    function handlePopState(): void {
+      setActivePanel(panelFromLocation(window.location).id);
+    }
+
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
   }, []);
+
+  useEffect(() => {
+    document.title = `${selectedPanel.title} · Bestie UI`;
+  }, [selectedPanel]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(SIDEBAR_COLLAPSED_KEY, String(sidebarCollapsed));
+    } catch {
+    }
+  }, [sidebarCollapsed]);
 
   useEffect(() => {
     if (!selectedPanel.endpoint || panelData[selectedPanel.id] || loadingPanels[selectedPanel.id]) return;
@@ -123,73 +176,73 @@ function App(): ReactElement {
 
   return (
     <div className="min-h-screen p-4 md:p-6 lg:p-8">
-      <div className="mx-auto grid max-w-7xl gap-4 lg:grid-cols-[18rem_1fr]">
-        <aside className="rounded-3xl border border-white/10 bg-card/80 p-4 shadow-glow backdrop-blur">
-          <div className="mb-6 flex items-center gap-3">
-            <div className="flex size-12 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-lg">
-              <Sparkles className="size-6" />
+      <div className={cn("mx-auto grid max-w-7xl gap-4 transition-[grid-template-columns] duration-300", sidebarCollapsed ? "lg:grid-cols-[5.25rem_1fr]" : "lg:grid-cols-[18rem_1fr]")}>
+        <aside className={cn("self-start rounded-3xl border border-white/10 bg-card/80 shadow-glow backdrop-blur transition-all duration-300 lg:sticky lg:top-8 lg:max-h-[calc(100vh-4rem)] lg:overflow-y-auto", sidebarCollapsed ? "p-3" : "p-4")} data-sidebar-state={sidebarCollapsed ? "collapsed" : "expanded"}>
+          <div className={cn("mb-6 flex items-center gap-3", sidebarCollapsed ? "flex-col justify-center" : "justify-between")}>
+            <div className={cn("flex items-center gap-3", sidebarCollapsed ? "justify-center" : "")}>
+              <div className="flex size-12 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-lg">
+                <Sparkles className="size-6" />
+              </div>
+              <div className={cn("min-w-0 transition-opacity duration-200", sidebarCollapsed ? "hidden" : "block")}>
+                <p className="text-lg font-bold tracking-tight">Bestie</p>
+                <p className="text-xs text-muted-foreground">Local control center</p>
+              </div>
             </div>
-            <div>
-              <p className="text-lg font-bold tracking-tight">Bestie</p>
-              <p className="text-xs text-muted-foreground">React cockpit migration</p>
-            </div>
+            <Button
+              aria-label={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+              className="shrink-0"
+              data-sidebar-toggle
+              size="icon"
+              title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+              type="button"
+              variant="outline"
+              onClick={() => setSidebarCollapsed((current) => !current)}
+            >
+              {sidebarCollapsed ? <ChevronsRight /> : <ChevronsLeft />}
+            </Button>
           </div>
           <nav className="grid gap-1">
             {panels.map((panel) => {
               const Icon = panel.icon;
               return (
                 <Button
+                  asChild
                   key={panel.id}
-                  className="justify-start"
+                  className={cn("justify-start", sidebarCollapsed ? "lg:justify-center lg:px-0" : "")}
                   variant={activePanel === panel.id ? "secondary" : "ghost"}
-                  onClick={() => setActivePanel(panel.id)}
                 >
-                  <Icon />
-                  {panel.nav}
+                  <a
+                    href={panel.route}
+                    aria-current={activePanel === panel.id ? "page" : undefined}
+                    aria-label={panel.nav}
+                    title={sidebarCollapsed ? panel.nav : undefined}
+                    onClick={(event) => {
+                      if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) return;
+                      event.preventDefault();
+                      navigateToPanel(panel);
+                    }}
+                  >
+                    <Icon />
+                    <span className={cn("truncate", sidebarCollapsed ? "lg:sr-only" : "")}>{panel.nav}</span>
+                  </a>
                 </Button>
               );
             })}
           </nav>
+          <Button
+            aria-label={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+            className="mt-3 w-full lg:hidden"
+            data-sidebar-toggle-mobile
+            type="button"
+            variant="outline"
+            onClick={() => setSidebarCollapsed((current) => !current)}
+          >
+            {sidebarCollapsed ? <ChevronsRight /> : <ChevronsLeft />}
+            {sidebarCollapsed ? "Expand" : "Collapse"}
+          </Button>
         </aside>
 
         <main className="grid gap-4">
-          <section className="grid gap-4 xl:grid-cols-[1.4fr_0.8fr]">
-            <Card className="border-white/10 bg-card/80 backdrop-blur">
-              <CardHeader>
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div>
-                    <Badge className="mb-3" variant="secondary">Localhost UI</Badge>
-                    <CardTitle className="text-3xl md:text-4xl">Companion control center</CardTitle>
-                    <CardDescription className="mt-3 max-w-2xl text-base">
-                      First shell is running on React + Vite + TypeScript + Tailwind, using shadcn-style components before custom UI.
-                    </CardDescription>
-                  </div>
-                  <Button onClick={() => window.location.reload()}>
-                    <Activity />
-                    Refresh
-                  </Button>
-                </div>
-              </CardHeader>
-              <CardContent>
-                {error ? <StatusNotice tone="bad" text={error} /> : <RuntimeSummary status={status} />}
-              </CardContent>
-            </Card>
-
-            <Card className="border-white/10 bg-card/80 backdrop-blur">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2"><Gauge className="size-5" /> Migration status</CardTitle>
-                <CardDescription>Incremental bridge: React frontend, existing `/api/*` backend.</CardDescription>
-              </CardHeader>
-              <CardContent className="grid gap-3 text-sm">
-                <ChecklistItem done label="Vite build pipeline" />
-                <ChecklistItem done label="Tailwind design tokens" />
-                <ChecklistItem done label="shadcn-style Button/Card/Badge" />
-                <ChecklistItem done label="Existing runtime APIs reused" />
-                <ChecklistItem label="Panel-by-panel feature parity" />
-              </CardContent>
-            </Card>
-          </section>
-
           <Card className="border-white/10 bg-card/80 backdrop-blur">
             <CardHeader>
               <div className="flex flex-wrap items-center justify-between gap-3">
@@ -357,62 +410,4 @@ function App(): ReactElement {
   );
 }
 
-function RuntimeSummary({ status }: { status: JsonRecord | null }): ReactElement {
-  if (!status) return <StatusNotice tone="warn" text="Loading runtime summary..." />;
-
-  const agent = readRecord(status.agent);
-  const llm = readRecord(status.llm);
-  const memory = readRecord(status.memory);
-  const channels = readRecord(status.channels);
-  const missingEnv = Array.isArray(status.missingEnvVars) ? status.missingEnvVars : [];
-
-  return (
-    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-      <Metric label="Agent" value={readText(agent.name) || "Bestie"} tone="good" />
-      <Metric label="Model" value={readText(llm.primary) || readText(llm.model) || "-"} />
-      <Metric label="Memory" value={readText(memory.status) || readText(memory.count) || "local"} />
-      <Metric label="Missing env" value={String(missingEnv.length)} tone={missingEnv.length ? "warn" : "good"} />
-      <Metric label="Telegram" value={readText(readRecord(channels.telegram).status) || readText(readRecord(channels.telegram).enabled) || "-"} />
-      <Metric label="Zalo" value={readText(readRecord(channels.zalo).status) || readText(readRecord(channels.zalo).enabled) || "-"} />
-      <Metric label="Doctor" value={readText(status.doctorStatus) || readText(status.health) || "ready"} tone="good" />
-      <Metric label="API" value={readText(status.ok) || "connected"} tone="good" />
-    </div>
-  );
-}
-
-function Metric({ label, value, tone }: { label: string; value: string; tone?: "good" | "warn" | "bad" }): ReactElement {
-  return (
-    <div className="rounded-2xl border border-white/10 bg-background/40 p-4">
-      <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{label}</p>
-      <p className={tone === "good" ? "mt-2 font-semibold text-primary" : tone === "bad" ? "mt-2 font-semibold text-destructive" : tone === "warn" ? "mt-2 font-semibold text-accent" : "mt-2 font-semibold"}>{value || "-"}</p>
-    </div>
-  );
-}
-
-function ChecklistItem({ done = false, label }: { done?: boolean; label: string }): ReactElement {
-  return (
-    <div className="flex items-center gap-2">
-      {done ? <CheckCircle2 className="size-4 text-primary" /> : <CircleAlert className="size-4 text-accent" />}
-      <span className={done ? "text-foreground" : "text-muted-foreground"}>{label}</span>
-    </div>
-  );
-}
-
-function StatusNotice({ text, tone }: { text: string; tone: "good" | "warn" | "bad" }): ReactElement {
-  return <div className={tone === "bad" ? "rounded-2xl border border-destructive/40 bg-destructive/10 p-4 text-sm text-destructive-foreground" : tone === "good" ? "rounded-2xl border border-primary/40 bg-primary/10 p-4 text-sm" : "rounded-2xl border border-accent/40 bg-accent/10 p-4 text-sm"}>{text}</div>;
-}
-
 export default App;
-
-
-
-
-
-
-
-
-
-
-
-
-

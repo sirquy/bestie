@@ -89,6 +89,17 @@ async function assertHome(url) {
     const assetResponse = await fetch(new URL(`/${asset}`, url));
     if (!assetResponse.ok) throw new Error(`React asset was not served: ${asset}`);
   }
+  for (const route of ["/chat", "/knowledge", "/skills", "/settings"]) {
+    const routeResponse = await fetch(new URL(route, url));
+    const routeHtml = await routeResponse.text();
+    if (!routeResponse.ok || !routeHtml.includes('id="root"') || !routeHtml.includes('/assets/index-')) {
+      throw new Error(`React route was not served for ${route}: ${routeResponse.status}`);
+    }
+  }
+  const missingResponse = await fetch(new URL("/not-a-webui-route", url));
+  if (missingResponse.status !== 404) {
+    throw new Error(`Unknown UI route should remain 404, got ${missingResponse.status}`);
+  }
 }
 
 function assertHomeScriptSyntax() {
