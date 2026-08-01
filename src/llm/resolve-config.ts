@@ -31,7 +31,11 @@ export function resolveLlmCandidate(config: AppConfig, modelRef: string): Resolv
   }
 
   const catalogEntry = config.llm.modelCatalog[modelRef];
-  const profileId = catalogEntry?.profile ?? config.llm.authProfile;
+  if (!catalogEntry) {
+    throw new Error(`LLM model ref not found in catalog: ${modelRef}`);
+  }
+
+  const profileId = catalogEntry.profile;
   const profile = config.llm.profiles[profileId];
   if (!profile) {
     throw new Error(`LLM auth profile not found: ${profileId}`);

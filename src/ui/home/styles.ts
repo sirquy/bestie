@@ -73,8 +73,8 @@ body.sidebar-compact .shell { grid-template-columns: 72px 1fr; }
 .brand strong, .brand small { display: block; }
 .brand strong { color: var(--ink); }
 .brand small { color: rgba(238, 246, 237, 0.62); font: 800 0.68rem "Trebuchet MS", Verdana, sans-serif; text-transform: uppercase; }
-.brand-mark { background: var(--gold); border-radius: 7px; color: var(--ink); display: inline-grid; height: 38px; place-items: center; width: 38px; }
-.brand-mark .icon { height: 20px; width: 20px; }
+.brand-mark { border-radius: 10px; display: inline-grid; height: 38px; overflow: hidden; place-items: center; width: 38px; }
+.brand-mark img { display: block; height: 38px; object-fit: cover; width: 38px; }
 .sidebar-toggle { background: rgba(238, 246, 237, 0.08); color: var(--ink); margin: 0 0 14px; width: 100%; }
 .sidebar-toggle:hover { background: rgba(238, 246, 237, 0.16); color: var(--ink); }
 nav { display: grid; gap: 6px; }
@@ -115,6 +115,27 @@ h1 { font-size: clamp(1.6rem, 4vw, 2.4rem); line-height: 1; margin: 0; }
 .stack { display: grid; gap: 8px; }
 .hidden { display: none !important; }
 .notice { background: rgba(94, 212, 196, 0.1); border: 1px solid rgba(94, 212, 196, 0.24); border-radius: 6px; color: #b8fff3; font: 0.84rem/1.35 "Trebuchet MS", Verdana, sans-serif; padding: 9px; }
+.notice.bad { background: rgba(255, 99, 99, 0.12); border-color: rgba(255, 99, 99, 0.32); color: #ffd0d0; }
+.provider-hero, .provider-route-grid { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+.provider-card { background: linear-gradient(135deg, rgba(16, 28, 24, 0.82), rgba(8, 13, 11, 0.72)); border: 1px solid rgba(238, 246, 237, 0.1); border-radius: 12px; box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04); display: grid; gap: 8px; min-height: 132px; padding: 13px; }
+.provider-card.important { border-color: rgba(94, 212, 196, 0.34); }
+.provider-card strong { font: 900 1.05rem/1.2 "Trebuchet MS", Verdana, sans-serif; overflow-wrap: anywhere; }
+.provider-card p { color: var(--muted); margin: 0; overflow-wrap: anywhere; }
+.provider-pills { display: flex; flex-wrap: wrap; gap: 6px; }
+.provider-stats { display: grid; gap: 7px; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.provider-stats span { background: rgba(13, 20, 17, 0.62); border: 1px solid rgba(238, 246, 237, 0.08); border-radius: 8px; display: grid; gap: 2px; padding: 8px; }
+.provider-stats strong { color: #9af4e9; font: 900 1.05rem/1 "Trebuchet MS", Verdana, sans-serif; }
+.provider-stats small, .provider-list-item small, .provider-preset small { color: var(--muted); font: 800 0.66rem "Trebuchet MS", Verdana, sans-serif; text-transform: uppercase; }
+.provider-segments { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.provider-presets { grid-template-columns: repeat(auto-fit, minmax(135px, 1fr)); }
+.provider-preset { align-items: center; justify-content: flex-start; min-height: 56px; text-align: left; }
+.provider-preset span { display: grid; gap: 2px; }
+.provider-form .control-grid { grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); }
+.provider-list { display: grid; gap: 7px; }
+.provider-list-item { align-items: center; background: rgba(13, 20, 17, 0.52); border: 1px solid rgba(238, 246, 237, 0.08); border-radius: 9px; display: flex; gap: 10px; justify-content: space-between; padding: 9px; }
+.provider-list-item span:first-child { display: grid; gap: 3px; min-width: 0; }
+.provider-list-item strong { overflow-wrap: anywhere; }
+.provider-empty { border: 1px dashed rgba(238, 246, 237, 0.14); border-radius: 9px; color: var(--muted); padding: 12px; text-align: center; }
 .row { align-items: center; display: flex; gap: 8px; justify-content: space-between; }
 .pill-row { align-items: center; display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-start; min-width: 0; }
 .row span:first-child { align-items: center; display: inline-flex; gap: 8px; }
@@ -467,6 +488,7 @@ dialog::backdrop { background: rgba(24, 35, 29, 0.44); }
 .skill-row { background: rgba(238, 246, 237, 0.07); border-color: rgba(238, 246, 237, 0.1); color: var(--ink); display: grid; gap: 8px; grid-template-columns: minmax(0, 1fr) auto; justify-items: stretch; min-height: 0; padding: 10px; text-align: left; width: 100%; }
 .skill-row.active, .skill-row:hover { background: rgba(94, 212, 196, 0.14); border-color: rgba(94, 212, 196, 0.3); transform: none; }
 .skill-row-main { display: grid; gap: 4px; min-width: 0; }
+.skill-row-badges { align-content: start; display: grid; gap: 5px; justify-items: end; }
 .skill-row strong { font: 800 0.92rem "Trebuchet MS", Verdana, sans-serif; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .skill-row small { color: var(--muted); display: -webkit-box; font: 0.76rem/1.35 "Trebuchet MS", Verdana, sans-serif; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; }
 .skill-row .pill { align-self: start; max-width: 78px; }
@@ -475,6 +497,31 @@ dialog::backdrop { background: rgba(24, 35, 29, 0.44); }
 .skill-editor { align-content: start; gap: 12px; }
 .skill-content-label textarea { font: 0.88rem/1.5 "Courier New", monospace; min-height: min(50vh, 520px); }
 .skill-help { background: rgba(224, 178, 87, 0.1); border: 1px solid rgba(224, 178, 87, 0.18); border-radius: 7px; color: #f4deb0; display: grid; font: 0.82rem/1.4 "Trebuchet MS", Verdana, sans-serif; gap: 4px; padding: 10px; }
+.skills-page-tabs { margin-bottom: 12px; max-width: 520px; }
+.skills-page-tabs button { justify-content: center; }
+.skills-page-tabs button span { background: rgba(238, 246, 237, 0.12); border-radius: 999px; color: var(--muted); font-size: 0.68rem; margin-left: 6px; padding: 2px 6px; }
+.skills-template-page { display: grid; gap: 12px; }
+.skills-template-hero { align-items: center; background: linear-gradient(135deg, rgba(94, 212, 196, 0.1), rgba(224, 178, 87, 0.08)); border: 1px solid rgba(238, 246, 237, 0.1); border-radius: 10px; display: grid; gap: 12px; grid-template-columns: minmax(0, 1fr) auto; padding: 14px; }
+.skills-template-hero strong { display: block; font: 800 1.1rem "Trebuchet MS", Verdana, sans-serif; }
+.skills-template-hero p { color: var(--muted); margin: 4px 0 0; }
+.skills-template-page .skill-library { margin-top: 0; }
+.skill-library { background: linear-gradient(135deg, rgba(94, 212, 196, 0.08), rgba(224, 178, 87, 0.08)); border: 1px solid rgba(238, 246, 237, 0.1); border-radius: 10px; display: grid; gap: 12px; margin-top: 12px; padding: 14px; }
+.skill-library-head { align-items: start; display: flex; gap: 12px; justify-content: space-between; }
+.skill-library-head strong, .skill-library-card strong { display: block; font: 800 1rem "Trebuchet MS", Verdana, sans-serif; }
+.skill-library-controls { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; min-width: min(420px, 100%); }
+.skill-library-controls input { flex: 1 1 220px; }
+.skill-registry-strip { align-items: center; display: flex; flex-wrap: wrap; gap: 7px; }
+.skill-library-summary { align-items: center; color: var(--muted); display: flex; flex-wrap: wrap; gap: 7px; font-size: 0.78rem; }
+.skill-library-summary span { background: rgba(238, 246, 237, 0.07); border: 1px solid rgba(238, 246, 237, 0.08); border-radius: 999px; padding: 4px 8px; }
+.skill-library-list { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
+.skill-library-card { background: rgba(8, 13, 11, 0.36); border: 1px solid rgba(238, 246, 237, 0.1); border-radius: 9px; display: grid; gap: 9px; padding: 12px; }
+.skill-library-card-head { align-items: start; display: flex; gap: 8px; justify-content: space-between; }
+.skill-library-card p { color: var(--ink); line-height: 1.42; margin: 0; }
+.skill-library-meta { display: flex; flex-wrap: wrap; gap: 6px; }
+.skill-library-meta span { background: rgba(238, 246, 237, 0.08); border: 1px solid rgba(238, 246, 237, 0.08); border-radius: 999px; color: var(--muted); font-size: 0.75rem; padding: 4px 7px; }
+.skill-library-card details { color: var(--muted); font-size: 0.8rem; }
+.skill-library-card pre { background: rgba(0, 0, 0, 0.22); border-radius: 7px; max-height: 160px; overflow: auto; padding: 9px; white-space: pre-wrap; }
+.skill-library-card .actions { justify-content: flex-start; }
 .notice.compact { font-size: 0.78rem; overflow-wrap: anywhere; }
 @media (max-width: 920px) {
   .shell { grid-template-columns: 1fr; }
@@ -550,6 +597,7 @@ dialog::backdrop { background: rgba(24, 35, 29, 0.44); }
   .knowledge-map-shell[data-knowledge-drawer="list"] .knowledge-drawer, .knowledge-map-shell[data-knowledge-drawer="inspector"] .knowledge-drawer { transform: translateY(0); }
   .knowledge-svg { height: 280px; min-height: 260px; }
   .knowledge-row { grid-template-columns: 1fr; }
-  .skills-rail-head, .skill-editor-head { display: grid; }
+  .skills-rail-head, .skill-editor-head, .skill-library-head { display: grid; }
   .skill-editor-actions { justify-content: start; }
+  .skill-library-controls { justify-content: start; min-width: 0; }
 }`;

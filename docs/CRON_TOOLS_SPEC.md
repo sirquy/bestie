@@ -410,7 +410,7 @@ const executor = new CronExecutor(config, paths, apiKey);
 executor.start();
 ```
 
-The Linux user service does not create a separate cron unit. `bestie service install` writes one `bestie.service` unit whose hidden foreground command, `bestie service run`, starts configured Telegram, Zalo, cron, and future service targets together.
+The Linux user service does not create a separate cron unit. On Linux, `bestie service install` writes one `bestie.service` unit whose hidden foreground command, `bestie service run`, starts configured Telegram, Zalo, cron, and future service targets together. On Windows, `bestie service install` writes `Bestie.lnk` plus `Bestie.ico` into the user Startup folder so `bestie daemon start --channel all` runs at logon, including the cron daemon and Web UI companion daemon.
 
 For non-daemon usage (`bestie chat`), cron does NOT run; it only runs in `bestie cron run`, the cron daemon target, or the shared service runtime.
 

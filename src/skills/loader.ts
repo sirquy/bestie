@@ -8,11 +8,12 @@ export interface InstalledSkill {
   name: string;
   content: string;
   path: string;
+  enabled: boolean;
 }
 
 const MAX_SKILL_PROMPT_BYTES = 96 * 1024;
 
-export async function loadInstalledSkills(paths: RuntimePaths, options: { maxBytes?: number } = {}): Promise<InstalledSkill[]> {
+export async function loadInstalledSkills(paths: RuntimePaths, options: { maxBytes?: number; includeDisabled?: boolean } = {}): Promise<InstalledSkill[]> {
   const skillsDir = resolve(paths.appDir, "skills");
   let entries: Dirent[];
 
@@ -26,7 +27,7 @@ export async function loadInstalledSkills(paths: RuntimePaths, options: { maxByt
   let usedBytes = 0;
   const maxBytes = options.maxBytes ?? MAX_SKILL_PROMPT_BYTES;
 
-  for (const entry of entries.filter((item) => item.isDirectory()).sort((left, right) => left.name.localeCompare(right.name))) {
+  for (const entry of entries.filter((item) => item.isDirectory() && !item.name.startsWith(".")).sort((left, right) => left.name.localeCompare(right.name))) {
     const skillPath = resolve(skillsDir, entry.name, "SKILL.md");
     let content: string;
 
@@ -41,16 +42,30 @@ export async function loadInstalledSkills(paths: RuntimePaths, options: { maxByt
       continue;
     }
 
+    const enabled = await isSkillEnabled(skillsDir, entry.name);
+    if (!enabled && options.includeDisabled !== true) {
+      continue;
+    }
+
     const nextBytes = Buffer.byteLength(trimmedContent, "utf8");
     if (usedBytes + nextBytes > maxBytes) {
       break;
     }
 
-    skills.push({ name: entry.name, content: trimmedContent, path: skillPath });
+    skills.push({ name: entry.name, content: trimmedContent, path: skillPath, enabled });
     usedBytes += nextBytes;
   }
 
   return skills;
+}
+
+async function isSkillEnabled(skillsDir: string, name: string): Promise<boolean> {
+  try {
+    const manifest = JSON.parse(await readFile(resolve(skillsDir, name, "bestie-skill.json"), "utf8"));
+    return manifest?.enabled !== false;
+  } catch {
+    return true;
+  }
 }
 
 export function buildInstalledSkillsPromptSection(skills: InstalledSkill[]): string | undefined {

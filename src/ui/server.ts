@@ -2,6 +2,7 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { createRequire } from "node:module";
 import type { AddressInfo } from "node:net";
 import { readFile } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
 
 import { getUiApprovalsSummary, runUiApprovalAction } from "./api/approvals.js";
 import type { AgentToolActivity } from "../chat/mcp-tool-use.js";
@@ -15,7 +16,7 @@ import { getUiMemorySummary, runUiMemoryAction, searchUiMemories } from "./api/m
 import { getUiMcpSummary } from "./api/mcp.js";
 import { getUiProviderSummary, runUiProviderTest, setUiProviderPrimary, setupUiProvider, updateUiProviderFallback } from "./api/providers.js";
 import { getUiSettingsSummary, updateUiSettings } from "./api/settings.js";
-import { deleteUiSkill, getUiSkill, getUiSkillsSummary, writeUiSkill } from "./api/skills.js";
+import { clearUiSkillRemoteRegistryCache, deleteUiSkill, getUiSkill, getUiSkillLibrary, getUiSkillLibraryDiff, getUiSkillLibraryItem, getUiSkillsSummary, installUiSkillFromLibrary, rollbackUiSkill, testUiSkillRemoteRegistry, toggleUiSkillEnabled, writeUiSkill } from "./api/skills.js";
 import { getUiStatusSummary } from "./api/status.js";
 import { getUiToolsSummary, updateUiToolPolicy } from "./api/tools.js";
 import { HOME_PAGE_CLIENT_SCRIPT } from "./home/client-script.js";
@@ -23,6 +24,8 @@ import { renderHomePage } from "./home-page.js";
 
 const require = createRequire(import.meta.url);
 const CYTOSCAPE_SCRIPT_PATH = require.resolve("cytoscape/dist/cytoscape.min.js");
+const BESTIE_ICON_PNG_PATH = fileURLToPath(new URL("../../assets/bestie-app-icon.png", import.meta.url));
+const BESTIE_ICON_ICO_PATH = fileURLToPath(new URL("../../assets/bestie-app-icon.ico", import.meta.url));
 
 export interface UiServerOptions {
   host?: string;
@@ -96,6 +99,31 @@ async function handleRequestAsync(request: IncomingMessage, response: ServerResp
     return;
   }
 
+  if (method === "GET" && url.pathname === "/assets/bestie-app-icon.png") {
+    sendBinary(response, await readFile(BESTIE_ICON_PNG_PATH), "image/png");
+    return;
+  }
+
+  if (method === "GET" && (url.pathname === "/assets/bestie-app-icon.ico" || url.pathname === "/favicon.ico")) {
+    sendBinary(response, await readFile(BESTIE_ICON_ICO_PATH), "image/x-icon");
+    return;
+  }
+
+  if (method === "GET" && url.pathname === "/manifest.webmanifest") {
+    sendJson(response, 200, {
+      name: "Bestie",
+      short_name: "Bestie",
+      description: "Bestie local agent console",
+      start_url: "/",
+      scope: "/",
+      display: "standalone",
+      background_color: "#050610",
+      theme_color: "#171c62",
+      icons: [{ src: "/assets/bestie-app-icon.png", sizes: "1024x1024", type: "image/png", purpose: "any maskable" }],
+    });
+    return;
+  }
+
   if (method === "GET" && (url.pathname === "/api/status" || url.pathname === "/api/config/summary")) {
     sendJson(response, 200, await getUiStatusSummary());
     return;
@@ -148,6 +176,25 @@ async function handleRequestAsync(request: IncomingMessage, response: ServerResp
 
   if (method === "GET" && url.pathname === "/api/skills") {
     sendJson(response, 200, await getUiSkillsSummary());
+    return;
+  }
+
+  if (method === "GET" && url.pathname === "/api/skills/library") {
+    sendJson(response, 200, await getUiSkillLibrary());
+    return;
+  }
+
+  if (method === "GET" && url.pathname === "/api/skills/library/item") {
+    const name = url.searchParams.get("name") ?? "";
+    const sourceId = url.searchParams.get("sourceId") ?? "bundled-official";
+    sendJson(response, 200, await getUiSkillLibraryItem(name, undefined, sourceId));
+    return;
+  }
+
+  if (method === "GET" && url.pathname === "/api/skills/library/diff") {
+    const name = url.searchParams.get("name") ?? "";
+    const sourceId = url.searchParams.get("sourceId") ?? undefined;
+    sendJson(response, 200, await getUiSkillLibraryDiff(name, undefined, sourceId));
     return;
   }
 
@@ -436,6 +483,66 @@ async function handleRequestAsync(request: IncomingMessage, response: ServerResp
       return;
     }
     sendJson(response, 200, await deleteUiSkill({ name: body.name }));
+    return;
+  }
+
+  if (method === "POST" && url.pathname === "/api/skills/uninstall") {
+    const body = await readJsonBody(request);
+    if (!isRecord(body) || typeof body.name !== "string" || body.confirm !== true) {
+      sendJson(response, 400, { ok: false, error: "Skill uninstall requires name and confirm=true.", code: "UiSkillInvalidRequest" });
+      return;
+    }
+    sendJson(response, 200, await deleteUiSkill({ name: body.name }));
+    return;
+  }
+
+  if (method === "POST" && url.pathname === "/api/skills/toggle") {
+    const body = await readJsonBody(request);
+    if (!isRecord(body) || typeof body.name !== "string" || typeof body.enabled !== "boolean" || body.confirm !== true) {
+      sendJson(response, 400, { ok: false, error: "Skill toggle requires name, enabled, and confirm=true.", code: "UiSkillInvalidRequest" });
+      return;
+    }
+    sendJson(response, 200, await toggleUiSkillEnabled({ name: body.name, enabled: body.enabled, confirm: true }));
+    return;
+  }
+
+  if (method === "POST" && url.pathname === "/api/skills/install") {
+    const body = await readJsonBody(request);
+    if (!isRecord(body) || typeof body.name !== "string" || body.confirm !== true) {
+      sendJson(response, 400, { ok: false, error: "Skill install requires name and confirm=true.", code: "UiSkillInvalidRequest" });
+      return;
+    }
+    sendJson(response, 200, await installUiSkillFromLibrary({ name: body.name, sourceId: typeof body.sourceId === "string" ? body.sourceId : undefined, confirm: true }));
+    return;
+  }
+
+  if (method === "POST" && url.pathname === "/api/skills/rollback") {
+    const body = await readJsonBody(request);
+    if (!isRecord(body) || typeof body.name !== "string" || body.confirm !== true) {
+      sendJson(response, 400, { ok: false, error: "Skill rollback requires name and confirm=true.", code: "UiSkillInvalidRequest" });
+      return;
+    }
+    sendJson(response, 200, await rollbackUiSkill({ name: body.name, confirm: true }));
+    return;
+  }
+
+  if (method === "POST" && url.pathname === "/api/skills/registry/test") {
+    const body = await readJsonBody(request);
+    if (!isRecord(body) || body.confirm !== true) {
+      sendJson(response, 400, { ok: false, error: "Remote skill registry test requires confirm=true.", code: "UiSkillInvalidRequest" });
+      return;
+    }
+    sendJson(response, 200, await testUiSkillRemoteRegistry({ confirm: true }));
+    return;
+  }
+
+  if (method === "POST" && url.pathname === "/api/skills/registry/cache/clear") {
+    const body = await readJsonBody(request);
+    if (!isRecord(body) || body.confirm !== true) {
+      sendJson(response, 400, { ok: false, error: "Remote skill registry cache clear requires confirm=true.", code: "UiSkillInvalidRequest" });
+      return;
+    }
+    sendJson(response, 200, await clearUiSkillRemoteRegistryCache({ confirm: true }));
     return;
   }
 
@@ -782,6 +889,15 @@ function sendJavaScript(response: ServerResponse, body: string): void {
   response.writeHead(200, {
     "cache-control": "no-store",
     "content-type": "text/javascript; charset=utf-8",
+  });
+  response.end(body);
+}
+
+function sendBinary(response: ServerResponse, body: Buffer, contentType: string): void {
+  response.writeHead(200, {
+    "cache-control": "public, max-age=86400",
+    "content-length": String(body.byteLength),
+    "content-type": contentType,
   });
   response.end(body);
 }

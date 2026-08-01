@@ -52,13 +52,18 @@ export function renderHomePage(): string {
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#171c62">
     <title>Bestie UI</title>
+    <link rel="icon" href="/assets/bestie-app-icon.ico" sizes="any">
+    <link rel="icon" href="/assets/bestie-app-icon.png" type="image/png">
+    <link rel="apple-touch-icon" href="/assets/bestie-app-icon.png">
+    <link rel="manifest" href="/manifest.webmanifest">
     <style>${HOME_PAGE_STYLES}</style>
   </head>
   <body>
     <div class="shell">
       <aside class="sidebar" aria-label="Điều hướng Bestie">
-        <div class="brand"><span class="brand-mark">${icon("spark")}</span><span class="brand-copy"><strong>Bestie</strong><small>Bảng điều khiển cục bộ</small></span></div>
+        <div class="brand"><span class="brand-mark"><img src="/assets/bestie-app-icon.png" alt="" loading="eager"></span><span class="brand-copy"><strong>Bestie</strong><small>Bảng điều khiển cục bộ</small></span></div>
         <button class="sidebar-toggle" id="sidebar-toggle" type="button" aria-pressed="false" aria-label="Thu gọn sidebar">${icon("sliders")}<span>Gọn</span></button>
         <nav>${PANELS.map((panel, index) => `<a href="#${panel.id}" data-panel-target="${panel.id}"${index === 0 ? " class=\"active\"" : ""}>${icon(panel.icon)}<span>${panel.nav}</span></a>`).join("")}</nav>
       </aside>

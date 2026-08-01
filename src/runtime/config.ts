@@ -150,6 +150,18 @@ export interface AppConfig {
     retrievalPolicy?: MemoryRetrievalPolicy;
     recentMessageLimit?: number;
   };
+  skills?: {
+    registry?: {
+      remoteOfficial?: {
+        enabled: boolean;
+        url: string;
+        publicKey?: string;
+        signatureHeader?: string;
+        timeoutMs?: number;
+        installPolicy?: "deny" | "ask";
+      };
+    };
+  };
   workspace?: {
     defaultPath?: string;
     externalPaths?: WorkspaceExternalPathConfig[];
@@ -257,6 +269,7 @@ export function validateConfig(config: unknown): AppConfig {
   const speech = optionalSpeech(config.speech);
   const generation = optionalGeneration(config.generation);
   const memory = optionalMemory(config.memory);
+  const skills = optionalSkills(config.skills);
   const workspace = optionalWorkspace(config.workspace);
   const mcp = optionalMcp(config.mcp, config.mcpServers);
   const internalTools = optionalInternalTools(config.internalTools);
@@ -285,6 +298,7 @@ export function validateConfig(config: unknown): AppConfig {
     ...(generation === undefined ? {} : { generation }),
     ...(channels === undefined ? {} : { channels }),
     ...(memory === undefined ? {} : { memory }),
+    ...(skills === undefined ? {} : { skills }),
     ...(workspace === undefined ? {} : { workspace }),
     ...(mcp === undefined ? {} : { mcp }),
     ...(internalTools === undefined ? {} : { internalTools }),
@@ -613,6 +627,49 @@ function optionalMemory(value: unknown): AppConfig["memory"] | undefined {
     ...(retrievalPolicy === undefined ? {} : { retrievalPolicy }),
     ...(recentMessageLimit === undefined ? {} : { recentMessageLimit }),
   };
+}
+
+function optionalSkills(value: unknown): AppConfig["skills"] | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  const skills = requireRecord(value, "skills");
+  if (skills.registry === undefined) {
+    return {};
+  }
+
+  const registry = requireRecord(skills.registry, "skills.registry");
+  if (registry.remoteOfficial === undefined) {
+    return { registry: {} };
+  }
+
+  const remoteOfficial = requireRecord(registry.remoteOfficial, "skills.registry.remoteOfficial");
+  const enabled = requireBoolean(remoteOfficial.enabled, "skills.registry.remoteOfficial.enabled");
+  const url = requireString(remoteOfficial.url, "skills.registry.remoteOfficial.url");
+  if (!url.startsWith("https://")) {
+    throw new InvalidConfigError("skills.registry.remoteOfficial.url must use https://.");
+  }
+
+  return {
+    registry: {
+      remoteOfficial: {
+        enabled,
+        url,
+        ...(remoteOfficial.publicKey === undefined ? {} : { publicKey: requireString(remoteOfficial.publicKey, "skills.registry.remoteOfficial.publicKey") }),
+        ...(remoteOfficial.signatureHeader === undefined ? {} : { signatureHeader: requireString(remoteOfficial.signatureHeader, "skills.registry.remoteOfficial.signatureHeader") }),
+        ...(remoteOfficial.timeoutMs === undefined ? {} : { timeoutMs: optionalPositiveInteger(remoteOfficial.timeoutMs, "skills.registry.remoteOfficial.timeoutMs") }),
+        ...(remoteOfficial.installPolicy === undefined ? {} : { installPolicy: optionalRemoteInstallPolicy(remoteOfficial.installPolicy) }),
+      },
+    },
+  };
+}
+
+function optionalRemoteInstallPolicy(value: unknown): "deny" | "ask" {
+  if (value !== "deny" && value !== "ask") {
+    throw new InvalidConfigError("skills.registry.remoteOfficial.installPolicy must be deny or ask.");
+  }
+  return value;
 }
 
 function optionalMcp(value: unknown, legacyMcpServers: unknown): AppConfig["mcp"] | undefined {

@@ -6,6 +6,7 @@
   "files": [
     "dist/**/*.js",
     "!dist/**/*.test.js",
+    "assets/**/*",
     "README.md",
     "LICENSE",
     "CHANGELOG.md"

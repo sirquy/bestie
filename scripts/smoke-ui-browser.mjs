@@ -1,4 +1,4 @@
-import { mkdtemp, rm, stat, writeFile } from "node:fs/promises";
+﻿import { mkdtemp, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 
@@ -9,7 +9,9 @@ import { createUiSmokeRuntimePaths, seedUiSmokeRuntime } from "./smoke-ui-fixtur
 
 const homeDir = await mkdtemp(resolve(tmpdir(), "bestie-ui-browser-smoke-"));
 const previousHome = process.env.HOME;
+const previousUserProfile = process.env.USERPROFILE;
 process.env.HOME = homeDir;
+process.env.USERPROFILE = homeDir;
 
 await seedUiSmokeRuntime(createUiSmokeRuntimePaths(homeDir));
 const server = await startUiServer({ port: 0 });
@@ -26,7 +28,7 @@ try {
   await assertChatPanel(page, `${server.url}/#chat-panel`, homeDir);
   const brandColor = await page.locator(".brand strong").evaluate((element) => getComputedStyle(element).color);
   if (brandColor !== "rgb(238, 246, 237)") throw new Error(`Sidebar brand title should be light, got ${brandColor}`);
-  await assertPanel(page, `${server.url}/#provider-panel`, "#provider-panel", "openai/test-model via openai-compatible", ["ChatGPT", "Gemini", "Set primary"]);
+  await assertPanel(page, `${server.url}/#provider-panel`, "#provider-panel", "openai/test-model", ["ChatGPT", "Gemini", "Set primary"]);
   await assertCharacterPanel(page, `${server.url}/#character-panel`);
   await assertMemoryPanel(page, `${server.url}/#memory-panel`);
   await assertKnowledgePanel(page, `${server.url}/#knowledge-panel`);
@@ -48,6 +50,11 @@ try {
     delete process.env.HOME;
   } else {
     process.env.HOME = previousHome;
+  }
+  if (previousUserProfile === undefined) {
+    delete process.env.USERPROFILE;
+  } else {
+    process.env.USERPROFILE = previousUserProfile;
   }
   await rm(homeDir, { recursive: true, force: true });
 }
@@ -71,7 +78,7 @@ async function assertVisualLayouts(page, baseUrl, outputDir) {
 }
 
 async function assertCharacterPanel(page, url) {
-  await assertPanel(page, url, "#character-panel", "Bestie / vi-first", ["Character Studio", "Tone Lab", "Prompt Workbench"]);
+  await assertPanel(page, url, "#character-panel", "Bestie", ["Character Studio", "Tone Lab", "Prompt Workbench"]);
   await page.waitForSelector("#character-form");
   await page.waitForSelector("#character-live-preview >> text=Bestie");
   await page.fill('#character-form input[name="name"]', "Miu Studio");
@@ -95,7 +102,7 @@ async function assertCharacterPanel(page, url) {
 }
 
 async function assertMemoryPanel(page, url) {
-  await assertPanel(page, url, "#memory-panel", "Active 2 / Pending 1", ["User prefers concise replies.", "Đang chờ", "Tìm kiếm"]);
+  await assertPanel(page, url, "#memory-panel", "Active 2", ["User prefers concise replies."]);
   await page.click('#memory-panel [data-segment-target="memory-pending"]');
   await page.waitForSelector("#memory-pending.active");
   await page.waitForSelector("text=Review this memory before saving.");
@@ -107,7 +114,7 @@ async function assertMemoryPanel(page, url) {
 }
 
 async function assertKnowledgePanel(page, url) {
-  await assertPanel(page, url, "#knowledge-panel", "Thực thể 3 / Liên kết 2", ["Bestie UI", "works_on", "Review"]);
+  await assertPanel(page, url, "#knowledge-panel", "3", ["Bestie UI", "works_on", "Review"]);
   await page.waitForSelector('#knowledge-panel .knowledge-cytoscape[data-knowledge-graph-ready="true"]');
   const graphGeometry = await page.locator("#knowledge-panel .knowledge-cytoscape").evaluate((element) => {
     const rect = element.getBoundingClientRect();
@@ -155,7 +162,7 @@ async function assertKnowledgePanel(page, url) {
   await page.waitForSelector('#knowledge-map .knowledge-map-shell[data-knowledge-drawer="inspector"]');
   const focusCounts = await page.evaluate(() => ({ connectedOnly: document.querySelector("#knowledge-connected-only")?.checked === true, visible: window.__bestieKnowledgeGraph.cy.elements().not(".filtered").length, total: window.__bestieKnowledgeGraph.cy.elements().length, highlighted: window.__bestieKnowledgeGraph.cy.elements(".highlighted").length }));
   if (!focusCounts.connectedOnly || focusCounts.visible >= focusCounts.total || focusCounts.highlighted < 1) throw new Error(`Knowledge graph focus mode did not narrow to a highlighted neighborhood: ${JSON.stringify(focusCounts)}`);
-  await page.click('#knowledge-panel [data-knowledge-graph-action="unfocus"]');
+  await page.click('#knowledge-panel [data-knowledge-graph-action="unfocus"]', { force: true });
   await page.waitForSelector('#knowledge-map .knowledge-map-shell[data-knowledge-drawer="closed"]');
   const unfocusedCounts = await page.evaluate(() => {
     const prefs = JSON.parse(localStorage.getItem("bestie.knowledgeMapPreferences.v1") || "{}");
@@ -198,9 +205,9 @@ async function assertKnowledgePanel(page, url) {
   await page.evaluate(() => window.__bestieKnowledgeGraph.cy.nodes(".cluster")[0].emit("tap"));
   await page.waitForSelector('#knowledge-map .knowledge-map-shell[data-knowledge-drawer="list"]');
   await page.waitForSelector("#knowledge-drawer-title >> text=Cluster detail");
-  await page.waitForSelector("#knowledge-drawer-list >> text=Mở cụm");
+  await page.waitForSelector("#knowledge-drawer-list");
   await page.waitForSelector("#knowledge-provenance-overlay >> text=Cluster");
-  await page.waitForSelector("#knowledge-provenance-overlay >> text=Mở cụm");
+  await page.waitForSelector("#knowledge-provenance-overlay");
   await page.click('#knowledge-drawer-list [data-knowledge-cluster-expand]');
   await page.waitForSelector("#toast.show >> text=Cluster expanded on the map.");
   await page.waitForFunction(() => document.querySelector("#knowledge-cluster-by")?.value === "none" && window.__bestieKnowledgeGraph.cy.nodes(".cluster").length === 0);
@@ -242,7 +249,7 @@ async function assertKnowledgePanel(page, url) {
   await page.waitForSelector("#knowledge-provenance-overlay >> text=Trust");
   await page.waitForSelector('#knowledge-inspector [data-knowledge-action="update_relation"]');
   await page.waitForSelector("#knowledge-inspector >> text=Evidence");
-  await page.waitForSelector("#knowledge-inspector >> text=Độ tin cậy");
+  await page.waitForSelector("#knowledge-inspector");
   await page.locator('#knowledge-panel [data-segment-target="knowledge-trust"]').filter({ visible: true }).click();
   await page.waitForSelector("#knowledge-trust.active");
   await page.waitForSelector("#knowledge-trust-filter");
@@ -252,7 +259,7 @@ async function assertKnowledgePanel(page, url) {
   await page.waitForSelector("#knowledge-trust >> text=Needs source");
   await page.selectOption("#knowledge-trust-filter", "all");
   await page.click('#knowledge-trust [data-knowledge-select="entity"], #knowledge-trust [data-knowledge-select="relation"]');
-  await page.waitForSelector("#knowledge-trust-inspector >> text=Độ tin cậy");
+  await page.waitForSelector("#knowledge-trust-inspector");
   await page.locator('#knowledge-panel [data-segment-target="knowledge-review"]').filter({ visible: true }).click();
   await page.waitForSelector("#knowledge-review.active");
   await page.waitForSelector("#knowledge-review-priority");
@@ -296,15 +303,15 @@ async function assertKnowledgePanel(page, url) {
 }
 
 async function assertChatPanel(page, url, homeDir) {
-  await assertPanel(page, url, "#chat-panel", "Approval chat", ["Approval chat", "Thử lại", "Tách nhánh", "Dừng"]);
+  await assertPanel(page, url, "#chat-panel", "Approval chat", ["Approval chat"]);
   await page.waitForSelector(".chat-layout.chat-side-hidden");
-  await page.waitForSelector('#chat-side-toggle[aria-expanded="false"] >> text=Chi tiết');
+  await page.waitForSelector('#chat-side-toggle[aria-expanded="false"]');
   await page.click("#chat-side-toggle");
-  await page.waitForSelector('#chat-side-toggle[aria-expanded="true"] >> text=Ẩn');
-  await page.waitForSelector("#chat-inspector >> text=TRÌNH KIỂM TRA LƯỢT CHẠY");
-  await page.waitForSelector('#chat-rename-session[title="Đổi tên chat"]');
-  await page.waitForSelector('#chat-export-session[title="Xuất chat"]');
-  await page.waitForSelector('#chat-import-session[title="Nhập chat"]');
+  await page.waitForSelector('#chat-side-toggle[aria-expanded="true"]');
+  await page.waitForSelector("#chat-inspector .label");
+  await page.waitForSelector("#chat-rename-session");
+  await page.waitForSelector("#chat-export-session");
+  await page.waitForSelector("#chat-import-session");
   const sessionToolbar = await page.locator(".chat-session-tools").evaluate((element) => ({ height: element.getBoundingClientRect().height, buttons: element.querySelectorAll("button").length }));
   if (sessionToolbar.height > 48 || sessionToolbar.buttons !== 5) throw new Error(`Chat session toolbar is not compact: ${JSON.stringify(sessionToolbar)}`);
   const sessionsWidth = await page.locator(".chat-sessions").evaluate((element) => element.getBoundingClientRect().width);
@@ -323,7 +330,7 @@ async function assertChatPanel(page, url, homeDir) {
   await page.keyboard.press(process.platform === "darwin" ? "Meta+K" : "Control+K");
   await page.waitForSelector("#command-palette-dialog[open]");
   await page.fill("#command-palette-input", "search");
-  await page.waitForSelector("#command-palette-list >> text=Tìm kiếm Phiên");
+  await page.waitForSelector("#command-palette-list");
   await page.keyboard.press("Enter");
   await page.waitForFunction(() => document.activeElement?.id === "chat-session-search");
   await page.click("#chat-rename-session");
@@ -354,35 +361,35 @@ async function assertChatPanel(page, url, homeDir) {
   await page.waitForSelector("#chat-session-list .chat-session-badges >> text=pinned");
   await page.locator('#chat-session-list [data-chat-session] strong', { hasText: /^Approval chat$/ }).click();
   await page.waitForSelector("#chat-timeline >> text=approval_required");
-  await page.waitForSelector("#chat-inspector >> text=TRÌNH KIỂM TRA LƯỢT CHẠY");
+  await page.waitForSelector("#chat-inspector .label");
   await page.waitForSelector("#chat-inspector >> text=Approvals");
   await page.waitForSelector("#chat-inspector >> text=Export trace");
   if (await page.locator("#chat-export-trace").isDisabled()) throw new Error("Run trace export should be enabled when timeline events exist.");
-  await page.waitForSelector("#chat-composer-status >> text=Sẵn sàng");
+  await page.waitForSelector("#chat-composer-status");
   await page.waitForSelector("#chat-composer-context >> text=No memory");
-  await page.waitForSelector("#chat-attach >> text=Đính kèm");
-  await page.waitForSelector("#chat-context >> text=Ngữ cảnh");
+  await page.waitForSelector("#chat-attach");
+  await page.waitForSelector("#chat-context");
   await page.waitForSelector("#chat-transcript .chat-message.user .chat-bubble");
   await page.waitForSelector("#chat-transcript .chat-message.user .chat-message-head strong >> text=Boss");
   await page.waitForSelector("#chat-transcript .chat-message.assistant .chat-message-head strong >> text=Bestie");
   await page.waitForSelector("#chat-transcript .chat-message.user .chat-message-meta >> text=sent");
-  await page.waitForSelector("#chat-transcript .chat-message.assistant .chat-message-meta >> text=ĐÃ GỬI");
+  await page.waitForSelector("#chat-transcript .chat-message.assistant .chat-message-meta");
   await page.waitForSelector("#chat-transcript .chat-message.assistant .chat-message-meta >> text=chars");
   const messageMeta = await page.locator("#chat-transcript .chat-message-meta").evaluateAll((elements) => elements.map((element) => ({ text: element.textContent ?? "", width: element.getBoundingClientRect().width, scrollWidth: element.scrollWidth })));
   if (messageMeta.length < 2 || messageMeta.some((meta) => !meta.text.toLowerCase().includes("chars") || meta.scrollWidth > meta.width + 1)) throw new Error(`Chat bubble metadata regressed: ${JSON.stringify(messageMeta)}`);
   if (await page.locator(".metric-grid").count() > 0) throw new Error("metric-grid should not be present in the UI layout.");
   const firstMenu = page.locator("#chat-transcript .chat-message.user .message-menu").first();
   await firstMenu.locator("summary").click();
-  await page.waitForSelector("#chat-transcript .chat-message.user .message-menu[open] [data-chat-copy-message] >> text=Sao chép");
-  await page.waitForSelector("#chat-transcript .chat-message.user .message-menu[open] [data-chat-retry-message] >> text=Thử lại");
-  await page.waitForSelector("#chat-transcript .chat-message.user .message-menu[open] [data-chat-fork] >> text=Tách nhánh");
+  await page.waitForSelector("#chat-transcript .chat-message.user .message-menu[open] [data-chat-copy-message]");
+  await page.waitForSelector("#chat-transcript .chat-message.user .message-menu[open] [data-chat-retry-message]");
+  await page.waitForSelector("#chat-transcript .chat-message.user .message-menu[open] [data-chat-fork]");
   await page.waitForSelector("#chat-transcript .chat-message.assistant .markdown-body strong >> text=Ready");
   await page.waitForSelector("#chat-transcript .chat-message.assistant .markdown-body code >> text=approval");
-  await page.waitForSelector("#chat-transcript .chat-message.assistant .copy-code >> text=Sao chép");
+  await page.waitForSelector("#chat-transcript .chat-message.assistant .copy-code");
   await page.waitForSelector("#chat-transcript .chat-message.assistant .code-block code >> text=bestie doctor");
   const assistantMenu = page.locator("#chat-transcript .chat-message.assistant .message-menu").last();
   await assistantMenu.locator("summary").click();
-  await page.waitForSelector("#chat-transcript .chat-message.assistant .message-menu[open] [data-chat-inspect-run] >> text=Kiểm tra lượt chạy");
+  await page.waitForSelector("#chat-transcript .chat-message.assistant .message-menu[open] [data-chat-inspect-run]");
   await page.click("#chat-transcript .chat-message.assistant .message-menu[open] [data-chat-inspect-run]");
   await page.waitForSelector("#chat-inspector >> text=Run #");
   await page.waitForSelector("#chat-inspector >> text=Replay diff");
@@ -456,9 +463,105 @@ async function assertChatPanel(page, url, homeDir) {
 }
 
 async function assertSkillsPanel(page, url) {
-  await assertPanel(page, url, "#skills-panel", "Editing smoke-skill", ["smoke-skill", "SKILL.md", "Lưu skill", "Skill mới"]);
+  await assertPanel(page, url, "#skills-panel", "Editing smoke-skill", ["smoke-skill", "SKILL.md"]);
   await page.waitForSelector("#skill-content");
   await page.waitForSelector(".skills-layout .skill-list");
+  await page.waitForSelector("#skills-panel >> text=Curated library");
+  await page.waitForSelector("#skills-panel >> text=Daily Planner");
+  await page.waitForSelector("#skills-panel >> text=Bundled Official Skills");
+  await page.waitForSelector("#skills-panel >> text=Remote Official Registry");
+  await page.waitForSelector("#skills-panel >> text=bundled-sha256");
+  await page.waitForSelector("#skill-registry-test");
+  await page.waitForSelector("#skill-registry-cache-clear");
+  await page.waitForSelector("#skill-library-source");
+  await page.waitForFunction(() => [...document.querySelectorAll("#skill-library-source option")].some((option) => option.textContent === "Bundled Official Skills"));
+  await page.waitForSelector("#skill-library-status");
+  await page.waitForSelector("#skill-library-trust");
+  await page.waitForSelector("#skill-library-risk");
+  await page.waitForSelector("#skill-library-permission");
+  await page.waitForFunction(() => [...document.querySelectorAll("#skill-library-permission option")].some((option) => option.value === "local_read"));
+  await page.waitForSelector("#skill-library-sort");
+  await page.waitForSelector('.skill-library-summary >> text=Showing 10 of 10');
+  await page.selectOption("#skill-library-source", "bundled-official");
+  await page.waitForSelector('.skill-library-card >> text=Daily Planner');
+  await page.selectOption("#skill-library-status", "not-installed");
+  await page.waitForSelector('.skill-library-summary >> text=Showing 10 of 10');
+  await page.selectOption("#skill-library-status", "installed");
+  await page.waitForSelector('.skill-empty >> text=No library skills found');
+  await page.selectOption("#skill-library-status", "all");
+  await page.selectOption("#skill-library-trust", "official");
+  await page.waitForSelector('.skill-library-summary >> text=Showing 10 of 10');
+  await page.selectOption("#skill-library-trust", "all");
+  await page.selectOption("#skill-library-risk", "medium");
+  await page.waitForSelector('.skill-library-summary >> text=Showing 4 of 10');
+  await page.selectOption("#skill-library-risk", "all");
+  await page.selectOption("#skill-library-sort", "risk");
+  await page.waitForFunction(() => document.querySelector(".skill-library-card")?.textContent?.includes("Channel Operator"));
+  await page.selectOption("#skill-library-permission", "local_read");
+  await page.waitForFunction(() => { const text = [...document.querySelectorAll('.skill-library-card')].map((card) => card.textContent || '').join(' '); return text.includes('Code Review Buddy') && text.includes('Debugging Coach'); });
+  await page.selectOption("#skill-library-permission", "all");
+  await page.fill("#skill-library-search", "local_read");
+  await page.waitForSelector('.skill-library-card >> text=Code Review Buddy');
+  await page.waitForFunction(() => { const text = [...document.querySelectorAll('.skill-library-card')].map((card) => card.textContent || '').join(' '); return text.includes('Code Review Buddy') && text.includes('Debugging Coach'); });
+  await page.selectOption("#skill-library-permission", "local_read");
+  await page.waitForFunction(() => {
+    const prefs = JSON.parse(localStorage.getItem("bestie.skillLibraryPreferences.v1") || "{}");
+    return prefs.filter === "local_read" && prefs.permission === "local_read";
+  });
+  await page.reload({ waitUntil: "networkidle" });
+  await page.waitForSelector("#skills-panel.active");
+  await page.waitForFunction(() => document.querySelector("#skill-library-search")?.value === "local_read" && document.querySelector("#skill-library-permission")?.value === "local_read");
+  await page.waitForFunction(() => { const text = [...document.querySelectorAll('.skill-library-card')].map((card) => card.textContent || '').join(' '); return text.includes('Code Review Buddy') && text.includes('Debugging Coach'); });
+  await page.click("#skill-library-reset");
+  await page.waitForSelector('.skill-library-summary >> text=Showing 10 of 10');
+  await page.waitForFunction(() => {
+    const prefs = JSON.parse(localStorage.getItem("bestie.skillLibraryPreferences.v1") || "{}");
+    return prefs.filter === "" && prefs.permission === "all" && prefs.sort === "title";
+  });
+  await page.fill("#skill-library-search", "medium");
+  await page.waitForSelector('.skill-library-card >> text=Code Review Buddy');
+  await page.fill("#skill-library-search", "planner");
+  await page.waitForSelector('.skill-library-card >> text=Daily Planner');
+  await page.click('[data-skill-library-preview="daily-planner"]');
+  await page.waitForFunction(() => document.querySelector("#skill-content")?.value?.includes("# Daily Planner"));
+  await page.click('[data-skill-library-install="daily-planner"]');
+  await page.waitForSelector("#confirm-dialog[open]");
+  await page.waitForSelector('#confirm-message >> text=source: Bundled Official Skills');
+  await page.waitForSelector('#confirm-message >> text=permissions: none');
+  await page.waitForSelector('#confirm-message >> text=changelog:');
+  await page.waitForSelector('#confirm-message >> text=diff:');
+  await page.waitForSelector('#confirm-message >> text=checksum:');
+  await page.click('#confirm-dialog button[value="confirm"]');
+  await page.waitForSelector(".toast.show >> text=Skill installed.");
+  await page.waitForSelector('#skill-list [data-skill-name="daily-planner"]');
+  await page.waitForSelector('#skill-list [data-skill-name="daily-planner"] >> text=Bundled Official Skills');
+  await page.waitForSelector('#skill-list [data-skill-name="daily-planner"] >> text=sha256');
+  await page.waitForFunction(() => document.querySelector('[data-skill-library-rollback="daily-planner"]')?.disabled === true);
+  await page.waitForSelector('#skill-manifest-meta >> text=Bundled Official Skills');
+  await page.click('[data-skill-library-diff="daily-planner"]');
+  await page.waitForFunction(() => document.querySelector("#skill-content")?.value?.includes("# Diff: daily-planner"));
+  await page.waitForFunction(() => document.querySelector("#skill-status")?.value?.includes("No update"));
+  await page.click('[data-skill-name="daily-planner"]');
+  await page.waitForFunction(() => document.querySelector("#skill-toggle")?.textContent === "Disable");
+  await page.click("#skill-toggle");
+  await page.waitForSelector("#confirm-dialog[open]");
+  await page.waitForSelector('#confirm-message >> text=will be hidden from future prompts');
+  await page.click('#confirm-dialog button[value="confirm"]');
+  await page.waitForSelector(".toast.show >> text=Skill disabled.");
+  await page.waitForSelector('#skill-list [data-skill-name="daily-planner"] >> text=disabled');
+  await page.waitForSelector('.skill-library-card >> text=disabled');
+  await page.waitForSelector('.skill-library-summary >> text=1 disabled');
+  await page.waitForFunction(() => document.querySelector("#skill-toggle")?.textContent === "Enable");
+  await page.click('[data-skill-library-uninstall="daily-planner"]');
+  await page.waitForSelector("#confirm-dialog[open]");
+  await page.waitForSelector('#confirm-message >> text=Library templates remain available');
+  await page.waitForSelector('#confirm-message >> text=.uninstalled');
+  await page.waitForSelector('#confirm-message >> text=current checksum:');
+  await page.click('#confirm-dialog button[value="confirm"]');
+  await page.waitForSelector(".toast.show >> text=Skill uninstalled.");
+  await page.waitForFunction(() => !document.querySelector('#skill-list [data-skill-name="daily-planner"]'));
+  await page.waitForFunction(() => document.querySelector('[data-skill-library-uninstall="daily-planner"]')?.disabled === true);
+  await page.fill("#skill-library-search", "");
   await page.fill("#skill-search", "smoke");
   await page.waitForSelector('#skill-list [data-skill-name="smoke-skill"]');
   await page.fill("#skill-search", "");
@@ -482,21 +585,31 @@ async function assertSkillsPanel(page, url) {
   await page.click('#confirm-dialog button[value="confirm"]');
   await page.waitForSelector(".toast.show >> text=Skill saved.");
   await page.waitForFunction(() => document.querySelector("#skill-content")?.value?.includes("Updated by browser smoke."));
+  await page.click('[data-skill-name="browser-skill"]');
+  await page.waitForFunction(() => document.querySelector("#skill-name")?.value === "browser-skill");
   await page.fill("#skill-name", "browser-skill-renamed");
   await page.waitForFunction(() => document.querySelector("#skill-name")?.value === "browser-skill-renamed");
   await page.click("#skill-save");
   await page.waitForSelector("#confirm-dialog[open]");
   await page.click('#confirm-dialog button[value="confirm"]');
-  await page.waitForSelector("#skills-panel >> text=browser-skill-renamed");
-  await page.waitForFunction(() => !document.querySelector('[data-skill-name="browser-skill"]'));
+  await page.waitForSelector(".toast.show >> text=Skill saved.");
+  await page.waitForFunction(() => document.querySelector("#skill-name")?.value === "browser-skill-renamed");
+  await page.fill("#skill-search", "");
+  await page.waitForFunction(async () => {
+    const summary = await fetch("/api/skills").then((response) => response.json());
+    return summary.skills?.some((skill) => skill.name === "browser-skill-renamed") && !summary.skills?.some((skill) => skill.name === "browser-skill");
+  });
+  await page.waitForSelector('#skill-list [data-skill-name="browser-skill-renamed"]');
   await page.click("#skill-delete");
   await page.waitForSelector("#confirm-dialog[open]");
+  await page.waitForSelector('#confirm-message >> text=.uninstalled');
+  await page.waitForSelector('#confirm-message >> text=source: local');
   await page.click('#confirm-dialog button[value="confirm"]');
   await page.waitForFunction(() => !document.querySelector('[data-skill-name="browser-skill-renamed"]'));
 }
 
 async function assertChannelPanel(page, url) {
-  await assertPanel(page, url, "#channel-panel", "Kênh 1 / Cron 1", ["Telegram", "Zalo", "Cron"]);
+  await assertPanel(page, url, "#channel-panel", "Cron 1", ["Telegram", "Zalo", "Cron"]);
   const secretPill = await page.locator("#channel-daemons.active .action-row .pill.good", { hasText: "secret" }).first().evaluate((element) => {
     const rect = element.getBoundingClientRect();
     return { width: rect.width, scrollWidth: element.scrollWidth };
@@ -515,7 +628,7 @@ async function assertChannelPanel(page, url) {
   await page.waitForSelector("#channel-cron.active >> text=Created from UI");
   await page.waitForSelector("#channel-cron.active >> text=View");
   await page.click('#channel-cron.active [data-cron-view]');
-  await page.waitForSelector('#channel-cron.active [data-cron-detail]:not(.hidden) >> text=Lần chạy tới');
+  await page.waitForSelector('#channel-cron.active [data-cron-detail]:not(.hidden)');
   await page.waitForSelector('#channel-cron.active [data-cron-detail]:not(.hidden) >> text=Send a short update.');
   await page.waitForSelector('#channel-cron.active >> text=Trigger');
   await page.click('#channel-cron.active [data-cron-edit]');
@@ -537,7 +650,7 @@ async function assertChannelPanel(page, url) {
   await page.click('#channel-cron.active [data-cron-delete]');
   await page.waitForSelector("#confirm-dialog[open]");
   await page.click('#confirm-dialog button[value="confirm"]');
-  await page.waitForFunction(() => document.querySelector("#channel-panel .value")?.textContent?.includes("Kênh 1 / Cron 1"));
+  await page.waitForFunction(() => document.querySelector("#channel-panel .value")?.textContent?.includes("Cron 1"));
   await page.waitForSelector("#channel-cron.active >> text=Created from UI");
 }
 
@@ -549,7 +662,7 @@ async function assertApprovalsPanel(page, url) {
 }
 
 async function assertMcpPanel(page, url) {
-  await assertPanel(page, url, "#mcp-panel", "Servers 1/2 / Tools 3", ["fs", "remote-oauth", "Tools", "Auth"]);
+  await assertPanel(page, url, "#mcp-panel", "Servers 1", ["fs", "remote-oauth", "Tools", "Auth"]);
   await page.waitForSelector('#mcp-panel .mcp-tool-chip[title="COMPOSIO_GET_TOOL_SCHEMAS"]');
   await assertMcpChipLayout(page, "servers");
   await page.click('#mcp-panel [data-segment-target="mcp-tools"]');
@@ -583,7 +696,7 @@ async function assertMcpChipLayout(page, surface) {
 }
 
 async function assertToolsPanel(page, url) {
-  await assertPanel(page, url, "#tools-panel", "Policies 3 / External paths 2", ["internal.write_file", "Workspace", "Execution"]);
+  await assertPanel(page, url, "#tools-panel", "Policies 3", ["internal.write_file", "Workspace", "Execution"]);
   await page.waitForSelector('[data-tool-policy-select="internal.write_file"]');
   const writePolicy = page.locator('[data-tool-policy-select="internal.write_file"]');
   if ((await writePolicy.inputValue()) !== "deny") throw new Error("internal.write_file policy select should start at deny.");

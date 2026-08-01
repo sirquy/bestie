@@ -109,7 +109,7 @@ Current real channels:
 - Zalo polling with owner allowlist, text replies, memory approval prompts, and friendly tool progress labels
 - cron schedule CRUD, logs, and scheduler runtime
 - daemon start/stop/restart/status for `telegram`, `zalo`, `cron`, or `all`
-- service install/uninstall/restart/status for one Linux user systemd unit, `bestie.service`, which runs configured Telegram, Zalo, cron, and future service targets together
+- service install/uninstall/restart/status for Linux user systemd (`bestie.service`) and Windows Startup folder (`Bestie.lnk` + `Bestie.ico`), running configured channels plus Web UI on startup
 
 Later:
 

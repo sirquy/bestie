@@ -67,7 +67,7 @@ Shipped panels:
 - Approvals Hub for pending permission decisions without exposing payload JSON, including guarded execution for queued local UI actions.
 - MCP Hub with server cards, transports, auth/env metadata, tool categories, and tool names.
 - Tools & Permissions with policy counts, per-tool policy rows, workspace paths, and exec timeout.
-- Skills manager for local `~/.bestie/skills/<skill-name>/SKILL.md` create/edit/rename/delete flows.
+- Skills manager for local `~/.bestie/skills/<skill-name>/SKILL.md` create/edit/rename/delete flows, plus a shared registry-backed and source-aware curated local library for official templates with metadata, preview, resettable and locally persisted source/category/status/trust/risk/permission filters with readable source labels, risk/permission-aware search, sort controls, result/status counts, verification status, verified remote test refresh, checksums, diff preview, backup rollback, confirmation-gated enable/disable that controls future prompt injection, confirmation-gated uninstall with local archive, confirmation-gated install/update with source/version/permission/checksum review, and read-only preview for verified cached remote registry skills with local cache freshness status and confirmation-gated cache clearing.
 - Settings for low-risk agent and memory policy edits.
 
 Current implementation paths:

@@ -29,13 +29,14 @@ Status: completed for local development and shipped through the npm CLI.
   - verify action results after execution and record verification gaps instead of assuming success
   - review safety metrics regularly: denied actions, approval bypass attempts, duplicate jobs, failed verifications, and policy violations
 - Bestie Skills Library MVP:
+  - current foundation: local web console exposes a source-aware curated official template library backed by a shared registry schema/validator, with bundled and future remote registry sources, explicit remote HTTPS fetch/signature-test contract, verified remote registry cache freshness and owner-clearing for preview, verified remote test refresh, enabled-registry and policy-gated remote install through `installPolicy: "ask"`, source-aware remote diff/update lifecycle, search across metadata/risk/permissions, resettable and locally persisted source/category/status/trust/risk/permission filters with readable source labels, sort controls, result/status counts, version, author, trust, risk, permissions, source preview, changelog, manifest metadata with enable/disable state, registry verification status, local checksums, diff preview, confirmation-gated enable/disable that controls future prompt injection, confirmation-gated install/update into `~/.bestie/skills/<skill-name>/SKILL.md` with source/version/permission/checksum review, confirmation-gated uninstall with local archive, and backup rollback
   - publish an online skills registry for official Bestie skills before opening broader community submissions
   - expose skill discovery in the local web console with search, category filters, version, author, risk level, and required tool/action permissions
   - install approved skills directly into the local runtime under `~/.bestie/skills/<skill-name>/SKILL.md`
   - require explicit confirmation before install, update, uninstall, or enabling any skill that requests tool access
   - show source preview, manifest metadata, requested permissions, changelog, and update diff before changing local files
   - support trust levels: official, verified, community, and local/private
-  - add checksum/signature verification and rollback for official or verified skills before treating the registry as safe for broad use
+  - add registry signature verification for official or verified skills before treating the online registry as safe for broad use
   - keep the first registry small with 10-20 high-quality workflow skills instead of launching a noisy marketplace too early
 
 Status: local MVP foundation complete. Terminal chat, onboarding, local SQLite memory, Doctor, Telegram/Zalo local polling, cron, daemon management for `telegram|zalo|cron|all`, one `bestie.service` systemd runtime, permission-gated local tools, bounded internal subagents, SDK-backed MCP setup plus classified read calls, installed skills, provider catalog/management CLI, local web console, npm update checks, Telegram real-bot smoke, and one-command installer smoke exist for local development.

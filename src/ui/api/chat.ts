@@ -8,7 +8,7 @@ import type { ChatCompletionOptions, ChatMessage } from "../../llm/types.js";
 import { loadUiConversationSummaryContext, refreshUiConversationSummary } from "../../memory/conversation-summary.js";
 import { loadRelevantMemories } from "../../memory/context.js";
 import { runKnowledgeReasoningPass, type KnowledgeReasoningResult } from "../../memory/knowledge-reasoning.js";
-import { SqliteMemoryStore } from "../../memory/sqlite-store.js";
+import { SqliteMemoryStore, type UiChatSession } from "../../memory/sqlite-store.js";
 import { loadConfig } from "../../runtime/config.js";
 import { appendLog } from "../../runtime/logger.js";
 import { getRuntimePaths, type RuntimePaths } from "../../runtime/paths.js";
@@ -62,6 +62,8 @@ interface PersistedUiChatUserMessage {
   session: import("../../memory/sqlite-store.js").UiChatSession;
   message: import("../../memory/sqlite-store.js").UiChatMessage;
 }
+
+const activeUiChatSessionRuns = new Set<number>();
 
 export interface UiChatResult {
   ok: true;
@@ -159,16 +161,19 @@ export interface UiChatImportOptions {
 export async function getUiChatSessions(paths: RuntimePaths = getRuntimePaths()): Promise<UiChatSessionsSummary> {
   const store = await SqliteMemoryStore.open(paths);
   try {
-    return { ok: true, sessions: store.listUiChatSessions() };
+    const config = await loadConfig(paths);
+    return { ok: true, sessions: sanitizeUiChatSessions(store, config, store.listUiChatSessions()) };
   } finally {
     store.close();
   }
 }
 
 export async function searchUiChatSessions(options: UiChatSessionSearchOptions = {}): Promise<UiChatSessionsSummary> {
-  const store = await SqliteMemoryStore.open(options.paths ?? getRuntimePaths());
+  const paths = options.paths ?? getRuntimePaths();
+  const store = await SqliteMemoryStore.open(paths);
   try {
-    return { ok: true, sessions: store.searchUiChatSessions({ query: options.query, eventType: chatSessionFilterToEventType(options.filter) }) };
+    const config = await loadConfig(paths);
+    return { ok: true, sessions: sanitizeUiChatSessions(store, config, store.searchUiChatSessions({ query: options.query, eventType: chatSessionFilterToEventType(options.filter) })) };
   } finally {
     store.close();
   }
@@ -183,6 +188,32 @@ function chatSessionFilterToEventType(filter: UiChatSessionSearchOptions["filter
   return undefined;
 }
 
+function resolveValidUiProviderModelRef(config: Awaited<ReturnType<typeof loadConfig>>, modelRef: string | undefined): string | undefined {
+  if (!modelRef) return undefined;
+  return config.llm.modelCatalog[modelRef] ? modelRef : undefined;
+}
+
+function sanitizeUiChatSessions(store: SqliteMemoryStore, config: Awaited<ReturnType<typeof loadConfig>>, sessions: UiChatSession[]): UiChatSession[] {
+  return sessions.map((session) => sanitizeUiChatSession(store, config, session));
+}
+
+function sanitizeUiChatSession(store: SqliteMemoryStore, config: Awaited<ReturnType<typeof loadConfig>>, session: UiChatSession): UiChatSession {
+  if (!session.providerModelRef || config.llm.modelCatalog[session.providerModelRef]) {
+    return session;
+  }
+
+  return store.updateUiChatSessionPreferences(session.id, { providerModelRef: null });
+}
+
+async function sanitizeUiChatSessionById(paths: RuntimePaths, config: Awaited<ReturnType<typeof loadConfig>>, sessionId: number): Promise<void> {
+  const store = await SqliteMemoryStore.open(paths);
+  try {
+    sanitizeUiChatSession(store, config, store.getUiChatSession(sessionId));
+  } finally {
+    store.close();
+  }
+}
+
 export async function createUiChatSession(title?: string, paths: RuntimePaths = getRuntimePaths()): Promise<UiChatSessionMessagesSummary> {
   const store = await SqliteMemoryStore.open(paths);
   try {
@@ -194,13 +225,22 @@ export async function createUiChatSession(title?: string, paths: RuntimePaths = 
 }
 
 export async function updateUiChatSession(options: { id: number; title?: string; pinned?: boolean; toolsEnabled?: boolean; memoryEnabled?: boolean; providerModelRef?: string | null; paths?: RuntimePaths }): Promise<UiChatSessionMessagesSummary> {
-  const store = await SqliteMemoryStore.open(options.paths ?? getRuntimePaths());
+  const paths = options.paths ?? getRuntimePaths();
+  const store = await SqliteMemoryStore.open(paths);
   try {
     if (typeof options.title === "string") store.updateUiChatSessionTitle(options.id, options.title);
     if (typeof options.pinned === "boolean") store.updateUiChatSessionPinned(options.id, options.pinned);
-    if ("toolsEnabled" in options || "memoryEnabled" in options || "providerModelRef" in options) store.updateUiChatSessionPreferences(options.id, options);
+    if ("toolsEnabled" in options || "memoryEnabled" in options || "providerModelRef" in options) {
+      const config = await loadConfig(paths);
+      const providerModelRef = "providerModelRef" in options
+        ? options.providerModelRef === null ? null : resolveValidUiProviderModelRef(config, options.providerModelRef) ?? null
+        : undefined;
+      store.updateUiChatSessionPreferences(options.id, { ...options, providerModelRef });
+    }
+    const config = await loadConfig(paths);
+    const session = sanitizeUiChatSession(store, config, store.getUiChatSession(options.id));
     const events = store.listUiChatEvents(options.id);
-    return { ok: true, session: store.getUiChatSession(options.id), messages: store.listUiChatMessages(options.id), events, runs: store.listUiChatRuns(options.id), approvals: collectChatApprovalStatuses(store, events), branch: collectChatBranch(store, options.id) };
+    return { ok: true, session, messages: store.listUiChatMessages(options.id), events, runs: store.listUiChatRuns(options.id), approvals: collectChatApprovalStatuses(store, events), branch: collectChatBranch(store, options.id) };
   } finally {
     store.close();
   }
@@ -209,8 +249,10 @@ export async function updateUiChatSession(options: { id: number; title?: string;
 export async function getUiChatSessionMessages(sessionId: number, paths: RuntimePaths = getRuntimePaths()): Promise<UiChatSessionMessagesSummary> {
   const store = await SqliteMemoryStore.open(paths);
   try {
+    const config = await loadConfig(paths);
+    const session = sanitizeUiChatSession(store, config, store.getUiChatSession(sessionId));
     const events = store.listUiChatEvents(sessionId);
-    return { ok: true, session: store.getUiChatSession(sessionId), messages: store.listUiChatMessages(sessionId), events, runs: store.listUiChatRuns(sessionId), approvals: collectChatApprovalStatuses(store, events), branch: collectChatBranch(store, sessionId) };
+    return { ok: true, session, messages: store.listUiChatMessages(sessionId), events, runs: store.listUiChatRuns(sessionId), approvals: collectChatApprovalStatuses(store, events), branch: collectChatBranch(store, sessionId) };
   } finally {
     store.close();
   }
@@ -538,12 +580,30 @@ function attachUiVisionImages(messages: ChatMessage[], promptInput: string, imag
 }
 
 export async function runUiChat(options: UiChatOptions): Promise<UiChatResult> {
+  if (options.sessionId !== undefined) {
+    if (activeUiChatSessionRuns.has(options.sessionId)) {
+      throw new Error("Chat session is already streaming. Wait for the current response or stop it before sending another message.");
+    }
+    activeUiChatSessionRuns.add(options.sessionId);
+  }
+
+  try {
+    return await runUiChatUnlocked(options);
+  } finally {
+    if (options.sessionId !== undefined) activeUiChatSessionRuns.delete(options.sessionId);
+  }
+}
+
+async function runUiChatUnlocked(options: UiChatOptions): Promise<UiChatResult> {
   const paths = options.paths ?? getRuntimePaths();
   const userInput = options.message.trim();
   if (!userInput) throw new Error("Chat message is required.");
 
-  const applyProviderOverride = (config: Awaited<ReturnType<typeof loadConfig>>) => options.providerModelRef ? { ...config, llm: { ...config.llm, primary: options.providerModelRef } } : config;
-  const config = applyProviderOverride(await loadConfig(paths));
+  const baseConfig = await loadConfig(paths);
+  const providerModelRef = resolveValidUiProviderModelRef(baseConfig, options.providerModelRef);
+  if (options.sessionId !== undefined) await sanitizeUiChatSessionById(paths, baseConfig, options.sessionId);
+  const applyProviderOverride = (config: Awaited<ReturnType<typeof loadConfig>>) => providerModelRef ? { ...config, llm: { ...config.llm, primary: providerModelRef } } : config;
+  const config = applyProviderOverride(baseConfig);
   const systemPrompt = await loadSystemPrompt(paths);
   const apiKey = await loadLlmCandidateSecret(resolvePrimaryLlmCandidate(config), paths);
   const chatCompletion = options.chatCompletion ?? ((currentConfig: typeof config, _apiKey: string, requestOptions: ChatCompletionOptions) => sendChatCompletionWithFallbacks(currentConfig, requestOptions, { paths }));
@@ -560,11 +620,12 @@ export async function runUiChat(options: UiChatOptions): Promise<UiChatResult> {
   const session = persistedUser?.session;
   const run = session ? await createUiChatRun(paths, session.id, {
     model: config.llm.primary,
-    providerModelRef: options.providerModelRef,
+    providerModelRef,
     userMessageId: persistedUser?.message.id,
-    metadataJson: JSON.stringify(buildChatRunMetadata(userInput, options, { model: config.llm.primary })),
+    metadataJson: JSON.stringify(buildChatRunMetadata(userInput, { ...options, providerModelRef }, { model: config.llm.primary })),
   }) : undefined;
-  const timelineOptions = run ? { ...options, runId: run.id } : options;
+  const sanitizedOptions = { ...options, providerModelRef };
+  const timelineOptions = run ? { ...sanitizedOptions, runId: run.id } : sanitizedOptions;
   await emitTimelineEvent(paths, session?.id, timelineOptions, { type: "thinking", label: "Preparing agent context", payload: { memoryCount: memories.length, model: config.llm.primary } });
 
   let answer: string;
@@ -598,7 +659,7 @@ export async function runUiChat(options: UiChatOptions): Promise<UiChatResult> {
   }
 
   const persistedAssistant = session ? await persistAssistantChatMessage(paths, session.id, answer, run?.id) : undefined;
-  const finishedRun = run ? await finishUiChatRun(paths, run.id, { status: "done", model: config.llm.primary, assistantMessageId: persistedAssistant?.message.id, metadataJson: JSON.stringify(buildChatRunMetadata(userInput, options, { model: config.llm.primary, output: answer, outputChars: answer.length, toolCalls: toolActivities.length })) }) : undefined;
+  const finishedRun = run ? await finishUiChatRun(paths, run.id, { status: "done", model: config.llm.primary, assistantMessageId: persistedAssistant?.message.id, metadataJson: JSON.stringify(buildChatRunMetadata(userInput, sanitizedOptions, { model: config.llm.primary, output: answer, outputChars: answer.length, toolCalls: toolActivities.length })) }) : undefined;
   if (options.memoryEnabled !== false) {
     await runUiKnowledgeReasoningPass({ config, paths, apiKey, userInput: promptInput, assistantText: answer, sessionId: session?.id, assistantMessageId: persistedAssistant?.message.id, runId: run?.id, timelineOptions, chatCompletion });
     if (session) {

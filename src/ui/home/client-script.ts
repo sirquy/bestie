@@ -1,5 +1,6 @@
 export const HOME_PAGE_CLIENT_SCRIPT = `const state = {};
 const KNOWLEDGE_MAP_PREFS_KEY = "bestie.knowledgeMapPreferences.v1";
+const SKILL_LIBRARY_PREFS_KEY = "bestie.skillLibraryPreferences.v1";
 const text = (value) => value === undefined || value === null || value === "" ? "-" : String(value);
 const pillClass = (value) => value === true || value === "pass" || value === "running" || value === "allow" ? "good" : value === false || value === "fail" || value === "stopped" || value === "deny" ? "bad" : "warn";
 const escapeHtml = (value) => text(value).replace(/[&<>"]/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[char]));
@@ -70,6 +71,33 @@ function captureKnowledgeMapView() {
 
 function saveKnowledgeMapPreferences() {
   writeLocalJson(KNOWLEDGE_MAP_PREFS_KEY, { ...captureKnowledgeMapView(), activeView: state.knowledgeActiveView ?? "all", savedView: state.knowledgeSavedView });
+}
+
+function loadSkillLibraryPreferences() {
+  if (state.skillLibraryPreferencesLoaded) return;
+  state.skillLibraryPreferencesLoaded = true;
+  const prefs = readLocalJson(SKILL_LIBRARY_PREFS_KEY) ?? {};
+  state.skillLibraryFilter = prefs.filter ?? state.skillLibraryFilter;
+  state.skillLibraryCategory = prefs.category ?? state.skillLibraryCategory;
+  state.skillLibrarySource = prefs.source ?? state.skillLibrarySource;
+  state.skillLibraryStatus = prefs.status ?? state.skillLibraryStatus;
+  state.skillLibraryTrust = prefs.trust ?? state.skillLibraryTrust;
+  state.skillLibraryRisk = prefs.risk ?? state.skillLibraryRisk;
+  state.skillLibraryPermission = prefs.permission ?? state.skillLibraryPermission;
+  state.skillLibrarySort = prefs.sort ?? state.skillLibrarySort;
+}
+
+function saveSkillLibraryPreferences() {
+  writeLocalJson(SKILL_LIBRARY_PREFS_KEY, {
+    filter: state.skillLibraryFilter ?? "",
+    category: state.skillLibraryCategory ?? "all",
+    source: state.skillLibrarySource ?? "all",
+    status: state.skillLibraryStatus ?? "all",
+    trust: state.skillLibraryTrust ?? "all",
+    risk: state.skillLibraryRisk ?? "all",
+    permission: state.skillLibraryPermission ?? "all",
+    sort: state.skillLibrarySort ?? "title",
+  });
 }
 function renderMarkdown(value) {
   const escaped = escapeHtml(value);
@@ -681,7 +709,7 @@ function firstTextDiff(before, after) {
   const start = Math.max(0, index - 24);
   const beforeSlice = before.slice(start, index + 64).replace(/\s+/g, " ");
   const afterSlice = after.slice(start, index + 64).replace(/\s+/g, " ");
-  return 'Before: "' + beforeSlice + '" / After: "' + afterSlice + '"';
+  return 'Before: "' + beforeSlice + '" ? After: "' + afterSlice + '"';
 }
 
 function applyReplayPreferences(replay) {
@@ -1004,6 +1032,11 @@ function submitChatImport(raw) {
 }
 
 function sendChatMessage() {
+  if (state.chatStreamController) {
+    showToast("Bestie is still replying. Stop the current response before sending another message.", "warn");
+    return;
+  }
+
   const input = document.querySelector("#chat-input");
   const message = input?.value.trim() ?? "";
   if (!message) return;
@@ -1385,7 +1418,7 @@ function loadDoctor() {
     .then((response) => response.json())
     .then((doctor) => {
       const firstIssue = doctor.report?.checks?.find((check) => check.status === "fail" || check.status === "warn");
-      setValue("#doctor-panel .value", 'Pass ' + text(doctor.summary?.pass) + ' / Warn ' + text(doctor.summary?.warn) + ' / Fail ' + text(doctor.summary?.fail));
+      setValue("#doctor-panel .value", 'Pass ' + text(doctor.summary?.pass) + ' ? Warn ' + text(doctor.summary?.warn) + ' ? Fail ' + text(doctor.summary?.fail));
       setBody("#doctor-panel", row("First issue", firstIssue?.message ?? "No issues found.", pillClass(firstIssue?.status ?? "pass")));
     })
     .catch(() => setValue("#doctor-panel .value", "Unable to load diagnostics."));
@@ -1396,20 +1429,90 @@ function loadProviders() {
     .then((response) => response.json())
     .then((providers) => {
       state.providers = providers;
-      setValue("#provider-panel .value", text(providers.primary?.modelRef) + ' via ' + text(providers.primary?.provider));
-      const modelOptions = (providers.models ?? []).map((model) => option(model.modelRef, model.modelRef, model.primary)).join("");
-      const fallbackOptions = (providers.models ?? []).filter((model) => !model.primary).map((model) => option(model.modelRef, model.modelRef, false)).join("");
-      const profileRows = (providers.profiles ?? []).slice(0, 4).map((profile) => row(profile.id, profile.secretPresent ? profile.provider + ' sẵn sàng' : profile.provider + ' thiếu secret', profile.secretPresent ? "good" : "bad"));
-      setBody("#provider-panel", [
-        '<div class="segmented" role="tablist" aria-label="Provider views"><button class="active" data-segment-target="provider-overview" type="button">Overview</button><button data-segment-target="provider-configure" type="button">Configure</button><button data-segment-target="provider-profiles" type="button">Profiles</button></div>',
-        '<div class="segment active" id="provider-overview">' + [row("Auth profile", providers.primary?.authProfile, ""), row("Secret", providers.primary?.secretPresent ? "present" : "missing", providers.primary?.secretPresent ? "good" : "bad"), row("Fallbacks", providers.fallbacks?.length ?? 0, "")].join("") + '</div>',
-        '<div class="segment" id="provider-configure"><div class="preset-row"><button data-provider-preset="anthropic" type="button">' + icon("brain") + '<span>Claude</span></button><button data-provider-preset="openai" type="button">' + icon("spark") + '<span>ChatGPT</span></button><button data-provider-preset="gemini" type="button">' + icon("spark") + '<span>Gemini</span></button><button data-provider-preset="groq" type="button">' + icon("activity") + '<span>Groq</span></button><button data-provider-preset="openrouter" type="button">' + icon("cloud") + '<span>OpenRouter</span></button><button data-provider-preset="ollama" type="button">' + icon("terminal") + '<span>Ollama</span></button></div><div class="control-grid"><label>Primary model<select id="provider-primary-select">' + modelOptions + '</select></label>' + iconButton("check", "Set primary", 'id="provider-primary-set"') + '</div><div class="control-grid"><label>Fallback<select id="provider-fallback-select">' + fallbackOptions + '</select></label>' + iconButton("check", "Add", 'id="provider-fallback-add"') + iconButton("x", "Remove", 'id="provider-fallback-remove"') + '</div><form id="provider-setup-form" class="stack"><div class="control-grid"><label>Provider<input name="provider" value="gemini"></label><label>Model<input name="model" value="gemini-2.5-flash"></label><label data-provider-field="baseUrl">Base URL<input name="baseUrl" placeholder="SDK default for Gemini"></label><label data-provider-field="apiKeyEnv">API key env<input name="apiKeyEnv" value="GEMINI_API_KEY"></label><label data-provider-field="có secret">Secret<input name="có secret" type="password" placeholder="tùy chọn"></label><label class="check"><input name="setDefault" type="checkbox"> Set default</label><button type="submit">' + icon("check") + '<span>Setup</span></button></div><div class="notice" id="provider-setup-note">' + escapeHtml(providerSetupNote("gemini")) + '</div></form></div>',
-        '<div class="segment" id="provider-profiles">' + (profileRows.join("") || row("Profiles", "empty", "")) + '</div>',
-      ].join(""));
+      if (!providers.ok) {
+        setValue("#provider-panel .value", providers.error?.code ?? "Provider config unavailable");
+        setBody("#provider-panel", '<div class="notice bad"><strong>Provider config needs attention.</strong><br>' + escapeHtml(providers.error?.message ?? "Run onboarding or check config.json.") + '</div>');
+        return;
+      }
+
+      setValue("#provider-panel .value", providerHeadline(providers));
+      setBody("#provider-panel", renderProviderHub(providers));
       bindProviderControls();
       renderChatPreferencesIntoPanel();
     })
     .catch(() => setValue("#provider-panel .value", "Unable to load providers."));
+}
+
+function providerHeadline(providers) {
+  const primary = providers.primary;
+  if (!primary) return "No primary provider configured";
+  return text(primary.modelRef) + " / " + (primary.secretPresent ? "ready" : "missing secret");
+}
+
+function renderProviderHub(providers) {
+  return [
+    '<div class="provider-hero">' + renderProviderPrimaryCard(providers) + renderProviderHealthCard(providers) + '</div>',
+    '<div class="segmented provider-segments" role="tablist" aria-label="Provider views"><button class="active" data-segment-target="provider-route" type="button">Route</button><button data-segment-target="provider-setup" type="button">Setup</button><button data-segment-target="provider-inventory" type="button">Inventory</button></div>',
+    '<div class="segment active" id="provider-route">' + renderProviderRoute(providers) + '</div>',
+    '<div class="segment" id="provider-setup">' + renderProviderSetup() + '</div>',
+    '<div class="segment" id="provider-inventory">' + renderProviderInventory(providers) + '</div>',
+  ].join("");
+}
+
+function renderProviderPrimaryCard(providers) {
+  const primary = providers.primary;
+  if (!primary) return '<div class="provider-card important"><span class="label">Primary</span><strong>Not configured</strong><p>Add a provider in Setup.</p></div>';
+  const secretTone = primary.secretPresent ? "good" : "bad";
+  return '<div class="provider-card important"><span class="label">Primary model</span><strong>' + escapeHtml(primary.modelRef) + '</strong><p>' + escapeHtml(primary.provider) + ' / ' + escapeHtml(primary.authProfile) + '</p><div class="provider-pills"><span class="pill ' + secretTone + '">' + (primary.secretPresent ? "secret ready" : "missing secret") + '</span><span class="pill">' + escapeHtml(primary.baseUrl) + '</span></div></div>';
+}
+
+function renderProviderHealthCard(providers) {
+  const profiles = providers.profiles ?? [];
+  const missingSecrets = profiles.filter((profile) => !profile.secretPresent).length;
+  const fallbackCount = providers.fallbacks?.length ?? 0;
+  const modelCount = providers.models?.length ?? 0;
+  return '<div class="provider-card"><span class="label">Readiness</span><div class="provider-stats"><span><strong>' + escapeHtml(modelCount) + '</strong><small>models</small></span><span><strong>' + escapeHtml(fallbackCount) + '</strong><small>fallbacks</small></span><span><strong>' + escapeHtml(missingSecrets) + '</strong><small>missing secrets</small></span></div><p>' + escapeHtml(providerReadinessHint(providers)) + '</p></div>';
+}
+
+function providerReadinessHint(providers) {
+  if (!providers.primary) return "Choose a primary model to start chatting.";
+  if (!providers.primary.secretPresent) return "Add the API key secret for the primary provider.";
+  if (!(providers.fallbacks ?? []).length) return "Add one fallback model for safer chat reliability.";
+  return "Provider route looks ready.";
+}
+
+function renderProviderRoute(providers) {
+  const modelOptions = (providers.models ?? []).map((model) => option(model.modelRef, model.modelRef, model.primary)).join("");
+  const fallbackOptions = (providers.models ?? []).filter((model) => !model.primary).map((model) => option(model.modelRef, model.modelRef, false)).join("");
+  const fallbacks = (providers.fallbacks ?? []).map((fallback, index) => '<div class="provider-list-item"><span><strong>#' + escapeHtml(index + 1) + ' ' + escapeHtml(fallback.modelRef) + '</strong><small>' + escapeHtml(fallback.provider) + ' / ' + escapeHtml(fallback.secretPresent ? "ready" : "missing secret") + '</small></span><span class="pill ' + (fallback.secretPresent ? "good" : "bad") + '">' + (fallback.secretPresent ? "ready" : "secret") + '</span></div>').join("");
+  return '<div class="provider-route-grid"><section class="tool-section"><div class="label">Primary route</div><div class="control-grid"><label>Primary model<select id="provider-primary-select">' + modelOptions + '</select></label>' + iconButton("check", "Set primary", 'id="provider-primary-set"') + '</div><div class="notice compact">Primary is used by chat and daemon unless a session override is selected.</div></section><section class="tool-section"><div class="label">Fallback chain</div><div class="control-grid"><label>Fallback model<select id="provider-fallback-select">' + fallbackOptions + '</select></label>' + iconButton("check", "Add", 'id="provider-fallback-add"') + iconButton("x", "Remove", 'id="provider-fallback-remove"') + '</div><div class="provider-list">' + (fallbacks || '<div class="provider-empty">No fallback model yet.</div>') + '</div></section></div>';
+}
+
+function renderProviderSetup() {
+  return '<section class="tool-section provider-setup-card"><div class="label">Quick setup</div><div class="preset-row provider-presets">' + renderProviderPresetButton("anthropic", "Claude", "brain") + renderProviderPresetButton("openai", "ChatGPT", "spark") + renderProviderPresetButton("gemini", "Gemini", "spark") + renderProviderPresetButton("groq", "Groq", "activity") + renderProviderPresetButton("openrouter", "OpenRouter", "cloud") + renderProviderPresetButton("ollama", "Ollama", "terminal") + '</div><form id="provider-setup-form" class="provider-form stack"><div class="control-grid"><label>Provider<input name="provider" value="gemini" autocomplete="off"></label><label>Model<input name="model" value="gemini-2.5-flash" autocomplete="off"></label><label data-provider-field="baseUrl">Base URL<input name="baseUrl" placeholder="SDK default for Gemini" autocomplete="off"></label><label data-provider-field="apiKeyEnv">API key env<input name="apiKeyEnv" value="GEMINI_API_KEY" autocomplete="off"></label><label data-provider-field="secret">Secret<input name="secret" type="password" placeholder="optional; saved to local .env" autocomplete="new-password"></label><label class="check"><input name="setDefault" type="checkbox" checked> Make primary</label><button type="submit">' + icon("check") + '<span>Save provider</span></button></div><div class="notice" id="provider-setup-note">' + escapeHtml(providerSetupNote("gemini")) + '</div></form></section>';
+}
+
+function renderProviderPresetButton(key, label, iconName) {
+  const preset = providerPresets[key];
+  const model = preset?.model ?? "";
+  return '<button class="provider-preset" data-provider-preset="' + escapeHtml(key) + '" type="button">' + icon(iconName) + '<span><strong>' + escapeHtml(label) + '</strong><small>' + escapeHtml(model) + '</small></span></button>';
+}
+
+function renderProviderInventory(providers) {
+  const profiles = (providers.profiles ?? []).map(renderProviderProfile).join("");
+  const models = (providers.models ?? []).map(renderProviderModel).join("");
+  return '<div class="provider-route-grid"><section class="tool-section"><div class="label">Profiles</div><div class="provider-list">' + (profiles || '<div class="provider-empty">No profiles.</div>') + '</div></section><section class="tool-section"><div class="label">Model catalog</div><div class="provider-list">' + (models || '<div class="provider-empty">No models.</div>') + '</div></section></div>';
+}
+
+function renderProviderProfile(profile) {
+  const tone = profile.secretPresent ? "good" : "bad";
+  const usedBy = (profile.usedBy ?? []).length ? profile.usedBy.join(", ") : "not used";
+  return '<div class="provider-list-item"><span><strong>' + escapeHtml(profile.id) + '</strong><small>' + escapeHtml(profile.provider) + ' / ' + escapeHtml(profile.mode) + ' / ' + escapeHtml(usedBy) + '</small></span><span class="pill ' + tone + '">' + (profile.secretPresent ? "ready" : "secret") + '</span></div>';
+}
+
+function renderProviderModel(model) {
+  const markers = [model.primary ? "primary" : "", model.fallback ? "fallback" : ""].filter(Boolean).join(" / ") || "available";
+  return '<div class="provider-list-item"><span><strong>' + escapeHtml(model.modelRef) + '</strong><small>' + escapeHtml(model.profile) + '</small></span><span class="pill ' + (model.primary ? "good" : model.fallback ? "warn" : "") + '">' + escapeHtml(markers) + '</span></div>';
 }
 
 function loadCharacter() {
@@ -1418,7 +1521,7 @@ function loadCharacter() {
     .then((character) => {
       state.character = character;
       const parsed = character.character?.parsed;
-      setValue("#character-panel .value", parsed ? parsed.name + ' / ' + parsed.language + ' / prompt ' + text(character.prompt?.bytes ?? 0) + ' bytes' : "Character file missing or invalid.");
+      setValue("#character-panel .value", parsed ? parsed.name + ' ? ' + parsed.language + ' ? prompt ' + text(character.prompt?.bytes ?? 0) + ' bytes' : "Character file missing or invalid.");
       setBody("#character-panel", [
         renderCharacterStudioHeader(character),
         '<div class="segmented character-segments" role="tablist" aria-label="Character Studio views"><button class="active" data-segment-target="character-compose" type="button">Studio</button><button data-segment-target="character-prompt-workbench" type="button">Prompt</button><button data-segment-target="character-raw" type="button">Raw files</button></div>',
@@ -1567,7 +1670,7 @@ function syncCharacterDraftFromForm() {
   setValue("#character-tone-label", characterToneLabel(current.tone));
   const preview = document.querySelector("#character-live-preview");
   if (preview) preview.innerHTML = renderCharacterPreview(current);
-  setValue("#character-panel .value", current.name + ' / ' + current.language + ' / draft updated');
+  setValue("#character-panel .value", current.name + ' ? ' + current.language + ' ? draft updated');
 }
 
 function buildCharacterPromptDraft(character) {
@@ -1600,7 +1703,7 @@ function loadMemory() {
   fetch("/api/memory")
     .then((response) => response.json())
     .then((memory) => {
-      setValue("#memory-panel .value", 'Active ' + text(memory.counts?.active) + ' / Pending ' + text(memory.counts?.pending) + ' / Summaries ' + text(memory.counts?.conversationSummaries ?? 0));
+      setValue("#memory-panel .value", 'Active ' + text(memory.counts?.active) + ' ? Pending ' + text(memory.counts?.pending) + ' ? Summaries ' + text(memory.counts?.conversationSummaries ?? 0));
       const memories = (memory.memories ?? []).slice(0, 6).map(renderMemoryItem);
       const pending = (memory.pending ?? []).slice(0, 6).map(renderPendingMemoryItem);
       const summaries = (memory.conversationSummaries ?? []).slice(0, 6).map(renderConversationSummaryItem);
@@ -1617,18 +1720,18 @@ function loadMemory() {
 }
 
 function renderMemoryItem(item) {
-  const meta = 'scope ' + text(item.scope) + ' / importance ' + text(item.importance) + ' / confidence ' + text(item.confidence);
+  const meta = 'scope ' + text(item.scope) + ' ? importance ' + text(item.importance) + ' ? confidence ' + text(item.confidence);
   return '<div class="memory-row"><div><strong>' + escapeHtml(item.type) + '</strong><div>' + escapeHtml(item.content) + '</div><div class="subvalue">' + escapeHtml(meta) + '</div></div><span><span class="pill ' + (item.pinned ? "good" : "") + '">' + (item.pinned ? "pinned" : "active") + '</span><span class="pill ' + (item.sensitivity === "sensitive" ? "warn" : "good") + '">' + escapeHtml(item.sensitivity) + '</span></span></div>';
 }
 
 function renderPendingMemoryItem(item) {
-  const meta = [item.reason, item.source, item.explicitConsent ? "đã đồng ý rõ ràng" : "cần rà soát"].filter(Boolean).join(' / ');
+  const meta = [item.reason, item.source, item.explicitConsent ? "đã đồng ý rõ ràng" : "cần rà soát"].filter(Boolean).join(' ? ');
   return '<div class="memory-row"><div><strong>Pending ' + escapeHtml(item.type) + '</strong><div>' + escapeHtml(item.content) + '</div><div class="subvalue">' + escapeHtml(meta || item.createdAt) + '</div></div><span>' + iconButton("check", "Approve", 'data-memory-action="approve_pending" data-memory-id="' + item.id + '"') + iconButton("x", "Reject", 'data-memory-action="reject_pending" data-memory-id="' + item.id + '"') + '</span></div>';
 }
 
 function renderConversationSummaryItem(item) {
   const owner = item.userId ? item.channel + ':' + item.userId : item.channel;
-  const meta = 'through message #' + text(item.summarizedMessageId) + ' / updated ' + text(item.updatedAt);
+  const meta = 'through message #' + text(item.summarizedMessageId) + ' ? updated ' + text(item.updatedAt);
   const content = text(item.content).length > 260 ? text(item.content).slice(0, 257) + '...' : text(item.content);
   return '<div class="memory-row"><div><strong>' + escapeHtml(owner) + '</strong><div>' + escapeHtml(content) + '</div><div class="subvalue">' + escapeHtml(meta) + '</div></div><span><span class="pill good">summary</span></span></div>';
 }
@@ -1732,7 +1835,7 @@ function bindCharacterControls() {
   });
   document.querySelector("#character-json")?.addEventListener("input", () => {
     const current = parseCharacterDraft();
-    setValue("#character-panel .value", current ? text(current.name) + ' / JSON draft' : "Fix character JSON before saving.");
+    setValue("#character-panel .value", current ? text(current.name) + ' ? JSON draft' : "Fix character JSON before saving.");
   });
 }
 
@@ -1815,7 +1918,7 @@ function renderKnowledgeGraphPanel(graph, mode) {
   state.knowledgeClusterBy = state.knowledgeClusterBy ?? "none";
   state.knowledgeRelationDensity = state.knowledgeRelationDensity ?? "all";
   state.knowledgeMotion = state.knowledgeMotion ?? "subtle";
-  setValue("#knowledge-panel .value", 'Thực thể ' + text(graph.counts?.entities) + ' / Liên kết ' + text(graph.counts?.relations) + ' / Score ' + text(graph.analysis?.score));
+  setValue("#knowledge-panel .value", 'Thực thể ' + text(graph.counts?.entities) + ' ? Liên kết ' + text(graph.counts?.relations) + ' ? Score ' + text(graph.analysis?.score));
   const entities = graph.entities ?? [];
   const relations = graph.relations ?? [];
   const pending = graph.pending ?? [];
@@ -1900,8 +2003,8 @@ function renderKnowledgeTrustDashboard(graph) {
 }
 
 function getKnowledgeTrustItems(graph) {
-  const entities = (graph.entities ?? []).map((entity) => ({ type: "entity", id: Number(entity.id), title: entity.canonicalName, detail: entity.kind + ' / ' + (entity.trust?.relationCount ?? 0) + ' relations', trust: entity.trust }));
-  const relations = (graph.relations ?? []).map((relation) => ({ type: "relation", id: Number(relation.id), title: relation.sourceName + ' --' + relation.relationType + '--> ' + relation.targetName, detail: 'relation / confidence ' + relation.confidence, trust: relation.trust }));
+  const entities = (graph.entities ?? []).map((entity) => ({ type: "entity", id: Number(entity.id), title: entity.canonicalName, detail: entity.kind + ' ? ' + (entity.trust?.relationCount ?? 0) + ' relations', trust: entity.trust }));
+  const relations = (graph.relations ?? []).map((relation) => ({ type: "relation", id: Number(relation.id), title: relation.sourceName + ' --' + relation.relationType + '--> ' + relation.targetName, detail: 'relation ? confidence ' + relation.confidence, trust: relation.trust }));
   return [...entities, ...relations].filter((item) => {
     if (state.knowledgeTrustFilter === "low") return item.trust?.level === "low";
     if (state.knowledgeTrustFilter === "stale") return item.trust?.stale;
@@ -1918,7 +2021,7 @@ function getKnowledgeTrustItems(graph) {
 function renderKnowledgeTrustRow(item) {
   const trust = item.trust ?? { score: 100, level: "high", warnings: [], signals: [] };
   const tone = trust.level === "high" ? "good" : trust.level === "low" ? "warn" : "";
-  const warnings = trust.warnings?.length ? trust.warnings.join(" / ") : trust.signals?.slice(0, 2).join(" / ");
+  const warnings = trust.warnings?.length ? trust.warnings.join(" ? ") : trust.signals?.slice(0, 2).join(" ? ");
   return '<div class="knowledge-row knowledge-trust-row" data-knowledge-select="' + escapeHtml(item.type) + '" data-' + escapeHtml(item.type) + '-id="' + escapeHtml(item.id) + '"><div><strong>' + escapeHtml(item.type + ' #' + item.id + ' ' + item.title) + '</strong><div class="subvalue">' + escapeHtml(item.detail) + '</div><div class="subvalue">' + escapeHtml(warnings || "Trust signals available") + '</div></div><span><span class="pill ' + tone + '">' + escapeHtml(trust.score) + '</span><span class="pill ' + tone + '">' + escapeHtml(trust.level) + '</span></span></div>';
 }
 
@@ -1973,7 +2076,7 @@ function renderKnowledgeGraphSvg(entities, relations) {
   const nodeHtml = nodes.map((node) => {
     const point = positions.get(Number(node.id));
     const tone = node.kind === "person" ? "person" : node.kind === "project" ? "project" : node.kind === "preference" ? "preference" : "topic";
-    return '<g class="knowledge-node ' + tone + '" tabindex="0" role="button" data-knowledge-select="entity" data-entity-id="' + escapeHtml(node.id) + '"><circle cx="' + point.x.toFixed(1) + '" cy="' + point.y.toFixed(1) + '" r="25"></circle><text x="' + point.x.toFixed(1) + '" y="' + (point.y + 4).toFixed(1) + '">#' + escapeHtml(node.id) + '</text><title>' + escapeHtml(node.canonicalName) + ' / ' + escapeHtml(node.kind) + '</title></g>';
+    return '<g class="knowledge-node ' + tone + '" tabindex="0" role="button" data-knowledge-select="entity" data-entity-id="' + escapeHtml(node.id) + '"><circle cx="' + point.x.toFixed(1) + '" cy="' + point.y.toFixed(1) + '" r="25"></circle><text x="' + point.x.toFixed(1) + '" y="' + (point.y + 4).toFixed(1) + '">#' + escapeHtml(node.id) + '</text><title>' + escapeHtml(node.canonicalName) + ' ? ' + escapeHtml(node.kind) + '</title></g>';
   }).join("");
   return '<svg class="knowledge-svg" viewBox="0 0 ' + width + ' ' + height + '" role="img" aria-label="Bản đồ tri thức">' + edgeHtml + nodeHtml + '</svg>';
 }
@@ -2154,12 +2257,12 @@ function buildKnowledgeClusterElements(nodes, relations, nodeIds) {
 }
 
 function renderKnowledgeEntity(entity) {
-  const aliases = entity.aliases?.length ? ' / aliases ' + entity.aliases.join(", ") : "";
-  return '<div class="knowledge-row" data-knowledge-select="entity" data-entity-id="' + escapeHtml(entity.id) + '"><div><strong>#' + escapeHtml(entity.id) + ' ' + escapeHtml(entity.canonicalName) + '</strong><div class="subvalue">' + escapeHtml(entity.kind + ' / scope ' + entity.scope + ' / confidence ' + entity.confidence + aliases) + '</div></div><span><span class="pill ' + (entity.sensitivity === "sensitive" ? "warn" : "good") + '">' + escapeHtml(entity.sensitivity) + '</span></span></div>';
+  const aliases = entity.aliases?.length ? ' ? aliases ' + entity.aliases.join(", ") : "";
+  return '<div class="knowledge-row" data-knowledge-select="entity" data-entity-id="' + escapeHtml(entity.id) + '"><div><strong>#' + escapeHtml(entity.id) + ' ' + escapeHtml(entity.canonicalName) + '</strong><div class="subvalue">' + escapeHtml(entity.kind + ' ? scope ' + entity.scope + ' ? confidence ' + entity.confidence + aliases) + '</div></div><span><span class="pill ' + (entity.sensitivity === "sensitive" ? "warn" : "good") + '">' + escapeHtml(entity.sensitivity) + '</span></span></div>';
 }
 
 function renderKnowledgeRelation(relation) {
-  const meta = 'scope ' + text(relation.scope) + ' / confidence ' + text(relation.confidence) + (relation.evidence ? ' / ' + relation.evidence : '');
+  const meta = 'scope ' + text(relation.scope) + ' ? confidence ' + text(relation.confidence) + (relation.evidence ? ' ? ' + relation.evidence : '');
   const actions = [
     iconButton("sliders", "Update", 'class="message-menu-item" data-knowledge-action="update_relation" data-relation-id="' + escapeHtml(relation.id) + '" data-confidence="' + escapeHtml(relation.confidence) + '"'),
     iconButton("x", "Forget", 'class="message-menu-item" data-knowledge-action="forget_relation" data-relation-id="' + escapeHtml(relation.id) + '"'),
@@ -2212,12 +2315,12 @@ function formatKnowledgeReviewAction(action) {
 }
 
 function renderPendingKnowledgeItem(item) {
-  const meta = [item.reason, item.source, item.explicitConsent ? "đã đồng ý rõ ràng" : "cần rà soát", item.createdAt].filter(Boolean).join(' / ');
+  const meta = [item.reason, item.source, item.explicitConsent ? "đã đồng ý rõ ràng" : "cần rà soát", item.createdAt].filter(Boolean).join(' ? ');
   return '<div class="knowledge-row" data-knowledge-select="pending" data-pending-id="' + escapeHtml(item.id) + '"><div><strong>Pending #' + escapeHtml(item.id) + '</strong><div>' + escapeHtml(item.payloadSummary) + '</div><div class="subvalue">' + escapeHtml(meta) + '</div></div><span><span class="pill warn">pending</span>' + iconButton("sliders", "Sanitize", 'data-knowledge-action="sanitize_pending" data-pending-id="' + escapeHtml(item.id) + '"') + iconButton("check", "Approve", 'data-knowledge-action="approve_pending" data-pending-id="' + escapeHtml(item.id) + '"') + iconButton("x", "Reject", 'data-knowledge-action="reject_pending" data-pending-id="' + escapeHtml(item.id) + '"') + '</span></div>';
 }
 
 function renderKnowledgeSearchResults(graph) {
-  const heading = row('Tìm kiếm results for "' + text(graph.query) + '"', (graph.relations?.length ?? 0) + ' relations / ' + (graph.entities?.length ?? 0) + ' entities', "");
+  const heading = row('Tìm kiếm results for "' + text(graph.query) + '"', (graph.relations?.length ?? 0) + ' relations ? ' + (graph.entities?.length ?? 0) + ' entities', "");
   const relations = (graph.relations ?? []).map(renderKnowledgeRelation);
   const entities = (graph.entities ?? []).map(renderKnowledgeEntity);
   const pending = (graph.pending ?? []).map(renderPendingKnowledgeItem);
@@ -2521,7 +2624,7 @@ function applyKnowledgeGraphFilters() {
   const visibleNodes = cy.nodes().not(".filtered").length;
   const visibleEdges = cy.edges().not(".filtered").length;
   const count = document.querySelector("#knowledge-visible-count");
-  if (count) count.textContent = visibleNodes + " nodes / " + visibleEdges + " edges" + ((state.knowledgeClusterBy ?? "none") === "none" ? "" : " / " + state.knowledgeClusterBy + " clusters");
+  if (count) count.textContent = visibleNodes + " nodes ? " + visibleEdges + " edges" + ((state.knowledgeClusterBy ?? "none") === "none" ? "" : " ? " + state.knowledgeClusterBy + " clusters");
   applyKnowledgeGraphSelectionHighlight();
   cy.fit(cy.elements().not(".filtered"), 32);
 }
@@ -2602,14 +2705,14 @@ function updateKnowledgeHoverStatus(element) {
     const kind = element.data("kind") ?? "node";
     const trust = element.data("trust") ?? "medium";
     const relationCount = element.data("relationCount") ?? element.connectedEdges?.().not(".filtered").length ?? 0;
-    status.textContent = label + " / " + kind + " / " + relationCount + " liên kết / tin cậy " + trust;
+    status.textContent = label + " ? " + kind + " ? " + relationCount + " liên kết ? tin cậy " + trust;
     return;
   }
   const label = element.data("label") ?? "relation";
   const confidence = element.data("confidence") ?? "?";
   const source = element.source?.().data("label") ?? "source";
   const target = element.target?.().data("label") ?? "target";
-  status.textContent = source + " --" + label + "--> " + target + " / độ tin cậy " + confidence;
+  status.textContent = source + " --" + label + "--> " + target + " ? độ tin cậy " + confidence;
 }
 
 function bindKnowledgeGraphInteractiveControls() {
@@ -2865,7 +2968,7 @@ function renderKnowledgeProvenanceOverlay(graph) {
   const cluster = selected.item;
   return '<div class="knowledge-provenance-head"><div><div class="label">Provenance</div><div class="value">Cluster ' + escapeHtml(cluster.label) + '</div></div><span class="pill">' + escapeHtml(cluster.clusterBy) + '</span></div>'
     + '<div class="knowledge-provenance-grid">'
-    + row("Cluster by", cluster.clusterBy + ' / ' + cluster.value, "")
+    + row("Cluster by", cluster.clusterBy + ' ? ' + cluster.value, "")
     + row("Entities", cluster.entities.length, cluster.entities.length ? "good" : "warn")
     + row("Relations", cluster.relations.length, "")
     + row("Timeline", "Grouped from current filtered graph view", "")
@@ -2876,7 +2979,7 @@ function renderKnowledgeProvenanceOverlay(graph) {
 function renderKnowledgeProvenanceTrust(trust) {
   if (!trust) return '<span class="pill">Trust n/a</span>';
   const tone = trust.level === "high" ? "good" : trust.level === "low" ? "warn" : "";
-  return '<span class="pill ' + tone + '">Trust ' + escapeHtml(trust.score) + ' / ' + escapeHtml(trust.level) + '</span>';
+  return '<span class="pill ' + tone + '">Trust ' + escapeHtml(trust.score) + ' ? ' + escapeHtml(trust.level) + '</span>';
 }
 
 function renderKnowledgeProvenanceActions(actions) {
@@ -2978,7 +3081,7 @@ function renderKnowledgeAuditTimeline(item, fallbackEvents) {
   if (!auditEvents.length) return renderKnowledgeTimeline(fallbackEvents);
   return renderKnowledgeTimeline(auditEvents.map((event) => ({
     label: event.eventType,
-    value: [event.createdAt, event.actor ? 'actor ' + event.actor : undefined, event.channel ? 'via ' + event.channel : undefined, event.reason, event.payloadSummary].filter(Boolean).join(' / '),
+    value: [event.createdAt, event.actor ? 'actor ' + event.actor : undefined, event.channel ? 'via ' + event.channel : undefined, event.reason, event.payloadSummary].filter(Boolean).join(' ? '),
     tone: event.eventType === "rejected" || event.eventType === "forgotten" ? "warn" : event.eventType === "created" || event.eventType === "approved" ? "good" : "",
   })));
 }
@@ -2989,7 +3092,7 @@ function renderKnowledgeSource(item) {
   const parts = [];
   if (item.sourceMemoryId !== undefined) parts.push('memory #' + item.sourceMemoryId);
   if (item.sourceMessageId !== undefined) parts.push('message ' + item.sourceMessageId);
-  return parts.join(' / ') || "manual or inferred";
+  return parts.join(' ? ') || "manual or inferred";
 }
 
 function renderKnowledgeSourceJump(item) {
@@ -3002,11 +3105,11 @@ function renderKnowledgeTrustDetails(trust) {
   if (!trust) return "";
   const tone = trust.level === "high" ? "good" : trust.level === "low" ? "warn" : "";
   return '<div class="tool-section knowledge-trust-details"><div class="label">Độ tin cậy</div>'
-    + row("Score", trust.score + ' / ' + trust.level, tone)
-    + row("Source", trust.sourceKind + ' / quality ' + trust.sourceQuality, trust.needsSource ? "warn" : "good")
+    + row("Score", trust.score + ' ? ' + trust.level, tone)
+    + row("Source", trust.sourceKind + ' ? quality ' + trust.sourceQuality, trust.needsSource ? "warn" : "good")
     + row("Age", trust.ageDays + ' day' + (trust.ageDays === 1 ? "" : "s"), trust.stale ? "warn" : "good")
-    + row("Signals", (trust.signals ?? []).join(' / ') || "none", "")
-    + row("Warnings", (trust.warnings ?? []).join(' / ') || "none", trust.warnings?.length ? "warn" : "good")
+    + row("Signals", (trust.signals ?? []).join(' ? ') || "none", "")
+    + row("Warnings", (trust.warnings ?? []).join(' ? ') || "none", trust.warnings?.length ? "warn" : "good")
     + '</div>';
 }
 
@@ -3110,7 +3213,7 @@ function loadChannels() {
     .then((summary) => {
       const activeChannels = summary.channels?.filter((channel) => channel.enabled).length ?? 0;
       state.firstCron = summary.cron?.schedules?.[0] ?? null;
-      setValue("#channel-panel .value", 'Kênh ' + text(activeChannels) + ' / Cron ' + text(summary.cron?.counts?.total));
+      setValue("#channel-panel .value", 'Kênh ' + text(activeChannels) + ' ? Cron ' + text(summary.cron?.counts?.total));
       const channelRows = (summary.channels ?? []).map((channel) => '<div class="action-row"><span><strong>' + escapeHtml(channel.displayName) + '</strong> <span class="pill ' + pillClass(channel.daemon?.state) + '">' + escapeHtml(channel.daemon?.state ?? "stopped") + '</span> <span class="pill ' + (channel.secretPresent ? "good" : "bad") + '">' + (channel.secretPresent ? "có secret" : "no có secret") + '</span></span><span>' + iconButton("activity", "Bắt đầu", 'data-channel-action="daemon_start" data-channel="' + escapeHtml(channel.id) + '"') + iconButton("x", "Stop", 'data-channel-action="daemon_stop" data-channel="' + escapeHtml(channel.id) + '"') + iconButton("refresh", "Khởi động lại", 'data-channel-action="daemon_restart" data-channel="' + escapeHtml(channel.id) + '"') + '</span></div>');
       const cronRows = (summary.cron?.schedules ?? []).map(renderCronScheduleRow);
       const cronLogRows = (summary.cron?.logs ?? []).map(renderCronLogRow);
@@ -3131,7 +3234,7 @@ function bindChannelControls() {
   document.querySelectorAll("[data-channel-action]").forEach((button) => button.addEventListener("click", () => {
     const action = button.dataset.channelAction;
     const channel = button.dataset.channel;
-    requireConfirm("Cập nhật daemon kênh?", action + ' / ' + channel, () => withLoading("#channel-panel .value", "Đang cập nhật kênh...", () => postJson("/api/channels/action", { action, channel, confirm: true }).then(loadChannels).then(() => showToast("Đã cập nhật kênh.", "good")))).catch(() => setValue("#channel-panel .value", "Không thể cập nhật kênh."));
+    requireConfirm("Cập nhật daemon kênh?", action + ' ? ' + channel, () => withLoading("#channel-panel .value", "Đang cập nhật kênh...", () => postJson("/api/channels/action", { action, channel, confirm: true }).then(loadChannels).then(() => showToast("Đã cập nhật kênh.", "good")))).catch(() => setValue("#channel-panel .value", "Không thể cập nhật kênh."));
   }));
   document.querySelectorAll("[data-cron-id]").forEach((button) => button.addEventListener("click", () => {
     const id = Number(button.dataset.cronId);
@@ -3196,7 +3299,7 @@ function renderCronScheduleRow(schedule) {
 function renderCronLogRow(log) {
   const status = log.result ?? "running";
   const detail = [log.output, log.error].filter(Boolean).join(" / ");
-  return '<div class="memory-row"><div><strong>Log #' + escapeHtml(log.id) + '</strong><div class="subvalue">schedule ' + escapeHtml(log.scheduleId) + ' / started ' + escapeHtml(log.startedAt) + '</div><div>' + escapeHtml(detail || log.finishedAt || "in progress") + '</div></div><span><span class="pill ' + pillClass(status) + '">' + escapeHtml(status) + '</span></span></div>';
+  return '<div class="memory-row"><div><strong>Log #' + escapeHtml(log.id) + '</strong><div class="subvalue">schedule ' + escapeHtml(log.scheduleId) + ' ? started ' + escapeHtml(log.startedAt) + '</div><div>' + escapeHtml(detail || log.finishedAt || "in progress") + '</div></div><span><span class="pill ' + pillClass(status) + '">' + escapeHtml(status) + '</span></span></div>';
 }
 
 function loadApprovals() {
@@ -3206,7 +3309,7 @@ function loadApprovals() {
       state.firstApproval = summary.approvals?.[0] ?? null;
       setValue("#approvals-panel .value", 'Pending ' + text(summary.count));
       const approvalRows = (summary.approvals ?? []).slice(0, 8).map((approval) => {
-        const detail = [approval.channel, approval.category, approval.target].filter(Boolean).join(' / ');
+        const detail = [approval.channel, approval.category, approval.target].filter(Boolean).join(' ? ');
         const reason = approval.proposedReason ?? approval.reason ?? 'No reason provided.';
         return '<div class="approval-row"><div><strong>' + escapeHtml(approval.action) + '</strong><div class="subvalue">' + escapeHtml(detail) + '</div><div class="subvalue">' + escapeHtml(reason) + '</div></div><span>' + iconButton("check", "Approve", 'data-approval-action="approve" data-approval-id="' + approval.id + '"') + iconButton("x", "Deny", 'data-approval-action="deny" data-approval-id="' + approval.id + '"') + '</span></div>';
       });
@@ -3241,7 +3344,7 @@ function loadMcp() {
   fetch("/api/mcp")
     .then((response) => response.json())
     .then((summary) => {
-      setValue("#mcp-panel .value", 'Servers ' + text(summary.counts?.enabled) + '/' + text(summary.counts?.total) + ' / Tools ' + text(summary.counts?.tools));
+      setValue("#mcp-panel .value", 'Servers ' + text(summary.counts?.enabled) + '/' + text(summary.counts?.total) + ' ? Tools ' + text(summary.counts?.tools));
       const servers = summary.servers ?? [];
       setBody("#mcp-panel", [
         '<div class="summary-strip" data-mcp-summary><span><strong>' + escapeHtml(summary.counts?.enabled ?? 0) + '</strong><small>enabled</small></span><span><strong>' + escapeHtml(summary.counts?.disabled ?? 0) + '</strong><small>disabled</small></span><span><strong>' + escapeHtml(summary.counts?.tools ?? 0) + '</strong><small>tools</small></span><span><strong>' + escapeHtml(summary.counts?.total ?? 0) + '</strong><small>servers</small></span></div>',
@@ -3260,9 +3363,9 @@ function bindMcpControls() {
 }
 
 function renderMcpServerCard(server) {
-  const auth = server.auth ? 'OAuth ' + text(server.auth.envVar) + (server.auth.headerName ? ' / ' + server.auth.headerName : '') : 'none';
+  const auth = server.auth ? 'OAuth ' + text(server.auth.envVar) + (server.auth.headerName ? ' ? ' + server.auth.headerName : '') : 'none';
   const config = [
-    row("Command", server.commandConfigured ? 'configured / ' + text(server.argCount) + ' args' : "not configured", server.commandConfigured ? "good" : "warn"),
+    row("Command", server.commandConfigured ? 'configured ? ' + text(server.argCount) + ' args' : "not configured", server.commandConfigured ? "good" : "warn"),
     row("URL", server.urlConfigured ? "configured" : "not configured", server.urlConfigured ? "good" : "warn"),
     row("Env keys", (server.envKeys ?? []).join(", ") || "none", ""),
     row("Header env", (server.headerEnvNames ?? []).join(", ") || "none", ""),
@@ -3280,7 +3383,7 @@ function renderMcpToolSection(server) {
 }
 
 function renderMcpAuthSection(server) {
-  const auth = server.auth ? 'OAuth ' + text(server.auth.envVar) + (server.auth.headerName ? ' / ' + server.auth.headerName : '') : 'none';
+  const auth = server.auth ? 'OAuth ' + text(server.auth.envVar) + (server.auth.headerName ? ' ? ' + server.auth.headerName : '') : 'none';
   return '<div class="tool-section"><div class="label">' + escapeHtml(server.name) + '</div>' + [
     row("Transport", server.transport, ""),
     row("Header env", (server.headerEnvNames ?? []).join(", ") || "none", (server.headerEnvNames ?? []).length ? "good" : ""),
@@ -3293,7 +3396,7 @@ function loadTools() {
   fetch("/api/tools")
     .then((response) => response.json())
     .then((summary) => {
-      setValue("#tools-panel .value", 'Policies ' + text(summary.policies?.count) + ' / External paths ' + text(summary.workspace?.externalPathCount));
+      setValue("#tools-panel .value", 'Policies ' + text(summary.policies?.count) + ' ? External paths ' + text(summary.workspace?.externalPathCount));
       const policyRows = (summary.policies?.entries ?? []).map(renderToolPolicyRow);
       const workspaceRows = [
         row("Default workspace", summary.workspace?.defaultPath ?? "not set", summary.workspace?.defaultPath ? "good" : "warn"),
@@ -3324,7 +3427,7 @@ function updateToolPolicy(tool, policy, select) {
   if (!tool || !["allow", "ask", "deny"].includes(policy)) return;
   select.disabled = true;
   withLoading("#tools-panel .value", "Saving " + tool + " policy...", () => putJson("/api/tools/policy", { tool, policy }).then((summary) => {
-    setValue("#tools-panel .value", 'Policies ' + text(summary.policies?.count) + ' / External paths ' + text(summary.workspace?.externalPathCount));
+    setValue("#tools-panel .value", 'Policies ' + text(summary.policies?.count) + ' ? External paths ' + text(summary.workspace?.externalPathCount));
     loadTools();
     showToast("Tool policy saved.", "good");
   })).catch(() => setValue("#tools-panel .value", "Unable to update tool policy.")).finally(() => { select.disabled = false; });
@@ -3335,7 +3438,7 @@ function loadSettings() {
     .then((response) => response.json())
     .then((summary) => {
       state.settings = summary;
-      setValue("#settings-panel .value", text(summary.agent?.name) + ' / Tone ' + text(summary.agent?.toneIntensity) + ' / Memory ' + text(summary.memory?.writePolicy));
+      setValue("#settings-panel .value", text(summary.agent?.name) + ' ? Tone ' + text(summary.agent?.toneIntensity) + ' ? Memory ' + text(summary.memory?.writePolicy));
       setBody("#settings-panel", [
         row("Owner", summary.agent?.ownerName, ""),
         row("Language", summary.agent?.language, ""),
@@ -3348,22 +3451,43 @@ function loadSettings() {
 }
 
 function loadSkills() {
-  return fetch("/api/skills")
-    .then((response) => response.json())
-    .then((summary) => {
+  return Promise.all([fetch("/api/skills").then((response) => response.json()), fetch("/api/skills/library").then((response) => response.json())])
+    .then(([summary, library]) => {
       state.skills = summary.skills ?? [];
-      setValue("#skills-panel .value", 'Skills ' + text(summary.count));
+      state.skillLibrary = library.skills ?? [];
+      const activePage = state.skillsPage === "templates" ? "templates" : "installed";
+      state.skillsPage = activePage;
+      setValue("#skills-panel .value", (activePage === "templates" ? "Skill templates" : "Installed skills") + ' · Local ' + text(summary.count) + ' · Templates ' + text(library.count));
       const selected = state.skills.find((skill) => skill.name === state.activeSkillName) ?? state.skills[0];
-      setBody("#skills-panel", [
-        '<div class="skills-layout"><aside class="skills-rail"><div class="skills-rail-head"><div><div class="label">Installed skills</div><strong>' + escapeHtml(summary.count) + ' local</strong></div>' + iconButton("layers", "New", 'id="skill-new-inline"') + '</div><label class="skill-search"><span>Tìm kiếm</span><input id="skill-search" value="' + escapeHtml(state.skillFilter ?? "") + '" placeholder="Filter by name or content"></label><div id="skill-list" class="skill-list">' + renderSkillList(selected?.name) + '</div><div class="notice compact">Stored in ' + escapeHtml(summary.skillsDir) + '</div></aside>' + renderSkillEditor(selected) + '</div>',
-      ].join(""));
+      setBody("#skills-panel", renderSkillsChildPage(activePage, summary, library, selected));
       bindSkillControls();
-      if (selected?.name) return loadSkillItem(selected.name);
+      if (activePage === "installed" && selected?.name) return loadSkillItem(selected.name);
       return undefined;
     })
     .catch(() => setValue("#skills-panel .value", "Unable to load skills."));
 }
 
+function renderSkillsChildPage(activePage, summary, library, selected) {
+  return renderSkillsPageTabs(activePage, summary, library)
+    + (activePage === "templates"
+      ? renderSkillTemplatesPage(library)
+      : '<div class="skills-layout"><aside class="skills-rail"><div class="skills-rail-head"><div><div class="label">Installed skills</div><strong>' + escapeHtml(summary.count) + ' local</strong></div>' + iconButton("layers", "New", 'id="skill-new-inline"') + '</div><label class="skill-search"><span>Tìm kiếm</span><input id="skill-search" value="' + escapeHtml(state.skillFilter ?? "") + '" placeholder="Filter by name or content"></label><div id="skill-list" class="skill-list">' + renderSkillList(selected?.name) + '</div><div class="notice compact">Stored in ' + escapeHtml(summary.skillsDir) + '</div></aside>' + renderSkillEditor(selected) + '</div>');
+}
+
+function renderSkillsPageTabs(activePage, summary, library) {
+  return '<div class="skills-page-tabs segmented"><button class="' + (activePage === "installed" ? "active" : "") + '" data-skills-page="installed" type="button">Installed <span>' + escapeHtml(summary.count ?? 0) + '</span></button><button class="' + (activePage === "templates" ? "active" : "") + '" data-skills-page="templates" type="button">Templates <span>' + escapeHtml(library.count ?? 0) + '</span></button></div>';
+}
+
+function renderSkillTemplatesPage(library) {
+  return '<div class="skills-template-page"><div class="skills-template-hero"><div><div class="label">Template discovery</div><strong>Browse curated skill templates</strong><p>Install, update, diff, rollback, or preview official templates without cluttering the local skill editor.</p></div><button id="skill-template-back" type="button">Back to installed skills</button></div>' + renderSkillLibrary(library) + '</div>';
+}
+function showSkillEditorPage() {
+  if (state.skillsPage !== "templates") return;
+  state.skillsPage = "installed";
+  const selected = (state.skills ?? []).find((skill) => skill.name === state.activeSkillName) ?? (state.skills ?? [])[0];
+  setBody("#skills-panel", renderSkillsChildPage("installed", { count: (state.skills ?? []).length, skillsDir: "~/.bestie/skills" }, { count: (state.skillLibrary ?? []).length }, selected));
+  bindSkillControls();
+}
 function renderSkillList(activeName) {
   const filter = String(state.skillFilter ?? "").trim().toLowerCase();
   const skills = (state.skills ?? []).filter((skill) => !filter || skill.name.toLowerCase().includes(filter) || String(skill.preview ?? "").toLowerCase().includes(filter));
@@ -3372,16 +3496,125 @@ function renderSkillList(activeName) {
 }
 
 function renderSkillRow(skill, active) {
-  return '<button class="skill-row ' + (active ? "active" : "") + '" data-skill-name="' + escapeHtml(skill.name) + '" type="button"><span class="skill-row-main"><strong>' + escapeHtml(skill.name) + '</strong><small>' + escapeHtml(skill.preview || "No description yet.") + '</small></span><span class="pill">' + escapeHtml(skill.bytes) + ' bytes</span></button>';
+  const manifest = skill.manifest;
+  const sourceLabel = manifest ? (manifest.sourceName ?? manifest.source ?? "library") + (manifest.libraryVersion ? ' v' + manifest.libraryVersion : '') : "local";
+  const statusLabel = skill.enabled === false ? "disabled" : skill.localChanges ? "local changes" : skill.rollbackAvailable ? "rollback" : "clean";
+  const statusTone = skill.enabled === false ? "bad" : skill.localChanges ? "warn" : skill.rollbackAvailable ? "good" : "";
+  return '<button class="skill-row ' + (active ? "active" : "") + '" data-skill-name="' + escapeHtml(skill.name) + '" type="button"><span class="skill-row-main"><strong>' + escapeHtml(skill.name) + '</strong><small>' + escapeHtml(skill.preview || "No description yet.") + '</small><small class="skill-manifest-meta">' + escapeHtml(sourceLabel) + (skill.currentHash ? ' · current sha256 ' + escapeHtml(String(skill.currentHash).slice(0, 10)) : '') + (manifest?.contentHash ? ' · installed sha256 ' + escapeHtml(String(manifest.contentHash).slice(0, 10)) : '') + '</small></span><span class="skill-row-badges"><span class="pill ' + statusTone + '">' + escapeHtml(statusLabel) + '</span><span class="pill">' + escapeHtml(skill.bytes) + ' bytes</span></span></button>';
+}
+
+function renderSkillManifestMeta(manifest) {
+  if (!manifest) return "Local skill ? no library manifest";
+  return [manifest.sourceName ?? manifest.source, manifest.libraryVersion ? 'v' + manifest.libraryVersion : '', manifest.sourceId ?? '', manifest.contentHash ? 'sha256 ' + String(manifest.contentHash).slice(0, 12) : '', manifest.updatedAt ? 'updated ' + new Date(manifest.updatedAt).toLocaleString() : ''].filter(Boolean).join(' · ');
+}
+
+function renderSkillLibrary(library) {
+  loadSkillLibraryPreferences();
+  const categories = ["all", ...new Set((state.skillLibrary ?? []).map((skill) => skill.category))];
+  const activeCategory = categories.includes(state.skillLibraryCategory) ? state.skillLibraryCategory : "all";
+  state.skillLibraryCategory = activeCategory;
+  const sources = ["all", ...new Set((state.skillLibrary ?? []).map((skill) => skill.sourceId ?? "bundled-official"))];
+  const activeSourceFilter = sources.includes(state.skillLibrarySource) ? state.skillLibrarySource : "all";
+  state.skillLibrarySource = activeSourceFilter;
+  const sortOptions = ["title", "category", "risk", "source", "installed", "updated"];
+  const activeSort = sortOptions.includes(state.skillLibrarySort) ? state.skillLibrarySort : "title";
+  state.skillLibrarySort = activeSort;
+  const statusOptions = ["all", "not-installed", "installed", "enabled", "disabled", "updates", "local-changes", "preview-only"];
+  const activeStatus = statusOptions.includes(state.skillLibraryStatus) ? state.skillLibraryStatus : "all";
+  state.skillLibraryStatus = activeStatus;
+  const permissions = ["all", "none", ...new Set((state.skillLibrary ?? []).flatMap((skill) => skill.permissions ?? []))];
+  const activePermission = permissions.includes(state.skillLibraryPermission) ? state.skillLibraryPermission : "all";
+  state.skillLibraryPermission = activePermission;
+  const riskOptions = ["all", "low", "medium", "high"];
+  const activeRisk = riskOptions.includes(state.skillLibraryRisk) ? state.skillLibraryRisk : "all";
+  state.skillLibraryRisk = activeRisk;
+  const trustOptions = ["all", ...new Set((state.skillLibrary ?? []).map((skill) => skill.trust))];
+  const activeTrust = trustOptions.includes(state.skillLibraryTrust) ? state.skillLibraryTrust : "all";
+  state.skillLibraryTrust = activeTrust;
+  const query = String(state.skillLibraryFilter ?? "").trim().toLowerCase();
+  const riskOrder = { high: 0, medium: 1, low: 2 };
+  const skills = (state.skillLibrary ?? []).filter((skill) => (activeCategory === "all" || skill.category === activeCategory) && (activeSourceFilter === "all" || (skill.sourceId ?? "bundled-official") === activeSourceFilter) && matchesSkillLibraryStatus(skill, activeStatus) && matchesSkillLibraryPermission(skill, activePermission) && (activeRisk === "all" || skill.risk === activeRisk) && (activeTrust === "all" || skill.trust === activeTrust) && (!query || [skill.name, skill.title, skill.description, skill.category, skill.author, skill.version, skill.trust, skill.risk, skill.installed ? skill.enabled === false ? "disabled" : "enabled" : "not-installed", skill.sourceId, skill.sourceName, skill.verificationStatus, skill.verificationMethod, ...(skill.permissions ?? [])].join(" ").toLowerCase().includes(query))).sort((left, right) => {
+    if (activeSort === "risk") return (riskOrder[left.risk] ?? 9) - (riskOrder[right.risk] ?? 9) || left.title.localeCompare(right.title);
+    if (activeSort === "category") return String(left.category).localeCompare(String(right.category)) || left.title.localeCompare(right.title);
+    if (activeSort === "source") return String(left.sourceName ?? left.sourceId).localeCompare(String(right.sourceName ?? right.sourceId)) || left.title.localeCompare(right.title);
+    if (activeSort === "installed") return Number(Boolean(right.installed)) - Number(Boolean(left.installed)) || left.title.localeCompare(right.title);
+    if (activeSort === "updated") return Number(Boolean(right.updateAvailable || right.localChanges)) - Number(Boolean(left.updateAvailable || left.localChanges)) || left.title.localeCompare(right.title);
+    return left.title.localeCompare(right.title);
+  });
+  const registry = library.registry ?? {};
+  const activeSource = registry.activeSource ?? {};
+  const verification = activeSource.verification ?? {};
+  return '<section class="skill-library"><div class="skill-library-head"><div><div class="label">Curated library</div><strong>' + escapeHtml(library.count ?? 0) + ' templates</strong><span class="subvalue">' + escapeHtml(activeSource.name ?? "Bundled Official Skills") + ' · ' + escapeHtml(verification.status ?? "unknown") + ' via ' + escapeHtml(verification.method ?? "local") + ' · registry sha256 ' + escapeHtml(String(registry.registryHash ?? "").slice(0, 10)) + '</span></div><div class="skill-library-controls"><input id="skill-library-search" value="' + escapeHtml(state.skillLibraryFilter ?? "") + '" placeholder="Search name, risk, permissions, source"><select id="skill-library-category">' + categories.map((category) => option(category, category, activeCategory === category)).join("") + '</select><select id="skill-library-source">' + sources.map((source) => option(source, renderSkillLibrarySourceLabel(source), activeSourceFilter === source)).join("") + '</select><select id="skill-library-status">' + statusOptions.map((status) => option(status, "status: " + status, activeStatus === status)).join("") + '</select><select id="skill-library-trust">' + trustOptions.map((trust) => option(trust, trust === "all" ? "all trust levels" : "trust: " + trust, activeTrust === trust)).join("") + '</select><select id="skill-library-risk">' + riskOptions.map((risk) => option(risk, risk === "all" ? "all risk levels" : "risk: " + risk, activeRisk === risk)).join("") + '</select><select id="skill-library-permission">' + permissions.map((permission) => option(permission, permission === "all" ? "all permissions" : permission === "none" ? "no permissions" : "permission: " + permission, activePermission === permission)).join("") + '</select><select id="skill-library-sort">' + sortOptions.map((sort) => option(sort, "sort: " + sort, activeSort === sort)).join("") + '</select><button id="skill-library-reset" type="button">Reset filters</button><button id="skill-registry-test" type="button">Test remote</button><button id="skill-registry-cache-clear" type="button">Clear cache</button></div></div>' + renderSkillLibrarySummary(skills, library.count ?? 0) + '<div class="skill-registry-strip">' + renderSkillRegistrySources(registry.sources ?? []) + '</div><div id="skill-library-list" class="skill-library-list">' + renderSkillLibraryList(skills) + '</div></section>';
+}
+
+function renderSkillLibrarySourceLabel(sourceId) {
+  if (sourceId === "all") return "all sources";
+  const skill = (state.skillLibrary ?? []).find((item) => (item.sourceId ?? "bundled-official") === sourceId);
+  return skill?.sourceName ? skill.sourceName : sourceId;
+}
+
+function matchesSkillLibraryStatus(skill, status) {
+  if (status === "installed") return Boolean(skill.installed);
+  if (status === "not-installed") return !skill.installed;
+  if (status === "enabled") return Boolean(skill.installed) && skill.enabled !== false;
+  if (status === "disabled") return Boolean(skill.installed) && skill.enabled === false;
+  if (status === "updates") return Boolean(skill.updateAvailable);
+  if (status === "local-changes") return Boolean(skill.localChanges);
+  if (status === "preview-only") return Boolean(skill.readOnly);
+  return true;
+}
+
+function matchesSkillLibraryPermission(skill, permission) {
+  const permissions = skill.permissions ?? [];
+  if (permission === "none") return permissions.length === 0;
+  if (permission === "all") return true;
+  return permissions.includes(permission);
+}
+
+function renderSkillLibrarySummary(skills, totalCount) {
+  const installed = skills.filter((skill) => skill.installed).length;
+  const disabled = skills.filter((skill) => skill.installed && skill.enabled === false).length;
+  const updates = skills.filter((skill) => skill.updateAvailable).length;
+  const localChanges = skills.filter((skill) => skill.localChanges).length;
+  const previewOnly = skills.filter((skill) => skill.readOnly).length;
+  return '<div class="skill-library-summary"><span>Showing ' + escapeHtml(skills.length) + ' of ' + escapeHtml(totalCount) + '</span><span>' + escapeHtml(installed) + ' installed</span><span>' + escapeHtml(disabled) + ' disabled</span><span>' + escapeHtml(updates) + ' updates</span><span>' + escapeHtml(localChanges) + ' local changes</span><span>' + escapeHtml(previewOnly) + ' preview-only</span></div>';
+}
+
+function renderSkillRegistrySources(sources) {
+  if (!sources.length) return '<span>No registry sources configured</span>';
+  return sources.map((source) => {
+    const cache = source.cache;
+    const cacheLabel = cache?.cachedAt ? ' · cache ' + text(cache.status ?? "fresh") + ' ' + text(new Date(cache.cachedAt).toLocaleString()) : '';
+    return '<span class="pill ' + (source.verification?.status === "verified" ? "good" : source.enabled ? "warn" : "") + '" title="' + escapeHtml(source.verification?.detail ?? "") + '">' + escapeHtml(source.name) + ' · ' + escapeHtml(source.enabled ? source.verification?.status ?? "unknown" : "disabled") + escapeHtml(cacheLabel) + '</span>';
+  }).join("");
+}
+
+function renderSkillLibraryList(skills) {
+  if (!skills.length) return '<div class="skill-empty"><strong>No library skills found</strong><span>Clear the search or choose another category.</span></div>';
+  return skills.map((skill) => {
+    const stateLabel = skill.installed && skill.enabled === false ? "disabled" : skill.localChanges ? "local changes" : skill.updateAvailable ? "update" : skill.installed ? "enabled" : skill.risk + " risk";
+    const stateTone = skill.installed && skill.enabled === false ? "bad" : skill.localChanges || skill.updateAvailable ? "warn" : skill.installed ? "good" : skill.risk === "high" ? "bad" : skill.risk === "medium" ? "warn" : "";
+    const version = skill.installedVersion ? 'installed v' + skill.installedVersion + ' ? library v' + skill.version : 'library v' + skill.version;
+    const cacheMeta = skill.cache?.cachedAt ? '<span title="remote registry cache">cache ' + escapeHtml(skill.cache.status ?? "fresh") + ' · ' + escapeHtml(new Date(skill.cache.cachedAt).toLocaleString()) + '</span>' : '';
+    return '<article class="skill-library-card"><div class="skill-library-card-head"><div><strong>' + escapeHtml(skill.title) + '</strong><span class="subvalue">' + escapeHtml(skill.name) + ' · ' + escapeHtml(version) + ' by ' + escapeHtml(skill.author) + '</span></div><span class="pill ' + stateTone + '">' + escapeHtml(skill.readOnly ? "preview-only" : stateLabel) + '</span></div><p>' + escapeHtml(skill.description) + '</p><div class="skill-library-meta"><span>' + escapeHtml(skill.category) + '</span><span>' + escapeHtml(skill.trust) + '</span><span>' + escapeHtml(skill.sourceName ?? "registry") + '</span>' + (skill.installed ? '<span>' + escapeHtml(skill.enabled === false ? "disabled" : "enabled") + '</span>' : '') + '<span>' + escapeHtml(skill.verificationStatus ?? "unknown") + ' via ' + escapeHtml(skill.verificationMethod ?? "local") + '</span>' + cacheMeta + '<span>' + escapeHtml((skill.permissions ?? []).length ? skill.permissions.join(", ") : "no permissions") + '</span><span title="library checksum">sha256 ' + escapeHtml(String(skill.contentHash ?? "").slice(0, 10)) + '</span>' + (skill.rollbackAvailable ? '<span>rollback available</span>' : '') + '</div><details><summary>Preview & changelog</summary><pre>' + escapeHtml(skill.preview) + '</pre><small>' + escapeHtml(skill.changelog) + '</small>' + (skill.installBlockedReason ? '<small>' + escapeHtml(skill.installBlockedReason) + '</small>' : '') + '</details><div class="actions"><button data-skill-library-preview="' + escapeHtml(skill.name) + '" data-skill-library-source="' + escapeHtml(skill.sourceId ?? "bundled-official") + '" type="button">Preview source</button><button data-skill-library-diff="' + escapeHtml(skill.name) + '" data-skill-library-source="' + escapeHtml(skill.sourceId ?? "bundled-official") + '" type="button" ' + (skill.readOnly ? "disabled" : "") + '>Diff</button><button data-skill-library-install="' + escapeHtml(skill.name) + '" data-skill-library-source="' + escapeHtml(skill.sourceId ?? "bundled-official") + '" type="button" ' + (skill.installable ? "" : "disabled") + '>' + (skill.installable ? skill.installed ? skill.updateAvailable || skill.localChanges ? "Update" : "Reinstall" : "Install" : "Preview only") + '</button><button data-skill-library-rollback="' + escapeHtml(skill.name) + '" type="button" ' + (skill.rollbackAvailable ? "" : "disabled") + '>Rollback</button><button data-skill-library-uninstall="' + escapeHtml(skill.name) + '" type="button" ' + (skill.installed ? "" : "disabled") + '>Uninstall</button></div></article>';
+  }).join("");
 }
 
 function renderSkillEditor(skill) {
   const isNew = !skill;
   const content = isNew ? "# Skill\\n\\nDescribe when and how Bestie should use this skill.\\n" : "Loading...";
-  return '<form id="skill-form" class="skill-editor stack"><div class="skill-editor-head"><div><div class="label">' + (isNew ? "Create" : "Edit") + '</div><strong id="skill-editor-title">' + escapeHtml(skill?.name ?? "New skill") + '</strong><span class="subvalue">' + (isNew ? "Write a SKILL.md file and save it into the local skills directory." : "Edit the selected SKILL.md file, or rename it by changing the skill name before saving.") + '</span></div><span class="skill-editor-actions">' + iconButton("layers", "New", 'id="skill-new-editor"') + iconButton("x", "Delete", 'id="skill-delete" ' + (isNew ? "disabled" : "")) + '</span></div><div class="control-grid"><label>Skill name<input id="skill-name" name="name" value="' + escapeHtml(skill?.name ?? "") + '" placeholder="my-skill" autocomplete="off"></label><label>Status<input id="skill-status" value="' + (isNew ? "New skill" : "Editing") + '" disabled></label></div><label class="stack skill-content-label">SKILL.md<textarea id="skill-content" spellcheck="false">' + escapeHtml(content) + '</textarea></label><div class="skill-help"><span>Use a short lowercase name. Saving creates or updates <strong>SKILL.md</strong>.</span><span>Deleting removes the selected skill folder after confirmation.</span></div></form>';
+  return '<form id="skill-form" class="skill-editor stack"><div class="skill-editor-head"><div><div class="label">' + (isNew ? "Create" : "Edit") + '</div><strong id="skill-editor-title">' + escapeHtml(skill?.name ?? "New skill") + '</strong><span class="subvalue">' + (isNew ? "Write a SKILL.md file and save it into the local skills directory." : "Edit the selected SKILL.md file, or rename it by changing the skill name before saving.") + '</span><span id="skill-manifest-meta" class="subvalue">' + escapeHtml(isNew ? "No manifest yet" : renderSkillManifestMeta(skill?.manifest)) + '</span></div><span class="skill-editor-actions">' + iconButton("layers", "New", 'id="skill-new-editor"') + '<button id="skill-toggle" type="button" ' + (isNew ? "disabled" : "") + '>Enable/disable</button>' + iconButton("x", "Delete", 'id="skill-delete" ' + (isNew ? "disabled" : "")) + '</span></div><div class="control-grid"><label>Skill name<input id="skill-name" name="name" value="' + escapeHtml(skill?.name ?? "") + '" placeholder="my-skill" autocomplete="off"></label><label>Status<input id="skill-status" value="' + (isNew ? "New skill" : "Editing") + '" disabled></label></div><label class="stack skill-content-label">SKILL.md<textarea id="skill-content" spellcheck="false">' + escapeHtml(content) + '</textarea></label><div class="skill-help"><span>Use a short lowercase name. Saving creates or updates <strong>SKILL.md</strong>.</span><span>Deleting removes the selected skill folder after confirmation.</span></div></form>';
 }
 
 function bindSkillControls() {
+  document.querySelectorAll("[data-skills-page]").forEach((button) => button.addEventListener("click", () => {
+    state.skillsPage = button.dataset.skillsPage === "templates" ? "templates" : "installed";
+    loadSkills();
+  }));
+  document.querySelector("#skill-template-back")?.addEventListener("click", () => {
+    state.skillsPage = "installed";
+    loadSkills();
+  });
   document.querySelectorAll("[data-skill-name]").forEach((button) => button.addEventListener("click", () => loadSkillItem(button.dataset.skillName)));
   document.querySelector("#skill-search")?.addEventListener("input", (event) => {
     state.skillFilter = event.currentTarget.value;
@@ -3390,11 +3623,173 @@ function bindSkillControls() {
     document.querySelectorAll("[data-skill-name]").forEach((button) => button.addEventListener("click", () => loadSkillItem(button.dataset.skillName)));
   });
   document.querySelectorAll("#skill-new-inline, #skill-new-editor").forEach((button) => button.addEventListener("click", startNewSkill));
+  document.querySelector("#skill-library-search")?.addEventListener("input", (event) => { state.skillLibraryFilter = event.currentTarget.value; saveSkillLibraryPreferences(); loadSkills(); });
+  document.querySelector("#skill-library-category")?.addEventListener("change", (event) => { state.skillLibraryCategory = event.currentTarget.value; saveSkillLibraryPreferences(); loadSkills(); });
+  document.querySelector("#skill-library-source")?.addEventListener("change", (event) => { state.skillLibrarySource = event.currentTarget.value; saveSkillLibraryPreferences(); loadSkills(); });
+  document.querySelector("#skill-library-status")?.addEventListener("change", (event) => { state.skillLibraryStatus = event.currentTarget.value; saveSkillLibraryPreferences(); loadSkills(); });
+  document.querySelector("#skill-library-trust")?.addEventListener("change", (event) => { state.skillLibraryTrust = event.currentTarget.value; saveSkillLibraryPreferences(); loadSkills(); });
+  document.querySelector("#skill-library-risk")?.addEventListener("change", (event) => { state.skillLibraryRisk = event.currentTarget.value; saveSkillLibraryPreferences(); loadSkills(); });
+  document.querySelector("#skill-library-permission")?.addEventListener("change", (event) => { state.skillLibraryPermission = event.currentTarget.value; saveSkillLibraryPreferences(); loadSkills(); });
+  document.querySelector("#skill-library-sort")?.addEventListener("change", (event) => { state.skillLibrarySort = event.currentTarget.value; saveSkillLibraryPreferences(); loadSkills(); });
+  document.querySelector("#skill-library-reset")?.addEventListener("click", resetSkillLibraryFilters);
+  document.querySelector("#skill-registry-test")?.addEventListener("click", testRemoteSkillRegistry);
+  document.querySelector("#skill-registry-cache-clear")?.addEventListener("click", clearRemoteSkillRegistryCache);
+  document.querySelectorAll("[data-skill-library-preview]").forEach((button) => button.addEventListener("click", () => previewLibrarySkill(button.dataset.skillLibraryPreview, button.dataset.skillLibrarySource)));
+  document.querySelectorAll("[data-skill-library-diff]").forEach((button) => button.addEventListener("click", () => previewLibrarySkillDiff(button.dataset.skillLibraryDiff, button.dataset.skillLibrarySource)));
+  document.querySelectorAll("[data-skill-library-install]").forEach((button) => button.addEventListener("click", () => installLibrarySkill(button.dataset.skillLibraryInstall, button.dataset.skillLibrarySource)));
+  document.querySelectorAll("[data-skill-library-rollback]").forEach((button) => button.addEventListener("click", () => rollbackLibrarySkill(button.dataset.skillLibraryRollback)));
+  document.querySelectorAll("[data-skill-library-uninstall]").forEach((button) => button.addEventListener("click", () => uninstallLibrarySkill(button.dataset.skillLibraryUninstall)));
   document.querySelector("#skill-form")?.addEventListener("submit", (event) => event.preventDefault());
+  document.querySelector("#skill-toggle")?.addEventListener("click", toggleSelectedSkillEnabled);
   document.querySelector("#skill-delete")?.addEventListener("click", () => {
     const name = document.querySelector("#skill-name")?.value ?? "";
-    requireConfirm("Delete skill?", name, () => withLoading("#skills-panel .value", "Deleting skill...", () => postJson("/api/skills/delete", { name, confirm: true }).then(loadSkills).then(() => showToast("Skill deleted.", "good")))).catch(() => setValue("#skills-panel .value", "Unable to delete skill."));
+    const skill = (state.skills ?? []).find((item) => item.name === name);
+    requireConfirm("Delete skill?", renderSkillDeleteConfirmationDetail(skill, name), () => withLoading("#skills-panel .value", "Deleting skill...", () => postJson("/api/skills/delete", { name, confirm: true }).then(loadSkills).then(() => showToast("Skill deleted.", "good")))).catch(() => setValue("#skills-panel .value", "Unable to delete skill."));
   });
+}
+
+function resetSkillLibraryFilters() {
+  state.skillLibraryFilter = "";
+  state.skillLibraryCategory = "all";
+  state.skillLibrarySource = "all";
+  state.skillLibraryStatus = "all";
+  state.skillLibraryTrust = "all";
+  state.skillLibraryRisk = "all";
+  state.skillLibraryPermission = "all";
+  state.skillLibrarySort = "title";
+  saveSkillLibraryPreferences();
+  loadSkills();
+}
+
+function previewLibrarySkill(name, sourceId) {
+  if (!name) return;
+  fetch("/api/skills/library/item?name=" + encodeURIComponent(name) + "&sourceId=" + encodeURIComponent(sourceId ?? "bundled-official"))
+    .then((response) => response.json())
+    .then((result) => {
+      showSkillEditorPage();
+      state.activeSkillName = "";
+      const nameInput = document.querySelector("#skill-name");
+      const contentInput = document.querySelector("#skill-content");
+      if (nameInput) nameInput.value = result.skill?.name ?? name;
+      if (contentInput) contentInput.value = result.content ?? "";
+      setValue("#skill-editor-title", (result.skill?.title ?? name) + " preview");
+      setValue("#skill-manifest-meta", "Library preview · " + text(result.skill?.sourceName ?? "registry") + " · sha256 " + text(String(result.skill?.contentHash ?? "").slice(0, 12)));
+      const status = document.querySelector("#skill-status");
+      if (status) status.value = result.skill?.installed ? "Installed template preview" : "Library template preview";
+      document.querySelector("#skill-toggle")?.setAttribute("disabled", "");
+  document.querySelector("#skill-delete")?.setAttribute("disabled", "");
+      document.querySelectorAll(".skill-row").forEach((row) => row.classList.remove("active"));
+      setValue("#skills-panel .value", 'Previewing ' + text(result.skill?.name ?? name));
+    })
+    .catch(() => setValue("#skills-panel .value", "Unable to preview library skill."));
+}
+
+function installLibrarySkill(name, sourceId) {
+  if (!name) return;
+  const skill = (state.skillLibrary ?? []).find((item) => item.name === name && (!sourceId || item.sourceId === sourceId)) ?? (state.skillLibrary ?? []).find((item) => item.name === name);
+  fetch("/api/skills/library/diff?name=" + encodeURIComponent(name) + "&sourceId=" + encodeURIComponent(sourceId ?? ""))
+    .then((response) => response.json())
+    .then((diff) => {
+      const detail = renderLibraryInstallConfirmationDetail(skill, name, diff);
+      requireConfirm(skill?.installed ? "Reinstall library skill?" : "Install library skill?", detail, () => withLoading("#skills-panel .value", "Installing skill...", () => postJson("/api/skills/install", { name, sourceId, confirm: true }).then(() => { state.activeSkillName = name; return loadSkills(); }).then(() => loadSkillItem(name)).then(() => showToast("Skill installed.", "good")))).catch(() => setValue("#skills-panel .value", "Unable to install library skill."));
+    })
+    .catch(() => setValue("#skills-panel .value", "Unable to prepare install diff."));
+}
+
+function renderLibraryInstallConfirmationDetail(skill, fallbackName, diff) {
+  if (!skill) return fallbackName;
+  return [
+    skill.title ?? skill.name ?? fallbackName,
+    'source: ' + text(skill.sourceName ?? skill.sourceId ?? "registry"),
+    'version: ' + text(skill.version ?? "unknown"),
+    skill.installedVersion ? 'installed version: ' + text(skill.installedVersion) : '',
+    skill.installedHash ? 'installed checksum: ' + text(String(skill.installedHash).slice(0, 12)) : '',
+    'trust/risk: ' + text(skill.trust ?? "unknown") + ' ? ' + text(skill.risk ?? "unknown"),
+    'permissions: ' + text((skill.permissions ?? []).length ? skill.permissions.join(", ") : "none"),
+    'changelog: ' + text(skill.changelog ?? "none"),
+    'checksum: ' + text(String(skill.contentHash ?? "").slice(0, 12)),
+    diff ? 'diff: +' + text(diff.addedLines ?? 0) + ' ? -' + text(diff.removedLines ?? 0) + ' lines, current ' + text(String(diff.currentHash ?? "none").slice(0, 12)) + ' -> library ' + text(String(diff.proposedHash ?? skill.contentHash ?? "").slice(0, 12)) : '',
+    skill.cache?.cachedAt ? 'cache: ' + text(skill.cache.status ?? "fresh") + ' ' + text(new Date(skill.cache.cachedAt).toLocaleString()) : '',
+    skill.localChanges ? "warning: local edits differ from the installed manifest and will be backed up before update" : '',
+    skill.updateAvailable ? "update available: installed content differs from this library version" : '',
+  ].filter(Boolean).join(" / ");
+}
+
+function previewLibrarySkillDiff(name, sourceId) {
+  if (!name) return;
+  fetch("/api/skills/library/diff?name=" + encodeURIComponent(name) + "&sourceId=" + encodeURIComponent(sourceId ?? ""))
+    .then((response) => response.json())
+    .then((diff) => {
+      showSkillEditorPage();
+      const contentInput = document.querySelector("#skill-content");
+      const nameInput = document.querySelector("#skill-name");
+      if (nameInput) nameInput.value = diff.name ?? name;
+      if (contentInput) contentInput.value = renderSkillDiffText(diff);
+      setValue("#skill-editor-title", (diff.title ?? name) + " diff");
+      setValue("#skill-manifest-meta", diff.manifest ? renderSkillManifestMeta(diff.manifest) : "Library diff preview");
+      const status = document.querySelector("#skill-status");
+      if (status) status.value = [diff.updateAvailable ? "Update available" : "No update", diff.localChanges ? "local changes" : "clean", diff.rollbackAvailable ? "rollback available" : "no rollback"].join(" ? ");
+      setValue("#skills-panel .value", 'Diff +' + text(diff.addedLines) + ' ? -' + text(diff.removedLines));
+    })
+    .catch(() => setValue("#skills-panel .value", "Unable to load skill diff."));
+}
+
+function renderSkillDiffText(diff) {
+  const header = ['# Diff: ' + text(diff.name), 'current ' + text(String(diff.currentHash ?? "none").slice(0, 12)) + ' -> library ' + text(String(diff.proposedHash ?? "").slice(0, 12)), '+' + text(diff.addedLines) + ' ? -' + text(diff.removedLines), ''].join("\\n");
+  return header + (diff.preview ?? []).map((line) => (line.kind === "added" ? "+ " : line.kind === "removed" ? "- " : "  ") + line.text).join("\\n");
+}
+
+function rollbackLibrarySkill(name) {
+  if (!name) return;
+  requireConfirm("Rollback skill?", name + " will restore the latest local backup made before a library reinstall/update.", () => withLoading("#skills-panel .value", "Rolling back skill...", () => postJson("/api/skills/rollback", { name, confirm: true }).then(() => { state.activeSkillName = name; return loadSkills(); }).then(() => loadSkillItem(name)).then(() => showToast("Skill rolled back.", "good")))).catch(() => setValue("#skills-panel .value", "Unable to rollback skill."));
+}
+
+function uninstallLibrarySkill(name) {
+  if (!name) return;
+  const librarySkill = (state.skillLibrary ?? []).find((item) => item.name === name);
+  const installedSkill = (state.skills ?? []).find((item) => item.name === name);
+  requireConfirm("Uninstall library skill?", renderSkillUninstallConfirmationDetail(librarySkill, installedSkill, name), () => withLoading("#skills-panel .value", "Uninstalling skill...", () => postJson("/api/skills/uninstall", { name, confirm: true }).then(() => { if (state.activeSkillName === name) state.activeSkillName = undefined; return loadSkills(); }).then(() => showToast("Skill uninstalled.", "good")))).catch(() => setValue("#skills-panel .value", "Unable to uninstall library skill."));
+}
+
+function renderSkillUninstallConfirmationDetail(librarySkill, installedSkill, fallbackName) {
+  return [
+    fallbackName,
+    "will be archived under ~/.bestie/skills/.uninstalled before deletion",
+    "Library templates remain available for reinstall",
+    librarySkill?.sourceName ? "source: " + librarySkill.sourceName : installedSkill?.manifest?.sourceName ? "source: " + installedSkill.manifest.sourceName : "source: local",
+    librarySkill?.version ? "library version: " + librarySkill.version : installedSkill?.manifest?.libraryVersion ? "library version: " + installedSkill.manifest.libraryVersion : "",
+    installedSkill?.enabled === false ? "status: disabled" : "status: enabled",
+    "permissions: " + text((librarySkill?.permissions ?? installedSkill?.manifest?.permissions ?? []).length ? (librarySkill?.permissions ?? installedSkill?.manifest?.permissions ?? []).join(", ") : "none"),
+    installedSkill?.currentHash ? "current checksum: " + text(String(installedSkill.currentHash).slice(0, 12)) : "",
+  ].filter(Boolean).join(" / ");
+}
+
+function renderSkillDeleteConfirmationDetail(skill, fallbackName) {
+  return [
+    fallbackName,
+    "will be archived under ~/.bestie/skills/.uninstalled before deletion",
+    skill?.manifest?.sourceName ? "source: " + skill.manifest.sourceName : skill?.manifest?.source ? "source: " + skill.manifest.source : "source: local",
+    skill?.enabled === false ? "status: disabled" : "status: enabled",
+    "permissions: " + text((skill?.manifest?.permissions ?? []).length ? skill.manifest.permissions.join(", ") : "none"),
+    skill?.currentHash ? "current checksum: " + text(String(skill.currentHash).slice(0, 12)) : "",
+  ].filter(Boolean).join(" / ");
+}
+
+function testRemoteSkillRegistry() {
+  requireConfirm("Test remote registry?", "This fetches only the configured HTTPS skill registry and verifies its signature contract.", () => withLoading("#skills-panel .value", "Testing remote registry...", () => postJson("/api/skills/registry/test", { confirm: true }).then((result) => {
+    const source = result.source ?? {};
+    const verification = source.verification ?? {};
+    const message = result.error ? "Remote registry test failed: " + result.error : result.configured ? "Remote registry " + text(verification.status ?? (result.enabled ? "configured" : "disabled")) : "Remote registry not configured";
+    const refresh = verification.status === "verified" && !result.error ? loadSkills() : Promise.resolve();
+    return refresh.then(() => {
+      setValue("#skills-panel .value", message);
+      showToast(message, result.error ? "bad" : verification.status === "verified" ? "good" : "warn");
+    });
+  }))).catch(() => setValue("#skills-panel .value", "Unable to test remote registry."));
+}
+
+function clearRemoteSkillRegistryCache() {
+  requireConfirm("Clear remote skill cache?", "This removes only the verified remote registry preview cache. Bundled and installed skills stay untouched.", () => withLoading("#skills-panel .value", "Clearing remote registry cache...", () => postJson("/api/skills/registry/cache/clear", { confirm: true }).then(() => loadSkills()).then(() => showToast("Remote registry cache cleared.", "good")))).catch(() => setValue("#skills-panel .value", "Unable to clear remote registry cache."));
 }
 
 function startNewSkill() {
@@ -3404,6 +3799,7 @@ function startNewSkill() {
   if (nameInput) nameInput.value = "";
   if (contentInput) contentInput.value = "# Skill\\n\\nDescribe when and how Bestie should use this skill.\\n";
   setValue("#skill-editor-title", "New skill");
+  setValue("#skill-manifest-meta", "No manifest yet");
   const status = document.querySelector("#skill-status");
   if (status) status.value = "New skill";
   document.querySelector("#skill-delete")?.setAttribute("disabled", "");
@@ -3423,13 +3819,27 @@ function loadSkillItem(name) {
       if (document.querySelector("#skill-name") !== document.activeElement) document.querySelector("#skill-name").value = skill.name;
       if (document.querySelector("#skill-content") !== document.activeElement) document.querySelector("#skill-content").value = skill.content;
       setValue("#skill-editor-title", skill.name);
+      setValue("#skill-manifest-meta", renderSkillManifestMeta(skill.manifest));
       const status = document.querySelector("#skill-status");
-      if (status) status.value = "Editing";
+      const enabled = skill.manifest?.enabled !== false;
+      if (status) status.value = enabled ? "Editing ? enabled" : "Editing ? disabled";
+      const toggle = document.querySelector("#skill-toggle");
+      if (toggle) { toggle.textContent = enabled ? "Disable" : "Enable"; toggle.removeAttribute("disabled"); }
       document.querySelector("#skill-delete")?.removeAttribute("disabled");
       document.querySelectorAll(".skill-row").forEach((row) => row.classList.toggle("active", row.dataset.skillName === skill.name));
       setValue("#skills-panel .value", 'Editing ' + skill.name);
     })
     .catch(() => setValue("#skills-panel .value", "Unable to load skill."));
+}
+
+function toggleSelectedSkillEnabled() {
+  const name = document.querySelector("#skill-name")?.value ?? state.activeSkillName ?? "";
+  const skill = (state.skills ?? []).find((item) => item.name === name);
+  const enabled = skill?.manifest?.enabled !== false;
+  const nextEnabled = !enabled;
+  const permissions = skill?.manifest?.permissions ?? [];
+  const detail = [name, nextEnabled ? "will be injected into future prompts" : "will be hidden from future prompts", permissions.length ? "permissions: " + permissions.join(", ") : "permissions: none"].join(" ? ");
+  requireConfirm(nextEnabled ? "Enable skill?" : "Disable skill?", detail, () => withLoading("#skills-panel .value", nextEnabled ? "Enabling skill..." : "Disabling skill...", () => postJson("/api/skills/toggle", { name, enabled: nextEnabled, confirm: true }).then(loadSkills).then(() => loadSkillItem(name)).then(() => showToast(nextEnabled ? "Skill enabled." : "Skill disabled.", "good")))).catch(() => setValue("#skills-panel .value", "Unable to update skill enablement."));
 }
 
 function bindSettingsControls() {
@@ -3446,7 +3856,7 @@ function bindSettingsControls() {
       memory: { writePolicy: text(form.get("writePolicy")) },
       confirm: true,
     };
-    requireConfirm("Save settings?", body.agent.name + ' / memory ' + body.memory.writePolicy, () => withLoading("#settings-panel .value", "Saving settings...", () => putJson("/api/settings", body).then(loadSettings).then(loadStatus).then(() => showToast("Settings saved.", "good")))).catch(() => setValue("#settings-panel .value", "Unable to update settings."));
+    requireConfirm("Save settings?", body.agent.name + ' ? memory ' + body.memory.writePolicy, () => withLoading("#settings-panel .value", "Saving settings...", () => putJson("/api/settings", body).then(loadSettings).then(loadStatus).then(() => showToast("Settings saved.", "good")))).catch(() => setValue("#settings-panel .value", "Unable to update settings."));
   });
 }
 

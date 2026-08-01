@@ -11,7 +11,9 @@ import { createUiSmokeRuntimePaths, seedUiSmokeRuntime } from "./smoke-ui-fixtur
 
 const homeDir = await mkdtemp(resolve(tmpdir(), "bestie-ui-smoke-"));
 const previousHome = process.env.HOME;
+const previousUserProfile = process.env.USERPROFILE;
 process.env.HOME = homeDir;
+process.env.USERPROFILE = homeDir;
 
 const server = await startUiServer({ port: 0 });
 try {
@@ -34,7 +36,7 @@ try {
   await assertKnowledgeGraph(`${server.url}/api/knowledge-graph`, `${server.url}/api/knowledge-graph/search`, `${server.url}/api/knowledge-graph/action`, `${server.url}/api/approvals`, `${server.url}/api/approvals/action`);
   await assertMcp(`${server.url}/api/mcp`);
   await assertTools(`${server.url}/api/tools`);
-  await assertSkills(`${server.url}/api/skills`, `${server.url}/api/skills/item`, `${server.url}/api/skills/delete`);
+  await assertSkills(`${server.url}/api/skills`, `${server.url}/api/skills/item`, `${server.url}/api/skills/delete`, `${server.url}/api/skills/uninstall`, `${server.url}/api/skills/toggle`, `${server.url}/api/skills/library`, `${server.url}/api/skills/library/item`, `${server.url}/api/skills/library/diff`, `${server.url}/api/skills/install`, `${server.url}/api/skills/rollback`, `${server.url}/api/skills/registry/test`, `${server.url}/api/skills/registry/cache/clear`);
   await assertSettings(`${server.url}/api/settings`, `${server.url}/api/config/summary`);
   await assertHome(`${server.url}/`, `${server.url}/assets/home.js`);
   await assertChatStream(`${server.url}/api/chat/stream`, `${server.url}/api/chat/sessions`, `${server.url}/api/chat/session`, `${server.url}/api/chat/search`, `${server.url}/api/chat/continue/stream`, `${server.url}/api/chat/retry`, `${server.url}/api/chat/replay`, `${server.url}/api/chat/fork`, `${server.url}/api/chat/export`, `${server.url}/api/chat/import`, `${server.url}/api/approvals`, `${server.url}/api/approvals/action`, `${server.url}/api/providers/setup`);
@@ -46,6 +48,11 @@ try {
     delete process.env.HOME;
   } else {
     process.env.HOME = previousHome;
+  }
+  if (previousUserProfile === undefined) {
+    delete process.env.USERPROFILE;
+  } else {
+    process.env.USERPROFILE = previousUserProfile;
   }
   await rm(homeDir, { recursive: true, force: true });
 }
@@ -76,7 +83,7 @@ async function assertHome(url, scriptUrl) {
   }
   const scriptResponse = await fetch(scriptUrl);
   const script = await scriptResponse.text();
-  if (!scriptResponse.ok || !script.includes("/api/status") || !script.includes("/api/doctor") || !script.includes("/api/doctor/fix") || !script.includes("/api/providers") || !script.includes("/api/providers/test") || !script.includes("/api/character") || !script.includes("/api/memory") || !script.includes("/api/knowledge-graph") || !script.includes("/api/knowledge-graph/action") || !script.includes("/api/channels") || !script.includes("/api/channels/action") || !script.includes("/api/approvals") || !script.includes("/api/approvals/action") || !script.includes("/api/mcp") || !script.includes("/api/tools") || !script.includes("/api/settings") || !script.includes("data-provider-preset") || !script.includes("character-form") || !script.includes("data-channel-action") || !script.includes("settings-form") || !script.includes("provider-setup-note") || !script.includes("data-provider-field") || !script.includes("data-approval-action") || !script.includes("memory-row") || !script.includes("knowledge-row") || !script.includes("knowledge-cytoscape") || !script.includes("knowledge-provenance-overlay") || !script.includes("renderKnowledgeProvenanceOverlay") || !script.includes("getSelectedKnowledgeItem") || !script.includes("renderKnowledgeCytoscapeGraph") || !script.includes("data-knowledge-graph-action") || !script.includes("data-knowledge-overlay-toggle") || !script.includes("knowledgeOverlayCollapsed") || !script.includes("KNOWLEDGE_MAP_PREFS_KEY") || !script.includes("data-knowledge-view-save") || !script.includes("applyKnowledgeMapView") || !script.includes("knowledge-cluster-by") || !script.includes("knowledgeRelationDensity") || !script.includes("knowledge-motion") || !script.includes("knowledgeMotionEnabled") || !script.includes("knowledgeGraphLayoutOptions") || !script.includes("buildKnowledgeClusterElements") || !script.includes("renderKnowledgeClusterDrilldown") || !script.includes("data-knowledge-cluster-expand") || !script.includes("clearKnowledgeGraphFocus") || !script.includes("unfocus") || !script.includes("knowledge-kind-filter") || !script.includes("knowledge-visible-count") || !script.includes("knowledge-map-search") || !script.includes("focusKnowledgeGraphSearchResult") || !script.includes("applyKnowledgeConnectedOnlyFilter") || !script.includes("applyKnowledgeGraphFilters") || !script.includes("applyKnowledgeGraphSelectionHighlight") || !script.includes("knowledge-svg") || !script.includes("knowledge-inspector") || !script.includes("knowledge-timeline") || !script.includes("knowledge-review-toolbar") || !script.includes("knowledge-trust") || !script.includes("knowledge-trust-filter") || !script.includes("renderKnowledgeTrustDashboard") || !script.includes("Impact preview") || !script.includes("data-knowledge-jump-type") || !script.includes("Why this exists") || !script.includes("data-knowledge-action") || !script.includes("data-knowledge-select") || !script.includes("data-knowledge-source-session") || !script.includes("jumpToKnowledgeSource") || !script.includes("source-highlight") || !script.includes("data-mcp-summary") || !script.includes("data-mcp-server") || !script.includes("data-mcp-categories") || !script.includes("data-tools-summary") || !script.includes("data-tool-policy") || !script.includes("message-menu") || !script.includes("data-chat-inspect-run") || !script.includes("chat-replay-run") || !script.includes("renderChatInspector") || !script.includes("chat-composer-status") || !script.includes("resizeChatComposer") || !script.includes("loadChatAttachments") || !script.includes("chat-attachment-preview") || !script.includes("scrollChatTranscriptToBottom") || !script.includes("hashchange")) {
+  if (!scriptResponse.ok || !script.includes("/api/status") || !script.includes("/api/doctor") || !script.includes("/api/doctor/fix") || !script.includes("/api/providers") || !script.includes("/api/providers/test") || !script.includes("/api/character") || !script.includes("/api/memory") || !script.includes("/api/knowledge-graph") || !script.includes("/api/knowledge-graph/action") || !script.includes("/api/channels") || !script.includes("/api/channels/action") || !script.includes("/api/approvals") || !script.includes("/api/approvals/action") || !script.includes("/api/mcp") || !script.includes("/api/tools") || !script.includes("/api/settings") || !script.includes("/api/skills/uninstall") || !script.includes("/api/skills/toggle") || !script.includes("data-provider-preset") || !script.includes("character-form") || !script.includes("data-channel-action") || !script.includes("settings-form") || !script.includes("provider-setup-note") || !script.includes("data-provider-field") || !script.includes("data-approval-action") || !script.includes("memory-row") || !script.includes("knowledge-row") || !script.includes("knowledge-cytoscape") || !script.includes("knowledge-provenance-overlay") || !script.includes("renderKnowledgeProvenanceOverlay") || !script.includes("getSelectedKnowledgeItem") || !script.includes("renderKnowledgeCytoscapeGraph") || !script.includes("data-knowledge-graph-action") || !script.includes("data-knowledge-overlay-toggle") || !script.includes("knowledgeOverlayCollapsed") || !script.includes("KNOWLEDGE_MAP_PREFS_KEY") || !script.includes("data-knowledge-view-save") || !script.includes("applyKnowledgeMapView") || !script.includes("knowledge-cluster-by") || !script.includes("knowledgeRelationDensity") || !script.includes("knowledge-motion") || !script.includes("knowledgeMotionEnabled") || !script.includes("knowledgeGraphLayoutOptions") || !script.includes("buildKnowledgeClusterElements") || !script.includes("renderKnowledgeClusterDrilldown") || !script.includes("data-knowledge-cluster-expand") || !script.includes("clearKnowledgeGraphFocus") || !script.includes("unfocus") || !script.includes("knowledge-kind-filter") || !script.includes("knowledge-visible-count") || !script.includes("knowledge-map-search") || !script.includes("focusKnowledgeGraphSearchResult") || !script.includes("applyKnowledgeConnectedOnlyFilter") || !script.includes("applyKnowledgeGraphFilters") || !script.includes("applyKnowledgeGraphSelectionHighlight") || !script.includes("knowledge-svg") || !script.includes("knowledge-inspector") || !script.includes("knowledge-timeline") || !script.includes("knowledge-review-toolbar") || !script.includes("knowledge-trust") || !script.includes("knowledge-trust-filter") || !script.includes("renderKnowledgeTrustDashboard") || !script.includes("Impact preview") || !script.includes("data-knowledge-jump-type") || !script.includes("Why this exists") || !script.includes("data-knowledge-action") || !script.includes("data-knowledge-select") || !script.includes("data-knowledge-source-session") || !script.includes("jumpToKnowledgeSource") || !script.includes("source-highlight") || !script.includes("data-mcp-summary") || !script.includes("data-mcp-server") || !script.includes("data-mcp-categories") || !script.includes("data-tools-summary") || !script.includes("data-tool-policy") || !script.includes("message-menu") || !script.includes("data-chat-inspect-run") || !script.includes("chat-replay-run") || !script.includes("renderChatInspector") || !script.includes("chat-composer-status") || !script.includes("resizeChatComposer") || !script.includes("loadChatAttachments") || !script.includes("chat-attachment-preview") || !script.includes("scrollChatTranscriptToBottom") || !script.includes("verification.status === \"verified\" && !result.error ? loadSkills()") || !script.includes("SKILL_LIBRARY_PREFS_KEY") || !script.includes("saveSkillLibraryPreferences") || !script.includes("loadSkillLibraryPreferences") || !script.includes("skill-library-trust") || !script.includes("skill-library-risk") || !script.includes("skill-library-permission") || !script.includes("skill-library-reset") || !script.includes("data-skill-library-uninstall") || !script.includes("uninstallLibrarySkill") || !script.includes("renderSkillUninstallConfirmationDetail") || !script.includes("renderSkillDeleteConfirmationDetail") || !script.includes(".uninstalled") || !script.includes("changelog: ") || !script.includes("diff: +") || !script.includes("skill-toggle") || !script.includes("toggleSelectedSkillEnabled") || !script.includes("skill-library-status") || !script.includes("skill-library-sort") || !script.includes("matchesSkillLibraryPermission") || !script.includes("renderSkillLibrarySourceLabel") || !script.includes("renderSkillLibrarySummary") || !script.includes("clearRemoteSkillRegistryCache") || !script.includes("hashchange")) {
     throw new Error(`Unexpected home script response for ${scriptUrl}: ${scriptResponse.status}`);
   }
   if (!script.includes("startKnowledgeAmbientMotion") || !script.includes("stopKnowledgeAmbientMotion") || !script.includes("knowledgeAmbientMotionToken")) {
@@ -137,7 +144,7 @@ async function assertTools(url) {
   }
 }
 
-async function assertSkills(url, itemUrl, deleteUrl) {
+async function assertSkills(url, itemUrl, deleteUrl, uninstallUrl, toggleUrl, libraryUrl, libraryItemUrl, diffUrl, installUrl, rollbackUrl, registryTestUrl, registryCacheClearUrl) {
   const response = await fetch(url);
   const body = await response.json();
   if (!response.ok || body.ok !== true || body.count !== 1 || body.skills?.[0]?.name !== "smoke-skill") {
@@ -154,6 +161,107 @@ async function assertSkills(url, itemUrl, deleteUrl) {
   const item = await itemResponse.json();
   if (!itemResponse.ok || !item.content?.includes("Created by API smoke.")) {
     throw new Error(`Unexpected skill item response for ${itemUrl}: ${itemResponse.status} ${JSON.stringify(item)}`);
+  }
+
+  const libraryResponse = await fetch(libraryUrl);
+  const library = await libraryResponse.json();
+  if (!libraryResponse.ok || library.ok !== true || library.count < 10 || library.registry?.activeSource?.verification?.status !== "verified" || !library.registry?.sources?.some((source) => source.id === "remote-official" && source.enabled === false) || !library.skills?.some((skill) => skill.name === "daily-planner" && skill.trust === "official" && skill.verificationStatus === "verified")) {
+    throw new Error(`Unexpected skill library response for ${libraryUrl}: ${libraryResponse.status} ${JSON.stringify(library)}`);
+  }
+
+  const libraryItemResponse = await fetch(`${libraryItemUrl}?name=daily-planner`);
+  const libraryItem = await libraryItemResponse.json();
+  if (!libraryItemResponse.ok || libraryItem.skill?.name !== "daily-planner" || !libraryItem.content?.includes("# Daily Planner")) {
+    throw new Error(`Unexpected skill library item response for ${libraryItemUrl}: ${libraryItemResponse.status} ${JSON.stringify(libraryItem)}`);
+  }
+
+  const missingConfirmResponse = await fetch(installUrl, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "daily-planner" }) });
+  const missingConfirm = await missingConfirmResponse.json();
+  if (missingConfirmResponse.status !== 400 || missingConfirm.code !== "UiSkillInvalidRequest") {
+    throw new Error(`Unexpected skill install confirmation response for ${installUrl}: ${missingConfirmResponse.status} ${JSON.stringify(missingConfirm)}`);
+  }
+
+  const installResponse = await fetch(installUrl, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "daily-planner", confirm: true }) });
+  const installed = await installResponse.json();
+  const installedDailyPlanner = installed.skills?.find((skill) => skill.name === "daily-planner");
+  if (!installResponse.ok || !installedDailyPlanner?.manifest?.contentHash) {
+    throw new Error(`Unexpected skill install response for ${installUrl}: ${installResponse.status} ${JSON.stringify(installed)}`);
+  }
+
+  const editResponse = await fetch(itemUrl, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "daily-planner", content: "# Daily Planner\n\nLocal smoke edit.\n" }) });
+  if (!editResponse.ok) {
+    throw new Error(`Unexpected skill local edit response for ${itemUrl}: ${editResponse.status} ${await editResponse.text()}`);
+  }
+
+  const diffResponse = await fetch(`${diffUrl}?name=daily-planner`);
+  const diff = await diffResponse.json();
+  if (!diffResponse.ok || diff.localChanges !== true || diff.updateAvailable !== true || diff.addedLines < 1 || diff.removedLines < 1) {
+    throw new Error(`Unexpected skill diff response for ${diffUrl}: ${diffResponse.status} ${JSON.stringify(diff)}`);
+  }
+
+  const reinstallResponse = await fetch(installUrl, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "daily-planner", confirm: true }) });
+  if (!reinstallResponse.ok) {
+    throw new Error(`Unexpected skill reinstall response for ${installUrl}: ${reinstallResponse.status} ${await reinstallResponse.text()}`);
+  }
+
+  const rollbackMissingConfirmResponse = await fetch(rollbackUrl, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "daily-planner" }) });
+  const rollbackMissingConfirm = await rollbackMissingConfirmResponse.json();
+  if (rollbackMissingConfirmResponse.status !== 400 || rollbackMissingConfirm.code !== "UiSkillInvalidRequest") {
+    throw new Error(`Unexpected skill rollback confirmation response for ${rollbackUrl}: ${rollbackMissingConfirmResponse.status} ${JSON.stringify(rollbackMissingConfirm)}`);
+  }
+
+  const rollbackResponse = await fetch(rollbackUrl, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "daily-planner", confirm: true }) });
+  const rolledBack = await rollbackResponse.json();
+  if (!rollbackResponse.ok || !rolledBack.skills?.some((skill) => skill.name === "daily-planner" && String(skill.preview).includes("Local smoke edit"))) {
+    throw new Error(`Unexpected skill rollback response for ${rollbackUrl}: ${rollbackResponse.status} ${JSON.stringify(rolledBack)}`);
+  }
+
+  const toggleMissingConfirmResponse = await fetch(toggleUrl, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "daily-planner", enabled: false }) });
+  const toggleMissingConfirm = await toggleMissingConfirmResponse.json();
+  if (toggleMissingConfirmResponse.status !== 400 || toggleMissingConfirm.code !== "UiSkillInvalidRequest") {
+    throw new Error(`Unexpected skill toggle confirmation response for ${toggleUrl}: ${toggleMissingConfirmResponse.status} ${JSON.stringify(toggleMissingConfirm)}`);
+  }
+
+  const toggleResponse = await fetch(toggleUrl, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "daily-planner", enabled: false, confirm: true }) });
+  const toggled = await toggleResponse.json();
+  if (!toggleResponse.ok || !toggled.skills?.some((skill) => skill.name === "daily-planner" && skill.enabled === false && skill.manifest?.enabled === false)) {
+    throw new Error(`Unexpected skill toggle response for ${toggleUrl}: ${toggleResponse.status} ${JSON.stringify(toggled)}`);
+  }
+
+  const uninstallMissingConfirmResponse = await fetch(uninstallUrl, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "daily-planner" }) });
+  const uninstallMissingConfirm = await uninstallMissingConfirmResponse.json();
+  if (uninstallMissingConfirmResponse.status !== 400 || uninstallMissingConfirm.code !== "UiSkillInvalidRequest") {
+    throw new Error(`Unexpected skill uninstall confirmation response for ${uninstallUrl}: ${uninstallMissingConfirmResponse.status} ${JSON.stringify(uninstallMissingConfirm)}`);
+  }
+
+  const uninstallResponse = await fetch(uninstallUrl, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "daily-planner", confirm: true }) });
+  const uninstalled = await uninstallResponse.json();
+  if (!uninstallResponse.ok || uninstalled.skills?.some((skill) => skill.name === "daily-planner")) {
+    throw new Error(`Unexpected skill uninstall response for ${uninstallUrl}: ${uninstallResponse.status} ${JSON.stringify(uninstalled)}`);
+  }
+
+  const registryMissingConfirmResponse = await fetch(registryTestUrl, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({}) });
+  const registryMissingConfirm = await registryMissingConfirmResponse.json();
+  if (registryMissingConfirmResponse.status !== 400 || registryMissingConfirm.code !== "UiSkillInvalidRequest") {
+    throw new Error(`Unexpected registry test confirmation response for ${registryTestUrl}: ${registryMissingConfirmResponse.status} ${JSON.stringify(registryMissingConfirm)}`);
+  }
+
+  const registryTestResponse = await fetch(registryTestUrl, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ confirm: true }) });
+  const registryTest = await registryTestResponse.json();
+  if (!registryTestResponse.ok || registryTest.configured !== false || registryTest.enabled !== false) {
+    throw new Error(`Unexpected registry test response for ${registryTestUrl}: ${registryTestResponse.status} ${JSON.stringify(registryTest)}`);
+  }
+
+  const registryCacheClearMissingConfirmResponse = await fetch(registryCacheClearUrl, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({}) });
+  const registryCacheClearMissingConfirm = await registryCacheClearMissingConfirmResponse.json();
+  if (registryCacheClearMissingConfirmResponse.status !== 400 || registryCacheClearMissingConfirm.code !== "UiSkillInvalidRequest") {
+    throw new Error(`Unexpected registry cache clear confirmation response for ${registryCacheClearUrl}: ${registryCacheClearMissingConfirmResponse.status} ${JSON.stringify(registryCacheClearMissingConfirm)}`);
+  }
+
+  const registryCacheClearResponse = await fetch(registryCacheClearUrl, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ confirm: true }) });
+  const registryCacheClear = await registryCacheClearResponse.json();
+  if (!registryCacheClearResponse.ok || registryCacheClear.registry?.sources?.some((source) => source.cache)) {
+    throw new Error(`Unexpected registry cache clear response for ${registryCacheClearUrl}: ${registryCacheClearResponse.status} ${JSON.stringify(registryCacheClear)}`);
   }
 
   const deleteResponse = await fetch(deleteUrl, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "api-smoke", confirm: true }) });

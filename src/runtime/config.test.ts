@@ -74,6 +74,45 @@ test("validateConfig keeps llm.timeoutMs optional for existing configs", () => {
   assert.equal(config.llm.timeoutMs, undefined);
 });
 
+test("validateConfig accepts optional skill remote registry contract", () => {
+  const config = validateConfig({
+    ...validConfig,
+    skills: {
+      registry: {
+        remoteOfficial: {
+          enabled: true,
+          url: "https://skills.example.test/registry.json",
+          publicKey: "test-public-key",
+          signatureHeader: "x-bestie-signature",
+          timeoutMs: 5000,
+          installPolicy: "ask",
+        },
+      },
+    },
+  });
+
+  assert.equal(config.skills?.registry?.remoteOfficial?.enabled, true);
+  assert.equal(config.skills?.registry?.remoteOfficial?.url, "https://skills.example.test/registry.json");
+  assert.equal(config.skills?.registry?.remoteOfficial?.publicKey, "test-public-key");
+  assert.equal(config.skills?.registry?.remoteOfficial?.signatureHeader, "x-bestie-signature");
+  assert.equal(config.skills?.registry?.remoteOfficial?.timeoutMs, 5000);
+  assert.equal(config.skills?.registry?.remoteOfficial?.installPolicy, "ask");
+});
+
+test("validateConfig rejects non-https skill remote registry URLs", () => {
+  assert.throws(
+    () => validateConfig({ ...validConfig, skills: { registry: { remoteOfficial: { enabled: true, url: "http://skills.example.test/registry.json" } } } }),
+    /skills\.registry\.remoteOfficial\.url must use https:\/\/\./,
+  );
+});
+
+test("validateConfig rejects invalid skill remote install policy", () => {
+  assert.throws(
+    () => validateConfig({ ...validConfig, skills: { registry: { remoteOfficial: { enabled: true, url: "https://skills.example.test/registry.json", installPolicy: "allow" } } } }),
+    /skills\.registry\.remoteOfficial\.installPolicy must be deny or ask/,
+  );
+});
+
 test("validateConfig accepts optional llm retry settings", () => {
   const config = validateConfig({
     ...validConfig,

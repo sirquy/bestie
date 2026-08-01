@@ -40,7 +40,7 @@ Current panels:
 - Approvals Hub for pending permission decisions.
 - MCP Hub for server, tool, auth, and transport summaries.
 - Tools & Permissions for internal tool policies and workspace paths.
-- Skills manager for local `~/.bestie/skills` editing.
+- Skills manager for local `~/.bestie/skills` editing plus a source-aware curated local skill library with metadata, preview, resettable and locally persisted source/category/status/trust/risk/permission filters with readable source labels, risk/permission-aware search, sort controls, result/status counts, registry verification status, verified remote test refresh, remote cache freshness/clearing, checksum, diff, rollback, confirmation-gated enable/disable that controls future prompt injection, confirmation-gated uninstall with local archive, and install/update confirmation with source/version/permission/checksum review.
 - Settings for low-risk agent and memory policy edits.
 
 Validation:

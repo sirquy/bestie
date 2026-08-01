@@ -9,7 +9,7 @@ import { writeConfig, type AppConfig } from "../../runtime/config.js";
 import { writeEnvFile } from "../../runtime/env.js";
 import type { RuntimePaths } from "../../runtime/paths.js";
 import { SqliteMemoryStore } from "../../memory/sqlite-store.js";
-import { createUiChatSession, runUiChat } from "./chat.js";
+import { createUiChatSession, getUiChatSessionMessages, runUiChat } from "./chat.js";
 import { getUiKnowledgeGraphSummary } from "./knowledge-graph.js";
 
 test("runUiChat captures knowledge graph memory after completed UI turns", async () => {
@@ -196,6 +196,92 @@ test("runUiChat loads persisted UI session history when request history is empty
     assert.match(serialized, /I will remember Cedar/);
     assert.ok(providerMessages?.some((message) => message.role === "user" && message.content === "My project codename is Cedar."));
     assert.ok(providerMessages?.some((message) => message.role === "assistant" && message.content === "I will remember Cedar for this session."));
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("runUiChat ignores stale provider model refs removed from config", async () => {
+  const paths = await createTempPaths();
+
+  try {
+    await prepareRuntime(paths, { writePolicy: "allow" });
+    const session = await createUiChatSession("Stale provider", paths);
+
+    const store = await SqliteMemoryStore.open(paths);
+    try {
+      store.updateUiChatSessionPreferences(session.session.id, { providerModelRef: "openrouter/removed-model" });
+    } finally {
+      store.close();
+    }
+
+    let providerModel: string | undefined;
+    const result = await runUiChat({
+      paths,
+      sessionId: session.session.id,
+      memoryEnabled: false,
+      message: "Hello",
+      providerModelRef: "openrouter/removed-model",
+      chatCompletion: async (config) => {
+        providerModel = config.llm.primary;
+        return JSON.stringify({ answer: "ok" });
+      },
+    });
+
+    assert.equal(providerModel, "openai/test-model");
+    assert.equal(result.model, "openai/test-model");
+    assert.equal(result.run?.providerModelRef, undefined);
+    assert.equal(JSON.parse(result.run?.metadataJson ?? "{}").providerModelRef, undefined);
+
+    const messages = await getUiChatSessionMessages(session.session.id, paths);
+    assert.equal(messages.session.providerModelRef, undefined);
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("runUiChat rejects concurrent messages for the same UI session", async () => {
+  const paths = await createTempPaths();
+
+  try {
+    await prepareRuntime(paths, { writePolicy: "allow" });
+    const session = await createUiChatSession("Concurrent", paths);
+    let calls = 0;
+    let releaseFirst: (() => void) | undefined;
+    let markFirstStarted: (() => void) | undefined;
+    const firstStarted = new Promise<void>((resolvePromise) => { markFirstStarted = resolvePromise; });
+
+    const first = runUiChat({
+      paths,
+      sessionId: session.session.id,
+      memoryEnabled: false,
+      message: "First",
+      chatCompletion: async () => {
+        calls += 1;
+        markFirstStarted?.();
+        await new Promise<void>((resolvePromise) => { releaseFirst = resolvePromise; });
+        return JSON.stringify({ answer: "first" });
+      },
+    });
+    await firstStarted;
+
+    await assert.rejects(
+      () => runUiChat({
+        paths,
+        sessionId: session.session.id,
+        memoryEnabled: false,
+        message: "Second",
+        chatCompletion: async () => {
+          calls += 1;
+          return JSON.stringify({ answer: "second" });
+        },
+      }),
+      /already streaming/,
+    );
+
+    assert.equal(calls, 1);
+    releaseFirst?.();
+    await first;
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
   }

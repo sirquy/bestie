@@ -1,8 +1,9 @@
 import { execFile, execFileSync, spawn, type ChildProcess } from "node:child_process";
 import { closeSync, openSync, readFileSync } from "node:fs";
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 
 import { UserFacingError } from "../../runtime/errors.js";
@@ -17,22 +18,27 @@ import { runZaloCommand } from "./zalo.js";
 
 const DAEMON_STOP_TIMEOUT_MS = 30_000;
 const DAEMON_STOP_POLL_INTERVAL_MS = 1000;
+const DAEMON_START_SETTLE_MS = 750;
 export const DAEMON_CHANNELS = ["telegram", "zalo", "cron"] as const;
 const execFileAsync = promisify(execFile);
+const BESTIE_APP_ICON_ICO_PATH = fileURLToPath(new URL("../../../assets/bestie-app-icon.ico", import.meta.url));
 
 export type DaemonChannel = (typeof DAEMON_CHANNELS)[number];
 type DaemonChannelSelection = DaemonChannel | "all";
 type DaemonProcessKind = "channel" | "cron";
+type ManagedDaemonTarget = DaemonChannel | "ui";
 
 interface DaemonCommandOptions {
   argv?: string[];
   paths?: RuntimePaths;
+  platform?: NodeJS.Platform;
   writeLine?: (message: string) => void;
   printUpdateNotice?: (paths: RuntimePaths, writeLine: (message: string) => void) => Promise<void>;
   spawnProcess?: typeof spawn;
   isProcessRunning?: (pid: number) => boolean;
   killProcess?: (pid: number) => void;
   getProcessCommandLine?: (pid: number) => string[] | undefined;
+  listProcessCommandLines?: () => ProcessCommandLineSnapshot[];
   execFile?: (file: string, args: string[]) => Promise<void>;
   serviceRunner?: (channel: DaemonChannel, options: { paths: RuntimePaths; writeLine: (message: string) => void }) => Promise<void>;
   stopTimeoutMs?: number;
@@ -42,12 +48,17 @@ interface DaemonCommandOptions {
 export type ServiceCommandOptions = DaemonCommandOptions;
 
 interface DaemonState {
-  channel?: DaemonChannel;
+  channel?: ManagedDaemonTarget;
   pid: number;
   command: string;
   args: string[];
   startedAt: string;
   logPath: string;
+}
+
+interface ProcessCommandLineSnapshot {
+  pid: number;
+  commandLine: string;
 }
 
 export interface DaemonChannelStatus {
@@ -70,6 +81,7 @@ export async function runDaemonCommand(optionsOrArgv: string[] | DaemonCommandOp
     for (const channel of channels) {
       await startDaemon({ ...options, paths, writeLine }, channel);
     }
+    await startUiDaemon({ ...options, paths, writeLine });
     return;
   }
 
@@ -77,6 +89,7 @@ export async function runDaemonCommand(optionsOrArgv: string[] | DaemonCommandOp
     for (const channel of channels) {
       await stopDaemon({ ...options, paths, writeLine }, channel);
     }
+    await stopUiDaemon({ ...options, paths, writeLine });
     return;
   }
 
@@ -85,6 +98,7 @@ export async function runDaemonCommand(optionsOrArgv: string[] | DaemonCommandOp
     for (const channel of channels) {
       await restartDaemon({ ...options, paths, writeLine }, channel);
     }
+    await restartUiDaemon({ ...options, paths, writeLine });
     return;
   }
 
@@ -106,25 +120,22 @@ export async function runServiceCommand(optionsOrArgv: string[] | ServiceCommand
   const writeLine = options.writeLine ?? console.log;
 
   if (subcommand === "install") {
-    await installSystemdUserService({ ...options, paths, writeLine });
+    await installService({ ...options, paths, writeLine });
     return;
   }
 
   if (subcommand === "uninstall") {
-    await uninstallSystemdUserService({ ...options, paths, writeLine });
+    await uninstallService({ ...options, paths, writeLine });
     return;
   }
 
   if (subcommand === "status") {
-    writeLine(`Trạng thái: systemctl --user status ${getSystemdServiceName()}`);
+    await showServiceStatus({ ...options, paths, writeLine });
     return;
   }
 
   if (subcommand === "restart") {
-    assertLinuxSystemdUserServiceSupported();
-    const run = options.execFile ?? runExecFile;
-    await run("systemctl", ["--user", "restart", getSystemdServiceName()]);
-    writeLine(`${badge("RUN", "green")} Đã restart systemd user service của Bestie.`);
+    await restartService({ ...options, paths, writeLine });
     return;
   }
 
@@ -137,7 +148,7 @@ export async function runServiceCommand(optionsOrArgv: string[] | ServiceCommand
 }
 
 async function installSystemdUserService(options: Required<Pick<DaemonCommandOptions, "paths" | "writeLine">> & DaemonCommandOptions): Promise<void> {
-  assertLinuxSystemdUserServiceSupported();
+  assertLinuxSystemdUserServiceSupported(options.platform);
   const cliEntry = process.argv[1] ? resolve(process.argv[1]) : resolve(options.paths.rootDir, "dist/cli/index.js");
   const run = options.execFile ?? runExecFile;
   const channels = await getInstallableServiceChannels(options.paths);
@@ -158,7 +169,7 @@ async function installSystemdUserService(options: Required<Pick<DaemonCommandOpt
 }
 
 async function uninstallSystemdUserService(options: Required<Pick<DaemonCommandOptions, "paths" | "writeLine">> & DaemonCommandOptions): Promise<void> {
-  assertLinuxSystemdUserServiceSupported();
+  assertLinuxSystemdUserServiceSupported(options.platform);
   const run = options.execFile ?? runExecFile;
   const serviceNames = [getSystemdServiceName(), ...DAEMON_CHANNELS.map(getLegacySystemdServiceName)];
 
@@ -193,6 +204,109 @@ async function runServiceRuntime(options: Required<Pick<DaemonCommandOptions, "p
   const channels = await getInstallableServiceChannels(options.paths);
   options.writeLine(`${badge("RUN", "green")} Bestie service runtime đang chạy: ${channels.map(formatDaemonChannel).join(", ")}.`);
   await Promise.all(channels.map((channel) => (options.serviceRunner ?? runServiceChannel)(channel, options)));
+}
+
+async function installService(options: Required<Pick<DaemonCommandOptions, "paths" | "writeLine">> & DaemonCommandOptions): Promise<void> {
+  if ((options.platform ?? process.platform) === "win32") {
+    await installWindowsStartupCommand(options);
+    return;
+  }
+
+  await installSystemdUserService(options);
+}
+
+async function uninstallService(options: Required<Pick<DaemonCommandOptions, "paths" | "writeLine">> & DaemonCommandOptions): Promise<void> {
+  if ((options.platform ?? process.platform) === "win32") {
+    await uninstallWindowsStartupCommand(options);
+    return;
+  }
+
+  await uninstallSystemdUserService(options);
+}
+
+async function showServiceStatus(options: Required<Pick<DaemonCommandOptions, "paths" | "writeLine">> & DaemonCommandOptions): Promise<void> {
+  if ((options.platform ?? process.platform) === "win32") {
+    const commandPath = getWindowsStartupCommandPath();
+    try {
+      await readFile(commandPath, "utf8");
+      options.writeLine(`Status: Windows startup command installed at ${commandPath}`);
+    } catch (error) {
+      if (!isNodeError(error) || error.code !== "ENOENT") throw error;
+      options.writeLine(`Status: Windows startup command is not installed at ${commandPath}`);
+    }
+    return;
+  }
+
+  assertLinuxSystemdUserServiceSupported(options.platform);
+  options.writeLine(`Status: systemctl --user status ${getSystemdServiceName()}`);
+}
+
+async function restartService(options: Required<Pick<DaemonCommandOptions, "paths" | "writeLine">> & DaemonCommandOptions): Promise<void> {
+  if ((options.platform ?? process.platform) === "win32") {
+    const commandPath = await writeWindowsStartupCommand(options);
+    await runWindowsDaemonCommand(options, "restart");
+    options.writeLine(`${badge("RUN", "green")} Restarted Bestie Windows startup runtime.`);
+    options.writeLine(`Startup: ${commandPath}`);
+    return;
+  }
+
+  assertLinuxSystemdUserServiceSupported(options.platform);
+  const run = options.execFile ?? runExecFile;
+  await run("systemctl", ["--user", "restart", getSystemdServiceName()]);
+  options.writeLine(`${badge("RUN", "green")} Restarted Bestie systemd user service.`);
+}
+
+async function installWindowsStartupCommand(options: Required<Pick<DaemonCommandOptions, "paths" | "writeLine">> & DaemonCommandOptions): Promise<void> {
+  const commandPath = await writeWindowsStartupCommand(options);
+  await runWindowsDaemonCommand(options, "start");
+
+  options.writeLine(`${badge("RUN", "green")} Installed and started Bestie Windows startup command.`);
+  options.writeLine(`Startup: ${commandPath}`);
+  options.writeLine("Targets: Telegram, Zalo, Cron, Web UI");
+}
+
+async function writeWindowsStartupCommand(options: Required<Pick<DaemonCommandOptions, "paths">>): Promise<string> {
+  const cliEntry = process.argv[1] ? resolve(process.argv[1]) : resolve(options.paths.rootDir, "dist/cli/index.js");
+  const commandPath = getWindowsStartupCommandPath();
+  const iconPath = getWindowsStartupIconPath();
+
+  await mkdir(dirname(commandPath), { recursive: true });
+  await copyFile(BESTIE_APP_ICON_ICO_PATH, iconPath);
+  await createWindowsStartupShortcut({ shortcutPath: commandPath, nodePath: process.execPath, cliEntry, workingDirectory: options.paths.rootDir, iconPath });
+  await rm(getWindowsLegacyStartupCommandPath(), { force: true });
+  return commandPath;
+}
+
+async function uninstallWindowsStartupCommand(options: Required<Pick<DaemonCommandOptions, "paths" | "writeLine">> & DaemonCommandOptions): Promise<void> {
+  await runWindowsDaemonCommand(options, "stop");
+  await rm(getWindowsStartupCommandPath(), { force: true });
+  await rm(getWindowsStartupIconPath(), { force: true });
+  await rm(getWindowsLegacyStartupCommandPath(), { force: true });
+  options.writeLine(`${badge("STOP", "gray")} Removed Bestie Windows startup command.`);
+}
+
+async function createWindowsStartupShortcut(options: { shortcutPath: string; nodePath: string; cliEntry: string; workingDirectory: string; iconPath: string }): Promise<void> {
+  const shortcutArgs = `"${options.cliEntry.replace(/"/g, "\"\"")}" daemon start --channel all`;
+  const script = [
+    "$shell = New-Object -ComObject WScript.Shell",
+    `$link = $shell.CreateShortcut(${powerShellString(options.shortcutPath)})`,
+    `$link.TargetPath = ${powerShellString(options.nodePath)}`,
+    `$link.Arguments = ${powerShellString(shortcutArgs)}`,
+    `$link.WorkingDirectory = ${powerShellString(options.workingDirectory)}`,
+    `$link.IconLocation = ${powerShellString(options.iconPath)}`,
+    "$link.Description = 'Bestie local agent runtime'",
+    "$link.Save()",
+  ].join("; ");
+  await execFileAsync("powershell.exe", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", script], { windowsHide: true });
+}
+
+function powerShellString(value: string): string {
+  return `'${value.replace(/'/g, "''")}'`;
+}
+
+async function runWindowsDaemonCommand(options: Required<Pick<DaemonCommandOptions, "paths" | "writeLine">> & DaemonCommandOptions, action: "start" | "stop" | "restart"): Promise<void> {
+  const cliEntry = process.argv[1] ? resolve(process.argv[1]) : resolve(options.paths.rootDir, "dist/cli/index.js");
+  await (options.execFile ?? runExecFile)(process.execPath, [cliEntry, "daemon", action, "--channel", "all"]);
 }
 
 async function runServiceChannel(channel: DaemonChannel, options: { paths: RuntimePaths; writeLine: (message: string) => void }): Promise<void> {
@@ -287,9 +401,56 @@ async function startDaemon(options: Required<Pick<DaemonCommandOptions, "paths" 
   options.writeLine(`Log: ${logPath}`);
 }
 
+async function startUiDaemon(options: Required<Pick<DaemonCommandOptions, "paths" | "writeLine">> & DaemonCommandOptions): Promise<void> {
+  const state = await readUiDaemonState(options.paths);
+  const isRunning = options.isProcessRunning ?? defaultIsProcessRunning;
+  if (state && isRunning(state.pid)) {
+    options.writeLine(`${badge("RUN", "green")} Web UI đang chạy sẵn với pid ${state.pid}.`);
+    return;
+  }
+  if (state) {
+    await removeUiDaemonState(options.paths);
+  }
+  await stopOrphanDaemonProcesses(options, "ui");
+
+  const command = process.execPath;
+  const cliEntry = process.argv[1] ? resolve(process.argv[1]) : resolve(options.paths.rootDir, "dist/cli/index.js");
+  const args = [cliEntry, "ui", "--no-open"];
+  const logPath = resolve(options.paths.logsDir, "daemon-ui.log");
+
+  await mkdir(options.paths.logsDir, { recursive: true });
+  const logFd = openSync(logPath, "a", 0o600);
+  let child: ChildProcess;
+  try {
+    child = (options.spawnProcess ?? spawn)(command, args, {
+      cwd: options.paths.rootDir,
+      detached: true,
+      stdio: ["ignore", logFd, logFd],
+    }) as ChildProcess;
+  } finally {
+    closeSync(logFd);
+  }
+
+  if (!child.pid) {
+    throw new UserFacingError("Tiến trình Web UI không khởi động được.", "DaemonUiStartError");
+  }
+
+  child.unref();
+  await (options.sleep ?? sleep)(DAEMON_START_SETTLE_MS);
+  if (!isRunning(child.pid)) {
+    await removeUiDaemonState(options.paths);
+    throw new UserFacingError(`Web UI exited immediately after startup. Check ${logPath}.`, "DaemonUiStartError");
+  }
+  await writeUiDaemonState(options.paths, { channel: "ui", pid: child.pid, command, args, startedAt: new Date().toISOString(), logPath });
+  options.writeLine(`${badge("UI", "green")} Web UI đã khởi động với pid ${child.pid}.`);
+  options.writeLine(`Log: ${logPath}`);
+}
+
 async function stopDaemon(options: Required<Pick<DaemonCommandOptions, "paths" | "writeLine">> & DaemonCommandOptions, channel: DaemonChannel): Promise<void> {
   const state = await readDaemonState(options.paths, channel);
   if (!state) {
+    const stopped = await stopOrphanDaemonProcesses(options, channel);
+    if (stopped > 0) return;
     options.writeLine(`${badge("STOP", "gray")} Daemon ${formatDaemonChannel(channel)} hiện không chạy.`);
     return;
   }
@@ -320,9 +481,72 @@ async function stopDaemon(options: Required<Pick<DaemonCommandOptions, "paths" |
   options.writeLine(`${badge("STOP", "gray")} Daemon ${formatDaemonChannel(channel)} đã dừng: ${state.pid}.`);
 }
 
+async function stopUiDaemon(options: Required<Pick<DaemonCommandOptions, "paths" | "writeLine">> & DaemonCommandOptions): Promise<void> {
+  const state = await readUiDaemonState(options.paths);
+  if (!state) {
+    const stopped = await stopOrphanDaemonProcesses(options, "ui");
+    if (stopped > 0) return;
+    options.writeLine(`${badge("STOP", "gray")} Web UI hiện không chạy.`);
+    return;
+  }
+
+  const isRunning = options.isProcessRunning ?? defaultIsProcessRunning;
+  if (isRunning(state.pid)) {
+    const getProcessCommandLine = options.getProcessCommandLine ?? (options.isProcessRunning ? undefined : defaultGetProcessCommandLine);
+    if (getProcessCommandLine) {
+      const commandLine = getProcessCommandLine(state.pid);
+      if (!commandLine || !isRecordedDaemonProcess(state, commandLine)) {
+        await removeUiDaemonState(options.paths);
+        options.writeLine(`${badge("STALE", "yellow")} Trạng thái Web UI đã cũ; pid ${state.pid} thuộc tiến trình khác.`);
+        return;
+      }
+    }
+
+    try {
+      (options.killProcess ?? defaultKillProcess)(state.pid);
+    } catch (error) {
+      if (!isNodeError(error) || error.code !== "ESRCH") {
+        throw error;
+      }
+    }
+    await waitForProcessExit(state.pid, isRunning, options.stopTimeoutMs ?? DAEMON_STOP_TIMEOUT_MS, options.sleep ?? sleep);
+  }
+
+  await removeUiDaemonState(options.paths);
+  options.writeLine(`${badge("STOP", "gray")} Web UI đã dừng: ${state.pid}.`);
+}
+
+async function stopOrphanDaemonProcesses(options: Required<Pick<DaemonCommandOptions, "paths" | "writeLine">> & DaemonCommandOptions, target: ManagedDaemonTarget): Promise<number> {
+  if (!options.listProcessCommandLines && options.isProcessRunning) return 0;
+
+  const listProcesses = options.listProcessCommandLines ?? defaultListProcessCommandLines;
+  const isRunning = options.isProcessRunning ?? defaultIsProcessRunning;
+  const killProcess = options.killProcess ?? defaultKillProcess;
+  const snapshots = listProcesses().filter((snapshot) => snapshot.pid !== process.pid && isBestieManagedProcessCommand(target, snapshot.commandLine));
+
+  for (const snapshot of snapshots) {
+    try {
+      killProcess(snapshot.pid);
+    } catch (error) {
+      if (!isNodeError(error) || error.code !== "ESRCH") throw error;
+    }
+    await waitForProcessExit(snapshot.pid, isRunning, options.stopTimeoutMs ?? DAEMON_STOP_TIMEOUT_MS, options.sleep ?? sleep);
+  }
+
+  if (snapshots.length > 0) {
+    options.writeLine(`${badge("STOP", "gray")} Stopped ${snapshots.length} orphan Bestie ${target === "ui" ? "Web UI" : formatDaemonChannel(target)} process(es).`);
+  }
+  return snapshots.length;
+}
+
 async function restartDaemon(options: Required<Pick<DaemonCommandOptions, "paths" | "writeLine">> & DaemonCommandOptions, channel: DaemonChannel): Promise<void> {
   await stopDaemon(options, channel);
   await startDaemon(options, channel);
+}
+
+async function restartUiDaemon(options: Required<Pick<DaemonCommandOptions, "paths" | "writeLine">> & DaemonCommandOptions): Promise<void> {
+  await stopUiDaemon(options);
+  await startUiDaemon(options);
 }
 
 async function showDaemonStatus(options: Required<Pick<DaemonCommandOptions, "paths" | "writeLine">> & DaemonCommandOptions, channel: DaemonChannel): Promise<void> {
@@ -378,8 +602,31 @@ async function writeDaemonState(paths: RuntimePaths, channel: DaemonChannel, sta
   await writeFile(getDaemonStatePath(paths, channel), `${JSON.stringify(state, null, 2)}\n`, { mode: 0o600 });
 }
 
+async function readUiDaemonState(paths: RuntimePaths): Promise<DaemonState | undefined> {
+  try {
+    const parsed = JSON.parse(await readFile(getUiDaemonStatePath(paths), "utf8")) as unknown;
+    return isDaemonState(parsed) ? parsed : undefined;
+  } catch (error) {
+    if (isNodeError(error) && error.code === "ENOENT") return undefined;
+    throw error;
+  }
+}
+
+async function writeUiDaemonState(paths: RuntimePaths, state: DaemonState): Promise<void> {
+  await mkdir(paths.appDir, { recursive: true });
+  await writeFile(getUiDaemonStatePath(paths), `${JSON.stringify(state, null, 2)}\n`, { mode: 0o600 });
+}
+
+async function removeUiDaemonState(paths: RuntimePaths): Promise<void> {
+  await rm(getUiDaemonStatePath(paths), { force: true });
+}
+
 function getDaemonStatePath(paths: RuntimePaths, channel: DaemonChannel): string {
   return resolve(paths.appDir, `daemon-${channel}.json`);
+}
+
+function getUiDaemonStatePath(paths: RuntimePaths): string {
+  return resolve(paths.appDir, "daemon-ui.json");
 }
 
 async function removeDaemonState(paths: RuntimePaths, channel: DaemonChannel): Promise<void> {
@@ -452,6 +699,19 @@ function getSystemdServiceName(): string {
   return "bestie.service";
 }
 
+function getWindowsStartupCommandPath(): string {
+  const appData = process.env.APPDATA ?? resolve(homedir(), "AppData", "Roaming");
+  return resolve(appData, "Microsoft", "Windows", "Start Menu", "Programs", "Startup", "Bestie.lnk");
+}
+
+function getWindowsStartupIconPath(): string {
+  return resolve(dirname(getWindowsStartupCommandPath()), "Bestie.ico");
+}
+
+function getWindowsLegacyStartupCommandPath(): string {
+  return resolve(dirname(getWindowsStartupCommandPath()), "Bestie.cmd");
+}
+
 function getLegacySystemdServiceName(channel: DaemonChannel): string {
   return `bestie-${channel}.service`;
 }
@@ -464,11 +724,12 @@ function systemdEscape(value: string): string {
   return value.includes(" ") || value.includes("\t") ? `"${value.replace(/(["\\$`])/g, "\\$1")}"` : value;
 }
 
-function assertLinuxSystemdUserServiceSupported(): void {
-  if (process.platform !== "linux") {
+function assertLinuxSystemdUserServiceSupported(platform: NodeJS.Platform = process.platform): void {
+  if (platform !== "linux") {
     throw new UserFacingError("systemd user service chỉ được hỗ trợ trên Linux. Trên nền tảng này, hãy dùng `bestie daemon start --channel all`.", "DaemonSystemdUnsupportedError");
   }
 }
+
 
 async function runExecFile(file: string, args: string[]): Promise<void> {
   try {
@@ -505,6 +766,43 @@ function defaultGetProcessCommandLine(pid: number): string[] | undefined {
   }
 }
 
+function defaultListProcessCommandLines(): ProcessCommandLineSnapshot[] {
+  if (process.platform === "win32") {
+    try {
+      const output = execFileSync("powershell.exe", ["-NoProfile", "-Command", "Get-CimInstance Win32_Process | Select-Object ProcessId,CommandLine | ConvertTo-Json -Compress"], { encoding: "utf8", windowsHide: true }).trim();
+      if (!output) return [];
+      const parsed = JSON.parse(output) as unknown;
+      const rows = Array.isArray(parsed) ? parsed : [parsed];
+      return rows.flatMap((row) => {
+        if (typeof row !== "object" || row === null) return [];
+        const record = row as Record<string, unknown>;
+        return typeof record.ProcessId === "number" && typeof record.CommandLine === "string" ? [{ pid: record.ProcessId, commandLine: record.CommandLine }] : [];
+      });
+    } catch {
+      return [];
+    }
+  }
+
+  try {
+    const output = execFileSync("ps", ["-eo", "pid=,args="], { encoding: "utf8" });
+    return output.split(/\r?\n/).flatMap((line) => {
+      const match = line.match(/^\s*(\d+)\s+(.+)$/);
+      return match ? [{ pid: Number(match[1]), commandLine: match[2] ?? "" }] : [];
+    });
+  } catch {
+    return [];
+  }
+}
+
+function isBestieManagedProcessCommand(target: ManagedDaemonTarget, commandLine: string): boolean {
+  const normalized = commandLine.replace(/\\/g, "/").replace(/\s+/g, " ").toLowerCase();
+  if (!normalized.includes("bestie-agent") && !normalized.includes("/dist/cli/index.js")) return false;
+
+  if (target === "ui") return /\sui(?:\s|$)/.test(normalized);
+  if (target === "cron") return /\scron\s+run(?:\s|$)/.test(normalized);
+  return new RegExp(`\\schannels\\s+${target}(?:\\s|$)`).test(normalized);
+}
+
 function isRecordedDaemonProcess(state: DaemonState, commandLine: string[]): boolean {
   return commandLine[0] === state.command && state.args.every((arg, index) => commandLine[index + 1] === arg);
 }
@@ -530,7 +828,11 @@ function isDaemonState(value: unknown): value is DaemonState {
     return false;
   }
   const state = value as Record<string, unknown>;
-  return (state.channel === undefined || isDaemonChannel(String(state.channel))) && typeof state.pid === "number" && typeof state.command === "string" && Array.isArray(state.args) && state.args.every((arg) => typeof arg === "string") && typeof state.startedAt === "string" && typeof state.logPath === "string";
+  return (state.channel === undefined || isManagedDaemonTarget(String(state.channel))) && typeof state.pid === "number" && typeof state.command === "string" && Array.isArray(state.args) && state.args.every((arg) => typeof arg === "string") && typeof state.startedAt === "string" && typeof state.logPath === "string";
+}
+
+function isManagedDaemonTarget(value: string | undefined): value is ManagedDaemonTarget {
+  return value === "ui" || isDaemonChannel(value);
 }
 
 function isNodeError(error: unknown): error is NodeJS.ErrnoException {

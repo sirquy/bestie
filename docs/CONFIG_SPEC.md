@@ -36,7 +36,7 @@ Installed skills:
 
 ## config.json
 
-Phase Now config started with non-secret `agent` and `llm` fields. The current local build uses config version 2 with canonical LLM model refs, auth profiles, and a small model catalog. Optional `transcription`, `speech`, `generation`, `memory.writePolicy`, `memory.deletePolicy`, `memory.retrievalPolicy`, `workspace`, `internalTools`, `channels`, and `mcp` fields are supported as features are enabled.
+Phase Now config started with non-secret `agent` and `llm` fields. The current local build uses config version 2 with canonical LLM model refs, auth profiles, and a small model catalog. Optional `transcription`, `speech`, `generation`, `memory.writePolicy`, `memory.deletePolicy`, `memory.retrievalPolicy`, `skills.registry`, `workspace`, `internalTools`, `channels`, and `mcp` fields are supported as features are enabled.
 
 ```json
 {
@@ -249,6 +249,27 @@ Telegram and Zalo inbound attachments are saved together under `.bestie/workspac
   }
 }
 ```
+
+Skill Library remote registry config is optional and disabled by default. The local WebUI currently uses the bundled official registry, but this contract lets the UI report whether an official remote registry is configured, and explicitly test HTTPS fetch plus detached signature verification when the owner requests it. The URL must use `https://`; `publicKey` is non-secret verification material, not an API key. Remote skill install remains disabled unless the registry is enabled, the cached registry signature is verified, `installPolicy` is set to `"ask"`, and every install still receives explicit WebUI confirmation.
+
+```json
+{
+  "skills": {
+    "registry": {
+      "remoteOfficial": {
+        "enabled": false,
+        "url": "https://skills.example.com/official-registry.json",
+        "publicKey": "base64-or-pem-public-key",
+        "signatureHeader": "x-bestie-registry-signature",
+        "timeoutMs": 10000,
+        "installPolicy": "deny"
+      }
+    }
+  }
+}
+```
+
+Installed library skills also write non-secret source metadata to `~/.bestie/skills/<skill-name>/bestie-skill.json`. The manifest records source/version/checksum data, declared library `permissions`, and `enabled`; disabled skills remain visible in the WebUI but are not injected into future prompts. Enable, disable, install, update, rollback, uninstall, remote registry test, and remote cache clear actions all require explicit WebUI/API confirmation. Uninstall archives the removed `SKILL.md` and manifest under `~/.bestie/skills/.uninstalled/` before deletion.
 
 Remote HTTP MCP servers use `transport: "http"`, `url`, and optional headers. Sensitive header values must be mapped from environment variables through `headersEnv`; do not store raw API keys or tokens in `config.json`. Stdio MCP servers inherit a scrubbed process environment with secret-like variable names removed; only values explicitly listed in the server's `env` block are added back for that server.
 
