@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { fetchJson, formatError } from "@/lib/api";
+import { confirmDialog } from "@/lib/dialogs";
 import type { ApprovalActionResult, ApprovalDecision, ApprovalsSummary, PendingActionApproval } from "./types";
 
 interface ApprovalsPanelProps {
@@ -41,7 +42,7 @@ export function ApprovalsPanel({ data, loading, onData, onLoading }: ApprovalsPa
 
   async function decide(decision: ApprovalDecision, approval: PendingActionApproval): Promise<void> {
     const verb = decision === "approve" ? "Approve" : "Deny";
-    if (!window.confirm(`${verb} ${approval.action} #${approval.id}?`)) return;
+    if (!await confirmDialog(`${verb} ${approval.action} #${approval.id}?`)) return;
     await runAction(async () => {
       const result = await fetchJson<ApprovalActionResult>("/api/approvals/action", { method: "POST", body: JSON.stringify({ action: decision, id: approval.id, confirm: true }) });
       const executionMessage = result.execution ? ` Execution: ${result.execution.message ?? result.execution.error ?? (result.execution.ok ? "ok" : "failed")}` : "";

@@ -18,9 +18,7 @@ import {
   WandSparkles,
 } from "lucide-react";
 
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ApprovalsPanel, ApprovalsPanelError } from "@/features/approvals/ApprovalsPanel";
 import { ChannelsPanel, ChannelsPanelError } from "@/features/channels/ChannelsPanel";
 import { CharacterPanel, CharacterPanelError } from "@/features/character/CharacterPanel";
@@ -172,18 +170,16 @@ function App(): ReactElement {
 
   const activeData = panelData[selectedPanel.id];
   const activeError = panelErrors[selectedPanel.id];
-  const ActiveIcon = selectedPanel.icon;
-
   return (
     <div className="relative min-h-screen overflow-x-hidden p-3 md:p-5 lg:p-8">
       <div className="pointer-events-none fixed inset-0 -z-10 bg-[radial-gradient(circle_at_20%_0%,rgba(166,244,172,0.12),transparent_24rem),radial-gradient(circle_at_100%_20%,rgba(255,181,91,0.12),transparent_26rem)]" />
       <div className="pointer-events-none fixed inset-x-8 top-0 -z-10 h-px bg-gradient-to-r from-transparent via-primary/50 to-transparent" />
       <div className="mx-auto max-w-[92rem]">
-        <aside className={cn("no-scrollbar rounded-[1.75rem] border border-white/10 bg-card/70 shadow-glow ring-1 ring-white/5 backdrop-blur-xl transition-all duration-300 lg:fixed lg:bottom-8 lg:left-[max(2rem,calc((100vw-92rem)/2+2rem))] lg:top-8 lg:z-30 lg:overflow-y-auto", sidebarCollapsed ? "p-3 lg:w-[5.25rem]" : "p-4 lg:w-[18rem]")} data-sidebar-state={sidebarCollapsed ? "collapsed" : "expanded"}>
-          <div className={cn("mb-6 flex items-center gap-3", sidebarCollapsed ? "flex-col justify-center" : "justify-between")}>
-            <div className={cn("flex items-center gap-3", sidebarCollapsed ? "justify-center" : "")}>
-              <div className="flex size-12 items-center justify-center rounded-2xl bg-gradient-to-br from-primary to-accent text-primary-foreground shadow-lg shadow-primary/20 ring-1 ring-white/30">
-                <Sparkles className="size-6" />
+        <aside className={cn("no-scrollbar rounded-[1.5rem] border border-white/10 bg-card/70 shadow-glow ring-1 ring-white/5 backdrop-blur-xl transition-all duration-300 lg:fixed lg:bottom-8 lg:left-[max(2rem,calc((100vw-92rem)/2+2rem))] lg:top-8 lg:z-30 lg:overflow-y-auto", sidebarCollapsed ? "p-2.5 lg:w-[4.75rem]" : "p-3 lg:w-[16rem]")} data-sidebar-state={sidebarCollapsed ? "collapsed" : "expanded"}>
+          <div className={cn("mb-5 flex items-center gap-2.5", sidebarCollapsed ? "flex-col justify-center" : "justify-between")}>
+            <div className={cn("flex items-center gap-2.5", sidebarCollapsed ? "justify-center" : "")}>
+              <div className="flex size-10 items-center justify-center rounded-2xl bg-gradient-to-br from-primary to-accent text-primary-foreground shadow-lg shadow-primary/20 ring-1 ring-white/30">
+                <Sparkles className="size-5" />
               </div>
               <div className={cn("min-w-0 transition-opacity duration-200", sidebarCollapsed ? "hidden" : "block")}>
                 <p className="text-lg font-bold tracking-tight">Bestie</p>
@@ -203,14 +199,14 @@ function App(): ReactElement {
               {sidebarCollapsed ? <ChevronsRight /> : <ChevronsLeft />}
             </Button>
           </div>
-          <nav className="grid gap-1.5">
+            <nav className="grid gap-1">
             {panels.map((panel) => {
               const Icon = panel.icon;
               return (
                 <Button
                   asChild
                   key={panel.id}
-                  className={cn("h-10 justify-start rounded-2xl text-muted-foreground transition-all hover:bg-secondary/70 hover:text-foreground", activePanel === panel.id ? "bg-secondary/90 text-foreground shadow-sm ring-1 ring-primary/20" : "", sidebarCollapsed ? "lg:justify-center lg:px-0" : "")}
+                  className={cn("h-9 justify-start rounded-xl text-sm text-muted-foreground transition-all hover:bg-secondary/70 hover:text-foreground", activePanel === panel.id ? "bg-secondary/90 text-foreground shadow-sm ring-1 ring-primary/20" : "", sidebarCollapsed ? "lg:justify-center lg:px-0" : "")}
                   variant={activePanel === panel.id ? "secondary" : "ghost"}
                 >
                   <a
@@ -244,24 +240,8 @@ function App(): ReactElement {
           </Button>
         </aside>
 
-        <main className={cn("grid min-w-0 gap-4 transition-[margin] duration-300", sidebarCollapsed ? "lg:ml-[6.25rem]" : "lg:ml-[19rem]")}>
-          <Card className="overflow-hidden rounded-[1.75rem] border-white/10 bg-card/70 shadow-2xl shadow-black/20 ring-1 ring-white/5 backdrop-blur-xl">
-            <CardHeader className="border-b border-white/10 bg-gradient-to-r from-white/[0.06] via-white/[0.03] to-transparent">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <CardTitle className="flex items-center gap-3 text-xl">
-                    <span className="flex size-10 items-center justify-center rounded-2xl bg-primary/10 text-primary ring-1 ring-primary/20"><ActiveIcon className="size-5" /></span>
-                    {selectedPanel.title}
-                  </CardTitle>
-                  <CardDescription className="mt-2 max-w-3xl">{selectedPanel.description}</CardDescription>
-                </div>
-                <Badge className="rounded-full border-white/10 bg-background/50 px-3 py-1" variant={loadingPanels[selectedPanel.id] ? "secondary" : "outline"}>
-                  {loadingPanels[selectedPanel.id] ? "Loading" : selectedPanel.endpoint ?? "Local"}
-                </Badge>
-              </div>
-            </CardHeader>
-            <CardContent className="p-4 md:p-6">
-              {selectedPanel.id === "chat" ? (
+        <main className={cn("grid min-w-0 gap-4 transition-[margin] duration-300", sidebarCollapsed ? "lg:ml-[5.75rem]" : "lg:ml-[17rem]")}>
+          {selectedPanel.id === "chat" ? (
                 activeError ? <ChatPanelError error={activeError} /> : (
                   <ChatPanel
                     data={activeData as unknown as ChatSessionsSummary | undefined}
@@ -406,9 +386,7 @@ function App(): ReactElement {
                     onStatusRefresh={refreshStatus}
                   />
                 )
-              ) : null}
-            </CardContent>
-          </Card>
+          ) : null}
         </main>
       </div>
     </div>

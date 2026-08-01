@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { fetchJson, formatError } from "@/lib/api";
+import { confirmDialog } from "@/lib/dialogs";
 import { providerPresets, type ProviderCandidate, type ProviderModel, type ProviderPreset, type ProviderProfile, type ProviderSummary, type ProviderTestResult } from "./types";
 
 interface ProviderPanelProps {
@@ -77,20 +78,20 @@ export function ProviderPanel({ data, loading, onData, onLoading }: ProviderPane
 
   async function setPrimary(): Promise<void> {
     if (!effectiveSelectedModel) return;
-    if (!window.confirm(`Set ${effectiveSelectedModel} as the primary model?`)) return;
+    if (!await confirmDialog(`Set ${effectiveSelectedModel} as the primary model?`)) return;
     await runAction(() => fetchJson<ProviderSummary>("/api/providers/primary", { method: "POST", body: JSON.stringify({ modelRef: effectiveSelectedModel }) }));
   }
 
   async function updateFallback(action: "add" | "remove"): Promise<void> {
     if (!effectiveSelectedModel) return;
     const verb = action === "add" ? "Add" : "Remove";
-    if (!window.confirm(`${verb} ${effectiveSelectedModel} ${action === "add" ? "to" : "from"} fallbacks?`)) return;
+    if (!await confirmDialog(`${verb} ${effectiveSelectedModel} ${action === "add" ? "to" : "from"} fallbacks?`)) return;
     await runAction(() => fetchJson<ProviderSummary>("/api/providers/fallbacks", { method: "POST", body: JSON.stringify({ action, modelRef: effectiveSelectedModel }) }));
   }
 
   async function setupProvider(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
-    if (!window.confirm(`Save provider ${form.provider}/${form.model}?`)) return;
+    if (!await confirmDialog(`Save provider ${form.provider}/${form.model}?`)) return;
     await runAction(() => fetchJson<ProviderSummary>("/api/providers/setup", {
       method: "POST",
       body: JSON.stringify({

@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { fetchJson, formatError } from "@/lib/api";
+import { confirmDialog } from "@/lib/dialogs";
 import type { DoctorCheck, DoctorFix, DoctorStatus, DoctorSummary } from "./types";
 
 interface DoctorPanelProps {
@@ -27,7 +28,7 @@ export function DoctorPanel({ data, loading, onData, onLoading }: DoctorPanelPro
   }
 
   async function runSafeFixes(): Promise<void> {
-    if (!window.confirm("Run Bestie Doctor safe fixes? This can update local runtime files but will not expose secrets.")) return;
+    if (!await confirmDialog("Run Bestie Doctor safe fixes? This can update local runtime files but will not expose secrets.")) return;
     onLoading(true);
     try {
       onData(await fetchJson<DoctorSummary>("/api/doctor/fix", { method: "POST", body: JSON.stringify({ confirm: true }) }));

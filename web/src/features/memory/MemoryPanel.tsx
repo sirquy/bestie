@@ -9,6 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { fetchJson, formatError } from "@/lib/api";
+import { confirmDialog } from "@/lib/dialogs";
 import type { ConversationSummaryItem, MemoryAction, MemoryItem, MemorySummary, PendingMemoryItem } from "./types";
 
 interface MemoryPanelProps {
@@ -50,7 +51,7 @@ export function MemoryPanel({ data, loading, onData, onLoading }: MemoryPanelPro
 
   async function updatePending(action: MemoryAction, id: number): Promise<void> {
     const verb = action === "approve_pending" ? "Approve" : "Reject";
-    if (!window.confirm(`${verb} pending memory #${id}?`)) return;
+    if (!await confirmDialog(`${verb} pending memory #${id}?`)) return;
     await runAction(() => fetchJson<MemorySummary>("/api/memory/action", { method: "POST", body: JSON.stringify({ action, id, confirm: true }) }), `Pending memory #${id} updated.`);
   }
 

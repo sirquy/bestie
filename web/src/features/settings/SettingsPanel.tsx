@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { fetchJson, formatError } from "@/lib/api";
+import { confirmDialog } from "@/lib/dialogs";
 import type { MemoryWritePolicy, SettingsSummary } from "./types";
 
 interface SettingsPanelProps {
@@ -67,7 +68,7 @@ export function SettingsPanel({ data, loading, onData, onLoading, onStatusRefres
 
   async function save(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
-    if (!window.confirm(`Save settings for ${draft.name || "Bestie"}?`)) return;
+    if (!await confirmDialog(`Save settings for ${draft.name || "Bestie"}?`)) return;
     await runAction(() => fetchJson<SettingsSummary>("/api/settings", {
       method: "PUT",
       body: JSON.stringify({

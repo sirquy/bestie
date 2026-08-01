@@ -12,6 +12,7 @@ import { Select } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import { fetchJson, formatError } from "@/lib/api";
+import { confirmDialog } from "@/lib/dialogs";
 import type { Skill, SkillItemResponse, SkillLibraryDiff, SkillLibraryItem, SkillLibraryItemResponse, SkillLibrarySummary, SkillRemoteRegistryTestResult, SkillsSummary } from "./types";
 
 interface SkillsPanelProps {
@@ -115,7 +116,7 @@ export function SkillsPanel({ data, loading, onData, onLoading }: SkillsPanelPro
   }
 
   async function confirmSkillAction(endpoint: string, body: Record<string, unknown>, confirmText: string, success: string): Promise<void> {
-    if (!window.confirm(confirmText)) return;
+    if (!await confirmDialog(confirmText)) return;
     await runSummaryAction(() => fetchJson<SkillsSummary>(endpoint, { method: "POST", body: JSON.stringify({ ...body, confirm: true }) }), success);
     if (body.name === selectedSkill?.name) setSelectedSkill(null);
   }
@@ -126,7 +127,7 @@ export function SkillsPanel({ data, loading, onData, onLoading }: SkillsPanelPro
   }
 
   async function testRemoteRegistry(): Promise<void> {
-    if (!window.confirm("Test remote skill registry? This may perform a network request.")) return;
+    if (!await confirmDialog("Test remote skill registry? This may perform a network request.")) return;
     setActionError(null);
     setActionMessage(null);
     setLibraryLoading(true);
@@ -142,7 +143,7 @@ export function SkillsPanel({ data, loading, onData, onLoading }: SkillsPanelPro
   }
 
   async function clearRegistryCache(): Promise<void> {
-    if (!window.confirm("Clear remote skill registry cache?")) return;
+    if (!await confirmDialog("Clear remote skill registry cache?")) return;
     setActionError(null);
     setActionMessage(null);
     setLibraryLoading(true);

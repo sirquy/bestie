@@ -12,6 +12,7 @@ import { Select } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import { fetchJson, formatError } from "@/lib/api";
+import { confirmDialog } from "@/lib/dialogs";
 import type { ChannelActionResult, ChannelSummary, ConfiguredChannel, CronSchedule, CronScheduleType, DaemonChannel } from "./types";
 
 interface ChannelsPanelProps {
@@ -56,29 +57,29 @@ export function ChannelsPanel({ data, loading, onData, onLoading }: ChannelsPane
   }
 
   async function daemon(action: "daemon_start" | "daemon_stop" | "daemon_restart", channel: DaemonChannel): Promise<void> {
-    if (!window.confirm(`${action.replace("daemon_", "")} ${channel} daemon?`)) return;
+    if (!await confirmDialog(`${action.replace("daemon_", "")} ${channel} daemon?`)) return;
     await runAction(() => postChannelAction({ action, channel, confirm: true }));
   }
 
   async function cronToggle(schedule: CronSchedule): Promise<void> {
     const enabled = !schedule.enabled;
-    if (!window.confirm(`${enabled ? "Enable" : "Disable"} cron schedule ${schedule.name}?`)) return;
+    if (!await confirmDialog(`${enabled ? "Enable" : "Disable"} cron schedule ${schedule.name}?`)) return;
     await runAction(() => postChannelAction({ action: "cron_toggle", id: schedule.id, enabled, confirm: true }));
   }
 
   async function cronDelete(schedule: CronSchedule): Promise<void> {
-    if (!window.confirm(`Delete cron schedule ${schedule.name}?`)) return;
+    if (!await confirmDialog(`Delete cron schedule ${schedule.name}?`)) return;
     await runAction(() => postChannelAction({ action: "cron_delete", id: schedule.id, confirm: true }));
   }
 
   async function cronTrigger(schedule: CronSchedule): Promise<void> {
-    if (!window.confirm(`Trigger cron schedule ${schedule.name} now?`)) return;
+    if (!await confirmDialog(`Trigger cron schedule ${schedule.name} now?`)) return;
     await runAction(() => postChannelAction({ action: "cron_trigger", id: schedule.id, confirm: true }));
   }
 
   async function cronCreate(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
-    if (!window.confirm(`Create cron schedule ${draft.name}?`)) return;
+    if (!await confirmDialog(`Create cron schedule ${draft.name}?`)) return;
     await runAction(() => postChannelAction({ action: "cron_add", name: draft.name, scheduleType: draft.scheduleType, scheduleValue: draft.scheduleValue, prompt: draft.prompt, channel: draft.channel.trim() || undefined, enabled: draft.enabled, confirm: true }), "Cron schedule saved.");
   }
 

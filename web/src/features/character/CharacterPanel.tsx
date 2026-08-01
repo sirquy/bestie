@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import { fetchJson, formatError } from "@/lib/api";
+import { confirmDialog } from "@/lib/dialogs";
 import type { CharacterSummary, CharacterTone } from "./types";
 
 interface CharacterPanelProps {
@@ -64,7 +65,7 @@ export function CharacterPanel({ data, loading, onData, onLoading }: CharacterPa
   }
 
   async function save(): Promise<void> {
-    if (!window.confirm("Save character.json and system-prompt.md?")) return;
+    if (!await confirmDialog("Save character.json and system-prompt.md?")) return;
     await runAction(() => fetchJson<CharacterSummary>("/api/character", { method: "PUT", body: JSON.stringify({ characterText, promptText }) }), "Character files saved.");
   }
 

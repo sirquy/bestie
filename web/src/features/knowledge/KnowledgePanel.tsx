@@ -12,6 +12,7 @@ import { Select } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import { fetchJson, formatError } from "@/lib/api";
+import { confirmDialog } from "@/lib/dialogs";
 import type { KnowledgeEntity, KnowledgeGraphAction, KnowledgeGraphSummary, KnowledgeRelation, PendingKnowledgeItem } from "./types";
 
 interface KnowledgePanelProps {
@@ -68,7 +69,7 @@ export function KnowledgePanel({ data, loading, onData, onLoading }: KnowledgePa
   }
 
   async function postAction(body: Record<string, unknown>, confirmText: string): Promise<void> {
-    if (!window.confirm(confirmText)) return;
+    if (!await confirmDialog(confirmText)) return;
     await runRequest(() => fetchJson<KnowledgeGraphSummary>("/api/knowledge-graph/action", { method: "POST", body: JSON.stringify({ ...body, confirm: true }) }));
   }
 
