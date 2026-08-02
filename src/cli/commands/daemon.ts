@@ -1,5 +1,5 @@
 import { execFile, execFileSync, spawn, type ChildProcess } from "node:child_process";
-import { closeSync, openSync, readFileSync } from "node:fs";
+import { closeSync, openSync, readFileSync, writeSync } from "node:fs";
 import { copyFile, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, resolve } from "node:path";
@@ -19,6 +19,8 @@ import { runZaloCommand } from "./zalo.js";
 const DAEMON_STOP_TIMEOUT_MS = 30_000;
 const DAEMON_STOP_POLL_INTERVAL_MS = 1000;
 const DAEMON_START_SETTLE_MS = 750;
+const DAEMON_START_LOCK_TIMEOUT_MS = 15_000;
+const DAEMON_START_LOCK_STALE_MS = 60_000;
 export const DAEMON_CHANNELS = ["telegram", "zalo", "cron"] as const;
 const execFileAsync = promisify(execFile);
 const BESTIE_APP_ICON_ICO_PATH = fileURLToPath(new URL("../../../assets/bestie-app-icon.ico", import.meta.url));
@@ -363,10 +365,15 @@ async function printDaemonUpdateNotice(options: DaemonCommandOptions, paths: Run
 }
 
 async function startDaemon(options: Required<Pick<DaemonCommandOptions, "paths" | "writeLine">> & DaemonCommandOptions, channel: DaemonChannel): Promise<void> {
+  await withDaemonStartLock(options, channel, () => startDaemonLocked(options, channel));
+}
+
+async function startDaemonLocked(options: Required<Pick<DaemonCommandOptions, "paths" | "writeLine">> & DaemonCommandOptions, channel: DaemonChannel): Promise<void> {
   const state = await readDaemonState(options.paths, channel);
   const isRunning = options.isProcessRunning ?? defaultIsProcessRunning;
   if (state && isRunning(state.pid)) {
     if (isRecordedStateStillOwnedByBestie(options, state)) {
+      await stopOrphanDaemonProcesses(options, channel, [state.pid]);
       options.writeLine(`${badge("RUN", "green")} Daemon ${formatDaemonChannel(channel)} is already running with pid ${state.pid}.`);
       return;
     }
@@ -408,10 +415,15 @@ async function startDaemon(options: Required<Pick<DaemonCommandOptions, "paths" 
 }
 
 async function startUiDaemon(options: Required<Pick<DaemonCommandOptions, "paths" | "writeLine">> & DaemonCommandOptions): Promise<void> {
+  await withDaemonStartLock(options, "ui", () => startUiDaemonLocked(options));
+}
+
+async function startUiDaemonLocked(options: Required<Pick<DaemonCommandOptions, "paths" | "writeLine">> & DaemonCommandOptions): Promise<void> {
   const state = await readUiDaemonState(options.paths);
   const isRunning = options.isProcessRunning ?? defaultIsProcessRunning;
   if (state && isRunning(state.pid)) {
     if (isRecordedStateStillOwnedByBestie(options, state)) {
+      await stopOrphanDaemonProcesses(options, "ui", [state.pid]);
       options.writeLine(`${badge("RUN", "green")} Web UI is already running with pid ${state.pid}.`);
       return;
     }
@@ -538,13 +550,58 @@ async function stopUiDaemon(options: Required<Pick<DaemonCommandOptions, "paths"
   options.writeLine(`${badge("STOP", "gray")} Web UI đã dừng: ${state.pid}.`);
 }
 
-async function stopOrphanDaemonProcesses(options: Required<Pick<DaemonCommandOptions, "paths" | "writeLine">> & DaemonCommandOptions, target: ManagedDaemonTarget): Promise<number> {
+async function withDaemonStartLock(options: Required<Pick<DaemonCommandOptions, "paths" | "writeLine">> & DaemonCommandOptions, target: ManagedDaemonTarget, run: () => Promise<void>): Promise<void> {
+  const sleepFn = options.sleep ?? sleep;
+  const lockPath = getDaemonLockPath(options.paths, target);
+  const deadline = Date.now() + DAEMON_START_LOCK_TIMEOUT_MS;
+
+  for (;;) {
+    await mkdir(options.paths.appDir, { recursive: true });
+    let fd: number | undefined;
+    try {
+      fd = openSync(lockPath, "wx", 0o600);
+      writeSync(fd, `${JSON.stringify({ pid: process.pid, target, startedAt: new Date().toISOString() })}\n`);
+      try {
+        await run();
+      } finally {
+        closeSync(fd);
+        fd = undefined;
+        await rm(lockPath, { force: true });
+      }
+      return;
+    } catch (error) {
+      if (fd !== undefined) closeSync(fd);
+      if (!isNodeError(error) || error.code !== "EEXIST") throw error;
+      await removeStaleDaemonStartLock(lockPath, options.isProcessRunning ?? defaultIsProcessRunning);
+      if (Date.now() >= deadline) {
+        throw new UserFacingError(`Daemon ${target} start is already in progress. Try again in a few seconds.`, "DaemonStartLockTimeoutError");
+      }
+      await sleepFn(250);
+    }
+  }
+}
+
+async function removeStaleDaemonStartLock(lockPath: string, isProcessRunning: (pid: number) => boolean): Promise<void> {
+  try {
+    const parsed = JSON.parse(readFileSync(lockPath, "utf8")) as { pid?: unknown; startedAt?: unknown };
+    const pid = typeof parsed.pid === "number" ? parsed.pid : undefined;
+    const startedAt = typeof parsed.startedAt === "string" ? Date.parse(parsed.startedAt) : NaN;
+    const staleByAge = Number.isFinite(startedAt) && Date.now() - startedAt > DAEMON_START_LOCK_STALE_MS;
+    const staleByPid = pid !== undefined && !isProcessRunning(pid);
+    if (staleByAge || staleByPid) await rm(lockPath, { force: true });
+  } catch {
+    await rm(lockPath, { force: true });
+  }
+}
+
+async function stopOrphanDaemonProcesses(options: Required<Pick<DaemonCommandOptions, "paths" | "writeLine">> & DaemonCommandOptions, target: ManagedDaemonTarget, keepPids: number[] = []): Promise<number> {
   if (!options.listProcessCommandLines && options.isProcessRunning) return 0;
 
   const listProcesses = options.listProcessCommandLines ?? defaultListProcessCommandLines;
   const isRunning = options.isProcessRunning ?? defaultIsProcessRunning;
   const killProcess = options.killProcess ?? defaultKillProcess;
-  const snapshots = listProcesses().filter((snapshot) => snapshot.pid !== process.pid && isBestieManagedProcessCommand(target, snapshot.commandLine));
+  const keepPidSet = new Set([process.pid, ...keepPids]);
+  const snapshots = listProcesses().filter((snapshot) => !keepPidSet.has(snapshot.pid) && isBestieManagedProcessCommand(target, snapshot.commandLine));
 
   for (const snapshot of snapshots) {
     try {
@@ -649,6 +706,10 @@ function getDaemonStatePath(paths: RuntimePaths, channel: DaemonChannel): string
 
 function getUiDaemonStatePath(paths: RuntimePaths): string {
   return resolve(paths.appDir, "daemon-ui.json");
+}
+
+function getDaemonLockPath(paths: RuntimePaths, target: ManagedDaemonTarget): string {
+  return resolve(paths.appDir, `daemon-${target}.lock`);
 }
 
 async function removeDaemonState(paths: RuntimePaths, channel: DaemonChannel): Promise<void> {

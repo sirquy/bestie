@@ -577,6 +577,78 @@ test("runDaemonCommand start stops orphan channel processes before spawning", as
   }
 });
 
+
+test("runDaemonCommand start cleans duplicate processes while keeping the recorded daemon", async () => {
+  const paths = await createTempPaths();
+  const output: string[] = [];
+  const runningPids = new Set([2222, 3333]);
+  const killed: number[] = [];
+
+  try {
+    await mkdir(paths.appDir, { recursive: true });
+    await writeFile(
+      resolve(paths.appDir, "daemon-telegram.json"),
+      `${JSON.stringify({ channel: "telegram", pid: 2222, command: process.execPath, args: [resolve(process.argv[1]), "channels", "telegram"], startedAt: new Date().toISOString(), logPath: resolve(paths.logsDir, "daemon-telegram.log") }, null, 2)}\n`,
+      { mode: 0o600 },
+    );
+
+    await runDaemonCommand({
+      argv: ["node", "bestie", "daemon", "start"],
+      paths,
+      writeLine: (message) => output.push(message),
+      printUpdateNotice: async () => undefined,
+      listProcessCommandLines: () => [
+        { pid: 2222, commandLine: "node C:\\Users\\quynp\\AppData\\Roaming\\npm\\node_modules\\bestie-agent\\dist\\cli\\index.js channels telegram" },
+        { pid: 3333, commandLine: "node C:\\Users\\quynp\\AppData\\Roaming\\npm\\node_modules\\bestie-agent\\dist\\cli\\index.js channels telegram" },
+      ],
+      isProcessRunning: (pid) => runningPids.has(pid),
+      killProcess: (pid) => {
+        killed.push(pid);
+        runningPids.delete(pid);
+      },
+      spawnProcess: ((_command: string, args: string[]) => {
+        if (args.includes("channels") && args.includes("telegram")) throw new Error("telegram start should not spawn when recorded daemon is alive");
+        runningPids.add(4444);
+        return { pid: 4444, unref: () => undefined };
+      }) as never,
+    });
+
+    assert.deepEqual(killed, [3333]);
+    assert.match(output.join("\n"), /orphan Bestie Telegram/);
+    assert.match(output.join("\n"), /already running with pid 2222/);
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("runDaemonCommand start removes stale start locks before spawning", async () => {
+  const paths = await createTempPaths();
+  const output: string[] = [];
+  const runningPids = new Set<number>();
+
+  try {
+    await mkdir(paths.appDir, { recursive: true });
+    await writeFile(resolve(paths.appDir, "daemon-telegram.lock"), `${JSON.stringify({ pid: 9999, target: "telegram", startedAt: new Date().toISOString() })}\n`, { mode: 0o600 });
+
+    await runDaemonCommand({
+      argv: ["node", "bestie", "daemon", "start"],
+      paths,
+      writeLine: (message) => output.push(message),
+      printUpdateNotice: async () => undefined,
+      isProcessRunning: (pid) => runningPids.has(pid),
+      spawnProcess: (() => {
+        runningPids.add(4444);
+        return { pid: 4444, unref: () => undefined };
+      }) as never,
+    });
+
+    const state = JSON.parse(await readFile(resolve(paths.appDir, "daemon-telegram.json"), "utf8")) as { pid: number };
+    assert.equal(state.pid, 4444);
+    await assert.rejects(() => readFile(resolve(paths.appDir, "daemon-telegram.lock"), "utf8"), /ENOENT/);
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
 test("runDaemonCommand stops orphan managed processes without state files", async () => {
   const paths = await createTempPaths();
   const output: string[] = [];
