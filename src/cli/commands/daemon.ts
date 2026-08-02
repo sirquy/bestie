@@ -366,12 +366,18 @@ async function startDaemon(options: Required<Pick<DaemonCommandOptions, "paths" 
   const state = await readDaemonState(options.paths, channel);
   const isRunning = options.isProcessRunning ?? defaultIsProcessRunning;
   if (state && isRunning(state.pid)) {
-    options.writeLine(`${badge("RUN", "green")} Daemon ${formatDaemonChannel(channel)} đang chạy sẵn với pid ${state.pid}.`);
-    return;
-  }
-  if (state) {
+    if (isRecordedStateStillOwnedByBestie(options, state)) {
+      options.writeLine(`${badge("RUN", "green")} Daemon ${formatDaemonChannel(channel)} is already running with pid ${state.pid}.`);
+      return;
+    }
+
+    await removeDaemonState(options.paths, channel);
+    options.writeLine(`${badge("STALE", "yellow")} Daemon ${formatDaemonChannel(channel)} state is stale; pid ${state.pid} belongs to another process.`);
+  } else if (state) {
     await removeDaemonState(options.paths, channel);
   }
+
+  await stopOrphanDaemonProcesses(options, channel);
 
   const command = process.execPath;
   const cliEntry = process.argv[1] ? resolve(process.argv[1]) : resolve(options.paths.rootDir, "dist/cli/index.js");
@@ -392,12 +398,12 @@ async function startDaemon(options: Required<Pick<DaemonCommandOptions, "paths" 
   }
 
   if (!child.pid) {
-    throw new UserFacingError("Tiến trình daemon không khởi động được.", "DaemonStartError");
+    throw new UserFacingError("Daemon process did not start.", "DaemonStartError");
   }
 
   child.unref();
   await writeDaemonState(options.paths, channel, { channel, pid: child.pid, command, args, startedAt: new Date().toISOString(), logPath });
-  options.writeLine(`${badge("RUN", "green")} Daemon ${formatDaemonChannel(channel)} đã khởi động với pid ${child.pid}.`);
+  options.writeLine(`${badge("RUN", "green")} Daemon ${formatDaemonChannel(channel)} started with pid ${child.pid}.`);
   options.writeLine(`Log: ${logPath}`);
 }
 
@@ -405,10 +411,14 @@ async function startUiDaemon(options: Required<Pick<DaemonCommandOptions, "paths
   const state = await readUiDaemonState(options.paths);
   const isRunning = options.isProcessRunning ?? defaultIsProcessRunning;
   if (state && isRunning(state.pid)) {
-    options.writeLine(`${badge("RUN", "green")} Web UI đang chạy sẵn với pid ${state.pid}.`);
-    return;
-  }
-  if (state) {
+    if (isRecordedStateStillOwnedByBestie(options, state)) {
+      options.writeLine(`${badge("RUN", "green")} Web UI is already running with pid ${state.pid}.`);
+      return;
+    }
+
+    await removeUiDaemonState(options.paths);
+    options.writeLine(`${badge("STALE", "yellow")} Web UI state is stale; pid ${state.pid} belongs to another process.`);
+  } else if (state) {
     await removeUiDaemonState(options.paths);
   }
   await stopOrphanDaemonProcesses(options, "ui");
@@ -432,7 +442,7 @@ async function startUiDaemon(options: Required<Pick<DaemonCommandOptions, "paths
   }
 
   if (!child.pid) {
-    throw new UserFacingError("Tiến trình Web UI không khởi động được.", "DaemonUiStartError");
+    throw new UserFacingError("Web UI process did not start.", "DaemonUiStartError");
   }
 
   child.unref();
@@ -442,8 +452,18 @@ async function startUiDaemon(options: Required<Pick<DaemonCommandOptions, "paths
     throw new UserFacingError(`Web UI exited immediately after startup. Check ${logPath}.`, "DaemonUiStartError");
   }
   await writeUiDaemonState(options.paths, { channel: "ui", pid: child.pid, command, args, startedAt: new Date().toISOString(), logPath });
-  options.writeLine(`${badge("UI", "green")} Web UI đã khởi động với pid ${child.pid}.`);
+  options.writeLine(`${badge("UI", "green")} Web UI started with pid ${child.pid}.`);
   options.writeLine(`Log: ${logPath}`);
+}
+
+function isRecordedStateStillOwnedByBestie(options: DaemonCommandOptions, state: DaemonState): boolean {
+  const getProcessCommandLine = options.getProcessCommandLine ?? (options.isProcessRunning ? undefined : defaultGetProcessCommandLine);
+  if (!getProcessCommandLine) {
+    return true;
+  }
+
+  const commandLine = getProcessCommandLine(state.pid);
+  return Boolean(commandLine && isRecordedDaemonProcess(state, commandLine));
 }
 
 async function stopDaemon(options: Required<Pick<DaemonCommandOptions, "paths" | "writeLine">> & DaemonCommandOptions, channel: DaemonChannel): Promise<void> {
@@ -462,7 +482,8 @@ async function stopDaemon(options: Required<Pick<DaemonCommandOptions, "paths" |
       const commandLine = getProcessCommandLine(state.pid);
       if (!commandLine || !isRecordedDaemonProcess(state, commandLine)) {
         await removeDaemonState(options.paths, channel);
-        options.writeLine(`${badge("STALE", "yellow")} Trạng thái daemon ${formatDaemonChannel(channel)} đã cũ; pid ${state.pid} thuộc tiến trình khác.`);
+        await stopOrphanDaemonProcesses(options, channel);
+        options.writeLine(`${badge("STALE", "yellow")} Daemon ${formatDaemonChannel(channel)} state is stale; pid ${state.pid} belongs to another process.`);
         return;
       }
     }
@@ -497,7 +518,8 @@ async function stopUiDaemon(options: Required<Pick<DaemonCommandOptions, "paths"
       const commandLine = getProcessCommandLine(state.pid);
       if (!commandLine || !isRecordedDaemonProcess(state, commandLine)) {
         await removeUiDaemonState(options.paths);
-        options.writeLine(`${badge("STALE", "yellow")} Trạng thái Web UI đã cũ; pid ${state.pid} thuộc tiến trình khác.`);
+        await stopOrphanDaemonProcesses(options, "ui");
+        options.writeLine(`${badge("STALE", "yellow")} Web UI state is stale; pid ${state.pid} belongs to another process.`);
         return;
       }
     }
@@ -754,12 +776,21 @@ function defaultKillProcess(pid: number): void {
 }
 
 function defaultGetProcessCommandLine(pid: number): string[] | undefined {
+  if (process.platform === "win32") {
+    try {
+      const output = execFileSync("powershell.exe", ["-NoProfile", "-Command", `Get-CimInstance Win32_Process -Filter "ProcessId = ${pid}" | Select-Object -ExpandProperty CommandLine`], { encoding: "utf8", windowsHide: true }).trim();
+      return output ? splitCommandLineForComparison(output) : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
   try {
     return readFileSync(`/proc/${pid}/cmdline`, "utf8").split("\0").filter(Boolean);
   } catch {
     try {
       const output = execFileSync("ps", ["-p", String(pid), "-o", "command="], { encoding: "utf8" }).trim();
-      return output ? output.split(/\s+/) : undefined;
+      return output ? splitCommandLineForComparison(output) : undefined;
     } catch {
       return undefined;
     }
@@ -804,7 +835,16 @@ function isBestieManagedProcessCommand(target: ManagedDaemonTarget, commandLine:
 }
 
 function isRecordedDaemonProcess(state: DaemonState, commandLine: string[]): boolean {
-  return commandLine[0] === state.command && state.args.every((arg, index) => commandLine[index + 1] === arg);
+  const normalizedCommandLine = commandLine.map(normalizeCommandArgument);
+  return normalizedCommandLine[0] === normalizeCommandArgument(state.command) && state.args.every((arg, index) => normalizedCommandLine[index + 1] === normalizeCommandArgument(arg));
+}
+
+function splitCommandLineForComparison(commandLine: string): string[] {
+  return commandLine.match(/"[^"]+"|\S+/g)?.map((part) => part.replace(/^"|"$/g, "")) ?? [];
+}
+
+function normalizeCommandArgument(value: string): string {
+  return value.replace(/\\/g, "/").toLowerCase();
 }
 
 async function waitForProcessExit(pid: number, isProcessRunning: (pid: number) => boolean, timeoutMs: number, sleepFn: (milliseconds: number) => Promise<void>): Promise<void> {

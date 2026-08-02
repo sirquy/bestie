@@ -276,7 +276,7 @@ test("runDaemonCommand does not kill a reused stale daemon pid", async () => {
     const state = JSON.parse(await readFile(resolve(paths.appDir, "daemon-telegram.json"), "utf8")) as { pid: number };
     assert.equal(state.pid, 4343);
     assert.deepEqual(killed, []);
-    assert.match(output.join("\n"), /daemon Telegram/);
+    assert.match(output.join("\n"), /Daemon Telegram/);
     assert.match(output.join("\n"), /Daemon Telegram .* pid 4343/);
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
@@ -535,6 +535,44 @@ test("runServiceCommand manages Windows startup command lifecycle", async () => 
     } else {
       process.env.APPDATA = oldAppData;
     }
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("runDaemonCommand start stops orphan channel processes before spawning", async () => {
+  const paths = await createTempPaths();
+  const output: string[] = [];
+  const killed: number[] = [];
+  const runningPids = new Set([1111]);
+  const spawnedPids = [2222, 3333];
+
+  try {
+    await runDaemonCommand({
+      argv: ["node", "bestie", "daemon", "start"],
+      paths,
+      writeLine: (message) => output.push(message),
+      printUpdateNotice: async () => undefined,
+      listProcessCommandLines: () => [
+        { pid: 1111, commandLine: "node C:\\Users\\quynp\\AppData\\Roaming\\npm\\node_modules\\bestie-agent\\dist\\cli\\index.js channels telegram" },
+      ],
+      isProcessRunning: (pid) => runningPids.has(pid),
+      killProcess: (pid) => {
+        killed.push(pid);
+        runningPids.delete(pid);
+      },
+      spawnProcess: (() => {
+        const pid = spawnedPids.shift();
+        if (pid) runningPids.add(pid);
+        return { pid, unref: () => undefined };
+      }) as never,
+    });
+
+    const state = JSON.parse(await readFile(resolve(paths.appDir, "daemon-telegram.json"), "utf8")) as { pid: number };
+    assert.equal(state.pid, 2222);
+    assert.deepEqual(killed, [1111]);
+    assert.match(output.join("\n"), /orphan Bestie Telegram/);
+    assert.match(output.join("\n"), /Daemon Telegram .* pid 2222/);
+  } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
   }
 });
