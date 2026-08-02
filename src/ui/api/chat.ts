@@ -14,6 +14,7 @@ import { appendLog } from "../../runtime/logger.js";
 import { getRuntimePaths, type RuntimePaths } from "../../runtime/paths.js";
 import { executeApprovedAction } from "../../safety/approval-executor.js";
 import type { ActionPermissionRequest, ActionPermissionResult } from "../../safety/permission-policy.js";
+import type { AgentOutboundFileSender, ResolvedOutboundFilePayload } from "../../tools/channel-send-tools.js";
 
 export interface UiChatMessage {
   role: "user" | "assistant";
@@ -42,6 +43,10 @@ export interface UiChatAttachment {
   type?: string;
   size?: number;
   content: string;
+}
+
+interface UiChatOutboundAttachment extends UiChatAttachment {
+  channel: "ui-chat";
 }
 
 export type UiChatTimelineEventType = "thinking" | "tool_start" | "tool_finish" | "token" | "approval_required" | "memory_capture" | "done" | "error";
@@ -444,14 +449,15 @@ export async function runUiChatContinue(options: UiChatContinueOptions): Promise
     }
 
     await emitTimelineEvent(paths, session.id, options, { type: "tool_start", label: `Continuing ${approval.action}`, payload: { approvalId: approval.id, action: approval.action, target: approval.target } });
-    const execution = await executeApprovedAction(store, approval, "approve", { config, paths });
+    const outboundAttachments: UiChatOutboundAttachment[] = [];
+    const execution = await executeApprovedAction(store, approval, "approve", { config, paths, outboundFileSender: createUiOutboundFileSender(session.id, outboundAttachments) });
     await emitTimelineEvent(paths, session.id, options, { type: execution.status === "executed" ? "tool_finish" : "error", label: execution.shortText, payload: { approvalId: approval.id, status: execution.status, message: execution.message } });
 
     const finalAnswer = await synthesizeContinuedChatAnswer(paths, config, session.id, execution, options).catch((error) => {
       void emitTimelineEvent(paths, session.id, options, { type: "error", label: error instanceof Error ? error.message : "Unable to synthesize continued response.", payload: { approvalId: approval.id } });
       return execution.message;
     });
-    store.addUiChatMessage(session.id, "assistant", finalAnswer);
+    store.addUiChatMessage(session.id, "assistant", finalAnswer, undefined, buildUiMessageMetadata(outboundAttachments));
     await emitTimelineEvent(paths, session.id, options, { type: "done", label: "Approved action continued", payload: { approvalId: approval.id, status: execution.status, characters: finalAnswer.length } });
     const events = store.listUiChatEvents(session.id);
     return { ok: true, session: store.getUiChatSession(session.id), messages: store.listUiChatMessages(session.id), events, runs: store.listUiChatRuns(session.id), approvals: collectChatApprovalStatuses(store, events) };
@@ -616,6 +622,7 @@ async function runUiChatUnlocked(options: UiChatOptions): Promise<UiChatResult> 
   const messages = buildChatMessages(buildMcpToolSystemPrompt(systemPrompt, config), history, promptInput, memories, { memoryRetrievalPolicy: config.memory?.retrievalPolicy ?? "full", knowledgeGraph, conversationSummary, recentMessageLimit });
   attachUiVisionImages(messages, promptInput, resolveUiVisionImageUrls(config, options.attachments));
   const toolActivities: AgentToolActivity[] = [];
+  const outboundAttachments: UiChatOutboundAttachment[] = [];
   const persistedUser = options.sessionId === undefined ? undefined : await persistUserChatMessage(paths, options.sessionId, userInput);
   const session = persistedUser?.session;
   const run = session ? await createUiChatRun(paths, session.id, {
@@ -649,7 +656,8 @@ async function runUiChatUnlocked(options: UiChatOptions): Promise<UiChatResult> 
         await emitTimelineEvent(paths, session?.id, timelineOptions, { type: activity.phase === "start" ? "tool_start" : "tool_finish", label: activity.label, payload: activity });
         await options.onToolActivity?.(activity);
       },
-      runtimeContext: "Bestie Web UI chat session",
+      runtimeContext: "Current channel: Web UI. Current Web UI chat session can receive internal.send_photo and internal.send_file attachments; omit arguments.channel for this chat.",
+      outboundFileSender: session ? createUiOutboundFileSender(session.id, outboundAttachments) : undefined,
     });
   } catch (error) {
     const label = error instanceof Error ? error.message : "Unexpected chat error.";
@@ -658,8 +666,8 @@ async function runUiChatUnlocked(options: UiChatOptions): Promise<UiChatResult> 
     throw error;
   }
 
-  const persistedAssistant = session ? await persistAssistantChatMessage(paths, session.id, answer, run?.id) : undefined;
-  const finishedRun = run ? await finishUiChatRun(paths, run.id, { status: "done", model: config.llm.primary, assistantMessageId: persistedAssistant?.message.id, metadataJson: JSON.stringify(buildChatRunMetadata(userInput, sanitizedOptions, { model: config.llm.primary, output: answer, outputChars: answer.length, toolCalls: toolActivities.length })) }) : undefined;
+  const persistedAssistant = session ? await persistAssistantChatMessage(paths, session.id, answer, run?.id, outboundAttachments) : undefined;
+  const finishedRun = run ? await finishUiChatRun(paths, run.id, { status: "done", model: config.llm.primary, assistantMessageId: persistedAssistant?.message.id, metadataJson: JSON.stringify(buildChatRunMetadata(userInput, sanitizedOptions, { model: config.llm.primary, output: answer, outputChars: answer.length, toolCalls: toolActivities.length, outboundAttachments })) }) : undefined;
   if (options.memoryEnabled !== false) {
     await runUiKnowledgeReasoningPass({ config, paths, apiKey, userInput: promptInput, assistantText: answer, sessionId: session?.id, assistantMessageId: persistedAssistant?.message.id, runId: run?.id, timelineOptions, chatCompletion });
     if (session) {
@@ -785,17 +793,17 @@ async function persistUserChatMessage(paths: RuntimePaths, sessionId: number, co
   }
 }
 
-async function persistAssistantChatMessage(paths: RuntimePaths, sessionId: number, content: string, runId?: number): Promise<PersistedUiChatUserMessage> {
+async function persistAssistantChatMessage(paths: RuntimePaths, sessionId: number, content: string, runId?: number, attachments?: UiChatOutboundAttachment[]): Promise<PersistedUiChatUserMessage> {
   const store = await SqliteMemoryStore.open(paths);
   try {
-    const message = store.addUiChatMessage(sessionId, "assistant", content, runId);
+    const message = store.addUiChatMessage(sessionId, "assistant", content, runId, buildUiMessageMetadata(attachments));
     return { session: store.getUiChatSession(sessionId), message };
   } finally {
     store.close();
   }
 }
 
-function buildChatRunMetadata(userInput: string, options: UiChatOptions, result: { model: string; output?: string; outputChars?: number; toolCalls?: number }): Record<string, unknown> {
+function buildChatRunMetadata(userInput: string, options: UiChatOptions, result: { model: string; output?: string; outputChars?: number; toolCalls?: number; outboundAttachments?: UiChatOutboundAttachment[] }): Record<string, unknown> {
   return {
     input: userInput,
     inputChars: userInput.length,
@@ -809,7 +817,38 @@ function buildChatRunMetadata(userInput: string, options: UiChatOptions, result:
     replaySourceRunId: options.replaySourceRunId,
     attachmentCount: options.attachments?.length ?? 0,
     attachments: summarizeChatAttachments(options.attachments),
+    outboundAttachments: summarizeChatAttachments(result.outboundAttachments),
   };
+}
+
+function buildUiMessageMetadata(attachments: UiChatOutboundAttachment[] | undefined): string | undefined {
+  return attachments?.length ? JSON.stringify({ attachments }) : undefined;
+}
+
+function createUiOutboundFileSender(sessionId: number, attachments: UiChatOutboundAttachment[]): AgentOutboundFileSender {
+  const send = async (payload: ResolvedOutboundFilePayload) => {
+    attachments.push(toUiOutboundAttachment(payload));
+    return { channel: "ui-chat", target: `session:${sessionId}`, messageId: attachments.length };
+  };
+
+  return { sendPhoto: send, sendFile: send };
+}
+
+function toUiOutboundAttachment(payload: ResolvedOutboundFilePayload): UiChatOutboundAttachment {
+  return {
+    channel: "ui-chat",
+    name: payload.fileName,
+    type: payload.mimeType,
+    size: payload.bytes.byteLength,
+    content: uiAttachmentContent(payload),
+  };
+}
+
+function uiAttachmentContent(payload: ResolvedOutboundFilePayload): string {
+  if (payload.mimeType.startsWith("text/") || payload.mimeType === "application/json") {
+    return Buffer.from(payload.bytes).toString("utf8");
+  }
+  return `data:${payload.mimeType};base64,${Buffer.from(payload.bytes).toString("base64")}`;
 }
 
 function summarizeChatAttachments(attachments: UiChatAttachment[] | undefined): Array<{ name: string; type?: string; size?: number; chars: number; content: string }> {

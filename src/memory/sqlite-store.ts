@@ -115,7 +115,16 @@ export interface UiChatMessage {
   runId?: number;
   role: "user" | "assistant";
   content: string;
+  metadataJson?: string;
+  attachments?: UiChatMessageAttachment[];
   createdAt: string;
+}
+
+export interface UiChatMessageAttachment {
+  name: string;
+  type?: string;
+  size?: number;
+  content: string;
 }
 
 export interface UiChatEvent {
@@ -1465,11 +1474,11 @@ export class SqliteMemoryStore {
     return result.changes > 0;
   }
 
-  addUiChatMessage(sessionId: number, role: "user" | "assistant", content: string, runId?: number): UiChatMessage {
+  addUiChatMessage(sessionId: number, role: "user" | "assistant", content: string, runId?: number, metadataJson?: string): UiChatMessage {
     const transaction = this.db.transaction(() => {
       const result = this.db
-        .prepare("INSERT INTO ui_chat_messages (session_id, run_id, role, content) VALUES (?, ?, ?, ?)")
-        .run(sessionId, runId ?? null, role, content);
+        .prepare("INSERT INTO ui_chat_messages (session_id, run_id, role, content, metadata_json) VALUES (?, ?, ?, ?, ?)")
+        .run(sessionId, runId ?? null, role, content, metadataJson ?? null);
       this.db.prepare("UPDATE ui_chat_sessions SET updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(sessionId);
       return Number(result.lastInsertRowid);
     });
@@ -1521,7 +1530,7 @@ export class SqliteMemoryStore {
     const transaction = this.db.transaction(() => {
       const fork = this.createUiChatSession(title ?? `${source.title} fork`);
       for (const message of messages) {
-        this.addUiChatMessage(fork.id, message.role, message.content);
+        this.addUiChatMessage(fork.id, message.role, message.content, undefined, message.metadataJson);
       }
       this.addUiChatEvent(fork.id, "fork", "Forked chat session", JSON.stringify({ sourceSessionId: source.id, sourceMessageId: messageId }));
       return this.getUiChatSession(fork.id);
@@ -1875,6 +1884,7 @@ interface UiChatMessageRow {
   run_id: number | null;
   role: "user" | "assistant";
   content: string;
+  metadata_json?: string | null;
   created_at: string;
 }
 
@@ -2337,14 +2347,37 @@ function mapUiChatSessionRow(row: UiChatSessionRow): UiChatSession {
 }
 
 function mapUiChatMessageRow(row: UiChatMessageRow): UiChatMessage {
+  const metadata = parseUiChatMessageMetadata(row.metadata_json ?? undefined);
   return {
     id: row.id,
     sessionId: row.session_id,
     runId: row.run_id ?? undefined,
     role: row.role,
     content: row.content,
+    metadataJson: row.metadata_json ?? undefined,
+    ...(metadata.attachments.length ? { attachments: metadata.attachments } : {}),
     createdAt: row.created_at,
   };
+}
+
+function parseUiChatMessageMetadata(metadataJson: string | undefined): { attachments: UiChatMessageAttachment[] } {
+  if (!metadataJson) return { attachments: [] };
+  try {
+    const parsed = JSON.parse(metadataJson) as { attachments?: unknown };
+    if (!Array.isArray(parsed.attachments)) return { attachments: [] };
+    return { attachments: parsed.attachments.filter(isUiChatMessageAttachment).slice(0, 10) };
+  } catch {
+    return { attachments: [] };
+  }
+}
+
+function isUiChatMessageAttachment(value: unknown): value is UiChatMessageAttachment {
+  if (!value || typeof value !== "object") return false;
+  const attachment = value as Record<string, unknown>;
+  return typeof attachment.name === "string"
+    && typeof attachment.content === "string"
+    && (attachment.type === undefined || typeof attachment.type === "string")
+    && (attachment.size === undefined || typeof attachment.size === "number");
 }
 
 function mapUiChatEventRow(row: UiChatEventRow): UiChatEvent {
@@ -2757,6 +2790,7 @@ function applyMemoryMigrations(db: Database.Database): void {
       run_id INTEGER,
       role TEXT NOT NULL CHECK(role IN ('user', 'assistant')),
       content TEXT NOT NULL,
+      metadata_json TEXT,
       created_at TEXT DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (session_id) REFERENCES ui_chat_sessions(id) ON DELETE CASCADE,
       FOREIGN KEY (run_id) REFERENCES ui_chat_runs(id) ON DELETE SET NULL
@@ -2795,6 +2829,7 @@ function applyMemoryMigrations(db: Database.Database): void {
   addColumnIfMissing(db, "ui_chat_sessions", "memory_enabled", "INTEGER DEFAULT 1");
   addColumnIfMissing(db, "ui_chat_sessions", "provider_model_ref", "TEXT");
   addColumnIfMissing(db, "ui_chat_messages", "run_id", "INTEGER");
+  addColumnIfMissing(db, "ui_chat_messages", "metadata_json", "TEXT");
   addColumnIfMissing(db, "ui_chat_events", "run_id", "INTEGER");
 }
 

@@ -349,6 +349,46 @@ test("runUiChat keeps non-image attachments in text context", async () => {
   }
 });
 
+
+test("runUiChat stores outbound Web UI files on the assistant message", async () => {
+  const paths = await createTempPaths();
+
+  try {
+    await prepareRuntime(paths, { writePolicy: "allow" });
+    await mkdir(paths.workspaceDir, { recursive: true });
+    await writeFile(resolve(paths.workspaceDir, "report.txt"), "hello from bestie", "utf8");
+    await writeFile(resolve(paths.workspaceDir, "image.png"), Buffer.from("iVBORw0KGgo=", "base64"));
+    const session = await createUiChatSession("Outbound files", paths);
+    let calls = 0;
+
+    const result = await runUiChat({
+      paths,
+      sessionId: session.session.id,
+      memoryEnabled: false,
+      message: "Send the report and image.",
+      chatCompletion: async () => {
+        calls += 1;
+        if (calls === 1) return '{"tool":"internal.send_file","arguments":{"path":"report.txt","caption":"Report"}}';
+        if (calls === 2) return '{"tool":"internal.send_photo","arguments":{"path":"image.png","caption":"Image"}}';
+        return JSON.stringify({ answer: "Sent both attachments." });
+      },
+    });
+
+    assert.equal(result.answer, "Sent both attachments.");
+    assert.equal(result.toolActivities.length, 4);
+    const messages = await getUiChatSessionMessages(session.session.id, paths);
+    const assistant = messages.messages.find((message) => message.role === "assistant");
+    assert.equal(assistant?.attachments?.length, 2);
+    assert.equal(assistant?.attachments?.[0]?.name, "report.txt");
+    assert.equal(assistant?.attachments?.[0]?.content, "hello from bestie");
+    assert.equal(assistant?.attachments?.[1]?.name, "image.png");
+    assert.match(assistant?.attachments?.[1]?.content ?? "", /^data:image\/png;base64,/);
+    const metadata = JSON.parse(result.run?.metadataJson ?? "{}");
+    assert.equal(metadata.outboundAttachments?.length, 2);
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
 function isKnowledgeReasoningRequest(options: ChatCompletionOptions): boolean {
   const system = options.messages.find((message) => message.role === "system")?.content;
   return typeof system === "string" && system.includes("knowledge graph reasoning pass");

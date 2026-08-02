@@ -1468,7 +1468,7 @@ function zaloChatFailureMessage(config: AppConfig, error: unknown): string {
 }
 
 function buildZaloRuntimeToolContext(incoming: ChannelIncomingMessage<string, string | number | undefined, ZaloMessage>, ownerUserId: string): string {
-  return `Current channel: zalo. Current Zalo chat id: ${incoming.chatId}. Current owner/user id: ${ownerUserId}. For internal.add_cron_schedule reports back to this chat, set arguments.channel to "zalo:${incoming.chatId}".`;
+  return `Current channel: zalo. Current Zalo chat id: ${incoming.chatId}. Current owner/user id: ${ownerUserId}. internal.send_photo and internal.send_file can send generated or local workspace files back to this chat; omit arguments.channel for this chat or set it to "zalo:${incoming.chatId}" explicitly. For internal.add_cron_schedule reports back to this chat, set arguments.channel to "zalo:${incoming.chatId}".`;
 }
 
 function formatProviderChatFailure(error: unknown): string | undefined {

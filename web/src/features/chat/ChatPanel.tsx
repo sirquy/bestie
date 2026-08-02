@@ -443,10 +443,11 @@ function MessageAttachments({ attachments }: { attachments: ChatAttachment[] }):
 
 function MessageAttachment({ attachment }: { attachment: ChatAttachment }): ReactElement {
   const isImage = typeof attachment.content === "string" && attachment.content.startsWith("data:image/");
+  const isDownloadable = typeof attachment.content === "string" && attachment.content.startsWith("data:");
   const preview = !isImage && attachment.content && attachment.content !== "[image data omitted]" ? attachment.content.slice(0, 240) : "";
   return (
     <div className="overflow-hidden rounded-2xl border border-white/10 bg-background/45 p-3 text-xs" data-chat-attachment={attachment.name}>
-      <div className="flex flex-wrap items-center gap-2 text-muted-foreground"><FileText className="size-3.5" /><strong className="max-w-full truncate text-foreground">{attachment.name}</strong>{attachment.type ? <Badge variant="outline">{attachment.type}</Badge> : null}{attachment.size !== undefined ? <span>{formatBytes(attachment.size)}</span> : null}</div>
+      <div className="flex flex-wrap items-center gap-2 text-muted-foreground"><FileText className="size-3.5" /><strong className="max-w-full truncate text-foreground">{attachment.name}</strong>{attachment.type ? <Badge variant="outline">{attachment.type}</Badge> : null}{attachment.size !== undefined ? <span>{formatBytes(attachment.size)}</span> : null}{isDownloadable ? <a className="rounded-full border border-white/10 px-2 py-0.5 text-foreground hover:bg-secondary" href={attachment.content} download={attachment.name}>Download</a> : null}</div>
       {isImage ? <img className="mt-2 max-h-48 rounded-xl border border-white/10 object-contain" src={attachment.content} alt={attachment.name} /> : null}
       {preview ? <pre className="no-scrollbar mt-2 max-h-28 overflow-auto whitespace-pre-wrap rounded-xl bg-background/70 p-2 text-muted-foreground">{preview}</pre> : null}
     </div>

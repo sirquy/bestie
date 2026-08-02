@@ -60,6 +60,9 @@ test("buildMcpToolInstructions includes global tool selection guidance", () => {
   assert.match(instructions, /internal\.plan_memory_rebalance/);
   assert.match(instructions, /internal\.memory_hygiene_trend/);
   assert.match(instructions, /one durable standalone memory, not a transcript or assistant status/);
+  assert.match(instructions, /Outbound channel files/);
+  assert.match(instructions, /Telegram, Zalo, or Web UI/);
+  assert.match(instructions, /terminal or isolated cron contexts/);
   assert.match(instructions, /If the user gives an MCP server link/);
   assert.match(instructions, /do the setup yourself through tools/);
   assert.match(instructions, /Do not tell the user to edit config\.json/);
