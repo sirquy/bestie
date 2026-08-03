@@ -26,6 +26,11 @@ export interface LlmModelCatalogEntryConfig {
   profile: string;
 }
 
+export interface LlmMediaModelSelectionConfig {
+  primary: string;
+  fallbacks?: string[];
+}
+
 type OpenAiCompatibleTranscriptionConfig = {
   provider: "openai-compatible";
   baseUrl: string;
@@ -56,6 +61,11 @@ export type MediaGenerationProviderConfig = {
   baseUrl: string;
   model: string;
   apiKeyEnv: string;
+  endpointPath?: string;
+  timeoutMs?: number;
+};
+
+export type ImageGenerationConfig = MediaGenerationProviderConfig | {
   endpointPath?: string;
   timeoutMs?: number;
 };
@@ -91,6 +101,7 @@ export interface AppConfig {
   llm: {
     primary: string;
     fallbacks?: string[];
+    image?: LlmMediaModelSelectionConfig;
     authProfile: string;
     profiles: Record<string, LlmProfileConfig>;
     modelCatalog: Record<string, LlmModelCatalogEntryConfig>;
@@ -101,7 +112,7 @@ export interface AppConfig {
   transcription?: TranscriptionProviderConfig & { fallbacks?: TranscriptionProviderConfig[] };
   speech?: SpeechProviderConfig & { fallbacks?: SpeechProviderConfig[] };
   generation?: {
-    image?: MediaGenerationProviderConfig;
+    image?: ImageGenerationConfig;
     video?: MediaGenerationProviderConfig;
   };
   channels?: {
@@ -289,6 +300,7 @@ export function validateConfig(config: unknown): AppConfig {
       profiles: requireLlmProfiles(llm.profiles),
       modelCatalog: requireLlmModelCatalog(llm.modelCatalog),
       ...(llm.fallbacks === undefined ? {} : { fallbacks: optionalModelRefArray(llm.fallbacks, "llm.fallbacks") }),
+      ...(llm.image === undefined ? {} : { image: optionalLlmMediaModelSelection(llm.image, "llm.image") }),
       timeoutMs,
       maxRetries,
       retryDelayMs,
@@ -312,8 +324,20 @@ function optionalGeneration(value: unknown): AppConfig["generation"] | undefined
 
   const generation = requireRecord(value, "generation");
   return {
-    ...(generation.image === undefined ? {} : { image: parseMediaGenerationProvider(generation.image, "generation.image") }),
+    ...(generation.image === undefined ? {} : { image: parseImageGenerationConfig(generation.image) }),
     ...(generation.video === undefined ? {} : { video: parseMediaGenerationProvider(generation.video, "generation.video") }),
+  };
+}
+
+function parseImageGenerationConfig(value: unknown): ImageGenerationConfig {
+  const image = requireRecord(value, "generation.image");
+  if (image.provider !== undefined || image.baseUrl !== undefined || image.model !== undefined || image.apiKeyEnv !== undefined) {
+    return parseMediaGenerationProvider(value, "generation.image");
+  }
+
+  return {
+    ...(image.endpointPath === undefined ? {} : { endpointPath: requireString(image.endpointPath, "generation.image.endpointPath") }),
+    ...(image.timeoutMs === undefined ? {} : { timeoutMs: optionalPositiveInteger(image.timeoutMs, "generation.image.timeoutMs") }),
   };
 }
 
@@ -484,6 +508,14 @@ function optionalModelRefArray(value: unknown, path: string): string[] {
   }
 
   return value.map((entry, index) => requireModelRefString(entry, `${path}.${index}`));
+}
+
+function optionalLlmMediaModelSelection(value: unknown, path: string): LlmMediaModelSelectionConfig {
+  const selection = requireRecord(value, path);
+  return {
+    primary: requireModelRefString(selection.primary, `${path}.primary`),
+    ...(selection.fallbacks === undefined ? {} : { fallbacks: optionalModelRefArray(selection.fallbacks, `${path}.fallbacks`) }),
+  };
 }
 
 function requireModelRefString(value: unknown, path: string): string {

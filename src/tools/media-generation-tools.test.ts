@@ -39,6 +39,54 @@ test("imageGenerateTool calls configured provider and saves b64 output", async (
   }
 });
 
+
+test("imageGenerateTool uses llm.image primary and fallbacks", async () => {
+  const paths = await createTempPaths();
+  const requests: Array<{ url: string; body: Record<string, unknown>; authorization: string | null }> = [];
+  const config = createConfig({ "internal.image_generate": "allow" });
+  const imageConfig: AppConfig = {
+    ...config,
+    llm: {
+      ...config.llm,
+      image: { primary: "openai/image-primary", fallbacks: ["custom-openai/image-fallback"] },
+      profiles: {
+        ...config.llm.profiles,
+        "image-primary:api-key": { provider: "openai", mode: "api-key", baseUrl: "https://image-primary.example.com/v1", apiKeyEnv: "PRIMARY_IMAGE_API_KEY" },
+        "image-fallback:api-key": { provider: "openai-compatible", mode: "api-key", baseUrl: "https://image-fallback.example.com/v1", apiKeyEnv: "FALLBACK_IMAGE_API_KEY" },
+      },
+      modelCatalog: {
+        ...config.llm.modelCatalog,
+        "openai/image-primary": { profile: "image-primary:api-key" },
+        "custom-openai/image-fallback": { profile: "image-fallback:api-key" },
+      },
+    },
+    generation: { image: { ...config.generation!.image!, endpointPath: "/custom/images" }, video: config.generation!.video },
+  };
+
+  try {
+    const result = await imageGenerateTool({
+      config: imageConfig,
+      paths,
+      env: { PRIMARY_IMAGE_API_KEY: "primary-secret", FALLBACK_IMAGE_API_KEY: "fallback-secret" },
+      prompt: "A tiny fallback moon",
+      outputPath: "generated/fallback-moon.png",
+      fetchImpl: async (url, init) => {
+        requests.push({ url: String(url), body: JSON.parse(String(init?.body)), authorization: new Headers(init?.headers).get("authorization") });
+        if (String(url).includes("image-primary")) return new Response("primary down", { status: 500, statusText: "Nope" });
+        return jsonResponse({ data: [{ b64_json: Buffer.from("fallback-image").toString("base64"), mime_type: "image/png" }] });
+      },
+    });
+
+    assert.equal(result.allowed, true);
+    assert.deepEqual(requests.map((request) => request.url), ["https://image-primary.example.com/v1/custom/images", "https://image-fallback.example.com/v1/custom/images"]);
+    assert.deepEqual(requests.map((request) => request.body.model), ["image-primary", "image-fallback"]);
+    assert.deepEqual(requests.map((request) => request.authorization), ["Bearer primary-secret", "Bearer fallback-secret"]);
+    assert.equal(result.model, "image-fallback");
+    assert.equal(await readFile(result.assets[0]!.path, "utf8"), "fallback-image");
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
 test("videoGenerateTool downloads URL output and saves it", async () => {
   const paths = await createTempPaths();
   const urls: string[] = [];
@@ -77,7 +125,7 @@ test("media generation tools require config secrets and permission", async () =>
   try {
     const unconfigured = await imageGenerateTool({ config: { ...createConfig(), generation: undefined }, paths, prompt: "hello" });
     assert.equal(unconfigured.allowed, false);
-    assert.match(unconfigured.reason, /generation\.image is not configured/);
+    assert.match(unconfigured.reason, /llm\.image or generation\.image is not configured/);
 
     const missingSecret = await imageGenerateTool({ config: createConfig({ "internal.image_generate": "allow" }), paths, prompt: "hello", env: {} });
     assert.equal(missingSecret.allowed, false);

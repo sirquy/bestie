@@ -36,7 +36,7 @@ Installed skills:
 
 ## config.json
 
-Phase Now config started with non-secret `agent` and `llm` fields. The current local build uses config version 2 with canonical LLM model refs, auth profiles, and a small model catalog. Optional `transcription`, `speech`, `generation`, `memory.writePolicy`, `memory.deletePolicy`, `memory.retrievalPolicy`, `skills.registry`, `workspace`, `internalTools`, `channels`, and `mcp` fields are supported as features are enabled.
+Phase Now config started with non-secret `agent` and `llm` fields. The current local build uses config version 2 with canonical LLM model refs, auth profiles, a small model catalog, and optional `llm.image` media model refs. Optional `transcription`, `speech`, `generation`, `memory.writePolicy`, `memory.deletePolicy`, `memory.retrievalPolicy`, `skills.registry`, `workspace`, `internalTools`, `channels`, and `mcp` fields are supported as features are enabled.
 
 ```json
 {
@@ -51,6 +51,10 @@ Phase Now config started with non-secret `agent` and `llm` fields. The current l
   "llm": {
     "primary": "openai/gpt-4o-mini",
     "fallbacks": ["anthropic/claude-sonnet-4-5", "ollama/llama3.1"],
+    "image": {
+      "primary": "openai/gpt-image-1",
+      "fallbacks": ["custom-openai/image-fallback"]
+    },
     "authProfile": "openai:api-key",
     "profiles": {
       "openai:api-key": {
@@ -74,10 +78,18 @@ Phase Now config started with non-secret `agent` and `llm` fields. The current l
         "provider": "gemini",
         "mode": "api-key",
         "apiKeyEnv": "GEMINI_API_KEY"
+      },
+      "custom-image:api-key": {
+        "provider": "openai-compatible",
+        "mode": "api-key",
+        "baseUrl": "https://media.example.com/v1",
+        "apiKeyEnv": "BESTIE_IMAGE_API_KEY"
       }
     },
     "modelCatalog": {
       "openai/gpt-4o-mini": { "profile": "openai:api-key" },
+      "openai/gpt-image-1": { "profile": "openai:api-key" },
+      "custom-openai/image-fallback": { "profile": "custom-image:api-key" },
       "anthropic/claude-sonnet-4-5": { "profile": "anthropic:api-key" },
       "ollama/llama3.1": { "profile": "ollama:local" },
       "gemini/gemini-2.5-flash": { "profile": "gemini:api-key" }
@@ -103,10 +115,7 @@ Phase Now config started with non-secret `agent` and `llm` fields. The current l
   },
   "generation": {
     "image": {
-      "provider": "openai-compatible",
-      "baseUrl": "https://media.example.com/v1",
-      "model": "image-model",
-      "apiKeyEnv": "BESTIE_IMAGE_API_KEY",
+      "endpointPath": "/images/generations",
       "timeoutMs": 120000
     },
     "video": {
@@ -209,10 +218,12 @@ Phase Now config started with non-secret `agent` and `llm` fields. The current l
 LLM config rules:
 
 - `llm.primary` and `llm.fallbacks[]` are canonical `provider/model` refs. Bestie splits on the first `/`, so model IDs may contain additional slashes.
+- `llm.image.primary` and `llm.image.fallbacks[]` choose the model refs used by `internal.image_generate`. These refs must exist in `llm.modelCatalog`; their profiles must be `openai` or `openai-compatible` with `baseUrl` and `apiKeyEnv`.
 - `llm.profiles` stores non-secret endpoint/auth metadata. `mode: "api-key"` and `mode: "oauth"` require `apiKeyEnv`; `mode: "local"` does not load a secret.
 - `llm.modelCatalog[modelRef].profile` chooses which auth profile backs a model ref. When absent in future generated config, runtime falls back to `llm.authProfile`; current validation expects an explicit catalog object.
 - Runtime provider labels are `openai`/`chatgpt` for OpenAI Chat Completions, `anthropic`/`claude` for Anthropic Messages, `gemini` for native Google Gemini through `@google/genai`, and `openai-compatible` for custom OpenAI-compatible endpoints or Ollama.
 - Fallbacks are model refs, not repeated endpoint objects. Put endpoint/auth details in profiles and map model refs through `modelCatalog`.
+- `generation.image` remains backward-compatible for older configs. When `llm.image` is present, `generation.image.endpointPath` and `generation.image.timeoutMs` may still override the default image endpoint/timeout, but provider, model, base URL, and API key come from `llm.image` refs.
 
 Memory config controls local memory policy only. The SQLite database path is derived from runtime paths as `~/.bestie/data/memory.sqlite`; optional Zep remains later work and is not configured by the current schema.
 
@@ -339,7 +350,7 @@ Set `NO_COLOR=1` to disable ANSI colors in human-facing tables, badges, and prog
 
 `workspace.defaultPath` controls where relative write/edit/exec paths land. It defaults to `~/.bestie/workspace` so ad hoc agent-created files do not pollute the project root. Generic `list_files` and `search_files` requests for `.` also inspect this workspace by default. Explicit project paths such as `src`, `docs`, `README.md`, or the absolute project root still inspect the repository so the agent can review code when asked. `workspace.externalPaths` is an explicit allowlist for absolute paths outside the project root and agent workspace. Entries may be legacy strings, which grant both read and write access for compatibility, or objects shaped as `{ "path": "...", "access": "read" | "write" | "readwrite" }`. Without a matching external path, internal tools reject external paths; write/edit/exec cwd and media output paths only write inside the agent workspace or external entries with write access. Git read tools also accept explicit `path` or `repoPath` values when they resolve through this workspace allowlist. Sandbox path resolution follows existing files and nearest existing parents through real paths, so symlinks inside an allowed directory cannot silently escape to an unconfigured location.
 
-`internalTools.policies` controls individual built-in tools with `allow`, `ask`, or `deny`. Local read tools default to `allow`; web reads, writes, patches, exec, process listing, subagent spawning, and media generation default to the permission layer's conservative behavior unless explicitly allowed. Supported policy keys include `internal.read_url`, `internal.write_file`, `internal.edit_file`, `internal.apply_patch`, `internal.exec`, `internal.list_processes`, `internal.spawn_subagent`, `internal.image_generate`, and `internal.video_generate`. Browser tools do not use `internalTools.policies`: open, snapshot, click, type, screenshot, and reset are available without approval, without a domain allowlist, and without extra controls for submit/open/public-state-changing page interactions. `internal.send_photo` and `internal.send_file` also do not use `internalTools.policies`: they send local workspace or allowed external files through the active Telegram/Zalo channel runtime without approval. `internalTools.exec.timeoutMs` controls the default timeout for `internal.exec` when the model does not pass a per-call timeout; per-call timeouts still override it, and runtime clamps exec timeouts to a bounded maximum. `internal.exec` runs without a shell, from the agent workspace by default, with bounded timeout/output, and with secret-like environment variables such as API keys, tokens, passwords, cookies, auth, session, and credential variables removed from the child environment. `internal.read_url` is limited to HTTP(S) pages with bounded timeout and reads full response content by default; callers can pass a positive `maxBytes` only when they intentionally want a preview. Browser tools are limited to HTTP(S) URLs, use a Playwright Chromium session isolated under the Bestie workspace, and write screenshot evidence under `~/.bestie/workspace/browser/evidence/...`. `internal.send_photo` and `internal.send_file` support optional `channel` destinations such as `telegram:<chatId>` or `zalo:<chatId>`, optional captions, and file name/MIME overrides; photo sends require image MIME types. The write/edit tools resolve relative paths in the agent workspace and can access configured external paths; patch tools apply git-compatible diffs from the project root. `internal.image_generate` and `internal.video_generate` call configured external media generation providers and save generated files under the agent workspace, usually `~/.bestie/workspace/media/generated/...`; secrets stay in `.env` through `generation.image.apiKeyEnv` and `generation.video.apiKeyEnv`. `internal.spawn_subagent` runs a one-level helper tool loop with a scoped task and bounded max tool calls. File tools ignore `.git`, `node_modules`, `dist`, and `coverage`.
+`internalTools.policies` controls individual built-in tools with `allow`, `ask`, or `deny`. Local read tools default to `allow`; web reads, writes, patches, exec, process listing, subagent spawning, and media generation default to the permission layer's conservative behavior unless explicitly allowed. Supported policy keys include `internal.read_url`, `internal.write_file`, `internal.edit_file`, `internal.apply_patch`, `internal.exec`, `internal.list_processes`, `internal.spawn_subagent`, `internal.image_generate`, and `internal.video_generate`. Browser tools do not use `internalTools.policies`: open, snapshot, click, type, screenshot, and reset are available without approval, without a domain allowlist, and without extra controls for submit/open/public-state-changing page interactions. `internal.send_photo` and `internal.send_file` also do not use `internalTools.policies`: they send local workspace or allowed external files through the active Telegram/Zalo channel runtime without approval. `internalTools.exec.timeoutMs` controls the default timeout for `internal.exec` when the model does not pass a per-call timeout; per-call timeouts still override it, and runtime clamps exec timeouts to a bounded maximum. `internal.exec` runs without a shell, from the agent workspace by default, with bounded timeout/output, and with secret-like environment variables such as API keys, tokens, passwords, cookies, auth, session, and credential variables removed from the child environment. `internal.read_url` is limited to HTTP(S) pages with bounded timeout and reads full response content by default; callers can pass a positive `maxBytes` only when they intentionally want a preview. Browser tools are limited to HTTP(S) URLs, use a Playwright Chromium session isolated under the Bestie workspace, and write screenshot evidence under `~/.bestie/workspace/browser/evidence/...`. `internal.send_photo` and `internal.send_file` support optional `channel` destinations such as `telegram:<chatId>` or `zalo:<chatId>`, optional captions, and file name/MIME overrides; photo sends require image MIME types. The write/edit tools resolve relative paths in the agent workspace and can access configured external paths; patch tools apply git-compatible diffs from the project root. `internal.image_generate` uses `llm.image.primary`/`llm.image.fallbacks` when configured, falling back to legacy `generation.image`; `internal.video_generate` still uses `generation.video`. Generated files are saved under the agent workspace, usually `~/.bestie/workspace/media/generated/...`; secrets stay in `.env` through `llm.profiles[...].apiKeyEnv`, legacy `generation.image.apiKeyEnv`, or `generation.video.apiKeyEnv`. `internal.spawn_subagent` runs a one-level helper tool loop with a scoped task and bounded max tool calls. File tools ignore `.git`, `node_modules`, `dist`, and `coverage`.
 
 ## character.json
 

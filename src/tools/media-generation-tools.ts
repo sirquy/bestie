@@ -6,6 +6,7 @@ import type { AppConfig, InternalToolPolicy, MediaGenerationProviderConfig } fro
 import type { RuntimePaths } from "../runtime/paths.js";
 import { getAgentWorkspacePath, resolveSandboxPath } from "../runtime/workspace.js";
 import { reviewActionPermission, type PermissionApprover } from "../safety/permission-policy.js";
+import { resolveLlmCandidate } from "../llm/resolve-config.js";
 
 export interface MediaGenerationToolOptions {
   config: AppConfig;
@@ -39,14 +40,17 @@ const MAX_GENERATION_PROMPT_BYTES = 16 * 1024;
 const MAX_GENERATED_ASSET_BYTES = 100 * 1024 * 1024;
 
 export async function imageGenerateTool(options: MediaGenerationToolOptions & { prompt: string; size?: string; quality?: string; style?: string; count?: number; outputPath?: string }): Promise<MediaGenerationResult> {
-  const provider = options.config.generation?.image;
-  if (!provider) {
-    return { allowed: false, reason: "generation.image is not configured.", assets: [] };
+  const providers = resolveImageGenerationProvidersSafe(options.config);
+  if (typeof providers === "string") {
+    return { allowed: false, reason: providers, assets: [] };
+  }
+  if (providers.length === 0) {
+    return { allowed: false, reason: "llm.image or generation.image is not configured.", assets: [] };
   }
 
-  return generateMedia({
+  return generateMediaWithFallbacks({
     kind: "image",
-    provider,
+    providers,
     options,
     request: {
       prompt: options.prompt,
@@ -66,9 +70,9 @@ export async function videoGenerateTool(options: MediaGenerationToolOptions & { 
     return { allowed: false, reason: "generation.video is not configured.", assets: [] };
   }
 
-  return generateMedia({
+  return generateMediaWithFallbacks({
     kind: "video",
-    provider,
+    providers: [provider],
     options,
     request: {
       prompt: options.prompt,
@@ -80,6 +84,63 @@ export async function videoGenerateTool(options: MediaGenerationToolOptions & { 
     },
     outputPath: options.outputPath,
   });
+}
+
+async function generateMediaWithFallbacks(input: { kind: MediaKind; providers: MediaGenerationProviderConfig[]; options: MediaGenerationToolOptions; request: Record<string, unknown>; outputPath?: string }): Promise<MediaGenerationResult> {
+  const attempts: MediaGenerationResult[] = [];
+  for (const provider of input.providers) {
+    const result = await generateMedia({ ...input, provider });
+    if (result.allowed || shouldStopMediaFallback(result.reason)) return result;
+    attempts.push(result);
+  }
+
+  const last = attempts.at(-1);
+  const summary = attempts.map((attempt) => `${attempt.model ?? "unknown"}: ${attempt.reason}`).join("; ");
+  return last ? { ...last, reason: `${input.kind} generation failed for all configured models. ${summary}` } : { allowed: false, reason: `${input.kind} generation has no configured models.`, assets: [] };
+}
+
+function shouldStopMediaFallback(reason: string): boolean {
+  return /requires arguments\.prompt|prompt exceeds|is denied by config|Approval required/i.test(reason);
+}
+
+function resolveImageGenerationProviders(config: AppConfig): MediaGenerationProviderConfig[] {
+  if (!config.llm.image) return isMediaGenerationProviderConfig(config.generation?.image) ? [config.generation.image] : [];
+
+  const refs = [config.llm.image.primary, ...(config.llm.image.fallbacks ?? [])];
+  return refs.map((modelRef) => resolveImageGenerationProvider(config, modelRef));
+}
+
+function isMediaGenerationProviderConfig(value: unknown): value is MediaGenerationProviderConfig {
+  return Boolean(value && typeof value === "object" && "provider" in value && "baseUrl" in value && "model" in value && "apiKeyEnv" in value);
+}
+
+function resolveImageGenerationProvidersSafe(config: AppConfig): MediaGenerationProviderConfig[] | string {
+  try {
+    return resolveImageGenerationProviders(config);
+  } catch (error) {
+    return error instanceof Error ? error.message : "llm.image configuration is invalid.";
+  }
+}
+
+function resolveImageGenerationProvider(config: AppConfig, modelRef: string): MediaGenerationProviderConfig {
+  const candidate = resolveLlmCandidate(config, modelRef);
+  if (candidate.provider !== "openai" && candidate.provider !== "openai-compatible") {
+    throw new Error(`llm.image model ${modelRef} must use an openai-compatible profile.`);
+  }
+  if (!candidate.baseUrl) {
+    throw new Error(`llm.image model ${modelRef} profile requires baseUrl.`);
+  }
+  if (!candidate.apiKeyEnv) {
+    throw new Error(`llm.image model ${modelRef} profile requires apiKeyEnv.`);
+  }
+  return {
+    provider: "openai-compatible",
+    baseUrl: candidate.baseUrl,
+    model: candidate.model,
+    apiKeyEnv: candidate.apiKeyEnv,
+    ...(config.generation?.image?.endpointPath === undefined ? {} : { endpointPath: config.generation.image.endpointPath }),
+    ...(config.generation?.image?.timeoutMs === undefined ? { timeoutMs: candidate.timeoutMs } : { timeoutMs: config.generation.image.timeoutMs }),
+  };
 }
 
 async function generateMedia(input: { kind: MediaKind; provider: MediaGenerationProviderConfig; options: MediaGenerationToolOptions; request: Record<string, unknown>; outputPath?: string }): Promise<MediaGenerationResult> {

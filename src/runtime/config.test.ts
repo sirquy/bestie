@@ -312,12 +312,21 @@ test("validateConfig accepts optional ElevenLabs speech provider", () => {
 test("validateConfig accepts optional media generation providers", () => {
   const config = validateConfig({
     ...validConfig,
+    llm: {
+      ...validConfig.llm,
+      image: {
+        primary: "openai/image-primary",
+        fallbacks: ["custom-openai/image-fallback"],
+      },
+      modelCatalog: {
+        ...validConfig.llm.modelCatalog,
+        "openai/image-primary": { profile: "openai:api-key" },
+        "custom-openai/image-fallback": { profile: "openai:api-key" },
+      },
+    },
     generation: {
       image: {
-        provider: "openai-compatible",
-        baseUrl: "https://media.example.com/v1",
-        model: "image-model",
-        apiKeyEnv: "BESTIE_IMAGE_API_KEY",
+        endpointPath: "/custom/images",
         timeoutMs: 90_000,
       },
       video: {
@@ -331,12 +340,10 @@ test("validateConfig accepts optional media generation providers", () => {
   });
 
   assert.deepEqual(config.generation?.image, {
-    provider: "openai-compatible",
-    baseUrl: "https://media.example.com/v1",
-    model: "image-model",
-    apiKeyEnv: "BESTIE_IMAGE_API_KEY",
+    endpointPath: "/custom/images",
     timeoutMs: 90_000,
   });
+  assert.deepEqual(config.llm.image, { primary: "openai/image-primary", fallbacks: ["custom-openai/image-fallback"] });
   assert.equal(config.generation?.video?.endpointPath, "/custom/videos");
 });
 
