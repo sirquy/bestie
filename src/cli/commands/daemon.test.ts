@@ -539,6 +539,91 @@ test("runServiceCommand manages Windows startup command lifecycle", async () => 
   }
 });
 
+
+test("runServiceCommand installs and starts macOS launchd services", async () => {
+  const paths = await createTempPaths();
+  const output: string[] = [];
+  const calls: Array<{ file: string; args: string[] }> = [];
+  const oldLaunchAgentsDir = process.env.BESTIE_LAUNCH_AGENTS_DIR;
+
+  try {
+    process.env.BESTIE_LAUNCH_AGENTS_DIR = resolve(paths.rootDir, "LaunchAgents");
+    await writeTestConfig(paths, TEST_CONFIG);
+    await writeFile(paths.envPath, "BESTIE_TELEGRAM_BOT_TOKEN=telegram\nBESTIE_ZALO_BOT_TOKEN=zalo\n", { mode: 0o600 });
+
+    await runServiceCommand({
+      argv: ["node", "bestie", "service", "install"],
+      paths,
+      platform: "darwin",
+      writeLine: (message) => output.push(message),
+      execFile: async (file, args) => { calls.push({ file, args }); },
+    });
+
+    const runtimePlist = await readFile(resolve(paths.rootDir, "LaunchAgents/com.bestie.agent.plist"), "utf8");
+    const uiPlist = await readFile(resolve(paths.rootDir, "LaunchAgents/com.bestie.agent.ui.plist"), "utf8");
+    assert.match(runtimePlist, /<string>com.bestie.agent<\/string>/);
+    assert.match(runtimePlist, /<string>service<\/string>/);
+    assert.match(runtimePlist, /<string>run<\/string>/);
+    assert.match(uiPlist, /<string>com.bestie.agent.ui<\/string>/);
+    assert.match(uiPlist, /<string>ui<\/string>/);
+    assert.match(uiPlist, /<string>--no-open<\/string>/);
+    assert.equal(calls.filter((call) => call.args[0] === "bootstrap").length, 2);
+    assert.equal(calls.filter((call) => call.args[0] === "kickstart").length, 2);
+    assert.match(output.join("\n"), /macOS launchd services/);
+  } finally {
+    if (oldLaunchAgentsDir === undefined) delete process.env.BESTIE_LAUNCH_AGENTS_DIR;
+    else process.env.BESTIE_LAUNCH_AGENTS_DIR = oldLaunchAgentsDir;
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("runServiceCommand manages macOS launchd service lifecycle", async () => {
+  const paths = await createTempPaths();
+  const output: string[] = [];
+  const calls: Array<{ file: string; args: string[] }> = [];
+  const oldLaunchAgentsDir = process.env.BESTIE_LAUNCH_AGENTS_DIR;
+
+  try {
+    process.env.BESTIE_LAUNCH_AGENTS_DIR = resolve(paths.rootDir, "LaunchAgents");
+    await writeTestConfig(paths, TEST_CONFIG);
+    await mkdir(resolve(paths.rootDir, "LaunchAgents"), { recursive: true });
+    await writeFile(resolve(paths.rootDir, "LaunchAgents/com.bestie.agent.plist"), "runtime", { mode: 0o600 });
+    await writeFile(resolve(paths.rootDir, "LaunchAgents/com.bestie.agent.ui.plist"), "ui", { mode: 0o600 });
+
+    await runServiceCommand({
+      argv: ["node", "bestie", "service", "status"],
+      paths,
+      platform: "darwin",
+      writeLine: (message) => output.push(message),
+    });
+    await runServiceCommand({
+      argv: ["node", "bestie", "service", "restart"],
+      paths,
+      platform: "darwin",
+      writeLine: (message) => output.push(message),
+      execFile: async (file, args) => { calls.push({ file, args }); },
+    });
+    await runServiceCommand({
+      argv: ["node", "bestie", "service", "uninstall"],
+      paths,
+      platform: "darwin",
+      writeLine: (message) => output.push(message),
+      execFile: async (file, args) => { calls.push({ file, args }); },
+    });
+
+    assert.match(output.join("\n"), /launchctl print gui\/.*com.bestie.agent/);
+    assert.match(output.join("\n"), /Restarted Bestie macOS launchd services/);
+    assert.match(output.join("\n"), /Removed Bestie macOS launchd services/);
+    assert.equal(calls.filter((call) => call.args[0] === "kickstart").length, 2);
+    assert.equal(calls.filter((call) => call.args[0] === "bootout").length, 2);
+    await assert.rejects(() => readFile(resolve(paths.rootDir, "LaunchAgents/com.bestie.agent.plist"), "utf8"), /ENOENT/);
+    await assert.rejects(() => readFile(resolve(paths.rootDir, "LaunchAgents/com.bestie.agent.ui.plist"), "utf8"), /ENOENT/);
+  } finally {
+    if (oldLaunchAgentsDir === undefined) delete process.env.BESTIE_LAUNCH_AGENTS_DIR;
+    else process.env.BESTIE_LAUNCH_AGENTS_DIR = oldLaunchAgentsDir;
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
 test("runDaemonCommand start stops orphan channel processes before spawning", async () => {
   const paths = await createTempPaths();
   const output: string[] = [];

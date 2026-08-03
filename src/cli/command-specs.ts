@@ -45,10 +45,10 @@ Tùy chọn daemon:
   status [--channel telegram|zalo|cron|all]   Xem trạng thái runtime daemon
 
 Tùy chọn service:
-  install                                    Cài và khởi động user systemd service
-  uninstall                                  Dừng và gỡ user systemd service
-  status                                     Gợi ý lệnh xem trạng thái systemd service
-  restart                                    Restart user systemd service
+  install                                    Cài và khởi động service nền
+  uninstall                                  Dừng và gỡ service nền
+  status                                     Gợi ý lệnh xem trạng thái service nền
+  restart                                    Restart service nền
 
 Tùy chọn tools:
   logs --lines N  Đọc log app đã redact gần đây qua permission gate
@@ -98,13 +98,13 @@ export const cliCommandSpecs: CliCommandSpec[] = [
   },
   {
     name: "service",
-    description: "Cài, gỡ, restart, hoặc xem systemd user service của Bestie",
+    description: "Cài, gỡ, restart, hoặc xem service nền của Bestie",
     handler: runServiceCommand,
     children: [
-      { name: "install", description: "Cài và khởi động user systemd service", handler: runServiceCommand },
-      { name: "uninstall", description: "Dừng và gỡ user systemd service", handler: runServiceCommand },
-      { name: "status", description: "Gợi ý lệnh xem trạng thái systemd service", handler: runServiceCommand },
-      { name: "restart", description: "Restart user systemd service", handler: runServiceCommand },
+      { name: "install", description: "Cài và khởi động service nền", handler: runServiceCommand },
+      { name: "uninstall", description: "Dừng và gỡ service nền", handler: runServiceCommand },
+      { name: "status", description: "Gợi ý lệnh xem trạng thái service nền", handler: runServiceCommand },
+      { name: "restart", description: "Restart service nền", handler: runServiceCommand },
       { name: "run", description: "Chạy runtime service foreground", handler: runServiceCommand, hidden: true },
     ],
   },

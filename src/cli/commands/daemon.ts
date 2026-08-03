@@ -24,6 +24,10 @@ const DAEMON_START_LOCK_STALE_MS = 60_000;
 export const DAEMON_CHANNELS = ["telegram", "zalo", "cron"] as const;
 const execFileAsync = promisify(execFile);
 const BESTIE_APP_ICON_ICO_PATH = fileURLToPath(new URL("../../../assets/bestie-app-icon.ico", import.meta.url));
+const MACOS_LAUNCHD_SERVICES = [
+  { label: "com.bestie.agent", role: "runtime" as const },
+  { label: "com.bestie.agent.ui", role: "ui" as const },
+];
 
 export type DaemonChannel = (typeof DAEMON_CHANNELS)[number];
 type DaemonChannelSelection = DaemonChannel | "all";
@@ -209,8 +213,13 @@ async function runServiceRuntime(options: Required<Pick<DaemonCommandOptions, "p
 }
 
 async function installService(options: Required<Pick<DaemonCommandOptions, "paths" | "writeLine">> & DaemonCommandOptions): Promise<void> {
-  if ((options.platform ?? process.platform) === "win32") {
+  const platform = options.platform ?? process.platform;
+  if (platform === "win32") {
     await installWindowsStartupCommand(options);
+    return;
+  }
+  if (platform === "darwin") {
+    await installMacLaunchdService(options);
     return;
   }
 
@@ -218,8 +227,13 @@ async function installService(options: Required<Pick<DaemonCommandOptions, "path
 }
 
 async function uninstallService(options: Required<Pick<DaemonCommandOptions, "paths" | "writeLine">> & DaemonCommandOptions): Promise<void> {
-  if ((options.platform ?? process.platform) === "win32") {
+  const platform = options.platform ?? process.platform;
+  if (platform === "win32") {
     await uninstallWindowsStartupCommand(options);
+    return;
+  }
+  if (platform === "darwin") {
+    await uninstallMacLaunchdService(options);
     return;
   }
 
@@ -227,7 +241,8 @@ async function uninstallService(options: Required<Pick<DaemonCommandOptions, "pa
 }
 
 async function showServiceStatus(options: Required<Pick<DaemonCommandOptions, "paths" | "writeLine">> & DaemonCommandOptions): Promise<void> {
-  if ((options.platform ?? process.platform) === "win32") {
+  const platform = options.platform ?? process.platform;
+  if (platform === "win32") {
     const commandPath = getWindowsStartupCommandPath();
     try {
       await readFile(commandPath, "utf8");
@@ -238,17 +253,29 @@ async function showServiceStatus(options: Required<Pick<DaemonCommandOptions, "p
     }
     return;
   }
+  if (platform === "darwin") {
+    const domain = getMacLaunchdDomain();
+    for (const service of MACOS_LAUNCHD_SERVICES) {
+      options.writeLine(`Status: launchctl print ${domain}/${service.label}`);
+    }
+    return;
+  }
 
   assertLinuxSystemdUserServiceSupported(options.platform);
   options.writeLine(`Status: systemctl --user status ${getSystemdServiceName()}`);
 }
 
 async function restartService(options: Required<Pick<DaemonCommandOptions, "paths" | "writeLine">> & DaemonCommandOptions): Promise<void> {
-  if ((options.platform ?? process.platform) === "win32") {
+  const platform = options.platform ?? process.platform;
+  if (platform === "win32") {
     const commandPath = await writeWindowsStartupCommand(options);
     await runWindowsDaemonCommand(options, "restart");
     options.writeLine(`${badge("RUN", "green")} Restarted Bestie Windows startup runtime.`);
     options.writeLine(`Startup: ${commandPath}`);
+    return;
+  }
+  if (platform === "darwin") {
+    await restartMacLaunchdService(options);
     return;
   }
 
@@ -285,6 +312,107 @@ async function uninstallWindowsStartupCommand(options: Required<Pick<DaemonComma
   await rm(getWindowsStartupIconPath(), { force: true });
   await rm(getWindowsLegacyStartupCommandPath(), { force: true });
   options.writeLine(`${badge("STOP", "gray")} Removed Bestie Windows startup command.`);
+}
+
+async function installMacLaunchdService(options: Required<Pick<DaemonCommandOptions, "paths" | "writeLine">> & DaemonCommandOptions): Promise<void> {
+  const services = await writeMacLaunchdPlists(options);
+  const run = options.execFile ?? runExecFile;
+  const domain = getMacLaunchdDomain();
+
+  for (const service of services) {
+    await bootoutMacLaunchdService(run, domain, service.label);
+    await run("launchctl", ["bootstrap", domain, service.path]);
+    await run("launchctl", ["enable", `${domain}/${service.label}`]);
+    await run("launchctl", ["kickstart", "-k", `${domain}/${service.label}`]);
+  }
+
+  options.writeLine(`${badge("RUN", "green")} Installed and started Bestie macOS launchd services.`);
+  options.writeLine(`LaunchAgents: ${getMacLaunchAgentsDir()}`);
+  options.writeLine("Targets: Telegram, Zalo, Cron, Web UI");
+}
+
+async function uninstallMacLaunchdService(options: Required<Pick<DaemonCommandOptions, "paths" | "writeLine">> & DaemonCommandOptions): Promise<void> {
+  const run = options.execFile ?? runExecFile;
+  const domain = getMacLaunchdDomain();
+
+  for (const service of MACOS_LAUNCHD_SERVICES) {
+    await bootoutMacLaunchdService(run, domain, service.label);
+    await rm(getMacLaunchdPlistPath(service.label), { force: true });
+  }
+
+  options.writeLine(`${badge("STOP", "gray")} Removed Bestie macOS launchd services.`);
+}
+
+async function restartMacLaunchdService(options: Required<Pick<DaemonCommandOptions, "paths" | "writeLine">> & DaemonCommandOptions): Promise<void> {
+  const services = await writeMacLaunchdPlists(options);
+  const run = options.execFile ?? runExecFile;
+  const domain = getMacLaunchdDomain();
+
+  for (const service of services) {
+    await run("launchctl", ["enable", `${domain}/${service.label}`]);
+    await run("launchctl", ["kickstart", "-k", `${domain}/${service.label}`]);
+  }
+
+  options.writeLine(`${badge("RUN", "green")} Restarted Bestie macOS launchd services.`);
+}
+
+async function writeMacLaunchdPlists(options: Required<Pick<DaemonCommandOptions, "paths">>): Promise<Array<{ label: string; path: string }>> {
+  const cliEntry = process.argv[1] ? resolve(process.argv[1]) : resolve(options.paths.rootDir, "dist/cli/index.js");
+  const launchAgentsDir = getMacLaunchAgentsDir();
+  await mkdir(launchAgentsDir, { recursive: true });
+  await mkdir(options.paths.logsDir, { recursive: true });
+
+  const written: Array<{ label: string; path: string }> = [];
+  for (const service of MACOS_LAUNCHD_SERVICES) {
+    const plistPath = getMacLaunchdPlistPath(service.label);
+    const args = service.role === "runtime" ? [process.execPath, cliEntry, "service", "run"] : [process.execPath, cliEntry, "ui", "--no-open"];
+    await writeFile(plistPath, buildMacLaunchdPlist({ label: service.label, args, rootDir: options.paths.rootDir, logPath: resolve(options.paths.logsDir, `${service.label}.log`) }), { mode: 0o600 });
+    written.push({ label: service.label, path: plistPath });
+  }
+
+  return written;
+}
+
+async function bootoutMacLaunchdService(run: (file: string, args: string[]) => Promise<void>, domain: string, label: string): Promise<void> {
+  try {
+    await run("launchctl", ["bootout", `${domain}/${label}`]);
+  } catch (error) {
+    if (!isMissingLaunchdServiceError(error)) throw error;
+  }
+}
+
+function isMissingLaunchdServiceError(error: unknown): boolean {
+  return error instanceof Error && /Could not find service|No such process|not loaded|Bootstrap failed: 5/i.test(error.message);
+}
+
+function buildMacLaunchdPlist(options: { label: string; args: string[]; rootDir: string; logPath: string }): string {
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>${xmlEscape(options.label)}</string>
+  <key>ProgramArguments</key>
+  <array>
+${options.args.map((arg) => `    <string>${xmlEscape(arg)}</string>`).join("\n")}
+  </array>
+  <key>WorkingDirectory</key>
+  <string>${xmlEscape(options.rootDir)}</string>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>StandardOutPath</key>
+  <string>${xmlEscape(options.logPath)}</string>
+  <key>StandardErrorPath</key>
+  <string>${xmlEscape(options.logPath)}</string>
+</dict>
+</plist>
+`;
+}
+
+function xmlEscape(value: string): string {
+  return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&apos;");
 }
 
 async function createWindowsStartupShortcut(options: { shortcutPath: string; nodePath: string; cliEntry: string; workingDirectory: string; iconPath: string }): Promise<void> {
@@ -780,6 +908,19 @@ WantedBy=default.target
 
 function getSystemdServiceName(): string {
   return "bestie.service";
+}
+
+function getMacLaunchAgentsDir(): string {
+  return process.env.BESTIE_LAUNCH_AGENTS_DIR ?? resolve(homedir(), "Library", "LaunchAgents");
+}
+
+function getMacLaunchdPlistPath(label: string): string {
+  return resolve(getMacLaunchAgentsDir(), `${label}.plist`);
+}
+
+function getMacLaunchdDomain(): string {
+  const uid = typeof process.getuid === "function" ? process.getuid() : Number(process.env.UID) || 501;
+  return `gui/${uid}`;
 }
 
 function getWindowsStartupCommandPath(): string {
