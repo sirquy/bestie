@@ -27,6 +27,7 @@ const CYTOSCAPE_SCRIPT_PATH = require.resolve("cytoscape/dist/cytoscape.min.js")
 const BESTIE_ICON_PNG_PATH = fileURLToPath(new URL("../../assets/bestie-app-icon.png", import.meta.url));
 const BESTIE_ICON_ICO_PATH = fileURLToPath(new URL("../../assets/bestie-app-icon.ico", import.meta.url));
 const UI_WEB_INDEX_PATH = fileURLToPath(new URL("./web/index.html", import.meta.url));
+const UI_WEB_SERVICE_WORKER_PATH = fileURLToPath(new URL("./web/sw.js", import.meta.url));
 const UI_WEB_ROUTE_PATHS = new Set(["/chat", "/doctor", "/providers", "/character", "/memory", "/knowledge", "/channels", "/approvals", "/mcp", "/tools", "/skills", "/settings"]);
 
 export interface UiServerOptions {
@@ -121,16 +122,26 @@ async function handleRequestAsync(request: IncomingMessage, response: ServerResp
 
   if (method === "GET" && url.pathname === "/manifest.webmanifest") {
     sendJson(response, 200, {
-      name: "Bestie",
+      name: "Bestie Agent",
       short_name: "Bestie",
-      description: "Bestie local agent console",
-      start_url: "/",
+      description: "Bảng điều khiển Bestie Agent cá nhân.",
+      start_url: "/chat",
       scope: "/",
       display: "standalone",
+      display_override: ["window-controls-overlay", "standalone", "browser"],
+      orientation: "any",
       background_color: "#050610",
       theme_color: "#171c62",
-      icons: [{ src: "/assets/bestie-app-icon.png", sizes: "1024x1024", type: "image/png", purpose: "any maskable" }],
+      icons: [
+        { src: "/assets/bestie-app-icon.png", sizes: "512x512", type: "image/png", purpose: "any" },
+        { src: "/assets/bestie-app-icon.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
+      ],
     });
+    return;
+  }
+
+  if (method === "GET" && url.pathname === "/sw.js") {
+    sendServiceWorker(response, await readFile(UI_WEB_SERVICE_WORKER_PATH, "utf8"));
     return;
   }
 
@@ -954,6 +965,15 @@ function sendJavaScript(response: ServerResponse, body: string): void {
   response.writeHead(200, {
     "cache-control": "no-store",
     "content-type": "text/javascript; charset=utf-8",
+  });
+  response.end(body);
+}
+
+function sendServiceWorker(response: ServerResponse, body: string): void {
+  response.writeHead(200, {
+    "cache-control": "no-cache",
+    "content-type": "text/javascript; charset=utf-8",
+    "service-worker-allowed": "/",
   });
   response.end(body);
 }

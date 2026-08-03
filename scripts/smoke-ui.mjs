@@ -78,9 +78,10 @@ async function assertHome(url) {
   const response = await fetch(url);
   const html = await response.text();
   assertHomeScriptSyntax();
-  if (!response.ok || !html.includes('Bestie UI') || !html.includes('id="root"') || !html.includes('/assets/index-') || html.includes('/assets/home.js') || html.includes('memory-panel')) {
+  if (!response.ok || !html.includes('Bestie UI') || !html.includes('id="root"') || !html.includes('/assets/index-') || !html.includes('/manifest.webmanifest') || !html.includes('apple-touch-icon') || html.includes('/assets/home.js') || html.includes('memory-panel')) {
     throw new Error(`Unexpected React home response for ${url}: ${response.status}`);
   }
+  await assertPwaAssets(url);
   const assetMatches = [...html.matchAll(/\/(assets\/index-[^"']+\.(?:js|css))/g)].map((match) => match[1]);
   if (!assetMatches.some((asset) => asset.endsWith('.js')) || !assetMatches.some((asset) => asset.endsWith('.css'))) {
     throw new Error(`React home did not reference built JS and CSS assets for ${url}`);
@@ -99,6 +100,20 @@ async function assertHome(url) {
   const missingResponse = await fetch(new URL("/not-a-webui-route", url));
   if (missingResponse.status !== 404) {
     throw new Error(`Unknown UI route should remain 404, got ${missingResponse.status}`);
+  }
+}
+
+async function assertPwaAssets(url) {
+  const manifestResponse = await fetch(new URL("/manifest.webmanifest", url));
+  const manifest = await manifestResponse.json();
+  if (!manifestResponse.ok || manifest.name !== "Bestie Agent" || manifest.display !== "standalone" || manifest.start_url !== "/chat" || !manifest.icons?.some((icon) => icon.src === "/assets/bestie-app-icon.png" && icon.purpose?.includes("maskable"))) {
+    throw new Error(`Unexpected PWA manifest for ${url}: ${manifestResponse.status} ${JSON.stringify(manifest)}`);
+  }
+
+  const serviceWorkerResponse = await fetch(new URL("/sw.js", url));
+  const serviceWorker = await serviceWorkerResponse.text();
+  if (!serviceWorkerResponse.ok || !serviceWorker.includes("bestie-ui-pwa") || serviceWorkerResponse.headers.get("service-worker-allowed") !== "/") {
+    throw new Error(`Unexpected service worker response for ${url}: ${serviceWorkerResponse.status}`);
   }
 }
 
