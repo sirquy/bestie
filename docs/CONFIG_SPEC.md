@@ -261,19 +261,20 @@ Telegram and Zalo inbound attachments are saved together under `.bestie/workspac
 }
 ```
 
-Skill Library remote registry config is optional and disabled by default. The local WebUI currently uses the bundled official registry, but this contract lets the UI report whether an official remote registry is configured, and explicitly test HTTPS fetch plus detached signature verification when the owner requests it. The URL must use `https://`; `publicKey` is non-secret verification material, not an API key. Remote skill install remains disabled unless the registry is enabled, the cached registry signature is verified, `installPolicy` is set to `"ask"`, and every install still receives explicit WebUI confirmation.
+Skill Library uses the official GitHub remote registry by default instead of a hardcoded in-app skill catalog. The default registry is `https://raw.githubusercontent.com/sirquy/bestie-skills/master/registry.json`, verified with the sidecar checksum at `https://raw.githubusercontent.com/sirquy/bestie-skills/master/registry.sha256`, cached under `~/.bestie/data/skill-remote-registry-cache.json`, and installed only after explicit WebUI confirmation. Custom registries remain optional; their URLs must use `https://`. Custom installs remain disabled unless the registry is enabled, the cached registry is verified by detached signature or checksum sidecar, `installPolicy` is set to `"ask"`, and the user confirms the install.
 
 ```json
 {
   "skills": {
     "registry": {
       "remoteOfficial": {
-        "enabled": false,
-        "url": "https://skills.example.com/official-registry.json",
+        "enabled": true,
+        "url": "https://raw.githubusercontent.com/sirquy/bestie-skills/master/registry.json",
+        "checksumUrl": "https://raw.githubusercontent.com/sirquy/bestie-skills/master/registry.sha256",
         "publicKey": "base64-or-pem-public-key",
         "signatureHeader": "x-bestie-registry-signature",
         "timeoutMs": 10000,
-        "installPolicy": "deny"
+        "installPolicy": "ask"
       }
     }
   }

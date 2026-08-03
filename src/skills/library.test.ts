@@ -1,48 +1,29 @@
-import assert from "node:assert/strict";
+﻿import assert from "node:assert/strict";
 import { createSign, generateKeyPairSync } from "node:crypto";
 import test from "node:test";
 
-import { buildSkillDiff, createBundledSkillRegistrySnapshot, fetchRemoteSkillRegistrySnapshot, findCuratedSkillTemplate, hashSkillContent, hashSkillRegistry, listCuratedSkillTemplates, listSkillRegistrySources, parseRemoteSkillRegistryPayload, validateCuratedSkillRegistry, verifyDetachedSignature } from "./library.js";
+import { buildSkillDiff, fetchRemoteSkillRegistrySnapshot, getDefaultRemoteSkillRegistryConfig, hashContent, hashSkillContent, hashSkillRegistry, listSkillRegistrySources, parseRemoteSkillRegistryPayload, validateCuratedSkillRegistry, verifyDetachedSignature } from "./library.js";
 
-test("validateCuratedSkillRegistry accepts the bundled official registry", () => {
-  const result = validateCuratedSkillRegistry();
-  assert.equal(result.ok, true);
-  assert.equal(result.issues.length, 0);
-  assert.ok(result.count >= 10);
+test("default remote registry points to sirquy bestie-skills", () => {
+  const config = getDefaultRemoteSkillRegistryConfig();
+  assert.equal(config.enabled, true);
+  assert.equal(config.url, "https://raw.githubusercontent.com/sirquy/bestie-skills/master/registry.json");
+  assert.equal(config.checksumUrl, "https://raw.githubusercontent.com/sirquy/bestie-skills/master/registry.sha256");
+  assert.equal(config.installPolicy, "ask");
 });
 
-test("findCuratedSkillTemplate normalizes lookup names", () => {
-  const skill = findCuratedSkillTemplate(" Daily Planner ");
-  assert.equal(skill?.name, "daily-planner");
-  assert.equal(skill?.trust, "official");
-});
-
-test("createBundledSkillRegistrySnapshot exposes verified bundled source metadata", () => {
-  const snapshot = createBundledSkillRegistrySnapshot();
-  assert.equal(snapshot.source.id, "bundled-official");
-  assert.equal(snapshot.source.kind, "bundled");
-  assert.equal(snapshot.source.verification.status, "verified");
-  assert.equal(snapshot.source.verification.method, "bundled-sha256");
-  assert.match(snapshot.registryHash, /^[a-f0-9]{64}$/);
-  assert.equal(snapshot.source.verification.registryHash, snapshot.registryHash);
-});
-
-test("listSkillRegistrySources reserves disabled remote registry source", () => {
+test("listSkillRegistrySources reports remote checksum readiness", () => {
   const sources = listSkillRegistrySources();
-  assert.ok(sources.some((source) => source.id === "bundled-official" && source.enabled === true));
-  assert.ok(sources.some((source) => source.id === "remote-official" && source.enabled === false && source.verification.status === "unavailable"));
-});
-
-test("listSkillRegistrySources reports configured remote signature readiness", () => {
-  const ready = listSkillRegistrySources({ remoteOfficial: { enabled: true, url: "https://skills.example.test/registry.json", publicKey: "test-public-key" } });
-  assert.ok(ready.some((source) => source.id === "remote-official" && source.enabled === true && source.verification.status === "unsigned"));
-
-  const missingKey = listSkillRegistrySources({ remoteOfficial: { enabled: true, url: "https://skills.example.test/registry.json" } });
-  assert.ok(missingKey.some((source) => source.id === "remote-official" && source.enabled === true && source.verification.status === "failed"));
+  assert.equal(sources.length, 1);
+  assert.equal(sources[0]?.id, "remote-official");
+  assert.equal(sources[0]?.kind, "remote");
+  assert.equal(sources[0]?.enabled, true);
+  assert.equal(sources[0]?.verification.status, "unsigned");
+  assert.equal(sources[0]?.verification.method, "sha256-sidecar");
 });
 
 test("validateCuratedSkillRegistry reports duplicate and malformed entries", () => {
-  const base = listCuratedSkillTemplates()[0];
+  const base = createRemoteRegistryDocument().skills[0] as import("./library.js").CuratedSkillTemplate;
   assert.ok(base);
   const result = validateCuratedSkillRegistry([
     base,
@@ -77,50 +58,47 @@ test("parseRemoteSkillRegistryPayload verifies detached signatures", () => {
   assert.equal(snapshot.skills[0]?.name, "remote-test-skill");
 });
 
-test("parseRemoteSkillRegistryPayload reports unsigned and invalid remote registries", () => {
-  const keys = createTestKeys();
+test("parseRemoteSkillRegistryPayload verifies checksum sidecars", () => {
   const payload = JSON.stringify(createRemoteRegistryDocument());
+  const checksum = `${hashContent(payload)}  registry.json\n`;
+  const snapshot = parseRemoteSkillRegistryPayload(payload, { config: { enabled: true, url: "https://skills.example.test/registry.json", checksumUrl: "https://skills.example.test/registry.sha256" }, checksum });
+  assert.equal(snapshot.source.verification.status, "verified");
+  assert.equal(snapshot.source.verification.method, "sha256-sidecar");
 
-  const unsigned = parseRemoteSkillRegistryPayload(payload, { config: { enabled: true, url: "https://skills.example.test/registry.json", publicKey: keys.publicKey } });
+  const failed = parseRemoteSkillRegistryPayload(payload, { config: { enabled: true, url: "https://skills.example.test/registry.json", checksumUrl: "https://skills.example.test/registry.sha256" }, checksum: `bad  registry.json\n` });
+  assert.equal(failed.source.verification.status, "failed");
+});
+
+test("parseRemoteSkillRegistryPayload reports invalid remote registries", () => {
+  const payload = JSON.stringify(createRemoteRegistryDocument());
+  const unsigned = parseRemoteSkillRegistryPayload(payload, { config: { enabled: true, url: "https://skills.example.test/registry.json", checksumUrl: "https://skills.example.test/registry.sha256" } });
   assert.equal(unsigned.source.verification.status, "unsigned");
 
   assert.throws(
-    () => parseRemoteSkillRegistryPayload(JSON.stringify({ schemaVersion: 1, source: { id: "bad name", name: "Bad", trust: "official" }, skills: [] }), { config: { enabled: true, url: "https://skills.example.test/registry.json", publicKey: keys.publicKey } }),
-    /source\.id must be normalized/,
-  );
-  assert.throws(
-    () => parseRemoteSkillRegistryPayload(JSON.stringify({ schemaVersion: 1, source: { id: ".uninstalled", name: "Bad", trust: "official" }, skills: [] }), { config: { enabled: true, url: "https://skills.example.test/registry.json", publicKey: keys.publicKey } }),
+    () => parseRemoteSkillRegistryPayload(JSON.stringify({ schemaVersion: 1, source: { id: "bad name", name: "Bad", trust: "official" }, skills: [] }), { config: { enabled: true, url: "https://skills.example.test/registry.json", checksumUrl: "https://skills.example.test/registry.sha256" } }),
     /source\.id must be normalized/,
   );
 
-  const reservedSource = parseRemoteSkillRegistryPayload(JSON.stringify({ ...createRemoteRegistryDocument(), source: { id: "bundled-official", name: "Reserved", trust: "official" } }), { config: { enabled: true, url: "https://skills.example.test/registry.json", publicKey: keys.publicKey } });
+  const reservedSource = parseRemoteSkillRegistryPayload(JSON.stringify({ ...createRemoteRegistryDocument(), source: { id: "remote-official", name: "Reserved", trust: "official" } }), { config: { enabled: true, url: "https://skills.example.test/registry.json", checksumUrl: "https://skills.example.test/registry.sha256" }, checksum: `${hashContent(JSON.stringify({ ...createRemoteRegistryDocument(), source: { id: "remote-official", name: "Reserved", trust: "official" } }))} registry.json` });
   assert.equal(reservedSource.validation.ok, false);
   assert.equal(reservedSource.source.verification.status, "failed");
-  assert.match(reservedSource.validation.issues.map((issue) => issue.message).join(" "), /bundled-official/);
-
-  const bundledCollision = createRemoteRegistryDocument();
-  bundledCollision.skills[0].name = "daily-planner";
-  const collision = parseRemoteSkillRegistryPayload(JSON.stringify(bundledCollision), { config: { enabled: true, url: "https://skills.example.test/registry.json", publicKey: keys.publicKey } });
-  assert.equal(collision.validation.ok, false);
-  assert.equal(collision.source.verification.status, "failed");
-  assert.match(collision.validation.issues.map((issue) => issue.message).join(" "), /collide with a bundled skill/);
+  assert.match(reservedSource.validation.issues.map((issue) => issue.message).join(" "), /reserved internal source id/);
 });
 
-test("fetchRemoteSkillRegistrySnapshot uses injected fetch and signature header", async () => {
-  const keys = createTestKeys();
+test("fetchRemoteSkillRegistrySnapshot uses injected fetch and checksum URL", async () => {
   const payload = JSON.stringify(createRemoteRegistryDocument());
-  const signature = signPayload(payload, keys.privateKey);
+  const checksum = `${hashContent(payload)}  registry.json\n`;
   const snapshot = await fetchRemoteSkillRegistrySnapshot({
-    config: { enabled: true, url: "https://skills.example.test/registry.json", publicKey: keys.publicKey, signatureHeader: "x-bestie-signature", timeoutMs: 5000 },
+    config: { enabled: true, url: "https://skills.example.test/registry.json", checksumUrl: "https://skills.example.test/registry.sha256", timeoutMs: 5000 },
     fetchImpl: async (url, init) => {
-      assert.equal(url, "https://skills.example.test/registry.json");
-      assert.equal(init?.headers && (init.headers as Record<string, string>).accept, "application/json");
-      return new Response(payload, { status: 200, headers: { "x-bestie-signature": signature } });
+      assert.equal(init?.headers && (init.headers as Record<string, string>).accept, url.toString().endsWith(".sha256") ? "text/plain" : "application/json");
+      return url.toString().endsWith(".sha256") ? new Response(checksum) : new Response(payload, { status: 200 });
     },
   });
 
   assert.equal(snapshot.source.verification.status, "verified");
   assert.equal(snapshot.source.skillCount, 1);
+  assert.match(hashSkillRegistry(snapshot.skills), /^[a-f0-9]{64}$/);
 });
 
 function createRemoteRegistryDocument() {

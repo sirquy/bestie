@@ -223,7 +223,7 @@ async function handleRequestAsync(request: IncomingMessage, response: ServerResp
 
   if (method === "GET" && url.pathname === "/api/skills/library/item") {
     const name = url.searchParams.get("name") ?? "";
-    const sourceId = url.searchParams.get("sourceId") ?? "bundled-official";
+    const sourceId = url.searchParams.get("sourceId") ?? undefined;
     sendJson(response, 200, await getUiSkillLibraryItem(name, undefined, sourceId));
     return;
   }

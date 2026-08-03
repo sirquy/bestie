@@ -6,6 +6,7 @@ import { resolve } from "node:path";
 import test from "node:test";
 
 import type { RuntimePaths } from "../../runtime/paths.js";
+import { hashSkillRegistry, type CuratedSkillTemplate } from "../../skills/library.js";
 import { clearUiSkillRemoteRegistryCache, deleteUiSkill, getUiSkill, getUiSkillLibrary, getUiSkillLibraryDiff, getUiSkillLibraryItem, getUiSkillsSummary, installUiSkillFromLibrary, rollbackUiSkill, testUiSkillRemoteRegistry, toggleUiSkillEnabled, writeUiSkill } from "./skills.js";
 
 test("getUiSkillLibrary exposes curated metadata and installed state", async () => {
@@ -14,21 +15,21 @@ test("getUiSkillLibrary exposes curated metadata and installed state", async () 
   try {
     const library = await getUiSkillLibrary(paths);
     assert.equal(library.ok, true);
-    assert.ok(library.count >= 10);
+    assert.ok(library.count >= 6);
     assert.equal(library.installedCount, 0);
-    assert.equal(library.registry.activeSource.id, "bundled-official");
+    assert.equal(library.registry.activeSource.id, "bestie-official-github");
     assert.equal(library.registry.activeSource.verification.status, "verified");
     assert.equal(library.registry.validation.ok, true);
     assert.match(library.registry.registryHash, /^[a-f0-9]{64}$/);
-    assert.ok(library.registry.sources.some((source) => source.id === "remote-official" && source.enabled === false));
+    assert.ok(library.registry.sources.some((source) => source.id === "bestie-official-github" && source.enabled === true));
 
-    const codeReview = library.skills.find((skill) => skill.name === "code-review-buddy");
-    assert.equal(codeReview?.trust, "official");
-    assert.equal(codeReview?.risk, "medium");
-    assert.deepEqual(codeReview?.permissions, ["local_read"]);
-    assert.equal(codeReview?.installed, false);
-    assert.equal(codeReview?.sourceId, "bundled-official");
-    assert.equal(codeReview?.verificationStatus, "verified");
+    const firecrawl = library.skills.find((skill) => skill.name === "firecrawl");
+    assert.equal(firecrawl?.trust, "official");
+    assert.equal(firecrawl?.risk, "medium");
+    assert.deepEqual(firecrawl?.permissions, ["network"]);
+    assert.equal(firecrawl?.installed, false);
+    assert.equal(firecrawl?.sourceId, "bestie-official-github");
+    assert.equal(firecrawl?.verificationStatus, "verified");
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
   }
@@ -51,11 +52,12 @@ test("getUiSkillLibrary reports configured remote registry verification contract
       skills: { registry: { remoteOfficial: { enabled: true, url: "https://skills.example.test/registry.json", publicKey: "test-public-key" } } },
     }, null, 2)}\n`);
 
+    await rm(resolve(paths.dataDir, "skill-remote-registry-cache.json"), { force: true });
     const library = await getUiSkillLibrary(paths);
-    const remote = library.registry.sources.find((source) => source.id === "remote-official");
-    assert.equal(remote?.enabled, true);
-    assert.equal(remote?.verification.status, "unsigned");
-    assert.match(remote?.verification.detail ?? "", /skills\.example\.test/);
+    const remote = library.registry.activeSource;
+    assert.equal(remote.enabled, true);
+    assert.equal(remote.verification.status, "unsigned");
+    assert.match(remote.verification.detail, /skills\.example\.test/);
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
   }
@@ -89,10 +91,9 @@ test("testUiSkillRemoteRegistry verifies configured signed remote payload", asyn
     assert.equal(remoteSkill?.sourceId, "remote-official-test");
     assert.equal(remoteSkill?.readOnly, true);
     assert.equal(remoteSkill?.installable, false);
-    assert.match(remoteSkill?.installBlockedReason ?? "", /installPolicy=ask/);
     assert.equal(remoteSkill?.cache?.status, "fresh");
     assert.match(remoteSkill?.cache?.cachedAt ?? "", /^\d{4}-\d{2}-\d{2}T/);
-    const remoteSource = library.registry.sources.find((source) => source.id === "remote-official");
+    const remoteSource = library.registry.sources.find((source) => source.id === "remote-official-test");
     assert.equal(remoteSource?.cache?.status, "fresh");
     assert.match(remoteSource?.cache?.cachedAt ?? "", /^\d{4}-\d{2}-\d{2}T/);
 
@@ -136,13 +137,11 @@ test("installUiSkillFromLibrary installs verified remote skills only when policy
 
     await writeConfigWithRemoteRegistry(paths, { enabled: false, url: "https://skills.example.test/registry.json", publicKey: keys.publicKey, signatureHeader: "x-bestie-signature", installPolicy: "ask" });
     const disabledLibrary = await getUiSkillLibrary(paths);
-    const disabledRemoteSkill = disabledLibrary.skills.find((skill) => skill.name === "remote-test-skill");
-    assert.equal(disabledRemoteSkill?.installable, false);
-    assert.equal(disabledRemoteSkill?.readOnly, true);
-    assert.match(disabledRemoteSkill?.installBlockedReason ?? "", /enabled verified registry/);
-    await assert.rejects(() => installUiSkillFromLibrary({ name: "remote-test-skill", sourceId: "remote-official-test", confirm: true, paths }), /disabled by policy/);
+    assert.equal(disabledLibrary.skills.length, 0);
+    await assert.rejects(() => installUiSkillFromLibrary({ name: "remote-test-skill", sourceId: "remote-official-test", confirm: true, paths }), /not found/);
 
     await writeConfigWithRemoteRegistry(paths, { enabled: true, url: "https://skills.example.test/registry.json", publicKey: keys.publicKey, signatureHeader: "x-bestie-signature", installPolicy: "ask" });
+    await testUiSkillRemoteRegistry({ confirm: true, paths, fetchImpl: async () => new Response(payload, { status: 200, headers: { "x-bestie-signature": signature } }) });
     const library = await getUiSkillLibrary(paths);
     const remoteSkill = library.skills.find((skill) => skill.name === "remote-test-skill");
     assert.equal(remoteSkill?.installable, true);
@@ -183,21 +182,21 @@ test("installUiSkillFromLibrary requires confirmation and writes SKILL.md", asyn
   const paths = await createTempPaths();
 
   try {
-    await assert.rejects(() => installUiSkillFromLibrary({ name: "daily-planner", confirm: false, paths }), /confirm=true/);
+    await assert.rejects(() => installUiSkillFromLibrary({ name: "firecrawl", confirm: false, paths }), /confirm=true/);
 
-    await installUiSkillFromLibrary({ name: "daily-planner", confirm: true, paths });
-    const installed = await readFile(resolve(paths.appDir, "skills", "daily-planner", "SKILL.md"), "utf8");
-    assert.match(installed, /# Daily Planner/);
-    const manifest = JSON.parse(await readFile(resolve(paths.appDir, "skills", "daily-planner", "bestie-skill.json"), "utf8"));
-    assert.equal(manifest.source, "library");
+    await installUiSkillFromLibrary({ name: "firecrawl", confirm: true, paths });
+    const installed = await readFile(resolve(paths.appDir, "skills", "firecrawl", "SKILL.md"), "utf8");
+    assert.match(installed, /# firecrawl/);
+    const manifest = JSON.parse(await readFile(resolve(paths.appDir, "skills", "firecrawl", "bestie-skill.json"), "utf8"));
+    assert.equal(manifest.source, "remote");
     assert.equal(manifest.libraryVersion, "1.0.0");
     assert.match(manifest.contentHash, /^[a-f0-9]{64}$/);
-    const item = await getUiSkill("daily-planner", paths);
-    assert.equal(item.manifest?.sourceId, "bundled-official");
+    const item = await getUiSkill("firecrawl", paths);
+    assert.equal(item.manifest?.sourceId, "bestie-official-github");
     assert.equal(item.manifest?.libraryVersion, "1.0.0");
 
     const library = await getUiSkillLibrary(paths);
-    const dailyPlanner = library.skills.find((skill) => skill.name === "daily-planner");
+    const dailyPlanner = library.skills.find((skill) => skill.name === "firecrawl");
     assert.equal(dailyPlanner?.installed, true);
     assert.equal(dailyPlanner?.installedVersion, "1.0.0");
     assert.equal(dailyPlanner?.updateAvailable, false);
@@ -206,7 +205,7 @@ test("installUiSkillFromLibrary requires confirmation and writes SKILL.md", asyn
     assert.ok((dailyPlanner?.installedBytes ?? 0) > 0);
 
     const summary = await getUiSkillsSummary(paths);
-    const installedSummary = summary.skills.find((skill) => skill.name === "daily-planner");
+    const installedSummary = summary.skills.find((skill) => skill.name === "firecrawl");
     assert.match(installedSummary?.currentHash ?? "", /^[a-f0-9]{64}$/);
     assert.equal(installedSummary?.localChanges, false);
     assert.equal(installedSummary?.rollbackAvailable, false);
@@ -219,22 +218,22 @@ test("toggleUiSkillEnabled requires confirmation and keeps disabled skills visib
   const paths = await createTempPaths();
 
   try {
-    await installUiSkillFromLibrary({ name: "memory-curator", confirm: true, paths });
-    await assert.rejects(() => toggleUiSkillEnabled({ name: "memory-curator", enabled: false, confirm: false, paths }), /confirm=true/);
+    await installUiSkillFromLibrary({ name: "self-improvement", confirm: true, paths });
+    await assert.rejects(() => toggleUiSkillEnabled({ name: "self-improvement", enabled: false, confirm: false, paths }), /confirm=true/);
 
-    const disabledSummary = await toggleUiSkillEnabled({ name: "memory-curator", enabled: false, confirm: true, paths });
-    const disabled = disabledSummary.skills.find((skill) => skill.name === "memory-curator");
+    const disabledSummary = await toggleUiSkillEnabled({ name: "self-improvement", enabled: false, confirm: true, paths });
+    const disabled = disabledSummary.skills.find((skill) => skill.name === "self-improvement");
     assert.equal(disabled?.enabled, false);
     assert.equal(disabled?.manifest?.enabled, false);
-    assert.deepEqual(disabled?.manifest?.permissions, ["memory_read", "memory_write"]);
+    assert.deepEqual(disabled?.manifest?.permissions, ["local_read", "local_write"]);
 
     const library = await getUiSkillLibrary(paths);
-    const librarySkill = library.skills.find((skill) => skill.name === "memory-curator");
+    const librarySkill = library.skills.find((skill) => skill.name === "self-improvement");
     assert.equal(librarySkill?.installed, true);
     assert.equal(librarySkill?.enabled, false);
 
-    const enabledSummary = await toggleUiSkillEnabled({ name: "memory-curator", enabled: true, confirm: true, paths });
-    const enabled = enabledSummary.skills.find((skill) => skill.name === "memory-curator");
+    const enabledSummary = await toggleUiSkillEnabled({ name: "self-improvement", enabled: true, confirm: true, paths });
+    const enabled = enabledSummary.skills.find((skill) => skill.name === "self-improvement");
     assert.equal(enabled?.enabled, true);
     assert.equal(enabled?.manifest?.enabled, true);
   } finally {
@@ -276,23 +275,23 @@ test("writeUiSkill preserves manifest enablement across edit and rename", async 
   const paths = await createTempPaths();
 
   try {
-    await installUiSkillFromLibrary({ name: "daily-planner", confirm: true, paths });
-    await toggleUiSkillEnabled({ name: "daily-planner", enabled: false, confirm: true, paths });
+    await installUiSkillFromLibrary({ name: "firecrawl", confirm: true, paths });
+    await toggleUiSkillEnabled({ name: "firecrawl", enabled: false, confirm: true, paths });
 
-    const edited = await writeUiSkill({ name: "daily-planner", content: "# Daily Planner\n\nEdited while disabled.\n", paths });
-    const editedSkill = edited.skills.find((skill) => skill.name === "daily-planner");
+    const edited = await writeUiSkill({ name: "firecrawl", content: "# firecrawl\n\nEdited while disabled.\n", paths });
+    const editedSkill = edited.skills.find((skill) => skill.name === "firecrawl");
     assert.equal(editedSkill?.enabled, false);
     assert.equal(editedSkill?.manifest?.enabled, false);
-    assert.equal(editedSkill?.manifest?.sourceId, "bundled-official");
+    assert.equal(editedSkill?.manifest?.sourceId, "bestie-official-github");
     assert.equal(editedSkill?.localChanges, true);
 
-    const renamed = await writeUiSkill({ name: "renamed-planner", previousName: "daily-planner", content: "# Renamed Planner\n\nStill disabled.\n", paths });
-    assert.equal(renamed.skills.some((skill) => skill.name === "daily-planner"), false);
+    const renamed = await writeUiSkill({ name: "renamed-planner", previousName: "firecrawl", content: "# Renamed Planner\n\nStill disabled.\n", paths });
+    assert.equal(renamed.skills.some((skill) => skill.name === "firecrawl"), false);
     const renamedSkill = renamed.skills.find((skill) => skill.name === "renamed-planner");
     assert.equal(renamedSkill?.enabled, false);
     assert.equal(renamedSkill?.manifest?.enabled, false);
     assert.equal(renamedSkill?.manifest?.name, "renamed-planner");
-    assert.equal(renamedSkill?.manifest?.sourceId, "bundled-official");
+    assert.equal(renamedSkill?.manifest?.sourceId, "bestie-official-github");
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
   }
@@ -302,14 +301,14 @@ test("getUiSkillLibraryDiff detects local changes before update", async () => {
   const paths = await createTempPaths();
 
   try {
-    await installUiSkillFromLibrary({ name: "daily-planner", confirm: true, paths });
-    await writeFile(resolve(paths.appDir, "skills", "daily-planner", "SKILL.md"), "# Daily Planner\n\nLocal owner edit.\n");
+    await installUiSkillFromLibrary({ name: "firecrawl", confirm: true, paths });
+    await writeFile(resolve(paths.appDir, "skills", "firecrawl", "SKILL.md"), "# firecrawl\n\nLocal owner edit.\n");
 
     const summary = await getUiSkillsSummary(paths);
-    const installedSummary = summary.skills.find((skill) => skill.name === "daily-planner");
+    const installedSummary = summary.skills.find((skill) => skill.name === "firecrawl");
     assert.equal(installedSummary?.localChanges, true);
 
-    const diff = await getUiSkillLibraryDiff("daily-planner", paths);
+    const diff = await getUiSkillLibraryDiff("firecrawl", paths);
     assert.equal(diff.ok, true);
     assert.equal(diff.installed, true);
     assert.equal(diff.updateAvailable, true);
@@ -326,21 +325,21 @@ test("deleteUiSkill archives removed skill content and manifest", async () => {
   const paths = await createTempPaths();
 
   try {
-    await installUiSkillFromLibrary({ name: "daily-planner", confirm: true, paths });
-    await toggleUiSkillEnabled({ name: "daily-planner", enabled: false, confirm: true, paths });
-    const deleted = await deleteUiSkill({ name: "daily-planner", paths });
-    assert.equal(deleted.skills.some((skill) => skill.name === "daily-planner"), false);
+    await installUiSkillFromLibrary({ name: "firecrawl", confirm: true, paths });
+    await toggleUiSkillEnabled({ name: "firecrawl", enabled: false, confirm: true, paths });
+    const deleted = await deleteUiSkill({ name: "firecrawl", paths });
+    assert.equal(deleted.skills.some((skill) => skill.name === "firecrawl"), false);
 
     const archiveRoot = resolve(paths.appDir, "skills", ".uninstalled");
     const archiveNames = await readdir(archiveRoot);
-    const dailyPlannerArchive = archiveNames.find((name) => name.startsWith("daily-planner-"));
+    const dailyPlannerArchive = archiveNames.find((name) => name.startsWith("firecrawl-"));
     assert.ok(dailyPlannerArchive);
     const archivedContent = await readFile(resolve(archiveRoot, dailyPlannerArchive, "SKILL.md"), "utf8");
-    assert.match(archivedContent, /# Daily Planner/);
+    assert.match(archivedContent, /# firecrawl/);
     const archivedManifest = JSON.parse(await readFile(resolve(archiveRoot, dailyPlannerArchive, "bestie-skill.json"), "utf8"));
-    assert.equal(archivedManifest.name, "daily-planner");
+    assert.equal(archivedManifest.name, "firecrawl");
     assert.equal(archivedManifest.enabled, false);
-    assert.equal(archivedManifest.sourceId, "bundled-official");
+    assert.equal(archivedManifest.sourceId, "bestie-official-github");
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
   }
@@ -350,19 +349,19 @@ test("rollbackUiSkill restores the latest backup after reinstall", async () => {
   const paths = await createTempPaths();
 
   try {
-    await installUiSkillFromLibrary({ name: "daily-planner", confirm: true, paths });
-    await writeFile(resolve(paths.appDir, "skills", "daily-planner", "SKILL.md"), "# Daily Planner\n\nLocal owner edit.\n");
-    await installUiSkillFromLibrary({ name: "daily-planner", confirm: true, paths });
+    await installUiSkillFromLibrary({ name: "firecrawl", confirm: true, paths });
+    await writeFile(resolve(paths.appDir, "skills", "firecrawl", "SKILL.md"), "# firecrawl\n\nLocal owner edit.\n");
+    await installUiSkillFromLibrary({ name: "firecrawl", confirm: true, paths });
 
-    const diff = await getUiSkillLibraryDiff("daily-planner", paths);
+    const diff = await getUiSkillLibraryDiff("firecrawl", paths);
     assert.equal(diff.rollbackAvailable, true);
     const library = await getUiSkillLibrary(paths);
-    assert.equal(library.skills.find((skill) => skill.name === "daily-planner")?.rollbackAvailable, true);
+    assert.equal(library.skills.find((skill) => skill.name === "firecrawl")?.rollbackAvailable, true);
 
-    await assert.rejects(() => rollbackUiSkill({ name: "daily-planner", confirm: false, paths }), /confirm=true/);
-    await rollbackUiSkill({ name: "daily-planner", confirm: true, paths });
+    await assert.rejects(() => rollbackUiSkill({ name: "firecrawl", confirm: false, paths }), /confirm=true/);
+    await rollbackUiSkill({ name: "firecrawl", confirm: true, paths });
 
-    const restored = await readFile(resolve(paths.appDir, "skills", "daily-planner", "SKILL.md"), "utf8");
+    const restored = await readFile(resolve(paths.appDir, "skills", "firecrawl", "SKILL.md"), "utf8");
     assert.match(restored, /Local owner edit/);
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
@@ -373,14 +372,14 @@ test("getUiSkillLibraryItem returns source preview content", async () => {
   const paths = await createTempPaths();
 
   try {
-    const result = await getUiSkillLibraryItem("memory-curator", paths);
+    const result = await getUiSkillLibraryItem("self-improvement", paths);
     assert.equal(result.ok, true);
-    assert.equal(result.skill.name, "memory-curator");
+    assert.equal(result.skill.name, "self-improvement");
     assert.equal(result.skill.risk, "medium");
-    assert.equal(result.skill.sourceName, "Bundled Official Skills");
-    assert.equal(result.skill.verificationMethod, "bundled-sha256");
-    assert.match(result.content, /# Memory Curator/);
-    assert.match(result.content, /Do not save secrets/);
+    assert.equal(result.skill.sourceName, "Bestie Official Skill Library");
+    assert.equal(result.skill.verificationMethod, "sha256-sidecar");
+    assert.match(result.content, /# Self-Improvement Skill/);
+    assert.match(result.content, /durable learning files/);
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
   }
@@ -392,7 +391,7 @@ async function createTempPaths(): Promise<RuntimePaths> {
   const logsDir = resolve(appDir, "logs");
   const dataDir = resolve(appDir, "data");
 
-  return {
+  const paths = {
     rootDir,
     appDir,
     configPath: resolve(appDir, "config.json"),
@@ -405,10 +404,32 @@ async function createTempPaths(): Promise<RuntimePaths> {
     memoryDbPath: resolve(dataDir, "memory.sqlite"),
     workspaceDir: resolve(appDir, "workspace"),
   };
+  await seedDefaultSkillRegistry(paths);
+  return paths;
+}
+
+async function seedDefaultSkillRegistry(paths: RuntimePaths): Promise<void> {
+  const skills: CuratedSkillTemplate[] = [
+    { name: "facebook-manager", title: "Facebook Manager", description: "Manage Facebook Pages through Composio MCP.", category: "channels", version: "1.0.0", author: "Bestie", trust: "official", risk: "high", permissions: ["network", "external_action"], changelog: "Initial test registry skill.", content: "# facebook-manager\n\nManage Facebook Pages through Composio MCP.\n" },
+    { name: "firecrawl", title: "Firecrawl Research", description: "Use Firecrawl for public web research and extraction.", category: "research", version: "1.0.0", author: "Bestie", trust: "official", risk: "medium", permissions: ["network"], changelog: "Initial test registry skill.", content: "# firecrawl\n\nUse Firecrawl for public web research and extraction.\n" },
+    { name: "gmail-manager", title: "Gmail Manager", description: "Manage Gmail through Composio MCP.", category: "workflows", version: "1.0.0", author: "Bestie", trust: "official", risk: "high", permissions: ["network", "external_action"], changelog: "Initial test registry skill.", content: "# gmail-manager\n\nManage Gmail through Composio MCP.\n" },
+    { name: "kling-cli", title: "Kling CLI", description: "Use Kling CLI for image and video generation.", category: "media", version: "1.0.0", author: "Bestie", trust: "official", risk: "medium", permissions: ["shell", "network", "local_write"], changelog: "Initial test registry skill.", content: "# Kling CLI Skill\n\nUse Kling CLI for image and video generation.\n" },
+    { name: "self-improvement", title: "Self Improvement", description: "Capture durable corrections and lessons.", category: "memory", version: "1.0.0", author: "Bestie", trust: "official", risk: "medium", permissions: ["local_read", "local_write"], changelog: "Initial test registry skill.", content: "# Self-Improvement Skill\n\nThis skill turns corrections into durable learning files.\n" },
+    { name: "youtube-manager", title: "YouTube Manager", description: "Manage YouTube through Composio MCP.", category: "channels", version: "1.0.0", author: "Bestie", trust: "official", risk: "high", permissions: ["network", "external_action"], changelog: "Initial test registry skill.", content: "# youtube-manager\n\nManage YouTube through Composio MCP.\n" },
+  ];
+  const registryHash = hashSkillRegistry(skills);
+  await mkdir(paths.dataDir, { recursive: true });
+  await writeFile(resolve(paths.dataDir, "skill-remote-registry-cache.json"), `${JSON.stringify({
+    source: { id: "bestie-official-github", name: "Bestie Official Skill Library", kind: "remote", enabled: true, trust: "official", skillCount: skills.length, verification: { status: "verified", method: "sha256-sidecar", detail: "Remote registry checksum verified.", registryHash }, cache: { cachedAt: new Date().toISOString(), ageMs: 0, status: "fresh" } },
+    skills,
+    validation: { ok: true, count: skills.length, issues: [] },
+    registryHash,
+  }, null, 2)}\n`);
 }
 
 async function writeConfigWithRemoteRegistry(paths: RuntimePaths, remoteOfficial: { enabled: boolean; url: string; publicKey?: string; signatureHeader?: string; installPolicy?: "deny" | "ask" }): Promise<void> {
   await mkdir(paths.appDir, { recursive: true });
+  await rm(resolve(paths.dataDir, "skill-remote-registry-cache.json"), { force: true });
   await writeFile(paths.configPath, `${JSON.stringify({
     version: 2,
     agent: { name: "Miu", ownerName: "Boss", language: "vi", toneIntensity: 7 },

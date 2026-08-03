@@ -1,7 +1,7 @@
 import { copyFile, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { basename, resolve } from "node:path";
 
-import { buildSkillDiff, createBundledSkillRegistrySnapshot, fetchRemoteSkillRegistrySnapshot, getCuratedSkillTemplateOrThrow, hashSkillContent, hashSkillRegistry, listSkillRegistrySources, validateCuratedSkillRegistry, type CuratedSkillTemplate, type RemoteSkillRegistryConfig, type SkillDiffLine, type SkillRegistryCacheMetadata, type SkillRegistrySnapshot, type SkillRegistrySource, type SkillRegistryValidationResult, type SkillRegistryVerificationStatus } from "../../skills/library.js";
+import { buildSkillDiff, createEmptySkillRegistrySnapshot, fetchRemoteSkillRegistrySnapshot, getDefaultRemoteSkillRegistryConfig, hashSkillContent, hashSkillRegistry, listSkillRegistrySources, validateCuratedSkillRegistry, type CuratedSkillTemplate, type RemoteSkillRegistryConfig, type SkillDiffLine, type SkillRegistryCacheMetadata, type SkillRegistrySnapshot, type SkillRegistrySource, type SkillRegistryValidationResult, type SkillRegistryVerificationStatus } from "../../skills/library.js";
 import { loadInstalledSkills } from "../../skills/loader.js";
 import { configExists, loadConfig } from "../../runtime/config.js";
 import { getRuntimePaths, type RuntimePaths } from "../../runtime/paths.js";
@@ -147,6 +147,11 @@ export interface UiSkillRemoteRegistryTestOptions {
   fetchImpl?: typeof fetch;
 }
 
+export interface UiSkillLibraryOptions {
+  paths?: RuntimePaths;
+  fetchImpl?: typeof fetch;
+}
+
 export interface UiSkillRemoteRegistryClearOptions {
   confirm: boolean;
   paths?: RuntimePaths;
@@ -186,29 +191,28 @@ export async function getUiSkillsSummary(paths: RuntimePaths = getRuntimePaths()
   };
 }
 
-export async function getUiSkillLibrary(paths: RuntimePaths = getRuntimePaths()): Promise<UiSkillLibrarySummary> {
+export async function getUiSkillLibrary(optionsOrPaths: UiSkillLibraryOptions | RuntimePaths = getRuntimePaths()): Promise<UiSkillLibrarySummary> {
+  const paths = isRuntimePaths(optionsOrPaths) ? optionsOrPaths : optionsOrPaths.paths ?? getRuntimePaths();
+  const fetchImpl = isRuntimePaths(optionsOrPaths) ? undefined : optionsOrPaths.fetchImpl;
   const installed = await loadInstalledSkills(paths, { maxBytes: Number.MAX_SAFE_INTEGER, includeDisabled: true });
   const installedByName = new Map(installed.map((skill) => [skill.name, skill]));
-  const snapshot = createBundledSkillRegistrySnapshot();
   const remoteOfficial = await getConfiguredRemoteRegistry(paths);
-  const remoteSnapshot = await readCachedRemoteRegistrySnapshot(paths);
-  const bundledSkills = await Promise.all(snapshot.skills.map(async (skill) => toLibraryItem(skill, snapshot.source, installedByName.get(skill.name), await readSkillManifest(paths, skill.name), paths)));
-  const remoteSkills = remoteSnapshot
-    ? await Promise.all(remoteSnapshot.skills.filter((skill) => !snapshot.skills.some((bundled) => bundled.name === skill.name)).map(async (skill) => toLibraryItem(skill, remoteSnapshot.source, installedByName.get(skill.name), await readSkillManifest(paths, skill.name), paths, remoteOfficial?.enabled === true && remoteOfficial.installPolicy === "ask")))
-    : [];
-  const skills = [...bundledSkills, ...remoteSkills];
-  return { ok: true, count: skills.length, installedCount: skills.filter((skill) => skill.installed).length, registry: { activeSource: snapshot.source, sources: mergeRegistrySources(listSkillRegistrySources({ remoteOfficial }), remoteSnapshot?.source), validation: snapshot.validation, registryHash: snapshot.registryHash }, skills };
+  const snapshot = await getActiveRemoteRegistrySnapshot(paths, remoteOfficial, fetchImpl);
+  const installable = remoteOfficial.enabled === true && remoteOfficial.installPolicy === "ask" && snapshot.source.verification.status === "verified";
+  const skills = await Promise.all(snapshot.skills.map(async (skill) => toLibraryItem(skill, snapshot.source, installedByName.get(skill.name), await readSkillManifest(paths, skill.name), paths, installable)));
+  return { ok: true, count: skills.length, installedCount: skills.filter((skill) => skill.installed).length, registry: { activeSource: snapshot.source, sources: listSkillRegistrySources({ remoteOfficial, cachedSource: snapshot.source }), validation: snapshot.validation, registryHash: snapshot.registryHash }, skills };
 }
 
-export async function getUiSkillLibraryItem(name: string, paths: RuntimePaths = getRuntimePaths(), sourceId = "bundled-official"): Promise<{ ok: true; skill: UiSkillLibraryItem; content: string }> {
+export async function getUiSkillLibraryItem(name: string, paths: RuntimePaths = getRuntimePaths(), sourceId?: string): Promise<{ ok: true; skill: UiSkillLibraryItem; content: string }> {
   const { skill, source } = await resolveSkillForLibraryRead(paths, name, sourceId);
   const installed = (await loadInstalledSkills(paths, { maxBytes: Number.MAX_SAFE_INTEGER, includeDisabled: true })).find((item) => item.name === skill.name);
-  return { ok: true, skill: await toLibraryItem(skill, source, installed, await readSkillManifest(paths, skill.name), paths), content: skill.content };
+  const remoteOfficial = await getConfiguredRemoteRegistry(paths);
+  return { ok: true, skill: await toLibraryItem(skill, source, installed, await readSkillManifest(paths, skill.name), paths, remoteOfficial.enabled === true && remoteOfficial.installPolicy === "ask" && source.verification.status === "verified"), content: skill.content };
 }
 
 export async function getUiSkillLibraryDiff(name: string, paths: RuntimePaths = getRuntimePaths(), sourceId?: string): Promise<UiSkillLibraryDiff> {
   const manifest = await readSkillManifest(paths, name);
-  const resolvedSourceId = sourceId ?? manifest?.sourceId ?? "bundled-official";
+  const resolvedSourceId = sourceId ?? manifest?.sourceId;
   const { skill } = await resolveSkillForLibraryRead(paths, name, resolvedSourceId);
   const current = await readSkillContentIfExists(paths, skill.name);
   const diff = buildSkillDiff(current ?? "", skill.content);
@@ -236,12 +240,10 @@ export async function getUiSkillLibraryDiff(name: string, paths: RuntimePaths = 
 export async function installUiSkillFromLibrary(options: UiSkillInstallOptions): Promise<UiSkillsSummary> {
   if (options.confirm !== true) throw new Error("Skill install requires confirm=true.");
   const paths = options.paths ?? getRuntimePaths();
-  const { skill, source, remote } = await resolveSkillInstallSource(paths, options.name, options.sourceId ?? "bundled-official");
-  if (remote) {
-    const remoteOfficial = await getConfiguredRemoteRegistry(paths);
-    if (remoteOfficial?.enabled !== true || remoteOfficial.installPolicy !== "ask") throw new Error("Remote skill install is disabled by policy.");
-    if (source.verification.status !== "verified") throw new Error("Remote skill install requires a verified registry signature.");
-  }
+  const { skill, source } = await resolveSkillInstallSource(paths, options.name, options.sourceId);
+  const remoteOfficial = await getConfiguredRemoteRegistry(paths);
+  if (remoteOfficial.enabled !== true || remoteOfficial.installPolicy !== "ask") throw new Error("Remote skill install is disabled by policy.");
+  if (source.verification.status !== "verified") throw new Error("Remote skill install requires a verified registry.");
   const previousContent = await readSkillContentIfExists(paths, skill.name);
   if (previousContent !== undefined) await backupSkill(paths, skill.name);
   const previousManifest = await readSkillManifest(paths, skill.name);
@@ -249,72 +251,16 @@ export async function installUiSkillFromLibrary(options: UiSkillInstallOptions):
   await writeSkillManifest(paths, skill.name, {
     schemaVersion: 1,
     name: skill.name,
-    source: remote ? "remote" : "library",
+    source: "remote",
     sourceId: source.id,
     sourceName: source.name,
     libraryVersion: skill.version,
     installedAt: previousManifest?.installedAt ?? new Date().toISOString(),
     updatedAt: new Date().toISOString(),
     contentHash: hashSkillContent(skill.content),
-    previousContentHash: previousContent === undefined ? undefined : hashSkillContent(previousContent),
+    previousContentHash: previousContent === undefined ? previousManifest?.previousContentHash : hashSkillContent(previousContent),
     enabled: previousManifest?.enabled ?? true,
     permissions: skill.permissions,
-  });
-  return getUiSkillsSummary(paths);
-}
-
-export async function rollbackUiSkill(options: UiSkillRollbackOptions): Promise<UiSkillsSummary> {
-  if (options.confirm !== true) throw new Error("Skill rollback requires confirm=true.");
-  const paths = options.paths ?? getRuntimePaths();
-  const skillName = normalizeSkillName(options.name);
-  if (!skillName) throw new Error("Skill name is required.");
-  const backups = await listSkillBackups(paths, skillName);
-  const latest = backups.at(-1);
-  if (!latest) throw new Error("No skill backup is available for rollback.");
-  await mkdir(resolve(paths.appDir, "skills", skillName), { recursive: true, mode: 0o700 });
-  await copyFile(latest, resolveSkillPath(paths, skillName));
-  const content = await readFile(latest, "utf8");
-  const previousManifest = await readSkillManifest(paths, skillName);
-  await writeSkillManifest(paths, skillName, {
-    schemaVersion: 1,
-    name: skillName,
-    source: previousManifest?.source ?? "local",
-    sourceId: previousManifest?.sourceId,
-    sourceName: previousManifest?.sourceName,
-    libraryVersion: previousManifest?.libraryVersion,
-    installedAt: previousManifest?.installedAt ?? new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-    contentHash: hashSkillContent(content),
-    previousContentHash: previousManifest?.contentHash,
-    enabled: previousManifest?.enabled ?? true,
-    permissions: previousManifest?.permissions,
-  });
-  return getUiSkillsSummary(paths);
-}
-
-export async function toggleUiSkillEnabled(options: UiSkillToggleOptions): Promise<UiSkillsSummary> {
-  if (options.confirm !== true) throw new Error("Skill enablement changes require confirm=true.");
-  const paths = options.paths ?? getRuntimePaths();
-  const skillName = normalizeSkillName(options.name);
-  if (!skillName) throw new Error("Skill name is required.");
-  const current = await readSkillContentIfExists(paths, skillName);
-  if (current === undefined) throw new Error("Skill is not installed.");
-  const currentHash = hashSkillContent(current);
-  const previousManifest = await readSkillManifest(paths, skillName);
-  const source = previousManifest?.source ?? "local";
-  await writeSkillManifest(paths, skillName, {
-    schemaVersion: 1,
-    name: skillName,
-    source,
-    sourceId: previousManifest?.sourceId,
-    sourceName: previousManifest?.sourceName,
-    libraryVersion: previousManifest?.libraryVersion,
-    installedAt: previousManifest?.installedAt ?? new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-    contentHash: source === "local" ? currentHash : previousManifest?.contentHash ?? currentHash,
-    previousContentHash: previousManifest?.previousContentHash,
-    enabled: options.enabled,
-    permissions: previousManifest?.permissions,
   });
   return getUiSkillsSummary(paths);
 }
@@ -323,15 +269,14 @@ export async function testUiSkillRemoteRegistry(options: UiSkillRemoteRegistryTe
   if (options.confirm !== true) throw new Error("Remote skill registry test requires confirm=true.");
   const paths = options.paths ?? getRuntimePaths();
   const remoteOfficial = await getConfiguredRemoteRegistry(paths);
-  if (!remoteOfficial) return { ok: true, configured: false, enabled: false };
-  if (!remoteOfficial.enabled) return { ok: true, configured: true, enabled: false, source: listSkillRegistrySources({ remoteOfficial }).find((source) => source.id === "remote-official") };
+  if (!remoteOfficial.enabled) return { ok: true, configured: true, enabled: false, source: listSkillRegistrySources({ remoteOfficial })[0] };
 
   try {
     const snapshot = await fetchRemoteSkillRegistrySnapshot({ config: remoteOfficial, fetchImpl: options.fetchImpl });
     if (snapshot.source.verification.status === "verified") await writeCachedRemoteRegistrySnapshot(paths, snapshot);
     return { ok: true, configured: true, enabled: true, source: snapshot.source, validation: snapshot.validation, registryHash: snapshot.registryHash };
   } catch (error) {
-    return { ok: true, configured: true, enabled: true, source: listSkillRegistrySources({ remoteOfficial }).find((source) => source.id === "remote-official"), error: error instanceof Error ? error.message : "Remote registry test failed." };
+    return { ok: true, configured: true, enabled: true, source: listSkillRegistrySources({ remoteOfficial })[0], error: error instanceof Error ? error.message : "Remote registry test failed." };
   }
 }
 
@@ -340,12 +285,6 @@ export async function clearUiSkillRemoteRegistryCache(options: UiSkillRemoteRegi
   const paths = options.paths ?? getRuntimePaths();
   await rm(resolve(paths.dataDir, "skill-remote-registry-cache.json"), { force: true });
   return getUiSkillLibrary(paths);
-}
-
-export async function getUiSkill(name: string, paths: RuntimePaths = getRuntimePaths()): Promise<{ ok: true; name: string; path: string; content: string; manifest?: UiInstalledSkillManifest }> {
-  const skillPath = resolveSkillPath(paths, name);
-  const skillName = normalizeSkillName(name);
-  return { ok: true, name: skillName, path: skillPath, content: await readFile(skillPath, "utf8"), manifest: await readSkillManifest(paths, skillName) };
 }
 
 export async function writeUiSkill(options: UiSkillWriteOptions): Promise<UiSkillsSummary> {
@@ -371,6 +310,56 @@ export async function writeUiSkill(options: UiSkillWriteOptions): Promise<UiSkil
     });
   }
   if (previousName && previousName !== skillName) await rm(resolve(paths.appDir, "skills", previousName), { recursive: true, force: true });
+  return getUiSkillsSummary(paths);
+}
+
+export async function getUiSkill(name: string, paths: RuntimePaths = getRuntimePaths()): Promise<UiSkill & { content: string }> {
+  const skillName = normalizeSkillName(name);
+  const content = await readSkillContentIfExists(paths, skillName);
+  if (content === undefined) throw new Error("Skill was not found.");
+  const summary = await getUiSkillsSummary(paths);
+  const skill = summary.skills.find((item) => item.name === skillName);
+  if (!skill) throw new Error("Skill was not found.");
+  return { ...skill, content };
+}
+
+export async function toggleUiSkillEnabled(options: UiSkillToggleOptions): Promise<UiSkillsSummary> {
+  if (options.confirm !== true) throw new Error("Skill toggle requires confirm=true.");
+  const paths = options.paths ?? getRuntimePaths();
+  const skillName = normalizeSkillName(options.name);
+  if (!skillName) throw new Error("Skill name is required.");
+  const content = await readSkillContentIfExists(paths, skillName);
+  if (content === undefined) throw new Error("Skill was not found.");
+  const now = new Date().toISOString();
+  const existingManifest = await readSkillManifest(paths, skillName);
+  await writeSkillManifest(paths, skillName, {
+    schemaVersion: 1,
+    name: skillName,
+    source: existingManifest?.source ?? "local",
+    sourceId: existingManifest?.sourceId,
+    sourceName: existingManifest?.sourceName,
+    libraryVersion: existingManifest?.libraryVersion,
+    installedAt: existingManifest?.installedAt ?? now,
+    updatedAt: now,
+    contentHash: existingManifest?.contentHash ?? hashSkillContent(content),
+    previousContentHash: existingManifest?.previousContentHash,
+    enabled: options.enabled,
+    permissions: existingManifest?.permissions ?? [],
+  });
+  return getUiSkillsSummary(paths);
+}
+
+export async function rollbackUiSkill(options: UiSkillRollbackOptions): Promise<UiSkillsSummary> {
+  if (options.confirm !== true) throw new Error("Skill rollback requires confirm=true.");
+  const paths = options.paths ?? getRuntimePaths();
+  const skillName = normalizeSkillName(options.name);
+  if (!skillName) throw new Error("Skill name is required.");
+  const backups = await listSkillBackups(paths, skillName);
+  const latestBackup = backups.at(-1);
+  if (!latestBackup) throw new Error("No skill backup is available.");
+  await copyFile(latestBackup, resolveSkillPath(paths, skillName));
+  const manifest = await readSkillManifest(paths, skillName);
+  if (manifest) await writeSkillManifest(paths, skillName, { ...manifest, updatedAt: new Date().toISOString() });
   return getUiSkillsSummary(paths);
 }
 
@@ -404,7 +393,7 @@ function normalizeSkillName(name: string): string {
 async function toLibraryItem(skill: CuratedSkillTemplate, source: SkillRegistrySource, installed?: { content: string; enabled: boolean }, manifest?: UiInstalledSkillManifest, paths?: RuntimePaths, remoteInstallEnabled = false): Promise<UiSkillLibraryItem> {
   const contentHash = hashSkillContent(skill.content);
   const installedHash = installed ? hashSkillContent(installed.content) : undefined;
-  const installable = source.kind === "bundled" || (source.kind === "remote" && source.verification.status === "verified" && remoteInstallEnabled);
+  const installable = source.verification.status === "verified" && remoteInstallEnabled;
   const rollbackAvailable = Boolean(installed && paths && (await listSkillBackups(paths, skill.name)).length > 0);
   return {
     name: skill.name,
@@ -430,34 +419,27 @@ async function toLibraryItem(skill: CuratedSkillTemplate, source: SkillRegistryS
     manifestPath: paths ? resolveSkillManifestPath(paths, skill.name) : undefined,
     sourceId: source.id,
     sourceName: source.name,
-    readOnly: source.kind === "remote" && !installable,
+    readOnly: !installable,
     installable,
-    installBlockedReason: installable ? undefined : source.kind === "remote" ? "Remote registry skills require an enabled verified registry and skills.registry.remoteOfficial.installPolicy=ask before install." : undefined,
+    installBlockedReason: installable ? undefined : "Remote registry skills require an enabled verified registry and skills.registry.remoteOfficial.installPolicy=ask before install.",
     verificationStatus: source.verification.status,
     verificationMethod: source.verification.method,
     cache: source.cache,
   };
 }
 
-async function resolveSkillForLibraryRead(paths: RuntimePaths, name: string, sourceId: string): Promise<{ skill: CuratedSkillTemplate; source: SkillRegistrySource }> {
-  if (sourceId === "bundled-official") return { skill: getCuratedSkillTemplateOrThrow(name), source: createBundledSkillRegistrySnapshot().source };
-  const remoteSnapshot = await readCachedRemoteRegistrySnapshot(paths);
+async function resolveSkillForLibraryRead(paths: RuntimePaths, name: string, sourceId?: string): Promise<{ skill: CuratedSkillTemplate; source: SkillRegistrySource }> {
+  const remoteOfficial = await getConfiguredRemoteRegistry(paths);
+  const remoteSnapshot = await getActiveRemoteRegistrySnapshot(paths, remoteOfficial);
   const skillName = normalizeSkillName(name);
-  const skill = remoteSnapshot?.source.id === sourceId ? remoteSnapshot.skills.find((item) => item.name === skillName) : undefined;
-  if (!remoteSnapshot || !skill) throw new Error("Remote skill was not found in a verified registry cache.");
+  const expectedSourceId = sourceId ?? remoteSnapshot.source.id;
+  const skill = remoteSnapshot.source.id === expectedSourceId ? remoteSnapshot.skills.find((item) => item.name === skillName) : undefined;
+  if (!skill) throw new Error("Remote skill was not found in the verified registry cache.");
   return { skill, source: remoteSnapshot.source };
 }
 
-async function resolveSkillInstallSource(paths: RuntimePaths, name: string, sourceId: string): Promise<{ skill: CuratedSkillTemplate; source: SkillRegistrySource; remote: boolean }> {
-  if (sourceId === "bundled-official") {
-    return { skill: getCuratedSkillTemplateOrThrow(name), source: createBundledSkillRegistrySnapshot().source, remote: false };
-  }
-
-  const remoteSnapshot = await readCachedRemoteRegistrySnapshot(paths);
-  const skillName = normalizeSkillName(name);
-  const skill = remoteSnapshot?.source.id === sourceId ? remoteSnapshot.skills.find((item) => item.name === skillName) : undefined;
-  if (!remoteSnapshot || !skill) throw new Error("Remote skill was not found in a verified registry cache.");
-  return { skill, source: remoteSnapshot.source, remote: true };
+async function resolveSkillInstallSource(paths: RuntimePaths, name: string, sourceId?: string): Promise<{ skill: CuratedSkillTemplate; source: SkillRegistrySource }> {
+  return resolveSkillForLibraryRead(paths, name, sourceId);
 }
 
 async function readSkillContentIfExists(paths: RuntimePaths, name: string): Promise<string | undefined> {
@@ -468,12 +450,39 @@ async function readSkillContentIfExists(paths: RuntimePaths, name: string): Prom
   }
 }
 
-async function getConfiguredRemoteRegistry(paths: RuntimePaths): Promise<RemoteSkillRegistryConfig | undefined> {
-  if (!(await configExists(paths))) return undefined;
+async function getConfiguredRemoteRegistry(paths: RuntimePaths): Promise<RemoteSkillRegistryConfig> {
+  if (!(await configExists(paths))) return getDefaultRemoteSkillRegistryConfig();
   try {
-    return (await loadConfig(paths)).skills?.registry?.remoteOfficial;
+    return (await loadConfig(paths)).skills?.registry?.remoteOfficial ?? getDefaultRemoteSkillRegistryConfig();
   } catch {
-    return undefined;
+    return getDefaultRemoteSkillRegistryConfig();
+  }
+}
+
+async function getActiveRemoteRegistrySnapshot(paths: RuntimePaths, remoteOfficial: RemoteSkillRegistryConfig, fetchImpl?: typeof fetch): Promise<SkillRegistrySnapshot> {
+  const cached = await readCachedRemoteRegistrySnapshot(paths);
+  if (cached?.source.cache?.status === "fresh") return cached;
+
+  try {
+    const snapshot = await fetchRemoteSkillRegistrySnapshot({ config: remoteOfficial, fetchImpl });
+    if (snapshot.source.verification.status === "verified") {
+      await writeCachedRemoteRegistrySnapshot(paths, snapshot);
+      const refreshed = await readCachedRemoteRegistrySnapshot(paths);
+      return refreshed ?? snapshot;
+    }
+    return cached ?? snapshot;
+  } catch {
+    if (cached) return cached;
+    const source = listSkillRegistrySources({ remoteOfficial })[0] ?? {
+      id: "remote-official",
+      name: "Bestie Official Skill Library",
+      kind: "remote" as const,
+      enabled: false,
+      trust: "official" as const,
+      skillCount: 0,
+      verification: { status: "unavailable" as const, method: "remote", detail: "Remote skill registry is unavailable." },
+    };
+    return createEmptySkillRegistrySnapshot(source);
   }
 }
 
@@ -499,12 +508,12 @@ async function writeCachedRemoteRegistrySnapshot(paths: RuntimePaths, snapshot: 
   await mkdir(paths.dataDir, { recursive: true, mode: 0o700 });
   const cachedAt = new Date().toISOString();
   const cachedSnapshot = { ...snapshot, source: { ...snapshot.source, cache: { cachedAt, ageMs: 0, status: "fresh" } } };
-  await writeFile(resolve(paths.dataDir, "skill-remote-registry-cache.json"), `${JSON.stringify(cachedSnapshot, null, 2)}\n`, { mode: 0o600 });
+  await writeFile(resolve(paths.dataDir, "skill-remote-registry-cache.json"), `${JSON.stringify(cachedSnapshot, null, 2)}
+`, { mode: 0o600 });
 }
 
-function mergeRegistrySources(sources: SkillRegistrySource[], cachedRemote?: SkillRegistrySource): SkillRegistrySource[] {
-  if (!cachedRemote) return sources;
-  return sources.map((source) => source.id === "remote-official" ? { ...cachedRemote, id: "remote-official", enabled: true } : source);
+function isRuntimePaths(value: UiSkillLibraryOptions | RuntimePaths): value is RuntimePaths {
+  return typeof (value as RuntimePaths).appDir === "string" && typeof (value as RuntimePaths).dataDir === "string";
 }
 
 async function readSkillManifest(paths: RuntimePaths, name: string): Promise<UiInstalledSkillManifest | undefined> {

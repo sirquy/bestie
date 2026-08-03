@@ -166,6 +166,7 @@ export interface AppConfig {
       remoteOfficial?: {
         enabled: boolean;
         url: string;
+        checksumUrl?: string;
         publicKey?: string;
         signatureHeader?: string;
         timeoutMs?: number;
@@ -682,12 +683,17 @@ function optionalSkills(value: unknown): AppConfig["skills"] | undefined {
   if (!url.startsWith("https://")) {
     throw new InvalidConfigError("skills.registry.remoteOfficial.url must use https://.");
   }
+  const checksumUrl = remoteOfficial.checksumUrl === undefined ? undefined : requireString(remoteOfficial.checksumUrl, "skills.registry.remoteOfficial.checksumUrl");
+  if (checksumUrl !== undefined && !checksumUrl.startsWith("https://")) {
+    throw new InvalidConfigError("skills.registry.remoteOfficial.checksumUrl must use https://.");
+  }
 
   return {
     registry: {
       remoteOfficial: {
         enabled,
         url,
+        ...(checksumUrl === undefined ? {} : { checksumUrl }),
         ...(remoteOfficial.publicKey === undefined ? {} : { publicKey: requireString(remoteOfficial.publicKey, "skills.registry.remoteOfficial.publicKey") }),
         ...(remoteOfficial.signatureHeader === undefined ? {} : { signatureHeader: requireString(remoteOfficial.signatureHeader, "skills.registry.remoteOfficial.signatureHeader") }),
         ...(remoteOfficial.timeoutMs === undefined ? {} : { timeoutMs: optionalPositiveInteger(remoteOfficial.timeoutMs, "skills.registry.remoteOfficial.timeoutMs") }),

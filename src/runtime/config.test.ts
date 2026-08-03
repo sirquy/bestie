@@ -82,6 +82,7 @@ test("validateConfig accepts optional skill remote registry contract", () => {
         remoteOfficial: {
           enabled: true,
           url: "https://skills.example.test/registry.json",
+          checksumUrl: "https://skills.example.test/registry.sha256",
           publicKey: "test-public-key",
           signatureHeader: "x-bestie-signature",
           timeoutMs: 5000,
@@ -93,10 +94,18 @@ test("validateConfig accepts optional skill remote registry contract", () => {
 
   assert.equal(config.skills?.registry?.remoteOfficial?.enabled, true);
   assert.equal(config.skills?.registry?.remoteOfficial?.url, "https://skills.example.test/registry.json");
+  assert.equal(config.skills?.registry?.remoteOfficial?.checksumUrl, "https://skills.example.test/registry.sha256");
   assert.equal(config.skills?.registry?.remoteOfficial?.publicKey, "test-public-key");
   assert.equal(config.skills?.registry?.remoteOfficial?.signatureHeader, "x-bestie-signature");
   assert.equal(config.skills?.registry?.remoteOfficial?.timeoutMs, 5000);
   assert.equal(config.skills?.registry?.remoteOfficial?.installPolicy, "ask");
+});
+
+test("validateConfig rejects non-https skill remote registry checksum URLs", () => {
+  assert.throws(
+    () => validateConfig({ ...validConfig, skills: { registry: { remoteOfficial: { enabled: true, url: "https://skills.example.test/registry.json", checksumUrl: "http://skills.example.test/registry.sha256" } } } }),
+    /skills\.registry\.remoteOfficial\.checksumUrl must use https:\/\/\./,
+  );
 });
 
 test("validateConfig rejects non-https skill remote registry URLs", () => {

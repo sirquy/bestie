@@ -191,78 +191,85 @@ async function assertSkills(url, itemUrl, deleteUrl, uninstallUrl, toggleUrl, li
 
   const libraryResponse = await fetch(libraryUrl);
   const library = await libraryResponse.json();
-  if (!libraryResponse.ok || library.ok !== true || library.count < 10 || library.registry?.activeSource?.verification?.status !== "verified" || !library.registry?.sources?.some((source) => source.id === "remote-official" && source.enabled === false) || !library.skills?.some((skill) => skill.name === "daily-planner" && skill.trust === "official" && skill.verificationStatus === "verified")) {
+  const librarySkill = library.skills?.find((skill) => skill.name === "firecrawl");
+  if (!libraryResponse.ok || library.ok !== true || library.count < 1 || !library.registry?.activeSource?.id || !librarySkill || librarySkill.trust !== "official") {
     throw new Error(`Unexpected skill library response for ${libraryUrl}: ${libraryResponse.status} ${JSON.stringify(library)}`);
   }
 
-  const libraryItemResponse = await fetch(`${libraryItemUrl}?name=daily-planner`);
+  const libraryItemResponse = await fetch(`${libraryItemUrl}?name=firecrawl&sourceId=${encodeURIComponent(librarySkill.sourceId ?? "")}`);
   const libraryItem = await libraryItemResponse.json();
-  if (!libraryItemResponse.ok || libraryItem.skill?.name !== "daily-planner" || !libraryItem.content?.includes("# Daily Planner")) {
+  if (!libraryItemResponse.ok || libraryItem.skill?.name !== "firecrawl" || !libraryItem.content?.includes("# firecrawl")) {
     throw new Error(`Unexpected skill library item response for ${libraryItemUrl}: ${libraryItemResponse.status} ${JSON.stringify(libraryItem)}`);
   }
 
-  const missingConfirmResponse = await fetch(installUrl, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "daily-planner" }) });
+  const missingConfirmResponse = await fetch(installUrl, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "firecrawl", sourceId: librarySkill.sourceId }) });
   const missingConfirm = await missingConfirmResponse.json();
   if (missingConfirmResponse.status !== 400 || missingConfirm.code !== "UiSkillInvalidRequest") {
     throw new Error(`Unexpected skill install confirmation response for ${installUrl}: ${missingConfirmResponse.status} ${JSON.stringify(missingConfirm)}`);
   }
 
-  const installResponse = await fetch(installUrl, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "daily-planner", confirm: true }) });
+  const installResponse = await fetch(installUrl, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "firecrawl", sourceId: librarySkill.sourceId, confirm: true }) });
   const installed = await installResponse.json();
-  const installedDailyPlanner = installed.skills?.find((skill) => skill.name === "daily-planner");
-  if (!installResponse.ok || !installedDailyPlanner?.manifest?.contentHash) {
+  if (librarySkill.installable === false) {
+    if (installResponse.ok) {
+      throw new Error(`Expected remote skill install to stay blocked while registry is unverified: ${installResponse.status} ${JSON.stringify(installed)}`);
+    }
+    return;
+  }
+  const installedFirecrawl = installed.skills?.find((skill) => skill.name === "firecrawl");
+  if (!installResponse.ok || !installedFirecrawl?.manifest?.contentHash) {
     throw new Error(`Unexpected skill install response for ${installUrl}: ${installResponse.status} ${JSON.stringify(installed)}`);
   }
 
-  const editResponse = await fetch(itemUrl, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "daily-planner", content: "# Daily Planner\n\nLocal smoke edit.\n" }) });
+  const editResponse = await fetch(itemUrl, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "firecrawl", content: "# firecrawl\n\nLocal smoke edit.\n" }) });
   if (!editResponse.ok) {
     throw new Error(`Unexpected skill local edit response for ${itemUrl}: ${editResponse.status} ${await editResponse.text()}`);
   }
 
-  const diffResponse = await fetch(`${diffUrl}?name=daily-planner`);
+  const diffResponse = await fetch(`${diffUrl}?name=firecrawl&sourceId=${encodeURIComponent(librarySkill.sourceId ?? "")}`);
   const diff = await diffResponse.json();
   if (!diffResponse.ok || diff.localChanges !== true || diff.updateAvailable !== true || diff.addedLines < 1 || diff.removedLines < 1) {
     throw new Error(`Unexpected skill diff response for ${diffUrl}: ${diffResponse.status} ${JSON.stringify(diff)}`);
   }
 
-  const reinstallResponse = await fetch(installUrl, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "daily-planner", confirm: true }) });
+  const reinstallResponse = await fetch(installUrl, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "firecrawl", sourceId: librarySkill.sourceId, confirm: true }) });
   if (!reinstallResponse.ok) {
     throw new Error(`Unexpected skill reinstall response for ${installUrl}: ${reinstallResponse.status} ${await reinstallResponse.text()}`);
   }
 
-  const rollbackMissingConfirmResponse = await fetch(rollbackUrl, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "daily-planner" }) });
+  const rollbackMissingConfirmResponse = await fetch(rollbackUrl, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "firecrawl" }) });
   const rollbackMissingConfirm = await rollbackMissingConfirmResponse.json();
   if (rollbackMissingConfirmResponse.status !== 400 || rollbackMissingConfirm.code !== "UiSkillInvalidRequest") {
     throw new Error(`Unexpected skill rollback confirmation response for ${rollbackUrl}: ${rollbackMissingConfirmResponse.status} ${JSON.stringify(rollbackMissingConfirm)}`);
   }
 
-  const rollbackResponse = await fetch(rollbackUrl, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "daily-planner", confirm: true }) });
+  const rollbackResponse = await fetch(rollbackUrl, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "firecrawl", confirm: true }) });
   const rolledBack = await rollbackResponse.json();
-  if (!rollbackResponse.ok || !rolledBack.skills?.some((skill) => skill.name === "daily-planner" && String(skill.preview).includes("Local smoke edit"))) {
+  if (!rollbackResponse.ok || !rolledBack.skills?.some((skill) => skill.name === "firecrawl" && String(skill.preview).includes("Local smoke edit"))) {
     throw new Error(`Unexpected skill rollback response for ${rollbackUrl}: ${rollbackResponse.status} ${JSON.stringify(rolledBack)}`);
   }
 
-  const toggleMissingConfirmResponse = await fetch(toggleUrl, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "daily-planner", enabled: false }) });
+  const toggleMissingConfirmResponse = await fetch(toggleUrl, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "firecrawl", enabled: false }) });
   const toggleMissingConfirm = await toggleMissingConfirmResponse.json();
   if (toggleMissingConfirmResponse.status !== 400 || toggleMissingConfirm.code !== "UiSkillInvalidRequest") {
     throw new Error(`Unexpected skill toggle confirmation response for ${toggleUrl}: ${toggleMissingConfirmResponse.status} ${JSON.stringify(toggleMissingConfirm)}`);
   }
 
-  const toggleResponse = await fetch(toggleUrl, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "daily-planner", enabled: false, confirm: true }) });
+  const toggleResponse = await fetch(toggleUrl, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "firecrawl", enabled: false, confirm: true }) });
   const toggled = await toggleResponse.json();
-  if (!toggleResponse.ok || !toggled.skills?.some((skill) => skill.name === "daily-planner" && skill.enabled === false && skill.manifest?.enabled === false)) {
+  if (!toggleResponse.ok || !toggled.skills?.some((skill) => skill.name === "firecrawl" && skill.enabled === false && skill.manifest?.enabled === false)) {
     throw new Error(`Unexpected skill toggle response for ${toggleUrl}: ${toggleResponse.status} ${JSON.stringify(toggled)}`);
   }
 
-  const uninstallMissingConfirmResponse = await fetch(uninstallUrl, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "daily-planner" }) });
+  const uninstallMissingConfirmResponse = await fetch(uninstallUrl, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "firecrawl" }) });
   const uninstallMissingConfirm = await uninstallMissingConfirmResponse.json();
   if (uninstallMissingConfirmResponse.status !== 400 || uninstallMissingConfirm.code !== "UiSkillInvalidRequest") {
     throw new Error(`Unexpected skill uninstall confirmation response for ${uninstallUrl}: ${uninstallMissingConfirmResponse.status} ${JSON.stringify(uninstallMissingConfirm)}`);
   }
 
-  const uninstallResponse = await fetch(uninstallUrl, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "daily-planner", confirm: true }) });
+  const uninstallResponse = await fetch(uninstallUrl, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "firecrawl", confirm: true }) });
   const uninstalled = await uninstallResponse.json();
-  if (!uninstallResponse.ok || uninstalled.skills?.some((skill) => skill.name === "daily-planner")) {
+  if (!uninstallResponse.ok || uninstalled.skills?.some((skill) => skill.name === "firecrawl")) {
     throw new Error(`Unexpected skill uninstall response for ${uninstallUrl}: ${uninstallResponse.status} ${JSON.stringify(uninstalled)}`);
   }
 
