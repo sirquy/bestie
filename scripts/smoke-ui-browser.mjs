@@ -31,18 +31,18 @@ try {
   await expectPath(page, "/chat");
   await assertSidebarToggle(page);
   await assertChatPanel(page);
-  await assertPanel(page, "Doctor", "/doctor", "Doctor", ["Health checks", "Fix common issues"]);
-  await assertPanel(page, "Providers", "/providers", "Provider Hub", ["AI model choices", "ChatGPT", "Set main"]);
-  await assertPanel(page, "Character", "/character", "Character Studio", ["Personality details", "Conversation instructions"]);
-  await assertPanel(page, "Memory", "/memory", "Memory Center", ["Memory store", "Needs review"]);
+  await assertPanel(page, "Kiểm tra", "/doctor", ["Kiểm tra sức khoẻ", "Sửa lỗi thường gặp"]);
+  await assertPanel(page, "Nhà cung cấp", "/providers", ["Lựa chọn mô hình AI", "ChatGPT", "Đặt làm chính"]);
+  await assertPanel(page, "Tính cách", "/character", ["Chi tiết tính cách", "Hướng dẫn trò chuyện"]);
+  await assertPanel(page, "Bộ nhớ", "/memory", ["Kho bộ nhớ", "Cần xem xét"]);
   await assertKnowledgePanel(page);
-  await assertPanel(page, "Channels", "/channels", "Channel Hub", ["Channels", "Scheduled messages"]);
-  await assertPanel(page, "Approvals", "/approvals", "Approvals", ["Needs approval"]);
-  await assertPanel(page, "Extensions", "/mcp", "Extensions", ["Connected extensions", "Tools"]);
-  await assertPanel(page, "Tools", "/tools", "Tools & Permissions", ["Allowed actions", "Folders"]);
+  await assertPanel(page, "Kênh", "/channels", ["Kênh", "Tin nhắn hẹn giờ"]);
+  await assertPanel(page, "Phê duyệt", "/approvals", ["Cần phê duyệt"]);
+  await assertPanel(page, "Tiện ích mở rộng", "/mcp", ["Tiện ích đã kết nối", "Công cụ"]);
+  await assertPanel(page, "Công cụ", "/tools", ["Thao tác được phép", "Thư mục"]);
   await assertSkillsPanel(page);
-  await assertPanel(page, "Settings", "/settings", "Settings", ["Safe preferences", "Memory review mode"]);
-  await assertDirectRoute(page, `${server.url}/knowledge`, "/knowledge", "Knowledge Graph");
+  await assertPanel(page, "Cài đặt", "/settings", ["Tuỳ chọn an toàn", "Chế độ duyệt bộ nhớ"]);
+  await assertDirectRoute(page, `${server.url}/knowledge`, "/knowledge");
   await page.goBack({ waitUntil: "networkidle" });
   await expectPath(page, "/settings");
   await page.goForward({ waitUntil: "networkidle" });
@@ -68,17 +68,16 @@ try {
   await rm(homeDir, { recursive: true, force: true });
 }
 
-async function assertPanel(page, navName, route, heading, texts) {
+async function assertPanel(page, navName, route, texts) {
   await page.getByRole("link", { name: new RegExp(navName) }).click();
   await expectPath(page, route);
-  void heading;
   for (const text of texts) {
     await page.getByText(text, { exact: false }).first().waitFor();
   }
 }
 
 async function assertChatPanel(page) {
-  await page.getByRole("link", { name: /Chat/ }).click();
+  await page.getByRole("link", { name: /Trò chuyện/ }).click();
   await expectPath(page, "/chat");
   await page.waitForSelector("[data-chat-summary]");
   await page.waitForSelector("#chat-session-list");
@@ -92,47 +91,47 @@ async function assertChatPanel(page) {
   await page.waitForSelector("#chat-transcript li");
   await page.waitForSelector('[data-chat-attachment="smoke-note.md"]');
   await page.getByText("# Smoke attachment", { exact: false }).first().waitFor();
-  await page.locator('summary[aria-label="Message actions"]').first().click();
+  await page.locator('summary[aria-label="Tác vụ tin nhắn"]').first().click();
   await page.waitForSelector('[data-chat-action="fork"]');
   await page.waitForSelector('[data-chat-action="copy"]');
   await page.waitForSelector('[data-chat-action="retry"]');
-  await page.locator('summary[aria-label="Message actions"]').first().click();
-  await page.locator('summary[aria-label="Chat actions"]').click();
+  await page.locator('summary[aria-label="Tác vụ tin nhắn"]').first().click();
+  await page.locator('summary[aria-label="Tác vụ trò chuyện"]').click();
   await page.locator('[data-chat-header-action="retry"]').click();
-  await page.getByRole("dialog", { name: "Retry message" }).waitFor();
-  await page.getByRole("button", { name: "Cancel" }).click();
-  await page.getByRole("button", { name: "Edit session name" }).click();
-  await page.getByRole("textbox", { name: "Edit session name" }).fill("Renamed smoke chat");
-  await page.getByRole("button", { name: "Save session name" }).click();
-  await page.getByText("Renamed smoke chat", { exact: true }).first().waitFor();
+  await page.getByRole("dialog", { name: "Thử lại tin nhắn" }).waitFor();
+  await page.getByRole("button", { name: "Huỷ" }).click();
+  await page.getByRole("button", { name: "Sửa tên cuộc trò chuyện" }).click();
+  await page.getByRole("textbox", { name: "Sửa tên cuộc trò chuyện" }).fill("Smoke chat đã đổi tên");
+  await page.getByRole("button", { name: "Lưu tên cuộc trò chuyện" }).click();
+  await page.getByText("Smoke chat đã đổi tên", { exact: true }).first().waitFor();
   await page.locator('[data-chat-header-action="fullscreen"]').click();
   await page.waitForSelector('[data-chat-fullscreen="true"]');
   await page.locator('[data-chat-header-action="fullscreen"]').click();
   await page.waitForSelector('[data-chat-fullscreen="false"]');
   await page.waitForSelector("#chat-inspector");
-  await page.getByRole("button", { name: "Collapse sessions" }).click();
-  await page.getByRole("button", { name: "Collapse controls" }).click();
+  await page.getByRole("button", { name: "Thu gọn danh sách" }).click();
+  await page.getByRole("button", { name: "Thu gọn tuỳ chọn" }).click();
   await page.reload({ waitUntil: "networkidle" });
-  await page.getByRole("button", { name: "Expand sessions" }).waitFor();
-  await page.getByRole("button", { name: "Expand controls" }).waitFor();
-  await page.getByRole("button", { name: "Expand sessions" }).click();
-  await page.getByRole("button", { name: "Expand controls" }).click();
+  await page.getByRole("button", { name: "Mở rộng danh sách" }).waitFor();
+  await page.getByRole("button", { name: "Mở rộng tuỳ chọn" }).waitFor();
+  await page.getByRole("button", { name: "Mở rộng danh sách" }).click();
+  await page.getByRole("button", { name: "Mở rộng tuỳ chọn" }).click();
   await page.waitForSelector("#chat-session-list");
   await page.waitForSelector("#chat-inspector");
 }
 
 async function assertSidebarToggle(page) {
   await page.waitForSelector('[data-sidebar-state="expanded"]');
-  await page.getByRole("button", { name: /Collapse sidebar/ }).click();
+  await page.getByRole("button", { name: /Thu gọn thanh bên/ }).click();
   await page.waitForSelector('[data-sidebar-state="collapsed"]');
   await page.reload({ waitUntil: "networkidle" });
   await page.waitForSelector('[data-sidebar-state="collapsed"]');
-  await page.getByRole("button", { name: /Expand sidebar/ }).click();
+  await page.getByRole("button", { name: /Mở rộng thanh bên/ }).click();
   await page.waitForSelector('[data-sidebar-state="expanded"]');
 }
 
 async function assertKnowledgePanel(page) {
-  await page.getByRole("link", { name: /Knowledge/ }).click();
+  await page.getByRole("link", { name: /Tri thức/ }).click();
   await expectPath(page, "/knowledge");
   await page.waitForSelector('[data-knowledge-summary="true"]');
   await page.waitForSelector("#knowledge-cytoscape");
@@ -147,23 +146,22 @@ async function assertKnowledgePanel(page) {
 }
 
 async function assertSkillsPanel(page) {
-  await page.getByRole("link", { name: /Skills/ }).click();
+  await page.getByRole("link", { name: /Kỹ năng/ }).click();
   await expectPath(page, "/skills");
   await page.waitForSelector("[data-skills-summary]");
   await page.waitForSelector("[data-skill-editor]");
   await page.waitForSelector('[data-skill-row="smoke-skill"]');
   await page.locator('[data-skill-row="smoke-skill"] [data-skill-action="open"]').click();
   await page.waitForFunction(() => document.querySelector("[data-skill-content]")?.value?.includes("Smoke Skill"));
-  await page.getByRole("button", { name: /^Library$/ }).click();
-  await page.getByRole("button", { name: /Load library/ }).click();
+  await page.getByRole("button", { name: /^Thư viện$/ }).click();
+  await page.getByRole("button", { name: /Tải thư viện/ }).click();
   await page.waitForSelector("[data-skill-library-row]");
   await page.waitForSelector('[data-skill-action="preview"]');
 }
 
-async function assertDirectRoute(page, url, route, heading) {
+async function assertDirectRoute(page, url, route) {
   await page.goto(url, { waitUntil: "networkidle" });
   await expectPath(page, route);
-  void heading;
   await page.waitForSelector("#root");
 }
 
