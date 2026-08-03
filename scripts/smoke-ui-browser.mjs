@@ -30,6 +30,7 @@ try {
   await page.waitForSelector("[data-chat-summary]");
   await expectPath(page, "/chat");
   await assertSidebarToggle(page);
+  await assertMobileSidebarToggle(page);
   await assertChatPanel(page);
   await assertPanel(page, "Kiểm tra", "/doctor", ["Kiểm tra sức khoẻ", "Sửa lỗi thường gặp"]);
   await assertPanel(page, "Nhà cung cấp", "/providers", ["Lựa chọn mô hình AI", "ChatGPT", "Đặt làm chính"]);
@@ -128,6 +129,18 @@ async function assertSidebarToggle(page) {
   await page.waitForSelector('[data-sidebar-state="collapsed"]');
   await page.getByRole("button", { name: /Mở rộng thanh bên/ }).click();
   await page.waitForSelector('[data-sidebar-state="expanded"]');
+}
+
+async function assertMobileSidebarToggle(page) {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.waitForSelector('[data-sidebar-state="expanded"]');
+  await page.getByRole("button", { name: /Thu gọn thanh bên/ }).click();
+  await page.waitForSelector('[data-sidebar-state="collapsed"]');
+  await page.locator("aside nav").waitFor({ state: "hidden" });
+  await page.getByRole("button", { name: /Mở rộng thanh bên/ }).click();
+  await page.waitForSelector('[data-sidebar-state="expanded"]');
+  await page.locator("aside nav").waitFor({ state: "visible" });
+  await page.setViewportSize({ width: 1280, height: 900 });
 }
 
 async function assertKnowledgePanel(page) {

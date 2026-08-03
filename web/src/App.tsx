@@ -181,7 +181,7 @@ function App(): ReactElement {
               <div className="flex size-10 items-center justify-center overflow-hidden rounded-2xl bg-white shadow-lg shadow-primary/20 ring-1 ring-white/20">
                 <img src={bestieAppIcon} alt="Bestie Agent" className="size-full object-cover" />
               </div>
-              <div className={cn("min-w-0 transition-opacity duration-200", sidebarCollapsed ? "lg:hidden" : "block")}>
+              <div className={cn("min-w-0 transition-opacity duration-200", sidebarCollapsed ? "hidden" : "block")}>
                 <p className="text-lg font-bold tracking-tight">Bestie</p>
                 <p className="text-xs text-muted-foreground">Không gian AI cá nhân</p>
               </div>
@@ -227,17 +227,6 @@ function App(): ReactElement {
               );
             })}
           </nav>
-          <Button
-            aria-label={sidebarCollapsed ? "Mở rộng thanh bên" : "Thu gọn thanh bên"}
-            className="mt-3 w-full rounded-2xl border-white/10 bg-background/50 lg:hidden"
-            data-sidebar-toggle-mobile
-            type="button"
-            variant="outline"
-            onClick={() => setSidebarCollapsed((current) => !current)}
-          >
-            {sidebarCollapsed ? <ChevronsRight /> : <ChevronsLeft />}
-            {sidebarCollapsed ? "Expand" : "Collapse"}
-          </Button>
         </aside>
 
         <main className={cn("grid min-w-0 gap-4 transition-[margin] duration-300", sidebarCollapsed ? "lg:ml-[5.75rem]" : "lg:ml-[17rem]")}>
