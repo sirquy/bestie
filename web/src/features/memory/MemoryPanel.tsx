@@ -1,4 +1,4 @@
-﻿import type { FormEvent, ReactElement } from "react";
+import type { FormEvent, ReactElement } from "react";
 import { useState } from "react";
 import { AlertCircle, Brain, Check, Clock, Database, RefreshCw, Search, X } from "lucide-react";
 
@@ -51,16 +51,16 @@ export function MemoryPanel({ data, loading, onData, onLoading }: MemoryPanelPro
 
   async function updatePending(action: MemoryAction, id: number): Promise<void> {
     const verb = action === "approve_pending" ? "Duyệt" : "Từ chối";
-    if (!await confirmDialog(`${verb} pending memory #${id}?`)) return;
-    await runAction(() => fetchJson<MemorySummary>("/api/memory/action", { method: "POST", body: JSON.stringify({ action, id, confirm: true }) }), `Pending memory #${id} updated.`);
+    if (!await confirmDialog(`${verb} bộ nhớ đang chờ #${id}?`)) return;
+    await runAction(() => fetchJson<MemorySummary>("/api/memory/action", { method: "POST", body: JSON.stringify({ action, id, confirm: true }) }), `Đã cập nhật bộ nhớ đang chờ #${id}.`);
   }
 
   if (!data) {
     return (
       <Alert className="border-accent/40 bg-accent/10">
         <Brain className="size-4" />
-        <AlertTitle>Bộ nhớ is loading</AlertTitle>
-        <AlertDescription>Loading saved memories and review items.</AlertDescription>
+        <AlertTitle>Đang tải bộ nhớ</AlertTitle>
+        <AlertDescription>Đang tải bộ nhớ và mục cần duyệt.</AlertDescription>
       </Alert>
     );
   }
@@ -82,13 +82,13 @@ export function MemoryPanel({ data, loading, onData, onLoading }: MemoryPanelPro
       <Card className="border-white/10 bg-background/35">
         <CardHeader className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
           <div>
-            <CardTitle className="flex items-center gap-2"><Database className="size-5" /> Bộ nhớ store</CardTitle>
-            <CardDescription>Saved privately on this device.</CardDescription>
+            <CardTitle className="flex items-center gap-2"><Database className="size-5" /> Kho bộ nhớ</CardTitle>
+            <CardDescription>Được lưu riêng tư trên thiết bị này.</CardDescription>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Badge variant={data.database.exists ? "secondary" : "destructive"}>{data.database.exists ? "ready" : "chưa sẵn sàng"}</Badge>
-            <Badge variant={data.state.paused ? "destructive" : "outline"}>{data.state.paused ? "paused" : "active"}</Badge>
-            <Button variant="outline" onClick={() => void reload()} disabled={loading}><RefreshCw className={loading ? "animate-spin" : ""} /> Reload</Button>
+            <Badge variant={data.database.exists ? "secondary" : "destructive"}>{data.database.exists ? "sẵn sàng" : "chưa sẵn sàng"}</Badge>
+            <Badge variant={data.state.paused ? "destructive" : "outline"}>{data.state.paused ? "đang tạm dừng" : "đang hoạt động"}</Badge>
+            <Button variant="outline" onClick={() => void reload()} disabled={loading}><RefreshCw className={loading ? "animate-spin" : ""} /> Tải lại</Button>
           </div>
         </CardHeader>
         <CardContent>
@@ -96,30 +96,30 @@ export function MemoryPanel({ data, loading, onData, onLoading }: MemoryPanelPro
             <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Tìm bộ nhớ đang dùng và đang chờ" />
             <Button type="submit" disabled={loading}><Search /> Tìm kiếm</Button>
           </form>
-          {data.query ? <p className="mt-3 text-sm text-muted-foreground">Tìm kiếm query: {data.query}</p> : null}
+          {data.query ? <p className="mt-3 text-sm text-muted-foreground">Từ khoá tìm kiếm: {data.query}</p> : null}
         </CardContent>
       </Card>
 
       <div className="grid gap-4 xl:grid-cols-[1fr_1fr]">
         <Card className="border-white/10 bg-background/35">
-          <CardHeader><CardTitle>Needs review</CardTitle><CardDescription>Duyệt or reject proposed memories before they become active.</CardDescription></CardHeader>
+          <CardHeader><CardTitle>Cần xem xét</CardTitle><CardDescription>Duyệt hoặc từ chối các ghi nhớ được đề xuất trước khi kích hoạt.</CardDescription></CardHeader>
           <CardContent className="grid gap-3">
-            {data.pending.length ? data.pending.map((item) => <PendingMemoryRow key={item.id} item={item} loading={loading} onAction={updatePending} />) : <EmptyText>No pending memories.</EmptyText>}
+            {data.pending.length ? data.pending.map((item) => <PendingMemoryRow key={item.id} item={item} loading={loading} onAction={updatePending} />) : <EmptyText>Không có bộ nhớ đang chờ.</EmptyText>}
           </CardContent>
         </Card>
 
         <Card className="border-white/10 bg-background/35">
-          <CardHeader><CardTitle>Đang dùng memories</CardTitle><CardDescription>Facts Bestie can use in future conversations.</CardDescription></CardHeader>
+          <CardHeader><CardTitle>Bộ nhớ đang dùng</CardTitle><CardDescription>Những thông tin Bestie có thể dùng trong các cuộc trò chuyện sau.</CardDescription></CardHeader>
           <CardContent className="grid gap-3">
-            {data.memories.length ? data.memories.map((item) => <MemoryRow key={item.id} item={item} />) : <EmptyText>No active memories found.</EmptyText>}
+            {data.memories.length ? data.memories.map((item) => <MemoryRow key={item.id} item={item} />) : <EmptyText>Không tìm thấy bộ nhớ đang dùng.</EmptyText>}
           </CardContent>
         </Card>
       </div>
 
       <Card className="border-white/10 bg-background/35">
-        <CardHeader><CardTitle>Conversation notes</CardTitle><CardDescription>Short notes Bestie can use to remember conversation context.</CardDescription></CardHeader>
+        <CardHeader><CardTitle>Ghi chú hội thoại</CardTitle><CardDescription>Ghi chú ngắn giúp Bestie nhớ ngữ cảnh trò chuyện.</CardDescription></CardHeader>
         <CardContent className="grid gap-3">
-          {data.conversationSummaries.length ? data.conversationSummaries.map((item) => <ConversationSummaryRow key={item.id} item={item} />) : <EmptyText>No conversation summaries yet.</EmptyText>}
+          {data.conversationSummaries.length ? data.conversationSummaries.map((item) => <ConversationSummaryRow key={item.id} item={item} />) : <EmptyText>Chưa có tóm tắt cuộc trò chuyện.</EmptyText>}
         </CardContent>
       </Card>
     </div>
@@ -134,7 +134,7 @@ function MemoryError({ message }: { message: string }): ReactElement {
   return (
     <Alert variant="destructive">
       <AlertCircle className="size-4" />
-      <AlertTitle>Bộ nhớ request failed</AlertTitle>
+      <AlertTitle>Không tải được bộ nhớ</AlertTitle>
       <AlertDescription>{message}</AlertDescription>
     </Alert>
   );
@@ -159,7 +159,7 @@ function MemoryRow({ item }: { item: MemoryItem }): ReactElement {
         <div className="flex flex-wrap gap-2"><Badge variant={item.pinned ? "secondary" : "outline"}>{item.pinned ? "pinned" : item.scope}</Badge><Badge variant={item.sensitivity === "sensitive" ? "destructive" : "secondary"}>{item.sensitivity}</Badge></div>
       </div>
       <Separator className="my-3" />
-      <p className="text-xs text-muted-foreground">importance {item.importance} / confidence {item.confidence} / updated {formatDate(item.updatedAt)}</p>
+      <p className="text-xs text-muted-foreground">mức quan trọng {item.importance} / độ tin cậy {item.confidence} / cập nhật {formatDate(item.updatedAt)}</p>
     </div>
   );
 }
@@ -180,10 +180,10 @@ function PendingMemoryRow({ item, loading, onAction }: { item: PendingMemoryItem
 function ConversationSummaryRow({ item }: { item: ConversationSummaryItem }): ReactElement {
   return (
     <div className="memory-row rounded-2xl border border-white/10 bg-card/60 p-4 text-sm">
-      <div className="flex flex-wrap items-start justify-between gap-2"><p className="font-semibold">{item.channel}{item.userId ? ` / ${item.userId}` : ""}</p><Badge variant="secondary">summary</Badge></div>
+      <div className="flex flex-wrap items-start justify-between gap-2"><p className="font-semibold">{item.channel}{item.userId ? ` / ${item.userId}` : ""}</p><Badge variant="secondary">tóm tắt</Badge></div>
       <p className="mt-2 text-muted-foreground">{item.content}</p>
       <Separator className="my-3" />
-      <p className="text-xs text-muted-foreground"><Clock className="mr-1 inline size-3" />message #{item.summarizedMessageId} / updated {formatDate(item.updatedAt)}</p>
+      <p className="text-xs text-muted-foreground"><Clock className="mr-1 inline size-3" />tin nhắn #{item.summarizedMessageId} / cập nhật {formatDate(item.updatedAt)}</p>
     </div>
   );
 }

@@ -1,4 +1,4 @@
-﻿import type { ReactElement } from "react";
+import type { ReactElement } from "react";
 import { useState } from "react";
 import { AlertCircle, FolderOpen, RefreshCw, ShieldCheck, SlidersHorizontal, TerminalSquare } from "lucide-react";
 
@@ -48,8 +48,8 @@ export function ToolsPanel({ data, loading, onData, onLoading }: ToolsPanelProps
     return (
       <Alert className="border-accent/40 bg-accent/10">
         <ShieldCheck className="size-4" />
-        <AlertTitle>Công cụ are loading</AlertTitle>
-        <AlertDescription>Loading what Bestie can access and do.</AlertDescription>
+        <AlertTitle>Đang tải công cụ</AlertTitle>
+        <AlertDescription>Đang tải quyền truy cập và thao tác của Bestie.</AlertDescription>
       </Alert>
     );
   }
@@ -57,7 +57,7 @@ export function ToolsPanel({ data, loading, onData, onLoading }: ToolsPanelProps
   return (
     <div className="grid gap-4">
       {actionError ? <ToolsError message={actionError} /> : null}
-      {actionMessage ? <Alert className="border-primary/40 bg-primary/10"><ShieldCheck className="size-4" /><AlertTitle>Policy updated</AlertTitle><AlertDescription>{actionMessage}</AlertDescription></Alert> : null}
+      {actionMessage ? <Alert className="border-primary/40 bg-primary/10"><ShieldCheck className="size-4" /><AlertTitle>Chính sách đã cập nhật</AlertTitle><AlertDescription>{actionMessage}</AlertDescription></Alert> : null}
 
       <div className="grid gap-3 md:grid-cols-4" data-tools-summary>
         <Metric label="Cho phép" value={String(data.policies.allow)} tone="good" />
@@ -70,29 +70,29 @@ export function ToolsPanel({ data, loading, onData, onLoading }: ToolsPanelProps
         <Card className="border-white/10 bg-background/35">
           <CardHeader className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
             <div>
-              <CardTitle className="flex items-center gap-2"><SlidersHorizontal className="size-5" /> Cho phéped actions</CardTitle>
-              <CardDescription>Keep defaults conservative; public, destructive, and external actions should stay approval-gated.</CardDescription>
+              <CardTitle className="flex items-center gap-2"><SlidersHorizontal className="size-5" /> Thao tác được phép</CardTitle>
+              <CardDescription>Giữ mặc định thận trọng; hành động công khai, phá huỷ và bên ngoài nên luôn cần phê duyệt.</CardDescription>
             </div>
-            <Button variant="outline" onClick={() => void reload()} disabled={loading}><RefreshCw className={loading ? "animate-spin" : ""} /> Reload</Button>
+            <Button variant="outline" onClick={() => void reload()} disabled={loading}><RefreshCw className={loading ? "animate-spin" : ""} /> Tải lại</Button>
           </CardHeader>
           <CardContent className="grid gap-3">
-            {data.policies.entries.length ? data.policies.entries.map((entry) => <ToolPolicyRow key={entry.tool} entry={entry} loading={loading} onUpdate={updatePolicy} />) : <p className="rounded-2xl border border-dashed border-white/10 bg-background/25 p-4 text-sm text-muted-foreground">No custom action rules yet.</p>}
+            {data.policies.entries.length ? data.policies.entries.map((entry) => <ToolPolicyRow key={entry.tool} entry={entry} loading={loading} onUpdate={updatePolicy} />) : <p className="rounded-2xl border border-dashed border-white/10 bg-background/25 p-4 text-sm text-muted-foreground">Chưa có quy tắc thao tác tuỳ chỉnh.</p>}
           </CardContent>
         </Card>
 
         <div className="grid gap-4">
           <Card className="border-white/10 bg-background/35">
-            <CardHeader><CardTitle className="flex items-center gap-2"><FolderOpen className="size-5" /> Thư mục</CardTitle><CardDescription>Thư mục Bestie can read or write when actions are allowed.</CardDescription></CardHeader>
+            <CardHeader><CardTitle className="flex items-center gap-2"><FolderOpen className="size-5" /> Thư mục</CardTitle><CardDescription>Thư mục Bestie có thể đọc hoặc ghi khi thao tác được cho phép.</CardDescription></CardHeader>
             <CardContent className="grid gap-3 text-sm">
               <SummaryRow label="Thư mục chính" value={data.workspace.defaultPath ?? "-"} />
               <SummaryRow label="Thư mục bổ sung" value={String(data.workspace.externalPathCount)} />
               <Separator />
-              {data.workspace.externalPaths.length ? data.workspace.externalPaths.map((path) => <p key={path} className="break-all rounded-xl border border-white/10 bg-card/60 p-3 text-muted-foreground">{path}</p>) : <p className="text-muted-foreground">No extra folders added yet.</p>}
+              {data.workspace.externalPaths.length ? data.workspace.externalPaths.map((path) => <p key={path} className="break-all rounded-xl border border-white/10 bg-card/60 p-3 text-muted-foreground">{path}</p>) : <p className="text-muted-foreground">Chưa thêm thư mục bổ sung.</p>}
             </CardContent>
           </Card>
 
           <Card className="border-white/10 bg-background/35">
-            <CardHeader><CardTitle className="flex items-center gap-2"><TerminalSquare className="size-5" /> Command safety</CardTitle><CardDescription>Limits for actions that run commands.</CardDescription></CardHeader>
+            <CardHeader><CardTitle className="flex items-center gap-2"><TerminalSquare className="size-5" /> An toàn khi chạy lệnh</CardTitle><CardDescription>Giới hạn cho các thao tác có chạy lệnh.</CardDescription></CardHeader>
             <CardContent><SummaryRow label="Thời gian chờ" value={data.exec.timeoutMs === undefined ? "default" : `${data.exec.timeoutMs}ms`} /></CardContent>
           </Card>
         </div>
@@ -109,7 +109,7 @@ function ToolsError({ message }: { message: string }): ReactElement {
   return (
     <Alert variant="destructive">
       <AlertCircle className="size-4" />
-      <AlertTitle>Công cụ request failed</AlertTitle>
+      <AlertTitle>Không tải được công cụ</AlertTitle>
       <AlertDescription>{message}</AlertDescription>
     </Alert>
   );
@@ -121,12 +121,12 @@ function ToolPolicyRow({ entry, loading, onUpdate }: { entry: ToolPolicyEntry; l
       <div className="grid gap-3 md:grid-cols-[1fr_12rem] md:items-center">
         <div>
           <p className="font-semibold">{entry.tool}</p>
-          <p className="mt-1 text-muted-foreground">Internal tool execution policy</p>
+          <p className="mt-1 text-muted-foreground">Chính sách thực thi công cụ nội bộ</p>
         </div>
         <Select data-tool-policy-select={entry.tool} value={entry.policy} disabled={loading} onChange={(event) => void onUpdate(entry.tool, event.target.value as ToolPolicy)}>
-          <option value="allow">allow</option>
-          <option value="ask">ask</option>
-          <option value="deny">deny</option>
+          <option value="allow">Cho phép</option>
+          <option value="ask">Hỏi trước</option>
+          <option value="deny">Từ chối</option>
         </Select>
       </div>
     </div>

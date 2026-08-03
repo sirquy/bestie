@@ -176,7 +176,7 @@ export function ChatPanel({ data, loading, onData, onLoading }: ChatPanelProps):
   }
 
   async function deleteSession(): Promise<void> {
-    if (!activeSession || !await confirmDialog({ title: "Xoá cuộc trò chuyện", description: `Delete chat session #${activeSession.session.id}?`, confirmLabel: "Xoá", tone: "destructive" })) return;
+    if (!activeSession || !await confirmDialog({ title: "Xoá cuộc trò chuyện", description: `Xoá cuộc trò chuyện #${activeSession.session.id}?`, confirmLabel: "Xoá", tone: "destructive" })) return;
     await runRequest(() => fetchJson<ChatSessionMessagesSummary>("/api/chat/sessions/delete", { method: "POST", body: JSON.stringify({ id: activeSession.session.id, confirm: true }) }), { globalLoading: true, success: "Đã xoá cuộc trò chuyện." });
     setActiveSession(null);
     await refreshSessions();
@@ -226,7 +226,7 @@ export function ChatPanel({ data, loading, onData, onLoading }: ChatPanelProps):
   }
 
   async function retryMessage(messageId: number): Promise<void> {
-    if (!activeSession || !await confirmDialog({ title: "Thử lại từ đây", description: `Retry message #${messageId}? Later messages in this branch may be trimmed.`, confirmLabel: "Thử lại" })) return;
+    if (!activeSession || !await confirmDialog({ title: "Thử lại từ đây", description: `Thử lại tin nhắn #${messageId}? Các tin nhắn phía sau trong nhánh này có thể bị cắt.`, confirmLabel: "Thử lại" })) return;
     const retry = await prepareRetry(messageId);
     if (!retry) return;
     setActiveSession(retry);
@@ -234,7 +234,7 @@ export function ChatPanel({ data, loading, onData, onLoading }: ChatPanelProps):
   }
 
   async function forkAt(messageId: number): Promise<void> {
-    if (!activeSession || !await confirmDialog({ title: "Tạo nhánh trò chuyện", description: `Fork chat at message #${messageId}?`, confirmLabel: "Tạo nhánh" })) return;
+    if (!activeSession || !await confirmDialog({ title: "Tạo nhánh trò chuyện", description: `Tạo nhánh từ tin nhắn #${messageId}?`, confirmLabel: "Tạo nhánh" })) return;
     const fork = await runRequest(() => fetchJson<ChatSessionMessagesSummary>("/api/chat/fork", { method: "POST", body: JSON.stringify({ sessionId: activeSession.session.id, messageId, confirm: true }) }), { globalLoading: true, success: "Đã tạo nhánh trò chuyện." });
     if (!fork) return;
     setActiveSession(fork);
@@ -261,23 +261,23 @@ export function ChatPanel({ data, loading, onData, onLoading }: ChatPanelProps):
   const visibleEvents = activeSession?.events ?? [];
 
   if (!data) {
-    return <Alert className="border-accent/40 bg-accent/10"><MessageSquareText className="size-4" /><AlertTitle>Trò chuyện is loading</AlertTitle><AlertDescription>Loading your recent conversations.</AlertDescription></Alert>;
+    return <Alert className="border-accent/40 bg-accent/10"><MessageSquareText className="size-4" /><AlertTitle>Đang tải trò chuyện</AlertTitle><AlertDescription>Đang tải các cuộc trò chuyện gần đây.</AlertDescription></Alert>;
   }
 
   return (
     <div className="grid gap-3" data-chat-panel>
       {actionError ? <ChatError message={actionError} /> : null}
-      {actionMessage ? <Alert className="border-primary/40 bg-primary/10"><Bot className="size-4" /><AlertTitle>Trò chuyện update</AlertTitle><AlertDescription>{actionMessage}</AlertDescription></Alert> : null}
+      {actionMessage ? <Alert className="border-primary/40 bg-primary/10"><Bot className="size-4" /><AlertTitle>Trò chuyện đã cập nhật</AlertTitle><AlertDescription>{actionMessage}</AlertDescription></Alert> : null}
 
       <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-white/10 bg-background/35 p-3" data-chat-summary>
         <div className="flex flex-wrap gap-2">
-          <Badge variant="secondary">{data.sessions.length} sessions</Badge>
-          <Badge variant="outline">{visibleMessages.length} messages</Badge>
-          <Badge variant={visibleEvents.length || timeline.length ? "secondary" : "outline"}>{visibleEvents.length + timeline.length} events</Badge>
-          {activeSession?.session.pinnedAt ? <Badge variant="secondary">pinned</Badge> : null}
+          <Badge variant="secondary">{data.sessions.length} phiên</Badge>
+          <Badge variant="outline">{visibleMessages.length} tin nhắn</Badge>
+          <Badge variant={visibleEvents.length || timeline.length ? "secondary" : "outline"}>{visibleEvents.length + timeline.length} sự kiện</Badge>
+          {activeSession?.session.pinnedAt ? <Badge variant="secondary">đã ghim</Badge> : null}
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button size="sm" variant="outline" onClick={() => void reload()} disabled={loading}><RefreshCw className={loading ? "animate-spin" : ""} /> Reload</Button>
+          <Button size="sm" variant="outline" onClick={() => void reload()} disabled={loading}><RefreshCw className={loading ? "animate-spin" : ""} /> Tải lại</Button>
           <Button size="sm" onClick={() => void createSession()}><Plus /> Trò chuyện mới</Button>
         </div>
       </div>
@@ -286,7 +286,7 @@ export function ChatPanel({ data, loading, onData, onLoading }: ChatPanelProps):
         <Card className="flex min-h-[18rem] flex-col overflow-hidden border-white/10 bg-background/35 xl:min-h-0">
           <CardHeader className="border-b border-white/10 p-4">
             <div className={`flex items-center gap-2 ${sessionsCollapsed ? "justify-center" : "justify-between"}`}>
-              {sessionsCollapsed ? null : <div><CardTitle className="flex items-center gap-2 text-base"><MessageSquareText className="size-4" /> Phiêns</CardTitle><CardDescription>Tìm kiếm and switch chats.</CardDescription></div>}
+              {sessionsCollapsed ? null : <div><CardTitle className="flex items-center gap-2 text-base"><MessageSquareText className="size-4" /> Phiêns</CardTitle><CardDescription>Tìm kiếm và chuyển giữa các cuộc trò chuyện.</CardDescription></div>}
               <Button type="button" variant="outline" size="icon" aria-label={sessionsCollapsed ? "Mở rộng danh sách" : "Thu gọn danh sách"} onClick={() => setSessionsCollapsed((current) => !current)}>{sessionsCollapsed ? <PanelLeftOpen /> : <PanelLeftClose />}</Button>
             </div>
           </CardHeader>
@@ -295,13 +295,13 @@ export function ChatPanel({ data, loading, onData, onLoading }: ChatPanelProps):
               <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Tìm cuộc trò chuyện" id="chat-session-search" />
               <div className="grid grid-cols-[1fr_auto] gap-2">
                 <Select value={filter} onChange={(event) => setFilter(event.target.value as ChatFilter)}>
-                  <option value="all">all</option><option value="approval">approval</option><option value="cancelled">cancelled</option><option value="error">error</option><option value="fork">fork</option><option value="retry">retry</option>
+                  <option value="all">Tất cả</option><option value="approval">Cần duyệt</option><option value="cancelled">Đã huỷ</option><option value="error">Lỗi</option><option value="fork">Nhánh</option><option value="retry">Thử lại</option>
                 </Select>
                 <Button type="submit" variant="outline" disabled={loading} size="icon" aria-label="Tìm cuộc trò chuyện"><Search /></Button>
               </div>
             </form>
             <div className="no-scrollbar grid min-h-0 flex-1 content-start gap-2 overflow-auto pr-1" id="chat-session-list">
-              {sortedSessions.length ? sortedSessions.map((session) => <SessionRow key={session.id} session={session} active={activeSession?.session.id === session.id} onOpen={openSession} />) : <EmptyText>No chat sessions yet.</EmptyText>}
+              {sortedSessions.length ? sortedSessions.map((session) => <SessionRow key={session.id} session={session} active={activeSession?.session.id === session.id} onOpen={openSession} />) : <EmptyText>Chưa có cuộc trò chuyện.</EmptyText>}
             </div>
           </CardContent>}
         </Card>
@@ -311,7 +311,7 @@ export function ChatPanel({ data, loading, onData, onLoading }: ChatPanelProps):
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="min-w-0 flex-1">
                 {editingTitle && activeSession ? <div className="flex max-w-xl items-center gap-2"><Input className="h-8" value={draftTitle} autoFocus onChange={(event) => setDraftTitle(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void saveTitle(); if (event.key === "Escape") setEditingTitle(false); }} aria-label="Sửa tên cuộc trò chuyện" /><Button size="icon" variant="outline" type="button" aria-label="Lưu tên cuộc trò chuyện" onClick={() => void saveTitle()}><Check /></Button><Button size="icon" variant="ghost" type="button" aria-label="Huỷ sửa tên cuộc trò chuyện" onClick={() => setEditingTitle(false)}><X /></Button></div> : <CardTitle className="flex min-w-0 items-center gap-2 text-lg"><span className="truncate">{activeSession ? activeSession.session.title : "Chưa chọn cuộc trò chuyện"}</span>{activeSession ? <Button className="size-7 shrink-0" size="icon" variant="ghost" type="button" aria-label="Sửa tên cuộc trò chuyện" onClick={startEditingTitle}><Pencil className="size-3.5" /></Button> : null}</CardTitle>}
-                <CardDescription>{activeSession ? `#${activeSession.session.id} / updated ${formatDate(activeSession.session.updatedAt)}` : "Tạo hoặc mở một cuộc trò chuyện để bắt đầu."}</CardDescription>
+                <CardDescription>{activeSession ? `#${activeSession.session.id} / cập nhật ${formatDate(activeSession.session.updatedAt)}` : "Tạo hoặc mở một cuộc trò chuyện để bắt đầu."}</CardDescription>
               </div>
               <details className="relative">
                 <summary className="list-none rounded-full border border-white/10 p-2 text-muted-foreground hover:bg-secondary hover:text-foreground" aria-label="Tác vụ trò chuyện"><MoreHorizontal className="size-4" /></summary>
@@ -326,22 +326,22 @@ export function ChatPanel({ data, loading, onData, onLoading }: ChatPanelProps):
 
           <CardContent className="flex min-h-0 flex-1 flex-col gap-3 p-3 md:p-4">
             <div ref={transcriptRef} className="chat-transcript no-scrollbar grid min-h-0 flex-1 content-start gap-3 overflow-auto rounded-2xl border border-white/10 bg-background/25 p-3" id="chat-transcript">
-              {visibleMessages.length ? visibleMessages.map((item) => <MessageBubble key={item.id} message={item} onCopy={copyMessage} onFork={forkAt} onRetry={retryMessage} />) : <EmptyText>No messages in this session.</EmptyText>}
-              {streaming ? <div className="chat-message rounded-2xl border border-primary/30 bg-primary/10 p-4 text-sm assistant"><div className="mb-2 flex items-center gap-2 font-semibold"><Loader2 className="size-4 animate-spin" /> Bestie is replying</div><p className="whitespace-pre-wrap text-muted-foreground">{streamText || "Đang suy nghĩ..."}</p></div> : null}
+              {visibleMessages.length ? visibleMessages.map((item) => <MessageBubble key={item.id} message={item} onCopy={copyMessage} onFork={forkAt} onRetry={retryMessage} />) : <EmptyText>Chưa có tin nhắn trong cuộc trò chuyện này.</EmptyText>}
+              {streaming ? <div className="chat-message rounded-2xl border border-primary/30 bg-primary/10 p-4 text-sm assistant"><div className="mb-2 flex items-center gap-2 font-semibold"><Loader2 className="size-4 animate-spin" /> Bestie đang trả lời</div><p className="whitespace-pre-wrap text-muted-foreground">{streamText || "Đang suy nghĩ..."}</p></div> : null}
             </div>
 
             <form className="grid gap-2 rounded-2xl border border-white/10 bg-card/50 p-3" onSubmit={(event) => void sendMessage(event)}>
-              {attachments.length ? <div className="flex flex-wrap gap-2">{attachments.map((attachment, index) => <span key={`${attachment.name}-${index}`} className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-background/50 px-3 py-1 text-xs"><FileText className="size-3" />{attachment.name}<button type="button" aria-label={`Remove ${attachment.name}`} onClick={() => setAttachments((current) => current.filter((_, itemIndex) => itemIndex !== index))}><X className="size-3" /></button></span>)}</div> : null}
+              {attachments.length ? <div className="flex flex-wrap gap-2">{attachments.map((attachment, index) => <span key={`${attachment.name}-${index}`} className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-background/50 px-3 py-1 text-xs"><FileText className="size-3" />{attachment.name}<button type="button" aria-label={`Gỡ ${attachment.name}`} onClick={() => setAttachments((current) => current.filter((_, itemIndex) => itemIndex !== index))}><X className="size-3" /></button></span>)}</div> : null}
               <Textarea value={message} onChange={(event) => setMessage(event.target.value)} onKeyDown={handleComposerKeyDown} rows={3} placeholder={`Gửi tin nhắn cho ${agentName}`} id="chat-input" className="min-h-24 resize-none border-white/10 bg-background/50" />
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
-                  <span className="rounded-full border border-white/10 px-2 py-1">Công cụ {toolsEnabled ? "on" : "off"}</span>
-                  <span className="rounded-full border border-white/10 px-2 py-1">Bộ nhớ {memoryEnabled ? "on" : "off"}</span>
+                  <span className="rounded-full border border-white/10 px-2 py-1">Công cụ {toolsEnabled ? "bật" : "tắt"}</span>
+                  <span className="rounded-full border border-white/10 px-2 py-1">Bộ nhớ {memoryEnabled ? "bật" : "tắt"}</span>
                   {providerModelRef ? <span className="rounded-full border border-white/10 px-2 py-1">{providerModelRef}</span> : null}
                 </div>
                 <div className="flex gap-2">
-                  <Button asChild type="button" variant="outline"><label className="cursor-pointer"><Paperclip /> Attach<input className="sr-only" type="file" multiple onChange={(event) => void addAttachmentFiles(event.target.files)} /></label></Button>
-                  <Button type="submit" disabled={streaming || !message.trim()} id="chat-send"><Send /> Send</Button>
+                  <Button asChild type="button" variant="outline"><label className="cursor-pointer"><Paperclip /> Đính kèm<input className="sr-only" type="file" multiple onChange={(event) => void addAttachmentFiles(event.target.files)} /></label></Button>
+                  <Button type="submit" disabled={streaming || !message.trim()} id="chat-send"><Send /> Gửi</Button>
                 </div>
               </div>
             </form>
@@ -352,21 +352,21 @@ export function ChatPanel({ data, loading, onData, onLoading }: ChatPanelProps):
           <Card className="flex min-h-0 shrink-0 flex-col overflow-hidden border-white/10 bg-background/35">
             <CardHeader className="p-4">
               <div className={`flex items-center gap-2 ${controlsCollapsed ? "justify-center" : "justify-between"}`}>
-                {controlsCollapsed ? null : <div><CardTitle className="flex items-center gap-2 text-base"><Settings2 className="size-4" /> Controls</CardTitle><CardDescription>Per-session run options.</CardDescription></div>}
+                {controlsCollapsed ? null : <div><CardTitle className="flex items-center gap-2 text-base"><Settings2 className="size-4" /> Tuỳ chọn</CardTitle><CardDescription>Tuỳ chọn chạy cho cuộc trò chuyện này.</CardDescription></div>}
                 <Button type="button" variant="outline" size="icon" aria-label={controlsCollapsed ? "Mở rộng tuỳ chọn" : "Thu gọn tuỳ chọn"} onClick={() => setControlsCollapsed((current) => !current)}>{controlsCollapsed ? <PanelRightOpen /> : <PanelRightClose />}</Button>
               </div>
             </CardHeader>
             {controlsCollapsed ? <CardContent className="flex flex-1 flex-col items-center gap-3 p-3 pt-0"><Settings2 className="size-5 text-muted-foreground" /><Badge variant={visibleEvents.length || timeline.length ? "secondary" : "outline"}>{visibleEvents.length + timeline.length}</Badge></CardContent> : <CardContent className="no-scrollbar grid max-h-[18rem] gap-3 overflow-auto p-4 pt-0">
               <label className="flex items-center justify-between gap-2 rounded-xl border border-white/10 bg-card/50 p-3 text-sm"><span>Công cụ</span><input type="checkbox" checked={toolsEnabled} onChange={(event) => setToolsEnabled(event.target.checked)} /></label>
               <label className="flex items-center justify-between gap-2 rounded-xl border border-white/10 bg-card/50 p-3 text-sm"><span>Bộ nhớ</span><input type="checkbox" checked={memoryEnabled} onChange={(event) => setMemoryEnabled(event.target.checked)} /></label>
-              <div className="grid gap-1"><Label htmlFor="chat-provider-model">AI model</Label><Select id="chat-provider-model" value={providerModelRef} onChange={(event) => setProviderModelRef(event.target.value)}><option value="">Best available</option>{providerModels.map((model) => <option key={model.modelRef} value={model.modelRef}>{model.modelRef}{model.primary ? " · primary" : model.fallback ? " · fallback" : ""}</option>)}</Select></div>
-              <Button variant="outline" disabled={!activeSession} onClick={() => void deleteSession()}><Trash2 /> Xoá session</Button>
+              <div className="grid gap-1"><Label htmlFor="chat-provider-model">Model AI</Label><Select id="chat-provider-model" value={providerModelRef} onChange={(event) => setProviderModelRef(event.target.value)}><option value="">Tốt nhất hiện có</option>{providerModels.map((model) => <option key={model.modelRef} value={model.modelRef}>{model.modelRef}{model.primary ? " · chính" : model.fallback ? " · dự phòng" : ""}</option>)}</Select></div>
+              <Button variant="outline" disabled={!activeSession} onClick={() => void deleteSession()}><Trash2 /> Xoá cuộc trò chuyện</Button>
             </CardContent>}
           </Card>
 
           {controlsCollapsed ? null : <Card className="flex min-h-0 flex-1 flex-col border-white/10 bg-background/35" id="chat-inspector">
-            <CardHeader className="p-4"><CardTitle className="flex items-center gap-2 text-base"><Settings2 className="size-4" /> Inspector</CardTitle><CardDescription>Latest events.</CardDescription></CardHeader>
-            <CardContent className="no-scrollbar grid min-h-0 flex-1 content-start gap-2 overflow-auto p-4 pt-0">{[...timeline.map(toTransientEvent), ...visibleEvents].length ? [...timeline.map(toTransientEvent), ...visibleEvents].slice(-8).reverse().map((event) => <EventRow key={`${event.id}-${event.createdAt}`} event={event} />) : <EmptyText>No events yet.</EmptyText>}</CardContent>
+            <CardHeader className="p-4"><CardTitle className="flex items-center gap-2 text-base"><Settings2 className="size-4" /> Theo dõi</CardTitle><CardDescription>Sự kiện mới nhất.</CardDescription></CardHeader>
+            <CardContent className="no-scrollbar grid min-h-0 flex-1 content-start gap-2 overflow-auto p-4 pt-0">{[...timeline.map(toTransientEvent), ...visibleEvents].length ? [...timeline.map(toTransientEvent), ...visibleEvents].slice(-8).reverse().map((event) => <EventRow key={`${event.id}-${event.createdAt}`} event={event} />) : <EmptyText>Chưa có sự kiện.</EmptyText>}</CardContent>
           </Card>}
         </aside>
       </div>
@@ -380,7 +380,7 @@ export function ChatPanelError({ error }: { error: unknown }): ReactElement {
 
 async function streamChat(path: string, body: Record<string, unknown>, handlers: { onToken: (token: string) => void; onTimeline: (event: ChatTimelineEvent) => void }): Promise<ChatStreamDoneResult> {
   const response = await fetch(path, { method: "POST", headers: { accept: "text/event-stream", "content-type": "application/json" }, body: JSON.stringify(body) });
-  if (!response.ok || !response.body) throw new Error(`Chat stream failed: ${response.status}`);
+  if (!response.ok || !response.body) throw new Error(`Không nhận được phản hồi: ${response.status}`);
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
@@ -412,7 +412,7 @@ function parseSseEvent(block: string): { event: string; data: Record<string, unk
 }
 
 function SessionRow({ session, active, onOpen }: { session: ChatSession; active: boolean; onOpen: (id: number) => Promise<void> }): ReactElement {
-  return <button type="button" className={`rounded-2xl border p-3 text-left text-sm transition hover:border-primary/50 ${active ? "border-primary/50 bg-primary/10" : "border-white/10 bg-card/60"}`} onClick={() => void onOpen(session.id)} data-chat-session={session.id}><div className="flex items-start justify-between gap-2"><strong>{session.title}</strong>{session.pinnedAt ? <Badge variant="secondary">pinned</Badge> : null}</div><p className="mt-1 text-xs text-muted-foreground">#{session.id} / {formatDate(session.updatedAt)}</p></button>;
+  return <button type="button" className={`rounded-2xl border p-3 text-left text-sm transition hover:border-primary/50 ${active ? "border-primary/50 bg-primary/10" : "border-white/10 bg-card/60"}`} onClick={() => void onOpen(session.id)} data-chat-session={session.id}><div className="flex items-start justify-between gap-2"><strong>{session.title}</strong>{session.pinnedAt ? <Badge variant="secondary">đã ghim</Badge> : null}</div><p className="mt-1 text-xs text-muted-foreground">#{session.id} / {formatDate(session.updatedAt)}</p></button>;
 }
 
 function MessageBubble({ message, onCopy, onFork, onRetry }: { message: ChatMessageWithAttachments; onCopy: (content: string) => Promise<void>; onFork: (messageId: number) => Promise<void>; onRetry: (messageId: number) => Promise<void> }): ReactElement {
@@ -425,7 +425,7 @@ function MessageBubble({ message, onCopy, onFork, onRetry }: { message: ChatMess
           <summary className="list-none rounded-full border border-white/10 p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground" aria-label="Tác vụ tin nhắn"><MoreHorizontal className="size-4" /></summary>
           <div className="absolute right-0 z-20 mt-2 grid min-w-32 gap-1 rounded-2xl border border-white/10 bg-card p-1 shadow-xl">
             <button className="flex items-center gap-2 rounded-xl px-3 py-2 text-left text-xs hover:bg-secondary" type="button" onClick={() => void onFork(message.id)} data-chat-action="fork"><GitFork className="size-3" /> Tạo nhánh</button>
-            <button className="flex items-center gap-2 rounded-xl px-3 py-2 text-left text-xs hover:bg-secondary" type="button" onClick={() => void onCopy(message.content)} data-chat-action="copy"><Copy className="size-3" /> Copy</button>
+            <button className="flex items-center gap-2 rounded-xl px-3 py-2 text-left text-xs hover:bg-secondary" type="button" onClick={() => void onCopy(message.content)} data-chat-action="copy"><Copy className="size-3" /> Sao chép</button>
             {isUser ? <button className="flex items-center gap-2 rounded-xl px-3 py-2 text-left text-xs hover:bg-secondary" type="button" onClick={() => void onRetry(message.id)} data-chat-action="retry"><RotateCcw className="size-3" /> Thử lại</button> : null}
           </div>
         </details>
@@ -447,7 +447,7 @@ function MessageAttachment({ attachment }: { attachment: ChatAttachment }): Reac
   const preview = !isImage && attachment.content && attachment.content !== "[đã ẩn dữ liệu ảnh]" ? attachment.content.slice(0, 240) : "";
   return (
     <div className="overflow-hidden rounded-2xl border border-white/10 bg-background/45 p-3 text-xs" data-chat-attachment={attachment.name}>
-      <div className="flex flex-wrap items-center gap-2 text-muted-foreground"><FileText className="size-3.5" /><strong className="max-w-full truncate text-foreground">{attachment.name}</strong>{attachment.type ? <Badge variant="outline">{attachment.type}</Badge> : null}{attachment.size !== undefined ? <span>{formatBytes(attachment.size)}</span> : null}{isDownloadable ? <a className="rounded-full border border-white/10 px-2 py-0.5 text-foreground hover:bg-secondary" href={attachment.content} download={attachment.name}>Download</a> : null}</div>
+      <div className="flex flex-wrap items-center gap-2 text-muted-foreground"><FileText className="size-3.5" /><strong className="max-w-full truncate text-foreground">{attachment.name}</strong>{attachment.type ? <Badge variant="outline">{attachment.type}</Badge> : null}{attachment.size !== undefined ? <span>{formatBytes(attachment.size)}</span> : null}{isDownloadable ? <a className="rounded-full border border-white/10 px-2 py-0.5 text-foreground hover:bg-secondary" href={attachment.content} download={attachment.name}>Tải xuống</a> : null}</div>
       {isImage ? <img className="mt-2 max-h-48 rounded-xl border border-white/10 object-contain" src={attachment.content} alt={attachment.name} /> : null}
       {preview ? <pre className="no-scrollbar mt-2 max-h-28 overflow-auto whitespace-pre-wrap rounded-xl bg-background/70 p-2 text-muted-foreground">{preview}</pre> : null}
     </div>
@@ -459,7 +459,7 @@ interface ChatMessageWithAttachments extends ChatMessage {
 }
 
 function EventRow({ event }: { event: ChatEvent }): ReactElement {
-  return <div className="rounded-xl border border-white/10 bg-card/60 p-3 text-sm"><div className="flex flex-wrap items-center justify-between gap-2"><strong>{event.eventType}</strong><Badge variant="outline">{formatDate(event.createdAt)}</Badge></div><p className="mt-1 text-muted-foreground">{event.message}</p></div>;
+  return <div className="rounded-xl border border-white/10 bg-card/60 p-3 text-sm"><div className="flex flex-wrap items-center justify-between gap-2"><strong>{formatChatEventType(event.eventType)}</strong><Badge variant="outline">{formatDate(event.createdAt)}</Badge></div><p className="mt-1 text-muted-foreground">{event.message}</p></div>;
 }
 
 function toTransientEvent(event: ChatTimelineEvent, index: number): ChatEvent {
@@ -467,7 +467,7 @@ function toTransientEvent(event: ChatTimelineEvent, index: number): ChatEvent {
 }
 
 function ChatError({ message }: { message: string }): ReactElement {
-  return <Alert variant="destructive"><AlertCircle className="size-4" /><AlertTitle>Trò chuyện request failed</AlertTitle><AlertDescription>{message}</AlertDescription></Alert>;
+  return <Alert variant="destructive"><AlertCircle className="size-4" /><AlertTitle>Không tải được trò chuyện</AlertTitle><AlertDescription>{message}</AlertDescription></Alert>;
 }
 
 function EmptyText({ children }: { children: string }): ReactElement {
@@ -600,7 +600,7 @@ function formatBytes(value: number): string {
 function readAttachmentFile(file: File): Promise<ChatAttachmentDraft> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    reader.onerror = () => reject(new Error(`Could not read attachment ${file.name}.`));
+    reader.onerror = () => reject(new Error(`Không thể đọc tệp đính kèm ${file.name}.`));
     reader.onload = () => resolve({ name: file.name, type: file.type || undefined, size: file.size, content: String(reader.result ?? "") });
     if (file.type.startsWith("text/") || file.name.endsWith(".md") || file.name.endsWith(".json")) reader.readAsText(file);
     else reader.readAsDataURL(file);
@@ -626,4 +626,18 @@ function writeStoredBoolean(key: string, value: boolean): void {
 function formatDate(value: string): string {
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
+}
+
+function formatChatEventType(type: string): string {
+  const labels: Record<string, string> = {
+    thinking: "Đang suy nghĩ",
+    tool_start: "Bắt đầu dùng công cụ",
+    tool_finish: "Dùng công cụ xong",
+    token: "Đang trả lời",
+    approval_required: "Cần phê duyệt",
+    memory_capture: "Ghi nhớ",
+    done: "Hoàn tất",
+    error: "Lỗi",
+  };
+  return labels[type] ?? type;
 }

@@ -1,4 +1,4 @@
-﻿import type { ReactElement } from "react";
+import type { ReactElement } from "react";
 import { useState } from "react";
 import { AlertCircle, KeyRound, ListTree, Plug, RefreshCw, Server, ShieldCheck, Wrench } from "lucide-react";
 
@@ -36,8 +36,8 @@ export function McpPanel({ data, loading, onData, onLoading }: McpPanelProps): R
     return (
       <Alert className="border-accent/40 bg-accent/10">
         <Plug className="size-4" />
-        <AlertTitle>Tiện ích mở rộng are loading</AlertTitle>
-        <AlertDescription>Loading connected extensions.</AlertDescription>
+        <AlertTitle>Đang tải tiện ích mở rộng</AlertTitle>
+        <AlertDescription>Đang tải tiện ích mở rộng đã kết nối.</AlertDescription>
       </Alert>
     );
   }
@@ -57,12 +57,12 @@ export function McpPanel({ data, loading, onData, onLoading }: McpPanelProps): R
         <CardHeader className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
           <div>
             <CardTitle className="flex items-center gap-2"><Server className="size-5" /> Connected extensions</CardTitle>
-            <CardDescription>Review connected extensions, available tools, and sign-in status. Giá trị bí mậts stay hidden.</CardDescription>
+            <CardDescription>Xem tiện ích đã kết nối, công cụ khả dụng và trạng thái đăng nhập. Giá trị bí mật luôn được ẩn.</CardDescription>
           </div>
-          <Button variant="outline" onClick={() => void reload()} disabled={loading}><RefreshCw className={loading ? "animate-spin" : ""} /> Reload</Button>
+          <Button variant="outline" onClick={() => void reload()} disabled={loading}><RefreshCw className={loading ? "animate-spin" : ""} /> Tải lại</Button>
         </CardHeader>
         <CardContent className="grid gap-4">
-          {data.servers.length ? data.servers.map((server) => <McpServerCard key={server.name} server={server} />) : <p className="rounded-2xl border border-dashed border-white/10 bg-background/25 p-4 text-sm text-muted-foreground">No extensions connected yet.</p>}
+          {data.servers.length ? data.servers.map((server) => <McpServerCard key={server.name} server={server} />) : <p className="rounded-2xl border border-dashed border-white/10 bg-background/25 p-4 text-sm text-muted-foreground">Chưa kết nối tiện ích mở rộng.</p>}
         </CardContent>
       </Card>
 
@@ -82,7 +82,7 @@ function McpError({ message }: { message: string }): ReactElement {
   return (
     <Alert variant="destructive">
       <AlertCircle className="size-4" />
-      <AlertTitle>Extension request failed</AlertTitle>
+      <AlertTitle>Không tải được tiện ích mở rộng</AlertTitle>
       <AlertDescription>{message}</AlertDescription>
     </Alert>
   );
@@ -94,15 +94,15 @@ function McpServerCard({ server }: { server: McpServer }): ReactElement {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="text-lg font-semibold">{server.name}</p>
-          <p className="text-muted-foreground">{server.transport} connection</p>
+          <p className="text-muted-foreground">Kết nối {server.transport}</p>
         </div>
-        <Badge variant={server.enabled ? "secondary" : "destructive"}>{server.enabled ? "enabled" : "disabled"}</Badge>
+        <Badge variant={server.enabled ? "secondary" : "destructive"}>{server.enabled ? "đã bật" : "đã tắt"}</Badge>
       </div>
       <Separator className="my-4" />
       <div className="grid gap-3 md:grid-cols-3">
-        <ConfigFlag label="Khởi động" value={server.commandConfigured ? "ready" : "chưa đặt"} />
+        <ConfigFlag label="Khởi động" value={server.commandConfigured ? "sẵn sàng" : "chưa đặt"} />
         <ConfigFlag label="Tuỳ chọn" value={String(server.argCount)} />
-        <ConfigFlag label="URL" value={server.urlConfigured ? "ready" : "chưa đặt"} />
+        <ConfigFlag label="URL" value={server.urlConfigured ? "sẵn sàng" : "chưa đặt"} />
       </div>
       <ChipSection label="Danh mục" values={server.tools.categories} attr="data-mcp-categories" />
       <ChipSection label="Công cụ" values={server.tools.names} attr="data-mcp-tools" />
@@ -114,8 +114,8 @@ function McpToolsSummary({ servers }: { servers: McpServer[] }): ReactElement {
   const toolNames = servers.flatMap((server) => server.tools.names.map((name) => `${server.name}: ${name}`));
   return (
     <Card className="border-white/10 bg-background/35">
-      <CardHeader><CardTitle className="flex items-center gap-2"><Wrench className="size-5" /> Công cụ</CardTitle><CardDescription>Tool names exposed by ready Connected extensions.</CardDescription></CardHeader>
-      <CardContent className="grid gap-2">{toolNames.length ? toolNames.map((name) => <Badge key={name} variant="outline" className="w-fit max-w-full break-all">{name}</Badge>) : <p className="text-sm text-muted-foreground">No extension actions available yet.</p>}</CardContent>
+      <CardHeader><CardTitle className="flex items-center gap-2"><Wrench className="size-5" /> Công cụ</CardTitle><CardDescription>Tên công cụ do các tiện ích mở rộng sẵn sàng cung cấp.</CardDescription></CardHeader>
+      <CardContent className="grid gap-2">{toolNames.length ? toolNames.map((name) => <Badge key={name} variant="outline" className="w-fit max-w-full break-all">{name}</Badge>) : <p className="text-sm text-muted-foreground">Chưa có thao tác từ tiện ích mở rộng.</p>}</CardContent>
     </Card>
   );
 }
@@ -126,7 +126,7 @@ function McpAuthSummary({ servers }: { servers: McpServer[] }): ReactElement {
     <Card className="border-white/10 bg-background/35">
       <CardHeader><CardTitle className="flex items-center gap-2"><KeyRound className="size-5" /> Auth</CardTitle><CardDescription>Env var names and header names only; values stay private.</CardDescription></CardHeader>
       <CardContent className="grid gap-3">
-        {authServers.length ? authServers.map((server) => <AuthServer key={server.name} server={server} />) : <p className="text-sm text-muted-foreground">No extension sign-in details available yet.</p>}
+        {authServers.length ? authServers.map((server) => <AuthServer key={server.name} server={server} />) : <p className="text-sm text-muted-foreground">Chưa có thông tin đăng nhập tiện ích mở rộng.</p>}
       </CardContent>
     </Card>
   );

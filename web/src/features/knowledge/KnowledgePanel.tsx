@@ -79,7 +79,7 @@ export function KnowledgePanel({ data, loading, onData, onLoading }: KnowledgePa
 
   async function runPendingAction(action: KnowledgeGraphAction, item: PendingKnowledgeItem): Promise<void> {
     const label = action === "approve_pending" ? "Duyệt" : action === "sanitize_pending" ? "Làm sạch" : "Từ chối";
-    await postAction({ action, id: item.id }, `${label} pending knowledge item #${item.id}?`);
+    await postAction({ action, id: item.id }, `${label} mục tri thức đang chờ #${item.id}?`);
   }
 
   async function mergeEntities(event: FormEvent<HTMLFormElement>): Promise<void> {
@@ -90,7 +90,7 @@ export function KnowledgePanel({ data, loading, onData, onLoading }: KnowledgePa
       setActionError("Chọn hai thực thể khác nhau để gộp.");
       return;
     }
-    await postAction({ action: "merge_entity", primaryId, duplicateId, reason }, `Merge entity #${duplicateId} into #${primaryId}? This may require approval.`);
+    await postAction({ action: "merge_entity", primaryId, duplicateId, reason }, `Gộp thực thể #${duplicateId} vào #${primaryId}? Thao tác này có thể cần phê duyệt.`);
   }
 
   async function updateRelation(event: FormEvent<HTMLFormElement>): Promise<void> {
@@ -109,15 +109,15 @@ export function KnowledgePanel({ data, loading, onData, onLoading }: KnowledgePa
       setActionError("Nhập độ tin cậy, bằng chứng, phạm vi hoặc độ nhạy trước khi cập nhật.");
       return;
     }
-    await postAction(body, `Update relation #${id}? This may require approval.`);
+    await postAction(body, `Cập nhật quan hệ #${id}? Thao tác này có thể cần phê duyệt.`);
   }
 
   if (!data) {
     return (
       <Alert className="border-accent/40 bg-accent/10">
         <GitBranch className="size-4" />
-        <AlertTitle>Bản đồ tri thức is loading</AlertTitle>
-        <AlertDescription>Reading local entities, relations, pending items, and trust review data.</AlertDescription>
+        <AlertTitle>Đang tải bản đồ tri thức</AlertTitle>
+        <AlertDescription>Đang đọc thực thể, quan hệ, mục đang chờ và dữ liệu đánh giá tin cậy trên máy.</AlertDescription>
       </Alert>
     );
   }
@@ -132,7 +132,7 @@ export function KnowledgePanel({ data, loading, onData, onLoading }: KnowledgePa
         <KnowledgeMetric label="Quan hệ" value={String(data.counts.relations)} />
         <KnowledgeMetric label="Đang chờ" value={String(data.counts.pending)} tone={data.counts.pending ? "warn" : "good"} />
         <KnowledgeMetric label="Mức tin tưởng" value={formatTrust(data.trust)} />
-        <KnowledgeMetric label="Trạng thái" value={data.state.paused ? "paused" : "active"} tone={data.state.paused ? "warn" : "good"} />
+        <KnowledgeMetric label="Trạng thái" value={data.state.paused ? "đang tạm dừng" : "đang hoạt động"} tone={data.state.paused ? "warn" : "good"} />
       </div>
 
       <Card className="overflow-hidden border-white/10 bg-background/35" id="knowledge-cytoscape">
@@ -140,19 +140,19 @@ export function KnowledgePanel({ data, loading, onData, onLoading }: KnowledgePa
           <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
             <div className="min-w-0">
               <CardTitle className="flex items-center gap-2 text-xl"><GitBranch className="size-5" /> 3D Tri thức Map</CardTitle>
-              <CardDescription className="mt-2 max-w-3xl">Chính spatial view for entities, relation edges, confidence, scope, sensitivity, and trust.</CardDescription>
+              <CardDescription className="mt-2 max-w-3xl">Không gian 3D cho thực thể, liên kết quan hệ, độ tin cậy, phạm vi, độ nhạy và mức tin tưởng.</CardDescription>
             </div>
             <div className="flex flex-wrap gap-2">
               <Badge variant={data.database.exists ? "secondary" : "destructive"}>{data.database.exists ? "tri thức sẵn sàng" : "chưa có tri thức"}</Badge>
-              <Badge variant={data.state.paused ? "destructive" : "outline"}>{data.state.paused ? "paused" : "active"}</Badge>
-              <Button variant="outline" onClick={() => void reload()} disabled={loading}><RefreshCw className={loading ? "animate-spin" : ""} /> Reload</Button>
+              <Badge variant={data.state.paused ? "destructive" : "outline"}>{data.state.paused ? "đang tạm dừng" : "đang hoạt động"}</Badge>
+              <Button variant="outline" onClick={() => void reload()} disabled={loading}><RefreshCw className={loading ? "animate-spin" : ""} /> Tải lại</Button>
             </div>
           </div>
           <form className="grid gap-2 lg:grid-cols-[minmax(0,1fr)_auto]" onSubmit={(event) => void search(event)}>
             <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Tìm thực thể, quan hệ và tri thức đang chờ" />
-            <Button type="submit" disabled={loading}><Search /> Tìm kiếm graph</Button>
+            <Button type="submit" disabled={loading}><Search /> Tìm trên bản đồ</Button>
           </form>
-          {data.query ? <p className="text-sm text-muted-foreground">Tìm kiếm query: <span className="text-foreground">{data.query}</span></p> : null}
+          {data.query ? <p className="text-sm text-muted-foreground">Từ khoá tìm kiếm: <span className="text-foreground">{data.query}</span></p> : null}
         </CardHeader>
         <CardContent className="grid gap-4 p-3 md:p-4">
           <KnowledgeMap3D entities={data.entities} relations={data.relations} />
@@ -164,7 +164,7 @@ export function KnowledgePanel({ data, loading, onData, onLoading }: KnowledgePa
           <CardHeader className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div>
               <CardTitle className="flex items-center gap-2"><Database className="size-5" /> Tri thức inventory</CardTitle>
-              <CardDescription>Browse one type at a time to keep review focused.</CardDescription>
+              <CardDescription>Xem từng loại một để dễ tập trung kiểm tra.</CardDescription>
             </div>
             <div className="flex rounded-2xl border border-white/10 bg-background/40 p-1 text-sm">
               <button type="button" className={`rounded-xl px-3 py-1.5 transition ${inventoryView === "entities" ? "bg-secondary text-foreground" : "text-muted-foreground hover:text-foreground"}`} onClick={() => setInventoryView("entities")}>Thực thể <span className="ml-1 text-xs opacity-70">{data.entities.length}</span></button>
@@ -178,8 +178,8 @@ export function KnowledgePanel({ data, loading, onData, onLoading }: KnowledgePa
             </div>
             <div className="no-scrollbar grid max-h-[38rem] gap-2 overflow-auto pr-1">
               {inventoryView === "entities"
-                ? data.entities.length ? data.entities.map((entity) => <EntityRow key={entity.id} entity={entity} loading={loading} onForget={(id) => postAction({ action: "forget_entity", id, reason }, `Forget entity #${id}? This may require approval.`)} />) : <EmptyText>No entities found.</EmptyText>
-                : data.relations.length ? data.relations.map((relation) => <RelationRow key={relation.id} relation={relation} loading={loading} onForget={(id) => postAction({ action: "forget_relation", id, reason }, `Forget relation #${id}? This may require approval.`)} />) : <EmptyText>No relations found.</EmptyText>}
+                ? data.entities.length ? data.entities.map((entity) => <EntityRow key={entity.id} entity={entity} loading={loading} onForget={(id) => postAction({ action: "forget_entity", id, reason }, `Quên thực thể #${id}? Thao tác này có thể cần phê duyệt.`)} />) : <EmptyText>Không tìm thấy thực thể.</EmptyText>
+                : data.relations.length ? data.relations.map((relation) => <RelationRow key={relation.id} relation={relation} loading={loading} onForget={(id) => postAction({ action: "forget_relation", id, reason }, `Quên quan hệ #${id}? Thao tác này có thể cần phê duyệt.`)} />) : <EmptyText>Không tìm thấy quan hệ.</EmptyText>}
             </div>
           </CardContent>
         </Card>
@@ -187,22 +187,22 @@ export function KnowledgePanel({ data, loading, onData, onLoading }: KnowledgePa
         <div className="grid content-start gap-4">
           <Card className="border-white/10 bg-background/35">
             <CardHeader>
-              <CardTitle className="flex items-center gap-2"><ShieldAlert className="size-5" /> Đang chờ review</CardTitle>
-              <CardDescription>Duyệt, reject, or sanitize extracted knowledge before it lands in memory.</CardDescription>
+              <CardTitle className="flex items-center gap-2"><ShieldAlert className="size-5" /> Đang chờ duyệt</CardTitle>
+              <CardDescription>Duyệt, từ chối hoặc làm sạch tri thức đã trích xuất trước khi lưu vào bộ nhớ.</CardDescription>
             </CardHeader>
             <CardContent className="no-scrollbar grid max-h-80 gap-3 overflow-auto pr-1">
-              {data.pending.length ? data.pending.map((item) => <PendingRow key={item.id} item={item} loading={loading} onAction={runPendingAction} />) : <EmptyText>No pending knowledge items.</EmptyText>}
+              {data.pending.length ? data.pending.map((item) => <PendingRow key={item.id} item={item} loading={loading} onAction={runPendingAction} />) : <EmptyText>Không có tri thức đang chờ.</EmptyText>}
             </CardContent>
           </Card>
 
           <Card className="border-white/10 bg-background/35">
             <CardHeader>
-              <CardTitle className="flex items-center gap-2"><Sparkles className="size-5" /> Graph actions</CardTitle>
-              <CardDescription>Xác nhậnation-gated cleanup and relation edits.</CardDescription>
+              <CardTitle className="flex items-center gap-2"><Sparkles className="size-5" /> Thao tác bản đồ</CardTitle>
+              <CardDescription>Dọn dẹp và chỉnh quan hệ sau khi bạn xác nhận.</CardDescription>
             </CardHeader>
             <CardContent className="grid gap-4">
               <div className="grid gap-2">
-                <Label htmlFor="knowledge-reason">Reason</Label>
+                <Label htmlFor="knowledge-reason">Lý do</Label>
                 <Textarea id="knowledge-reason" value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Lý do tuỳ chọn để lưu lịch sử" rows={2} />
               </div>
               <form className="grid gap-3" onSubmit={(event) => void mergeEntities(event)}>
@@ -210,14 +210,14 @@ export function KnowledgePanel({ data, loading, onData, onLoading }: KnowledgePa
                   <EntitySelect id="knowledge-primary-entity" label="Thực thể chính" value={mergePrimaryId} onChange={setMergePrimaryId} entities={entityOptions} />
                   <EntitySelect id="knowledge-duplicate-entity" label="Thực thể trùng" value={mergeDuplicateId} onChange={setMergeDuplicateId} entities={entityOptions} />
                 </div>
-                <Button type="submit" variant="outline" disabled={loading || entityOptions.length < 2} data-knowledge-graph-action="merge_entity"><Merge /> Merge entities</Button>
+                <Button type="submit" variant="outline" disabled={loading || entityOptions.length < 2} data-knowledge-graph-action="merge_entity"><Merge /> Gộp thực thể</Button>
               </form>
               <Separator />
               <form className="grid gap-3" onSubmit={(event) => void updateRelation(event)}>
                 <div className="grid gap-2">
-                  <Label htmlFor="knowledge-relation-select">Relation</Label>
+                  <Label htmlFor="knowledge-relation-select">Quan hệ</Label>
                   <Select id="knowledge-relation-select" value={relationDraft.relationId} onChange={(event) => setRelationDraft((current) => ({ ...current, relationId: event.target.value }))} data-knowledge-select="relation">
-                    <option value="">Choose relation</option>
+                    <option value="">Chọn quan hệ</option>
                     {relationOptions.map((relation) => <option key={relation.id} value={relation.id}>#{relation.id} {relation.sourceName} ? {relation.targetName}</option>)}
                   </Select>
                 </div>
@@ -231,7 +231,7 @@ export function KnowledgePanel({ data, loading, onData, onLoading }: KnowledgePa
                   </Select>
                 </div>
                 <Textarea value={relationDraft.evidence} onChange={(event) => setRelationDraft((current) => ({ ...current, evidence: event.target.value }))} placeholder="Bằng chứng cập nhật" rows={2} />
-                <Button type="submit" variant="outline" disabled={loading || !relationOptions.length} data-knowledge-graph-action="update_relation"><Check /> Cập nhật relation</Button>
+                <Button type="submit" variant="outline" disabled={loading || !relationOptions.length} data-knowledge-graph-action="update_relation"><Check /> Cập nhật quan hệ</Button>
               </form>
             </CardContent>
           </Card>
@@ -249,7 +249,7 @@ function KnowledgeError({ message }: { message: string }): ReactElement {
   return (
     <Alert variant="destructive">
       <AlertCircle className="size-4" />
-      <AlertTitle>Tri thức graph request failed</AlertTitle>
+      <AlertTitle>Không tải được bản đồ tri thức</AlertTitle>
       <AlertDescription>{message}</AlertDescription>
     </Alert>
   );
@@ -322,12 +322,12 @@ function KnowledgeMap3D({ entities, relations }: { entities: KnowledgeEntity[]; 
         .width(container.clientWidth || 900)
         .height(container.clientHeight || 520)
         .graphData(graphData)
-        .nodeLabel((node) => `${node.name}<br/>${node.kind} ? ${formatPercent(node.confidence)} ? ${node.trust}`)
+        .nodeLabel((node) => `${node.name}<br/>${formatKnowledgeKind(node.kind)} · ${formatPercent(node.confidence)} · ${formatKnowledgeTrustLabel(node.trust)}`)
         .nodeVal((node) => node.size)
         .nodeColor((node) => node.color)
         .nodeOpacity(0.92)
         .nodeResolution(24)
-        .linkLabel((link) => `${link.relation.sourceName} ${link.relationType} ${link.relation.targetName}<br/>confidence ${formatPercent(link.confidence)}`)
+        .linkLabel((link) => `${link.relation.sourceName} ${link.relationType} ${link.relation.targetName}<br/>độ tin cậy ${formatPercent(link.confidence)}`)
         .linkColor((link) => link.color)
         .linkWidth((link) => 0.8 + link.confidence * 2.8)
         .linkOpacity(0.48)
@@ -363,18 +363,18 @@ function KnowledgeMap3D({ entities, relations }: { entities: KnowledgeEntity[]; 
     };
   }, [graphData]);
 
-  if (!entities.length) return <EmptyText>No entities to map yet.</EmptyText>;
+  if (!entities.length) return <EmptyText>Chưa có thực thể để vẽ bản đồ.</EmptyText>;
 
   return (
     <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-[radial-gradient(circle_at_50%_20%,rgba(166,244,172,0.15),transparent_18rem),radial-gradient(circle_at_80%_65%,rgba(255,181,91,0.10),transparent_18rem),linear-gradient(135deg,rgba(255,255,255,0.06),rgba(255,255,255,0.01))]" data-knowledge-map-3d>
-      <div className="absolute left-4 top-4 z-10 flex flex-wrap gap-2 text-xs"><Badge variant="secondary">{graphData.nodes.length} nodes</Badge><Badge variant="outline">{graphData.links.length} links</Badge><Badge variant="outline">Interactive 3D map</Badge></div>
+      <div className="absolute left-4 top-4 z-10 flex flex-wrap gap-2 text-xs"><Badge variant="secondary">{graphData.nodes.length} node</Badge><Badge variant="outline">{graphData.links.length} liên kết</Badge><Badge variant="outline">Bản đồ 3D tương tác</Badge></div>
       <div ref={containerRef} className="h-[28rem] w-full sm:h-[34rem] xl:h-[42rem]" data-knowledge-map-canvas />
       <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 bg-gradient-to-t from-background/90 via-background/45 to-transparent p-4 pt-16">
         <div className="grid gap-2 text-xs text-muted-foreground md:grid-cols-3">
-          <span>Drag to orbit / scroll to zoom / click node to focus</span><span>Particles show relation direction and confidence</span><span>Red = sensitive, green/blue = normal scoped memory</span>
+          <span>Kéo để xoay / cuộn để phóng to / bấm node để tập trung</span><span>Hạt chuyển động thể hiện hướng quan hệ và độ tin cậy</span><span>Đỏ = nhạy cảm, xanh lá/xanh dương = bộ nhớ phạm vi thường</span>
         </div>
       </div>
-      {selectedNode ? <div className="absolute right-4 top-4 z-10 max-w-xs rounded-2xl border border-white/10 bg-background/85 p-3 text-xs shadow-xl backdrop-blur" data-knowledge-map-selected><p className="font-semibold text-foreground">{selectedNode.name}</p><p className="mt-1 text-muted-foreground">{selectedNode.kind} / {selectedNode.scope} / confidence {formatPercent(selectedNode.confidence)}</p><p className="mt-1 text-muted-foreground">trust {selectedNode.trust}</p></div> : null}
+      {selectedNode ? <div className="absolute right-4 top-4 z-10 max-w-xs rounded-2xl border border-white/10 bg-background/85 p-3 text-xs shadow-xl backdrop-blur" data-knowledge-map-selected><p className="font-semibold text-foreground">{selectedNode.name}</p><p className="mt-1 text-muted-foreground">{formatKnowledgeKind(selectedNode.kind)} / {formatKnowledgeScope(selectedNode.scope)} / độ tin cậy {formatPercent(selectedNode.confidence)}</p><p className="mt-1 text-muted-foreground">mức tin tưởng {formatKnowledgeTrustLabel(selectedNode.trust)}</p></div> : null}
       <div className="hidden" data-knowledge-map-node={graphData.nodes[0]?.id ?? "none"} />
       <div className="hidden" data-knowledge-map-edge={graphData.links[0]?.id ?? "none"} />
     </div>
@@ -433,11 +433,11 @@ function EntityRow({ entity, loading, onForget }: { entity: KnowledgeEntity; loa
       <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
         <div className="min-w-0">
           <p className="truncate font-semibold">#{entity.id} {entity.canonicalName}</p>
-          <p className="mt-1 truncate text-xs text-muted-foreground">{entity.kind}{entity.aliases.length ? ` · ${entity.aliases.slice(0, 3).join(", ")}${entity.aliases.length > 3 ? "…" : ""}` : ""}</p>
+          <p className="mt-1 truncate text-xs text-muted-foreground">{formatKnowledgeKind(entity.kind)}{entity.aliases.length ? ` · ${entity.aliases.slice(0, 3).join(", ")}${entity.aliases.length > 3 ? "…" : ""}` : ""}</p>
         </div>
-        <div className="flex flex-wrap items-center gap-2 md:justify-end"><Badge variant="outline">{entity.scope}</Badge><Badge variant={entity.sensitivity === "sensitive" ? "destructive" : "secondary"}>{entity.sensitivity}</Badge><Badge variant="outline">{formatPercent(entity.confidence)}</Badge><Button size="sm" variant="ghost" onClick={() => void onForget(entity.id)} disabled={loading} data-knowledge-action="forget_entity"><Trash2 /> Forget</Button></div>
+        <div className="flex flex-wrap items-center gap-2 md:justify-end"><Badge variant="outline">{formatKnowledgeScope(entity.scope)}</Badge><Badge variant={entity.sensitivity === "sensitive" ? "destructive" : "secondary"}>{formatSensitivity(entity.sensitivity)}</Badge><Badge variant="outline">{formatPercent(entity.confidence)}</Badge><Button size="sm" variant="ghost" onClick={() => void onForget(entity.id)} disabled={loading} data-knowledge-action="forget_entity"><Trash2 /> Quên</Button></div>
       </div>
-      <p className="mt-2 text-xs text-muted-foreground">trust {formatTrust(entity.trust)} · updated {formatDate(entity.updatedAt)}</p>
+      <p className="mt-2 text-xs text-muted-foreground">độ tin cậy {formatTrust(entity.trust)} · cập nhật {formatDate(entity.updatedAt)}</p>
     </div>
   );
 }
@@ -448,11 +448,11 @@ function RelationRow({ relation, loading, onForget }: { relation: KnowledgeRelat
       <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
         <div className="min-w-0">
           <p className="truncate font-semibold">#{relation.id} {relation.sourceName} <span className="text-muted-foreground">→ {relation.targetName}</span></p>
-          <p className="mt-1 truncate text-xs text-muted-foreground"><span className="text-foreground/80">{relation.relationType}</span>{relation.evidence ? ` · ${relation.evidence}` : " · Chưa có nội dung bằng chứng."}</p>
+          <p className="mt-1 truncate text-xs text-muted-foreground"><span className="text-foreground/80">{formatRelationType(relation.relationType)}</span>{relation.evidence ? ` · ${relation.evidence}` : " · Chưa có nội dung bằng chứng."}</p>
         </div>
-        <div className="flex flex-wrap items-center gap-2 md:justify-end"><Badge variant="outline">{relation.scope}</Badge><Badge variant={relation.sensitivity === "sensitive" ? "destructive" : "secondary"}>{relation.sensitivity}</Badge><Badge variant="outline">{formatPercent(relation.confidence)}</Badge><Button size="sm" variant="ghost" onClick={() => void onForget(relation.id)} disabled={loading} data-knowledge-action="forget_relation"><Link2Off /> Forget</Button></div>
+        <div className="flex flex-wrap items-center gap-2 md:justify-end"><Badge variant="outline">{formatKnowledgeScope(relation.scope)}</Badge><Badge variant={relation.sensitivity === "sensitive" ? "destructive" : "secondary"}>{formatSensitivity(relation.sensitivity)}</Badge><Badge variant="outline">{formatPercent(relation.confidence)}</Badge><Button size="sm" variant="ghost" onClick={() => void onForget(relation.id)} disabled={loading} data-knowledge-action="forget_relation"><Link2Off /> Quên</Button></div>
       </div>
-      <p className="mt-2 text-xs text-muted-foreground">trust {formatTrust(relation.trust)} · updated {formatDate(relation.updatedAt)}</p>
+      <p className="mt-2 text-xs text-muted-foreground">độ tin cậy {formatTrust(relation.trust)} · cập nhật {formatDate(relation.updatedAt)}</p>
     </div>
   );
 }
@@ -504,8 +504,33 @@ function formatPercent(value: number): string {
 
 function formatTrust(value: { score?: unknown; level?: unknown; label?: unknown } | undefined): string {
   if (!value) return "-";
-  if (typeof value.label === "string" && value.label) return value.label;
-  if (typeof value.level === "string" && value.level) return value.level;
+  if (typeof value.label === "string" && value.label) return formatKnowledgeTrustLabel(value.label);
+  if (typeof value.level === "string" && value.level) return formatKnowledgeTrustLabel(value.level);
   if (typeof value.score === "number") return formatPercent(value.score);
-  return "review";
+  return "cần xem xét";
+}
+
+function formatKnowledgeKind(value: string): string {
+  return formatKnowledgeValue(value, { person: "người", project: "dự án", preference: "sở thích", topic: "chủ đề", fact: "thông tin", entity: "thực thể" });
+}
+
+function formatKnowledgeScope(value: string): string {
+  return formatKnowledgeValue(value, { core: "cốt lõi", project: "dự án", session: "phiên", global: "toàn cục", local: "cục bộ" });
+}
+
+function formatSensitivity(value: string): string {
+  return formatKnowledgeValue(value, { sensitive: "nhạy cảm", normal: "bình thường", public: "công khai", private: "riêng tư" });
+}
+
+function formatRelationType(value: string): string {
+  return formatKnowledgeValue(value, { likes: "thích", dislikes: "không thích", works_on: "làm việc với", related_to: "liên quan đến", owns: "sở hữu", uses: "dùng" });
+}
+
+function formatKnowledgeTrustLabel(value: string): string {
+  return formatKnowledgeValue(value, { high: "cao", medium: "trung bình", low: "thấp", review: "cần xem xét", trusted: "đáng tin", uncertain: "chưa chắc chắn" });
+}
+
+function formatKnowledgeValue(value: string, dictionary: Record<string, string>): string {
+  if (!value) return "-";
+  return dictionary[value] ?? value.replace(/[_-]+/g, " ");
 }

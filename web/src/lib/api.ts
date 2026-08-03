@@ -10,7 +10,7 @@ export async function fetchJson<T = JsonRecord>(path: string, init?: RequestInit
     },
   });
   const data = (await response.json()) as JsonRecord;
-  if (!response.ok) throw new Error(readText(data.error) || `Request failed: ${response.status}`);
+  if (!response.ok) throw new Error(readText(data.error) || `Yêu cầu thất bại: ${response.status}`);
   return data as T;
 }
 

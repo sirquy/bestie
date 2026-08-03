@@ -110,7 +110,7 @@ export function SkillsPanel({ data, loading, onData, onLoading }: SkillsPanelPro
     const previousName = selectedSkill?.name;
     await runSummaryAction(
       () => fetchJson<SkillsSummary>("/api/skills/item", { method: "PUT", body: JSON.stringify({ name: draftName, content: draftContent, previousName }) }),
-      `Skill ${draftName} saved.`,
+      `Đã lưu kỹ năng ${draftName}.`,
     );
     setSelectedSkill(null);
   }
@@ -122,7 +122,7 @@ export function SkillsPanel({ data, loading, onData, onLoading }: SkillsPanelPro
   }
 
   async function installLibrarySkill(item: SkillLibraryItem): Promise<void> {
-    await confirmSkillAction("/api/skills/install", { name: item.name, sourceId: item.sourceId }, `Install skill ${item.name}?`, `Skill ${item.name} installed.`);
+    await confirmSkillAction("/api/skills/install", { name: item.name, sourceId: item.sourceId }, `Cài kỹ năng ${item.name}?`, `Đã cài kỹ năng ${item.name}.`);
     await loadLibrary();
   }
 
@@ -133,7 +133,7 @@ export function SkillsPanel({ data, loading, onData, onLoading }: SkillsPanelPro
     setLibraryLoading(true);
     try {
       const result = await fetchJson<SkillRemoteRegistryTestResult>("/api/skills/registry/test", { method: "POST", body: JSON.stringify({ confirm: true }) });
-      setActionMessage(result.error ? `Skill library could not be checked: ${result.error}` : result.configured ? "Thư viện kỹ năng đã sẵn sàng." : "Chưa kết nối thư viện kỹ năng.");
+      setActionMessage(result.error ? `Không thể kiểm tra thư viện kỹ năng: ${result.error}` : result.configured ? "Thư viện kỹ năng đã sẵn sàng." : "Chưa kết nối thư viện kỹ năng.");
       await loadLibrary();
     } catch (error: unknown) {
       setActionError(formatError(error));
@@ -161,8 +161,8 @@ export function SkillsPanel({ data, loading, onData, onLoading }: SkillsPanelPro
     return (
       <Alert className="border-accent/40 bg-accent/10">
         <WandSparkles className="size-4" />
-        <AlertTitle>Kỹ năng are loading</AlertTitle>
-        <AlertDescription>Loading Bestie's installed skills.</AlertDescription>
+        <AlertTitle>Đang tải kỹ năng</AlertTitle>
+        <AlertDescription>Đang tải kỹ năng đã cài cho Bestie.</AlertDescription>
       </Alert>
     );
   }
@@ -170,7 +170,7 @@ export function SkillsPanel({ data, loading, onData, onLoading }: SkillsPanelPro
   return (
     <div className="grid gap-4">
       {actionError ? <SkillsError message={actionError} /> : null}
-      {actionMessage ? <Alert className="border-primary/40 bg-primary/10"><Check className="size-4" /><AlertTitle>Kỹ năng updated</AlertTitle><AlertDescription>{actionMessage}</AlertDescription></Alert> : null}
+      {actionMessage ? <Alert className="border-primary/40 bg-primary/10"><Check className="size-4" /><AlertTitle>Kỹ năng đã cập nhật</AlertTitle><AlertDescription>{actionMessage}</AlertDescription></Alert> : null}
 
       <div className="grid gap-3 md:grid-cols-4" data-skills-summary>
         <Metric label="Đã cài" value={String(data.count)} tone="good" />
@@ -182,19 +182,19 @@ export function SkillsPanel({ data, loading, onData, onLoading }: SkillsPanelPro
       <Card className="border-white/10 bg-background/35">
         <CardHeader className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
           <div>
-            <CardTitle className="flex items-center gap-2"><BookOpen className="size-5" /> Kỹ năng workspace</CardTitle>
+            <CardTitle className="flex items-center gap-2"><BookOpen className="size-5" /> Không gian kỹ năng</CardTitle>
             <CardDescription>{data.skillsDir}</CardDescription>
           </div>
           <div className="flex flex-wrap gap-2">
             <Button variant={mode === "installed" ? "default" : "outline"} onClick={() => setMode("installed")}>Đã cài</Button>
             <Button variant={mode === "library" ? "default" : "outline"} onClick={() => { setMode("library"); if (!library && !libraryLoading) void loadLibrary(); }}>Thư viện</Button>
-            <Button variant="outline" onClick={() => void reloadInstalled()} disabled={loading}><RefreshCw className={loading ? "animate-spin" : ""} /> Reload</Button>
+            <Button variant="outline" onClick={() => void reloadInstalled()} disabled={loading}><RefreshCw className={loading ? "animate-spin" : ""} /> Tải lại</Button>
           </div>
         </CardHeader>
         <CardContent>
           <div className="grid gap-2 md:grid-cols-[1fr_auto]">
             <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Tìm kỹ năng theo tên, mô tả, danh mục hoặc quyền" />
-            <Button type="button" variant="outline" onClick={() => setQuery("")}><Search /> Clear</Button>
+            <Button type="button" variant="outline" onClick={() => setQuery("")}><Search /> Xoá lọc</Button>
           </div>
         </CardContent>
       </Card>
@@ -209,29 +209,29 @@ export function SkillsPanel({ data, loading, onData, onLoading }: SkillsPanelPro
             {mode === "library" ? (
               <LibraryList library={library} loading={libraryLoading} items={filteredLibrary} onReload={loadLibrary} onOpen={openLibraryItem} onInstall={installLibrarySkill} onTest={testRemoteRegistry} onClearCache={clearRegistryCache} />
             ) : filteredInstalled.length ? (
-              filteredInstalled.map((skill) => <InstalledSkillRow key={skill.name} skill={skill} loading={loading} onOpen={openSkill} onToggle={(enabled) => confirmSkillAction("/api/skills/toggle", { name: skill.name, enabled }, `${enabled ? "Bật" : "Tắt"} skill ${skill.name}?`, `Skill ${skill.name} ${enabled ? "enabled" : "disabled"}.`)} onDelete={() => confirmSkillAction("/api/skills/delete", { name: skill.name }, `Delete skill ${skill.name}? It will be archived before removal.`, `Skill ${skill.name} deleted.`)} onRollback={() => confirmSkillAction("/api/skills/rollback", { name: skill.name }, `Rollback skill ${skill.name} to latest backup?`, `Skill ${skill.name} rolled back.`)} />)
-            ) : <EmptyText>No installed skills found.</EmptyText>}
+              filteredInstalled.map((skill) => <InstalledSkillRow key={skill.name} skill={skill} loading={loading} onOpen={openSkill} onToggle={(enabled) => confirmSkillAction("/api/skills/toggle", { name: skill.name, enabled }, `${enabled ? "Bật" : "Tắt"} kỹ năng ${skill.name}?`, `Đã ${enabled ? "bật" : "tắt"} kỹ năng ${skill.name}.`)} onDelete={() => confirmSkillAction("/api/skills/delete", { name: skill.name }, `Xoá kỹ năng ${skill.name}? Kỹ năng sẽ được lưu trữ trước khi xoá.`, `Đã xoá kỹ năng ${skill.name}.`)} onRollback={() => confirmSkillAction("/api/skills/rollback", { name: skill.name }, `Khôi phục kỹ năng ${skill.name} về bản sao lưu mới nhất?`, `Đã khôi phục kỹ năng ${skill.name}.`)} />)
+            ) : <EmptyText>Không tìm thấy kỹ năng đã cài.</EmptyText>}
           </CardContent>
         </Card>
 
         <Card className="border-white/10 bg-background/35" data-skill-editor>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2"><Code2 className="size-5" /> Skill editor</CardTitle>
+            <CardTitle className="flex items-center gap-2"><Code2 className="size-5" /> Trình sửa kỹ năng</CardTitle>
             <CardDescription>{selectedLibraryItem ? "Xem trước nội dung thư viện trước khi cài." : "Chỉnh nội dung kỹ năng cục bộ. Không lưu bí mật trong kỹ năng."}</CardDescription>
           </CardHeader>
           <CardContent>
             <form className="grid gap-3" onSubmit={(event) => void saveDraft(event)}>
               <div className="grid gap-2 md:grid-cols-[1fr_auto] md:items-end">
                 <div className="grid gap-2">
-                  <Label htmlFor="skill-name">Skill name</Label>
+                  <Label htmlFor="skill-name">Tên kỹ năng</Label>
                   <Input id="skill-name" value={draftName} onChange={(event) => setDraftName(event.target.value)} placeholder="my-skill" data-skill-name-input />
                 </div>
-                <Button type="button" variant="outline" onClick={() => { setSelectedSkill(null); setSelectedLibraryItem(null); setSelectedDiff(null); setDraftName("new-skill"); setDraftContent("# Kỹ năng mới\\n\\nMô tả khi nào và cách Bestie nên dùng kỹ năng này.\\n"); }}><FileText /> New local</Button>
+                <Button type="button" variant="outline" onClick={() => { setSelectedSkill(null); setSelectedLibraryItem(null); setSelectedDiff(null); setDraftName("new-skill"); setDraftContent("# Kỹ năng mới\\n\\nMô tả khi nào và cách Bestie nên dùng kỹ năng này.\\n"); }}><FileText /> Tạo kỹ năng cục bộ</Button>
               </div>
               <Textarea value={draftContent} onChange={(event) => setDraftContent(event.target.value)} rows={18} placeholder="# Kỹ năng\\n\\nHướng dẫn..." data-skill-content />
               <div className="flex flex-wrap gap-2">
-                <Button type="submit" disabled={loading || !draftName.trim() || !draftContent.trim()} data-skill-action="save"><Save /> Save local skill</Button>
-                {selectedLibraryItem ? <Button type="button" variant="outline" disabled={loading || !selectedLibraryItem.skill.installable} onClick={() => void installLibrarySkill(selectedLibraryItem.skill)} data-skill-action="install"><Download /> Cài đặt previewed</Button> : null}
+                <Button type="submit" disabled={loading || !draftName.trim() || !draftContent.trim()} data-skill-action="save"><Save /> Lưu kỹ năng cục bộ</Button>
+                {selectedLibraryItem ? <Button type="button" variant="outline" disabled={loading || !selectedLibraryItem.skill.installable} onClick={() => void installLibrarySkill(selectedLibraryItem.skill)} data-skill-action="install"><Download /> Cài bản xem trước</Button> : null}
               </div>
             </form>
             {selectedSkill ? <SkillDetails skill={selectedSkill} /> : null}
@@ -251,11 +251,11 @@ function LibraryList({ library, loading, items, onReload, onOpen, onInstall, onT
   return (
     <div className="grid gap-3">
       <div className="flex flex-wrap gap-2">
-        <Button variant="outline" onClick={() => void onReload()} disabled={loading}><RefreshCw className={loading ? "animate-spin" : ""} /> Load library</Button>
-        <Button variant="outline" onClick={() => void onTest()} disabled={loading}><ShieldCheck /> Test remote</Button>
-        <Button variant="outline" onClick={() => void onClearCache()} disabled={loading}><RotateCcw /> Clear cache</Button>
+        <Button variant="outline" onClick={() => void onReload()} disabled={loading}><RefreshCw className={loading ? "animate-spin" : ""} /> Tải thư viện</Button>
+        <Button variant="outline" onClick={() => void onTest()} disabled={loading}><ShieldCheck /> Kiểm tra từ xa</Button>
+        <Button variant="outline" onClick={() => void onClearCache()} disabled={loading}><RotateCcw /> Xoá bộ nhớ đệm</Button>
       </div>
-      {library ? <div className="rounded-2xl border border-white/10 bg-card/60 p-3 text-sm"><p className="font-semibold">{library.registry.activeSource.name}</p><p className="mt-1 text-muted-foreground">{library.installedCount}/{library.count} installed / registry {library.registry.validation.ok ? "valid" : "có vấn đề"}</p></div> : null}
+      {library ? <div className="rounded-2xl border border-white/10 bg-card/60 p-3 text-sm"><p className="font-semibold">{library.registry.activeSource.name}</p><p className="mt-1 text-muted-foreground">{library.installedCount}/{library.count} ?? c?i / danh m?c {library.registry.validation.ok ? "valid" : "có vấn đề"}</p></div> : null}
       {items.length ? items.map((item) => <LibrarySkillRow key={`${item.sourceId}:${item.name}`} item={item} loading={loading} onOpen={onOpen} onInstall={onInstall} />) : <EmptyText>{library ? "Không có kỹ năng nào khớp tìm kiếm." : "Tải thư viện để xem các kỹ năng có thể cài."}</EmptyText>}
     </div>
   );
@@ -266,15 +266,15 @@ function InstalledSkillRow({ skill, loading, onOpen, onToggle, onDelete, onRollb
     <div className="skill-row rounded-2xl border border-white/10 bg-card/60 p-4 text-sm" data-skill-row={skill.name}>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div><p className="font-semibold">{skill.name}</p><p className="mt-1 text-muted-foreground">{skill.preview || skill.path}</p></div>
-        <div className="flex flex-wrap gap-2"><Badge variant={skill.enabled ? "secondary" : "outline"}>{skill.enabled ? "enabled" : "disabled"}</Badge>{skill.localChanges ? <Badge variant="destructive">đã sửa cục bộ</Badge> : null}</div>
+        <div className="flex flex-wrap gap-2"><Badge variant={skill.enabled ? "secondary" : "outline"}>{skill.enabled ? "đã bật" : "đã tắt"}</Badge>{skill.localChanges ? <Badge variant="destructive">đã sửa cục bộ</Badge> : null}</div>
       </div>
       <Separator className="my-3" />
       <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-muted-foreground">
-        <span>{formatBytes(skill.bytes)} / {skill.manifest?.source ?? "local"}</span>
+        <span>{formatBytes(skill.bytes)} / {skill.manifest?.source ?? "cục bộ"}</span>
         <div className="flex flex-wrap gap-2">
-          <Button size="sm" variant="outline" onClick={() => void onOpen(skill.name)} disabled={loading} data-skill-action="open">Open</Button>
+          <Button size="sm" variant="outline" onClick={() => void onOpen(skill.name)} disabled={loading} data-skill-action="open">Mở</Button>
           <Button size="sm" variant="outline" onClick={() => void onToggle(!skill.enabled)} disabled={loading} data-skill-action="toggle">{skill.enabled ? "Tắt" : "Bật"}</Button>
-          <Button size="sm" variant="outline" onClick={() => void onRollback()} disabled={loading || !skill.rollbackAvailable} data-skill-action="rollback"><RotateCcw /> Rollback</Button>
+          <Button size="sm" variant="outline" onClick={() => void onRollback()} disabled={loading || !skill.rollbackAvailable} data-skill-action="rollback"><RotateCcw /> Khôi phục</Button>
           <Button size="sm" variant="outline" onClick={() => void onDelete()} disabled={loading} data-skill-action="delete"><Trash2 /> Xoá</Button>
         </div>
       </div>
@@ -287,12 +287,12 @@ function LibrarySkillRow({ item, loading, onOpen, onInstall }: { item: SkillLibr
     <div className="skill-row rounded-2xl border border-white/10 bg-card/60 p-4 text-sm" data-skill-library-row={item.name}>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div><p className="font-semibold">{item.title}</p><p className="mt-1 text-muted-foreground">{item.description}</p></div>
-        <div className="flex flex-wrap gap-2"><Badge variant="outline">{item.category}</Badge><Badge variant={item.risk === "high" ? "destructive" : item.risk === "medium" ? "secondary" : "outline"}>{item.risk}</Badge>{item.updateAvailable ? <Badge variant="secondary">update</Badge> : null}</div>
+        <div className="flex flex-wrap gap-2"><Badge variant="outline">{item.category}</Badge><Badge variant={item.risk === "high" ? "destructive" : item.risk === "medium" ? "secondary" : "outline"}>{formatSkillRisk(item.risk)}</Badge>{item.updateAvailable ? <Badge variant="secondary">cập nhật</Badge> : null}</div>
       </div>
       <Separator className="my-3" />
       <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-muted-foreground">
-        <span>{item.sourceName} / {item.version} / {item.trust} / {item.verificationStatus}</span>
-        <div className="flex flex-wrap gap-2"><Button size="sm" variant="outline" onClick={() => void onOpen(item)} disabled={loading} data-skill-action="preview">Preview</Button><Button size="sm" onClick={() => void onInstall(item)} disabled={loading || !item.installable} data-skill-action="install"><Download /> {item.installed ? "Cập nhật" : "Cài đặt"}</Button></div>
+        <span>{item.sourceName} / {item.version} / {formatSkillTrust(item.trust)} / {formatVerificationStatus(item.verificationStatus)}</span>
+        <div className="flex flex-wrap gap-2"><Button size="sm" variant="outline" onClick={() => void onOpen(item)} disabled={loading} data-skill-action="preview">Xem trước</Button><Button size="sm" onClick={() => void onInstall(item)} disabled={loading || !item.installable} data-skill-action="install"><Download /> {item.installed ? "Cập nhật" : "Cài đặt"}</Button></div>
       </div>
       {item.installBlockedReason ? <p className="mt-2 text-xs text-destructive">{item.installBlockedReason}</p> : null}
     </div>
@@ -300,22 +300,22 @@ function LibrarySkillRow({ item, loading, onOpen, onInstall }: { item: SkillLibr
 }
 
 function SkillDetails({ skill }: { skill: SkillItemResponse }): ReactElement {
-  return <div className="mt-4 rounded-2xl border border-white/10 bg-card/60 p-4 text-sm"><p className="font-semibold">{skill.path}</p><p className="mt-1 text-muted-foreground">Source: {skill.manifest?.source ?? "local"}{skill.manifest?.libraryVersion ? ` / ${skill.manifest.libraryVersion}` : ""}</p></div>;
+  return <div className="mt-4 rounded-2xl border border-white/10 bg-card/60 p-4 text-sm"><p className="font-semibold">{skill.path}</p><p className="mt-1 text-muted-foreground">Nguồn: {skill.manifest?.source ?? "cục bộ"}{skill.manifest?.libraryVersion ? ` / ${skill.manifest.libraryVersion}` : ""}</p></div>;
 }
 
 function LibraryDetails({ item, diff }: { item: SkillLibraryItem; diff: SkillLibraryDiff | null }): ReactElement {
   return (
     <div className="mt-4 grid gap-3 rounded-2xl border border-white/10 bg-card/60 p-4 text-sm">
-      <div className="flex flex-wrap gap-2"><Badge variant="outline">{item.author}</Badge><Badge variant="outline">{item.sourceName}</Badge><Badge variant={item.localChanges ? "destructive" : "secondary"}>{item.localChanges ? "đã sửa cục bộ" : item.installed ? "installed" : "chưa cài"}</Badge></div>
+      <div className="flex flex-wrap gap-2"><Badge variant="outline">{item.author}</Badge><Badge variant="outline">{item.sourceName}</Badge><Badge variant={item.localChanges ? "destructive" : "secondary"}>{item.localChanges ? "đã sửa cục bộ" : item.installed ? "đã cài" : "chưa cài"}</Badge></div>
       <p className="text-muted-foreground">{item.changelog || item.preview}</p>
-      {item.permissions.length ? <p className="text-muted-foreground">Needs access: {item.permissions.join(", ")}</p> : null}
-      {diff ? <div className="rounded-xl border border-white/10 bg-background/35 p-3"><p className="font-semibold">Change preview: +{diff.addedLines} / -{diff.removedLines}</p><pre className="no-scrollbar mt-2 max-h-48 overflow-auto whitespace-pre-wrap text-xs text-muted-foreground">{diff.preview.slice(0, 30).map((line) => `${line.kind === "added" ? "+" : line.kind === "removed" ? "-" : " "} ${line.text}`).join("\n")}</pre></div> : null}
+      {item.permissions.length ? <p className="text-muted-foreground">Cần quyền: {item.permissions.join(", ")}</p> : null}
+      {diff ? <div className="rounded-xl border border-white/10 bg-background/35 p-3"><p className="font-semibold">Xem trước thay đổi: +{diff.addedLines} / -{diff.removedLines}</p><pre className="no-scrollbar mt-2 max-h-48 overflow-auto whitespace-pre-wrap text-xs text-muted-foreground">{diff.preview.slice(0, 30).map((line) => `${line.kind === "added" ? "+" : line.kind === "removed" ? "-" : " "} ${line.text}`).join("\n")}</pre></div> : null}
     </div>
   );
 }
 
 function SkillsError({ message }: { message: string }): ReactElement {
-  return <Alert variant="destructive"><AlertCircle className="size-4" /><AlertTitle>Kỹ năng request failed</AlertTitle><AlertDescription>{message}</AlertDescription></Alert>;
+  return <Alert variant="destructive"><AlertCircle className="size-4" /><AlertTitle>Không tải được kỹ năng</AlertTitle><AlertDescription>{message}</AlertDescription></Alert>;
 }
 
 function Metric({ label, value, tone = "neutral" }: { label: string; value: string; tone?: "good" | "warn" | "neutral" }): ReactElement {
@@ -341,4 +341,27 @@ function filterLibrary(skills: SkillLibraryItem[], query: string): SkillLibraryI
 function formatBytes(value: number): string {
   if (value < 1024) return `${value} B`;
   return `${(value / 1024).toFixed(1)} KB`;
+}
+
+function formatSkillRisk(risk: string): string {
+  if (risk === "high") return "rủi ro cao";
+  if (risk === "medium") return "rủi ro vừa";
+  if (risk === "low") return "rủi ro thấp";
+  return risk;
+}
+
+function formatSkillTrust(trust: string): string {
+  if (trust === "official") return "chính thức";
+  if (trust === "verified") return "đã xác minh";
+  if (trust === "community") return "cộng đồng";
+  if (trust === "local") return "cục bộ";
+  return trust;
+}
+
+function formatVerificationStatus(status: string): string {
+  if (status === "verified") return "đã xác minh";
+  if (status === "unverified") return "chưa xác minh";
+  if (status === "missing") return "chưa có";
+  if (status === "invalid") return "không hợp lệ";
+  return status;
 }

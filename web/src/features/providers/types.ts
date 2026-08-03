@@ -59,10 +59,10 @@ export interface ProviderPreset {
 }
 
 export const providerPresets: ProviderPreset[] = [
-  { id: "openai", label: "ChatGPT", provider: "openai", mode: "api-key", model: "gpt-4.1-mini", baseUrl: "https://api.openai.com/v1", apiKeyEnv: "OPENAI_API_KEY", note: "OpenAI-compatible HTTP provider with API key." },
-  { id: "anthropic", label: "Claude", provider: "anthropic", mode: "api-key", model: "claude-3-5-haiku-latest", baseUrl: "https://api.anthropic.com", apiKeyEnv: "ANTHROPIC_API_KEY", note: "Native Anthropic provider." },
-  { id: "groq", label: "Groq", provider: "groq", mode: "api-key", model: "llama-3.3-70b-versatile", baseUrl: "https://api.groq.com/openai/v1", apiKeyEnv: "GROQ_API_KEY", note: "Fast OpenAI-compatible hosted inference." },
-  { id: "openrouter", label: "OpenRouter", provider: "openrouter", mode: "api-key", model: "anthropic/claude-3.5-sonnet", baseUrl: "https://openrouter.ai/api/v1", apiKeyEnv: "OPENROUTER_API_KEY", note: "OpenAI-compatible router; nested model IDs are valid." },
-  { id: "gemini", label: "Gemini", provider: "gemini", mode: "api-key", model: "gemini-2.5-flash", apiKeyEnv: "GEMINI_API_KEY", note: "Native Gemini SDK endpoint; baseUrl is intentionally hidden." },
-  { id: "ollama", label: "Ollama", provider: "ollama", mode: "local", model: "llama3.2", baseUrl: "http://127.0.0.1:11434/v1", note: "Local provider; no secret required." },
+  { id: "openai", label: "ChatGPT", provider: "openai", mode: "api-key", model: "gpt-4.1-mini", baseUrl: "https://api.openai.com/v1", apiKeyEnv: "OPENAI_API_KEY", note: "Dịch vụ tương thích OpenAI, dùng API key." },
+  { id: "anthropic", label: "Claude", provider: "anthropic", mode: "api-key", model: "claude-3-5-haiku-latest", baseUrl: "https://api.anthropic.com", apiKeyEnv: "ANTHROPIC_API_KEY", note: "Dịch vụ Claude chính thức từ Anthropic." },
+  { id: "groq", label: "Groq", provider: "groq", mode: "api-key", model: "llama-3.3-70b-versatile", baseUrl: "https://api.groq.com/openai/v1", apiKeyEnv: "GROQ_API_KEY", note: "Dịch vụ suy luận nhanh, tương thích OpenAI." },
+  { id: "openrouter", label: "OpenRouter", provider: "openrouter", mode: "api-key", model: "anthropic/claude-3.5-sonnet", baseUrl: "https://openrouter.ai/api/v1", apiKeyEnv: "OPENROUTER_API_KEY", note: "Bộ định tuyến model tương thích OpenAI; hỗ trợ ID model dạng phân cấp." },
+  { id: "gemini", label: "Gemini", provider: "gemini", mode: "api-key", model: "gemini-2.5-flash", apiKeyEnv: "GEMINI_API_KEY", note: "Kết nối Gemini chính thức; URL gốc được ẩn có chủ đích." },
+  { id: "ollama", label: "Ollama", provider: "ollama", mode: "local", model: "llama3.2", baseUrl: "http://127.0.0.1:11434/v1", note: "Dịch vụ chạy cục bộ; không cần khoá bí mật." },
 ];

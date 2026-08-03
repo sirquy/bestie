@@ -1,4 +1,4 @@
-﻿import type { FormEvent, ReactElement } from "react";
+import type { FormEvent, ReactElement } from "react";
 import { useEffect, useState } from "react";
 import { AlertCircle, Brain, FolderOpen, RefreshCw, Save, Settings, SlidersHorizontal, Sparkles } from "lucide-react";
 
@@ -68,7 +68,7 @@ export function SettingsPanel({ data, loading, onData, onLoading, onStatusRefres
 
   async function save(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
-    if (!await confirmDialog(`Save settings for ${draft.name || "Bestie"}?`)) return;
+    if (!await confirmDialog(`Lưu cài đặt cho ${draft.name || "Bestie"}?`)) return;
     await runAction(() => fetchJson<SettingsSummary>("/api/settings", {
       method: "PUT",
       body: JSON.stringify({
@@ -90,8 +90,8 @@ export function SettingsPanel({ data, loading, onData, onLoading, onStatusRefres
     return (
       <Alert className="border-accent/40 bg-accent/10">
         <Settings className="size-4" />
-        <AlertTitle>Cài đặt are loading</AlertTitle>
-        <AlertDescription>Loading safe preferences you can edit here.</AlertDescription>
+        <AlertTitle>Đang tải cài đặt</AlertTitle>
+        <AlertDescription>Đang tải các tuỳ chọn an toàn có thể chỉnh sửa.</AlertDescription>
       </Alert>
     );
   }
@@ -99,18 +99,18 @@ export function SettingsPanel({ data, loading, onData, onLoading, onStatusRefres
   return (
     <div className="grid gap-4">
       {actionError ? <SettingsError message={actionError} /> : null}
-      {saveMessage ? <Alert className="border-primary/40 bg-primary/10"><Sparkles className="size-4" /><AlertTitle>Saved</AlertTitle><AlertDescription>{saveMessage}</AlertDescription></Alert> : null}
+      {saveMessage ? <Alert className="border-primary/40 bg-primary/10"><Sparkles className="size-4" /><AlertTitle>Đã lưu</AlertTitle><AlertDescription>{saveMessage}</AlertDescription></Alert> : null}
 
       <div className="grid gap-4 xl:grid-cols-[1fr_0.9fr]">
         <Card className="border-white/10 bg-background/35">
           <CardHeader className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
             <div>
               <CardTitle className="flex items-center gap-2"><Settings className="size-5" /> Cài đặt</CardTitle>
-              <CardDescription>Safe preferences for identity, language, tone, and memory review.</CardDescription>
+              <CardDescription>Tuỳ chọn an toàn cho danh tính, ngôn ngữ, giọng điệu và duyệt bộ nhớ.</CardDescription>
             </div>
             <Button variant="outline" onClick={() => void reload()} disabled={loading}>
               <RefreshCw className={loading ? "animate-spin" : ""} />
-              Reload
+              Tải lại
             </Button>
           </CardHeader>
           <CardContent>
@@ -121,16 +121,16 @@ export function SettingsPanel({ data, loading, onData, onLoading, onStatusRefres
                 <FormField label="Ngôn ngữ"><Input name="language" value={draft.language} onChange={(event) => setDraftValue(setDraft, "language", event.target.value)} /></FormField>
                 <FormField label="Chế độ duyệt bộ nhớ">
                   <Select name="writePolicy" value={draft.writePolicy} onChange={(event) => setDraftValue(setDraft, "writePolicy", event.target.value as MemoryWritePolicy)}>
-                    <option value="ask">ask</option>
-                    <option value="allow">allow</option>
-                    <option value="deny">deny</option>
+                    <option value="ask">Hỏi trước</option>
+                    <option value="allow">Cho phép</option>
+                    <option value="deny">Từ chối</option>
                   </Select>
                 </FormField>
               </div>
 
               <div className="rounded-2xl border border-white/10 bg-card/60 p-4">
                 <div className="mb-3 flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2"><SlidersHorizontal className="size-4" /><Label>Tone intensity</Label></div>
+                  <div className="flex items-center gap-2"><SlidersHorizontal className="size-4" /><Label>Độ đậm giọng điệu</Label></div>
                   <Badge variant="outline">{draft.toneIntensity}</Badge>
                 </div>
                 <Input name="toneIntensity" type="range" min={0} max={10} value={draft.toneIntensity} onChange={(event) => setDraftValue(setDraft, "toneIntensity", Number(event.target.value))} />
@@ -138,7 +138,7 @@ export function SettingsPanel({ data, loading, onData, onLoading, onStatusRefres
 
               <Button className="w-fit" type="submit" disabled={loading || !draft.name.trim() || !draft.ownerName.trim() || !draft.language.trim()}>
                 <Save />
-                Save settings
+                Lưu cài đặt
               </Button>
             </form>
           </CardContent>
@@ -163,8 +163,8 @@ export function SettingsPanel({ data, loading, onData, onLoading, onStatusRefres
 
       <Card className="border-white/10 bg-background/35">
         <CardHeader>
-          <CardTitle>AI setup summary</CardTitle>
-          <CardDescription>View only here. Use Nhà cung cấp to change AI service choices.</CardDescription>
+          <CardTitle>Tóm tắt thiết lập AI</CardTitle>
+          <CardDescription>Chỉ hiển thị ở đây. Vào Nhà cung cấp để đổi dịch vụ AI.</CardDescription>
         </CardHeader>
         <CardContent className="grid gap-3 md:grid-cols-5">
           <MiniMetric label="Chính" value={data.llm.primary} />
@@ -186,7 +186,7 @@ function SettingsError({ message }: { message: string }): ReactElement {
   return (
     <Alert variant="destructive">
       <AlertCircle className="size-4" />
-      <AlertTitle>Cài đặt request failed</AlertTitle>
+      <AlertTitle>Không tải được cài đặt</AlertTitle>
       <AlertDescription>{message}</AlertDescription>
     </Alert>
   );

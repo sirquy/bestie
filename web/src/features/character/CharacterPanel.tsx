@@ -1,4 +1,4 @@
-﻿import type { ReactElement } from "react";
+import type { ReactElement } from "react";
 import { useEffect, useMemo, useState } from "react";
 import { AlertCircle, Bot, FileJson2, RefreshCw, Save, SlidersHorizontal, Sparkles, WandSparkles } from "lucide-react";
 
@@ -99,8 +99,8 @@ export function CharacterPanel({ data, loading, onData, onLoading }: CharacterPa
     return (
       <Alert className="border-accent/40 bg-accent/10">
         <Bot className="size-4" />
-        <AlertTitle>Tính cách is loading</AlertTitle>
-        <AlertDescription>Loading Bestie's personality settings.</AlertDescription>
+        <AlertTitle>Đang tải tính cách</AlertTitle>
+        <AlertDescription>Đang tải thiết lập tính cách của Bestie.</AlertDescription>
       </Alert>
     );
   }
@@ -108,18 +108,18 @@ export function CharacterPanel({ data, loading, onData, onLoading }: CharacterPa
   return (
     <div className="grid gap-4">
       {actionError ? <CharacterError message={actionError} /> : null}
-      {saveMessage ? <Alert className="border-primary/40 bg-primary/10"><Sparkles className="size-4" /><AlertTitle>Saved</AlertTitle><AlertDescription>{saveMessage}</AlertDescription></Alert> : null}
+      {saveMessage ? <Alert className="border-primary/40 bg-primary/10"><Sparkles className="size-4" /><AlertTitle>Đã lưu</AlertTitle><AlertDescription>{saveMessage}</AlertDescription></Alert> : null}
 
       <div className="grid gap-4 xl:grid-cols-[0.8fr_1.2fr]">
         <Card className="border-white/10 bg-background/35">
           <CardHeader className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
             <div>
               <CardTitle className="flex items-center gap-2"><Bot className="size-5" /> Tính cách</CardTitle>
-              <CardDescription>Adjust how Bestie sounds and behaves.</CardDescription>
+              <CardDescription>Tinh chỉnh cách Bestie trò chuyện và phản hồi.</CardDescription>
             </div>
             <div className="flex flex-wrap gap-2">
-              <Button variant="outline" onClick={() => void reload()} disabled={loading}><RefreshCw className={loading ? "animate-spin" : ""} /> Reload</Button>
-              <Button onClick={() => void save()} disabled={loading || !draft || promptText.trim().length === 0}><Save /> Save</Button>
+              <Button variant="outline" onClick={() => void reload()} disabled={loading}><RefreshCw className={loading ? "animate-spin" : ""} /> Tải lại</Button>
+              <Button onClick={() => void save()} disabled={loading || !draft || promptText.trim().length === 0}><Save /> Lưu</Button>
             </div>
           </CardHeader>
           <CardContent className="grid gap-4">
@@ -143,7 +143,7 @@ export function CharacterPanel({ data, loading, onData, onLoading }: CharacterPa
               <FormField label="Chủ sở hữu"><Input name="ownerName" value={stringValue(draft?.ownerName)} onChange={(event) => updateDraftField("ownerName", event.target.value)} /></FormField>
               <FormField label="Ngôn ngữ"><Input name="language" value={stringValue(draft?.language)} onChange={(event) => updateDraftField("language", event.target.value)} /></FormField>
               <div className="grid gap-3 rounded-2xl border border-white/10 bg-card/60 p-4">
-                <div className="flex items-center gap-2"><SlidersHorizontal className="size-4" /><p className="font-semibold">Tone Lab</p></div>
+                <div className="flex items-center gap-2"><SlidersHorizontal className="size-4" /><p className="font-semibold">Tinh chỉnh giọng điệu</p></div>
                 {toneFields.map((field) => <ToneField key={field.key} label={field.label} name={field.key} value={tone[field.key]} onChange={(value) => updateToneField(field.key, value)} />)}
               </div>
             </form>
@@ -152,8 +152,8 @@ export function CharacterPanel({ data, loading, onData, onLoading }: CharacterPa
 
         <Card className="border-white/10 bg-background/35">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2"><FileJson2 className="size-5" /> Personality details</CardTitle>
-            <CardDescription>Edit the structured personality settings. Bestie checks them before saving.</CardDescription>
+            <CardTitle className="flex items-center gap-2"><FileJson2 className="size-5" /> Chi tiết tính cách</CardTitle>
+            <CardDescription>Chỉnh cấu hình tính cách có cấu trúc. Bestie sẽ kiểm tra trước khi lưu.</CardDescription>
           </CardHeader>
           <CardContent>
             <Textarea id="character-json" className="min-h-[38rem] font-mono text-xs" spellCheck={false} value={characterText} onChange={(event) => setCharacterText(event.target.value)} />
@@ -164,22 +164,22 @@ export function CharacterPanel({ data, loading, onData, onLoading }: CharacterPa
       <Card className="border-white/10 bg-background/35">
         <CardHeader className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
           <div>
-            <CardTitle className="flex items-center gap-2"><WandSparkles className="size-5" /> Conversation instructions</CardTitle>
-            <CardDescription>Edit `system-prompt.md`; empty prompts are rejected by the backend.</CardDescription>
+            <CardTitle className="flex items-center gap-2"><WandSparkles className="size-5" /> Hướng dẫn trò chuyện</CardTitle>
+            <CardDescription>Chỉnh `system-prompt.md`; nội dung trống sẽ không được lưu.</CardDescription>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Button id="character-sync-prompt" variant="outline" onClick={syncPromptDraft} type="button">Draft from character</Button>
-            <Button id="character-insert-guardrails" variant="secondary" onClick={insertSafetyGuardrails} type="button">Insert guardrails</Button>
+            <Button id="character-sync-prompt" variant="outline" onClick={syncPromptDraft} type="button">Tạo nháp từ tính cách</Button>
+            <Button id="character-insert-guardrails" variant="secondary" onClick={insertSafetyGuardrails} type="button">Chèn quy tắc an toàn</Button>
           </div>
         </CardHeader>
         <CardContent className="grid gap-4 lg:grid-cols-[1fr_18rem]">
           <Textarea id="character-prompt" className="min-h-[26rem] font-mono text-xs" spellCheck={false} value={promptText} onChange={(event) => setPromptText(event.target.value)} />
           <div id="character-prompt-outline" className="rounded-2xl border border-white/10 bg-card/60 p-4 text-sm">
-            <p className="font-semibold">Nội dung outline</p>
+            <p className="font-semibold">Tóm tắt nội dung</p>
             <Separator className="my-3" />
-            <p><span className="text-muted-foreground">Lines:</span> {promptText.split("\n").length}</p>
-            <p><span className="text-muted-foreground">Tính cáchs:</span> {promptText.length}</p>
-            <p><span className="text-muted-foreground">Guardrails:</span> {promptText.includes("Quy tắc an toàn") ? "present" : "chưa thêm"}</p>
+            <p><span className="text-muted-foreground">Số dòng:</span> {promptText.split("\n").length}</p>
+            <p><span className="text-muted-foreground">Tính cách:</span> {promptText.length}</p>
+            <p><span className="text-muted-foreground">Quy tắc an toàn:</span> {promptText.includes("Quy tắc an toàn") ? "đã thêm" : "chưa thêm"}</p>
           </div>
         </CardContent>
       </Card>
@@ -195,7 +195,7 @@ function CharacterError({ message }: { message: string }): ReactElement {
   return (
     <Alert variant="destructive">
       <AlertCircle className="size-4" />
-      <AlertTitle>Tính cách request failed</AlertTitle>
+      <AlertTitle>Không tải được tính cách</AlertTitle>
       <AlertDescription>{message}</AlertDescription>
     </Alert>
   );

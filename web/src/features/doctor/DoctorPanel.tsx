@@ -1,4 +1,4 @@
-﻿import type { ReactElement } from "react";
+import type { ReactElement } from "react";
 import { AlertTriangle, CheckCircle2, HeartPulse, RefreshCw, ShieldAlert, Wrench } from "lucide-react";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -28,7 +28,7 @@ export function DoctorPanel({ data, loading, onData, onLoading }: DoctorPanelPro
   }
 
   async function runSafeFixes(): Promise<void> {
-    if (!await confirmDialog("Run safe fixes for common setup issues? Secrets will stay hidden.")) return;
+    if (!await confirmDialog("Chạy các bản sửa lỗi an toàn cho thiết lập thường gặp? Thông tin bí mật vẫn được ẩn.")) return;
     onLoading(true);
     try {
       onData(await fetchJson<DoctorSummary>("/api/doctor/fix", { method: "POST", body: JSON.stringify({ confirm: true }) }));
@@ -41,8 +41,8 @@ export function DoctorPanel({ data, loading, onData, onLoading }: DoctorPanelPro
     return (
       <Alert className="border-accent/40 bg-accent/10">
         <HeartPulse className="size-4" />
-        <AlertTitle>Kiểm tra is warming up</AlertTitle>
-        <AlertDescription>Checking Bestie's setup and connected features.</AlertDescription>
+        <AlertTitle>Đang chuẩn bị kiểm tra</AlertTitle>
+        <AlertDescription>Đang kiểm tra thiết lập và các tính năng đã kết nối của Bestie.</AlertDescription>
       </Alert>
     );
   }
@@ -61,17 +61,17 @@ export function DoctorPanel({ data, loading, onData, onLoading }: DoctorPanelPro
       <Card className="border-white/10 bg-background/35">
         <CardHeader className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
           <div>
-            <CardTitle className="flex items-center gap-2"><HeartPulse className="size-5" /> Health checks</CardTitle>
-            <CardDescription>A friendly health check for setup, memory, channels, and fixes.</CardDescription>
+            <CardTitle className="flex items-center gap-2"><HeartPulse className="size-5" /> Kiểm tra sức khoẻ</CardTitle>
+            <CardDescription>Kiểm tra nhanh thiết lập, bộ nhớ, kênh kết nối và các bản sửa lỗi.</CardDescription>
           </div>
           <div className="flex flex-wrap gap-2">
             <Button variant="outline" onClick={() => void reload()} disabled={loading}>
               <RefreshCw className={loading ? "animate-spin" : ""} />
-              Refresh
+              Tải lại
             </Button>
             <Button onClick={() => void runSafeFixes()} disabled={loading || actionableChecks.length === 0}>
               <Wrench />
-              Fix common issues
+              Sửa lỗi thường gặp
             </Button>
           </div>
         </CardHeader>
@@ -83,8 +83,8 @@ export function DoctorPanel({ data, loading, onData, onLoading }: DoctorPanelPro
       {data.report.fixes.length > 0 ? (
         <Card className="border-white/10 bg-background/35">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2"><Wrench className="size-5" /> Fixes applied</CardTitle>
-            <CardDescription>Results from the latest confirmation-gated Kiểm tra fix run.</CardDescription>
+            <CardTitle className="flex items-center gap-2"><Wrench className="size-5" /> Bản sửa đã áp dụng</CardTitle>
+            <CardDescription>Kết quả từ lần sửa lỗi gần nhất đã được bạn xác nhận.</CardDescription>
           </CardHeader>
           <CardContent className="grid gap-3">
             {data.report.fixes.map((fix) => <DoctorFixRow key={`${fix.name}-${fix.status}`} fix={fix} />)}
@@ -99,7 +99,7 @@ export function DoctorPanelError({ error }: { error: unknown }): ReactElement {
   return (
     <Alert variant="destructive">
       <ShieldAlert className="size-4" />
-      <AlertTitle>Kiểm tra request failed</AlertTitle>
+      <AlertTitle>Không tải được kiểm tra</AlertTitle>
       <AlertDescription>{formatError(error)}</AlertDescription>
     </Alert>
   );
@@ -148,13 +148,19 @@ function DoctorFixRow({ fix }: { fix: DoctorFix }): ReactElement {
         <p className="font-semibold">{fix.name}</p>
         <p className="mt-1 text-sm text-muted-foreground">{fix.message}</p>
       </div>
-      <Badge variant={variant}>{fix.status}</Badge>
+      <Badge variant={variant}>{formatFixStatus(fix.status)}</Badge>
     </div>
   );
 }
 
 function StatusBadge({ status }: { status: DoctorStatus }): ReactElement {
-  if (status === "fail") return <Badge variant="destructive">fail</Badge>;
-  if (status === "warn") return <Badge className="border-accent/50 bg-accent/15 text-accent" variant="outline">warn</Badge>;
+  if (status === "fail") return <Badge variant="destructive">lỗi</Badge>;
+  if (status === "warn") return <Badge className="border-accent/50 bg-accent/15 text-accent" variant="outline">cảnh báo</Badge>;
   return <Badge variant="secondary">pass</Badge>;
+}
+
+function formatFixStatus(status: DoctorFix["status"]): string {
+  if (status === "fixed") return "đã sửa";
+  if (status === "failed") return "thất bại";
+  return "bỏ qua";
 }

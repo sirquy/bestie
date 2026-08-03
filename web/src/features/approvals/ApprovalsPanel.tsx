@@ -1,4 +1,4 @@
-﻿import type { ReactElement } from "react";
+import type { ReactElement } from "react";
 import { useState } from "react";
 import { AlertCircle, Check, ClipboardCheck, Database, RefreshCw, ShieldCheck, X } from "lucide-react";
 
@@ -42,11 +42,11 @@ export function ApprovalsPanel({ data, loading, onData, onLoading }: ApprovalsPa
 
   async function decide(decision: ApprovalDecision, approval: PendingActionApproval): Promise<void> {
     const verb = decision === "approve" ? "Duyệt" : "Từ chối";
-    if (!await confirmDialog(`${verb} ${approval.action} #${approval.id}?`)) return;
+    if (!await confirmDialog(`${verb} thao tác ${approval.action} #${approval.id}?`)) return;
     await runAction(async () => {
       const result = await fetchJson<ApprovalActionResult>("/api/approvals/action", { method: "POST", body: JSON.stringify({ action: decision, id: approval.id, confirm: true }) });
-      const executionMessage = result.execution ? ` Execution: ${result.execution.message ?? result.execution.error ?? (result.execution.ok ? "ok" : "failed")}` : "";
-      setActionMessage(`${verb}d approval #${approval.id}.${executionMessage}`);
+      const executionMessage = result.execution ? ` Kết quả thực thi: ${result.execution.message ?? result.execution.error ?? (result.execution.ok ? "thành công" : "thất bại")}` : "";
+      setActionMessage(`${verb === "Duyệt" ? "Đã duyệt" : "Đã từ chối"} phê duyệt #${approval.id}.${executionMessage}`);
       return result;
     });
   }
@@ -55,8 +55,8 @@ export function ApprovalsPanel({ data, loading, onData, onLoading }: ApprovalsPa
     return (
       <Alert className="border-accent/40 bg-accent/10">
         <ClipboardCheck className="size-4" />
-        <AlertTitle>Phê duyệt are loading</AlertTitle>
-        <AlertDescription>Loading actions that need your review.</AlertDescription>
+        <AlertTitle>Đang tải phê duyệt</AlertTitle>
+        <AlertDescription>Đang tải các hành động cần bạn xem xét.</AlertDescription>
       </Alert>
     );
   }
@@ -64,23 +64,23 @@ export function ApprovalsPanel({ data, loading, onData, onLoading }: ApprovalsPa
   return (
     <div className="grid gap-4">
       {actionError ? <ApprovalsError message={actionError} /> : null}
-      {actionMessage ? <Alert className="border-primary/40 bg-primary/10"><Check className="size-4" /><AlertTitle>Approval updated</AlertTitle><AlertDescription>{actionMessage}</AlertDescription></Alert> : null}
+      {actionMessage ? <Alert className="border-primary/40 bg-primary/10"><Check className="size-4" /><AlertTitle>Đã cập nhật phê duyệt</AlertTitle><AlertDescription>{actionMessage}</AlertDescription></Alert> : null}
 
       <div className="grid gap-3 md:grid-cols-3">
         <Metric label="Đang chờ" value={String(data.count)} tone={data.count ? "warn" : "good"} />
-        <Metric label="Hàng chờ phê duyệt" value={data.databaseExists ? "ready" : "chưa sẵn sàng"} tone={data.databaseExists ? "good" : "warn"} />
+        <Metric label="Hàng chờ phê duyệt" value={data.databaseExists ? "sẵn sàng" : "chưa sẵn sàng"} tone={data.databaseExists ? "good" : "warn"} />
         <Metric label="Chế độ xem xét" value="cần phê duyệt" tone="good" />
       </div>
 
       <Card className="border-white/10 bg-background/35">
         <CardHeader className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
           <div>
-            <CardTitle className="flex items-center gap-2"><ShieldCheck className="size-5" /> Needs approval</CardTitle>
-            <CardDescription>External, destructive, public, or sensitive actions wait here for explicit review.</CardDescription>
+            <CardTitle className="flex items-center gap-2"><ShieldCheck className="size-5" /> Cần phê duyệt</CardTitle>
+            <CardDescription>Các hành động bên ngoài, phá huỷ, công khai hoặc nhạy cảm sẽ chờ bạn duyệt tại đây.</CardDescription>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Badge variant={data.databaseExists ? "secondary" : "destructive"}><Database className="mr-1 size-3" /> {data.databaseExists ? "ready" : "chưa sẵn sàng"}</Badge>
-            <Button variant="outline" onClick={() => void reload()} disabled={loading}><RefreshCw className={loading ? "animate-spin" : ""} /> Reload</Button>
+            <Badge variant={data.databaseExists ? "secondary" : "destructive"}><Database className="mr-1 size-3" /> {data.databaseExists ? "sẵn sàng" : "chưa sẵn sàng"}</Badge>
+            <Button variant="outline" onClick={() => void reload()} disabled={loading}><RefreshCw className={loading ? "animate-spin" : ""} /> Tải lại</Button>
           </div>
         </CardHeader>
         <CardContent className="grid gap-3">
@@ -99,7 +99,7 @@ function ApprovalsError({ message }: { message: string }): ReactElement {
   return (
     <Alert variant="destructive">
       <AlertCircle className="size-4" />
-      <AlertTitle>Phê duyệt request failed</AlertTitle>
+      <AlertTitle>Không tải được phê duyệt</AlertTitle>
       <AlertDescription>{message}</AlertDescription>
     </Alert>
   );
@@ -127,8 +127,8 @@ function ApprovalRow({ approval, loading, onDecision }: { approval: PendingActio
       <Separator className="my-3" />
       <div className="grid gap-1 text-xs text-muted-foreground md:grid-cols-3">
         <p>Trạng thái: {approval.status}</p>
-        <p>Tạod: {formatDate(approval.createdAt)}</p>
-        <p>Expires: {formatDate(approval.expiresAt)}</p>
+        <p>Tạo lúc: {formatDate(approval.createdAt)}</p>
+        <p>Hết hạn: {formatDate(approval.expiresAt)}</p>
       </div>
       {approval.userId ? <p className="mt-2 text-xs text-muted-foreground">User: {approval.userId}</p> : null}
     </div>
@@ -136,7 +136,7 @@ function ApprovalRow({ approval, loading, onDecision }: { approval: PendingActio
 }
 
 function EmptyApprovals(): ReactElement {
-  return <p className="rounded-2xl border border-dashed border-white/10 bg-background/25 p-4 text-sm text-muted-foreground">No pending approvals. Bestie is behaving herself. Suspicious, but we take the win.</p>;
+  return <p className="rounded-2xl border border-dashed border-white/10 bg-background/25 p-4 text-sm text-muted-foreground">Không có phê duyệt nào đang chờ. Bestie đang ngoan bất thường, nhưng cứ coi là tin tốt nhé.</p>;
 }
 
 function Metric({ label, value, tone }: { label: string; value: string; tone: "good" | "warn" }): ReactElement {

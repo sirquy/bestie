@@ -1,4 +1,4 @@
-﻿import type { FormEvent, ReactElement } from "react";
+import type { FormEvent, ReactElement } from "react";
 import { useMemo, useState } from "react";
 import { AlertCircle, CheckCircle2, KeyRound, PlugZap, RefreshCw, Route, Save, Star, TestTube2 } from "lucide-react";
 
@@ -78,20 +78,20 @@ export function ProviderPanel({ data, loading, onData, onLoading }: ProviderPane
 
   async function setPrimary(): Promise<void> {
     if (!effectiveSelectedModel) return;
-    if (!await confirmDialog(`Set ${effectiveSelectedModel} as the main model?`)) return;
+    if (!await confirmDialog(`Đặt ${effectiveSelectedModel} làm mô hình chính?`)) return;
     await runAction(() => fetchJson<ProviderSummary>("/api/providers/primary", { method: "POST", body: JSON.stringify({ modelRef: effectiveSelectedModel }) }));
   }
 
   async function updateFallback(action: "add" | "remove"): Promise<void> {
     if (!effectiveSelectedModel) return;
     const verb = action === "add" ? "Thêm" : "Gỡ bỏ";
-    if (!await confirmDialog(`${verb} ${effectiveSelectedModel} ${action === "add" ? "to" : "from"} backups?`)) return;
+    if (!await confirmDialog(`${verb} ${effectiveSelectedModel} ${action === "add" ? "vào" : "khỏi"} danh sách dự phòng?`)) return;
     await runAction(() => fetchJson<ProviderSummary>("/api/providers/fallbacks", { method: "POST", body: JSON.stringify({ action, modelRef: effectiveSelectedModel }) }));
   }
 
   async function setupProvider(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
-    if (!await confirmDialog(`Save connection ${form.provider}/${form.model}?`)) return;
+    if (!await confirmDialog(`Lưu kết nối ${form.provider}/${form.model}?`)) return;
     await runAction(() => fetchJson<ProviderSummary>("/api/providers/setup", {
       method: "POST",
       body: JSON.stringify({
@@ -111,8 +111,8 @@ export function ProviderPanel({ data, loading, onData, onLoading }: ProviderPane
     return (
       <Alert className="border-accent/40 bg-accent/10">
         <PlugZap className="size-4" />
-        <AlertTitle>AI models are loading</AlertTitle>
-        <AlertDescription>Loading your saved AI model choices.</AlertDescription>
+        <AlertTitle>Đang tải mô hình AI</AlertTitle>
+        <AlertDescription>Đang tải lựa chọn model AI đã lưu.</AlertDescription>
       </Alert>
     );
   }
@@ -127,16 +127,16 @@ export function ProviderPanel({ data, loading, onData, onLoading }: ProviderPane
       {testResult ? <ProviderTestNotice result={testResult} /> : null}
 
       <div className="grid gap-3 lg:grid-cols-3">
-        <ProviderCandidateCard title="Model chính" candidate={data.primary} featured />
+        <ProviderCandidateCard title="Mô hình chính" candidate={data.primary} featured />
         <Card className="border-white/10 bg-background/35 lg:col-span-2">
           <CardHeader className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
             <div>
-              <CardTitle className="flex items-center gap-2"><Route className="size-5" /> AI model choices</CardTitle>
-              <CardDescription>Choose the main AI model and backup options.</CardDescription>
+              <CardTitle className="flex items-center gap-2"><Route className="size-5" /> Lựa chọn mô hình AI</CardTitle>
+              <CardDescription>Chọn mô hình AI chính và các phương án dự phòng.</CardDescription>
             </div>
             <Button variant="outline" onClick={() => void reload()} disabled={loading}>
               <RefreshCw className={loading ? "animate-spin" : ""} />
-              Refresh
+              Tải lại
             </Button>
           </CardHeader>
           <CardContent className="grid gap-3">
@@ -144,15 +144,15 @@ export function ProviderPanel({ data, loading, onData, onLoading }: ProviderPane
               <Select value={effectiveSelectedModel} onChange={(event) => setSelectedModelRef(event.target.value)} disabled={modelOptions.length === 0}>
                 {modelOptions.map((model) => <option key={model.modelRef} value={model.modelRef}>{model.modelRef}</option>)}
               </Select>
-              <Button onClick={() => void testProvider()} disabled={loading || !effectiveSelectedModel} variant="outline"><TestTube2 /> Test</Button>
-              <Button onClick={() => void setPrimary()} disabled={loading || !effectiveSelectedModel}><Star /> Set main</Button>
-              <Button onClick={() => void updateFallback("add")} disabled={loading || !effectiveSelectedModel} variant="secondary">Thêm backup</Button>
+              <Button onClick={() => void testProvider()} disabled={loading || !effectiveSelectedModel} variant="outline"><TestTube2 /> Kiểm tra</Button>
+              <Button onClick={() => void setPrimary()} disabled={loading || !effectiveSelectedModel}><Star /> Đặt làm chính</Button>
+              <Button onClick={() => void updateFallback("add")} disabled={loading || !effectiveSelectedModel} variant="secondary">Thêm dự phòng</Button>
             </div>
             <div className="flex flex-wrap gap-2">
-              <Button onClick={() => void updateFallback("remove")} disabled={loading || !effectiveSelectedModel} variant="outline">Gỡ bỏ backup</Button>
+              <Button onClick={() => void updateFallback("remove")} disabled={loading || !effectiveSelectedModel} variant="outline">Gỡ dự phòng</Button>
               <Badge variant="outline">{data.models.length} models</Badge>
               <Badge variant="outline">{data.profiles.length} connections</Badge>
-              <Badge variant="outline">{data.fallbacks.length} backups</Badge>
+              <Badge variant="outline">{data.fallbacks.length} dự phòng</Badge>
             </div>
           </CardContent>
         </Card>
@@ -161,7 +161,7 @@ export function ProviderPanel({ data, loading, onData, onLoading }: ProviderPane
       <div className="grid gap-4 xl:grid-cols-[1fr_1fr]">
         <Card className="border-white/10 bg-background/35">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2"><KeyRound className="size-5" /> Dịch vụ setup</CardTitle>
+            <CardTitle className="flex items-center gap-2"><KeyRound className="size-5" /> Thiết lập dịch vụ</CardTitle>
             <CardDescription>{activePreset.note}</CardDescription>
           </CardHeader>
           <CardContent>
@@ -171,28 +171,28 @@ export function ProviderPanel({ data, loading, onData, onLoading }: ProviderPane
             <form className="grid gap-3" onSubmit={(event) => void setupProvider(event)}>
               <div className="grid gap-3 md:grid-cols-2">
                 <FormField label="Nhà cung cấp"><Input value={form.provider} onChange={(event) => setFormValue(setForm, "provider", event.target.value)} /></FormField>
-                <FormField label="Chế độ"><Select value={form.mode} onChange={(event) => setFormValue(setForm, "mode", event.target.value)}><option value="api-key">api-key</option><option value="local">local</option></Select></FormField>
+                <FormField label="Chế độ"><Select value={form.mode} onChange={(event) => setFormValue(setForm, "mode", event.target.value)}><option value="api-key">API key</option><option value="local">Cục bộ</option></Select></FormField>
                 <FormField label="Model"><Input value={form.model} onChange={(event) => setFormValue(setForm, "model", event.target.value)} /></FormField>
                 {!isGemini ? <FormField label="URL gốc"><Input value={form.baseUrl} onChange={(event) => setFormValue(setForm, "baseUrl", event.target.value)} placeholder="https://api.example.com/v1" /></FormField> : null}
                 {!isLocal ? <FormField label="Tên thông tin xác thực"><Input value={form.apiKeyEnv} onChange={(event) => setFormValue(setForm, "apiKeyEnv", event.target.value)} placeholder="GEMINI_API_KEY" /></FormField> : null}
-                {!isLocal ? <FormField label="Giá trị bí mật"><Input value={form.secret} onChange={(event) => setFormValue(setForm, "secret", event.target.value)} type="password" placeholder="Saved securely and hidden after save" /></FormField> : null}
+                {!isLocal ? <FormField label="Giá trị bí mật"><Input value={form.secret} onChange={(event) => setFormValue(setForm, "secret", event.target.value)} type="password" placeholder="Được lưu an toàn và sẽ bị ẩn sau khi lưu" /></FormField> : null}
               </div>
               <label className="flex items-center gap-2 text-sm text-muted-foreground">
                 <input checked={form.setDefault} onChange={(event) => setForm((current) => ({ ...current, setDefault: event.target.checked }))} type="checkbox" />
-                Set as main model after saving
+                Đặt làm model chính sau khi lưu
               </label>
-              <Button className="w-fit" type="submit" disabled={loading}><Save /> Save connection</Button>
+              <Button className="w-fit" type="submit" disabled={loading}><Save /> Lưu kết nối</Button>
             </form>
           </CardContent>
         </Card>
 
         <Card className="border-white/10 bg-background/35">
           <CardHeader>
-            <CardTitle>Backup models</CardTitle>
-            <CardDescription>Chế độl Bestie can try if the main one is unavailable.</CardDescription>
+            <CardTitle>Mô hình dự phòng</CardTitle>
+            <CardDescription>Các mô hình Bestie có thể thử khi mô hình chính không khả dụng.</CardDescription>
           </CardHeader>
           <CardContent className="grid gap-3">
-            {data.fallbacks.length ? data.fallbacks.map((candidate) => <ProviderCandidateRow key={candidate.modelRef} candidate={candidate} />) : <p className="text-sm text-muted-foreground">No backup models added yet.</p>}
+            {data.fallbacks.length ? data.fallbacks.map((candidate) => <ProviderCandidateRow key={candidate.modelRef} candidate={candidate} />) : <p className="text-sm text-muted-foreground">Chưa thêm mô hình dự phòng.</p>}
           </CardContent>
         </Card>
       </div>
@@ -213,7 +213,7 @@ function ProviderError({ message }: { message: string }): ReactElement {
   return (
     <Alert variant="destructive">
       <AlertCircle className="size-4" />
-      <AlertTitle>AI model request failed</AlertTitle>
+      <AlertTitle>Không tải được mô hình AI</AlertTitle>
       <AlertDescription>{message}</AlertDescription>
     </Alert>
   );
@@ -223,7 +223,7 @@ function ProviderTestNotice({ result }: { result: ProviderTestResult }): ReactEl
   return (
     <Alert className={result.ok ? "border-primary/40 bg-primary/10" : "border-destructive/40 bg-destructive/10"}>
       {result.ok ? <CheckCircle2 className="size-4" /> : <AlertCircle className="size-4" />}
-      <AlertTitle>{result.ok ? "Kiểm tra model thành công" : "Kiểm tra model thất bại"}</AlertTitle>
+      <AlertTitle>{result.ok ? "Kiểm tra mô hình thành công" : "Kiểm tra mô hình thất bại"}</AlertTitle>
       <AlertDescription>{result.message ?? result.modelRef}{result.latencyMs ? ` (${result.latencyMs}ms)` : ""}</AlertDescription>
     </Alert>
   );
@@ -234,9 +234,9 @@ function ProviderCandidateCard({ title, candidate, featured = false }: { title: 
     <Card className={featured ? "border-primary/30 bg-primary/10" : "border-white/10 bg-background/35"}>
       <CardHeader>
         <CardTitle className="flex items-center gap-2"><PlugZap className="size-5" /> {title}</CardTitle>
-        <CardDescription>{candidate?.authProfile ?? "Chưa chọn model"}</CardDescription>
+        <CardDescription>{candidate?.authProfile ?? "Chưa chọn mô hình"}</CardDescription>
       </CardHeader>
-      <CardContent>{candidate ? <ProviderCandidateRow candidate={candidate} /> : <p className="text-sm text-muted-foreground">This service is chưa đặt up yet.</p>}</CardContent>
+      <CardContent>{candidate ? <ProviderCandidateRow candidate={candidate} /> : <p className="text-sm text-muted-foreground">Dịch vụ này chưa được thiết lập.</p>}</CardContent>
     </Card>
   );
 }
@@ -249,7 +249,7 @@ function ProviderCandidateRow({ candidate }: { candidate: ProviderCandidate }): 
           <p className="font-semibold">{candidate.modelRef}</p>
           <p className="text-muted-foreground">{candidate.provider} / {candidate.model}</p>
         </div>
-        <Badge variant={candidate.secretPresent ? "secondary" : "destructive"}>{candidate.secretPresent ? "ready" : "thiếu khoá bí mật"}</Badge>
+        <Badge variant={candidate.secretPresent ? "secondary" : "destructive"}>{candidate.secretPresent ? "sẵn sàng" : "thiếu khoá bí mật"}</Badge>
       </div>
       <Separator />
       <p><span className="text-muted-foreground">URL gốc:</span> {candidate.baseUrl}</p>
@@ -261,13 +261,13 @@ function ProviderCandidateRow({ candidate }: { candidate: ProviderCandidate }): 
 function ProviderProfileList({ profiles }: { profiles: ProviderProfile[] }): ReactElement {
   return (
     <Card className="border-white/10 bg-background/35">
-      <CardHeader><CardTitle>Saved connections</CardTitle><CardDescription>Saved connection methods and whether credentials are available.</CardDescription></CardHeader>
+      <CardHeader><CardTitle>Kết nối đã lưu</CardTitle><CardDescription>Các phương thức kết nối đã lưu và trạng thái thông tin xác thực.</CardDescription></CardHeader>
       <CardContent className="grid gap-3">
         {profiles.map((profile) => (
           <div key={profile.id} className="rounded-2xl border border-white/10 bg-card/60 p-4 text-sm">
-            <div className="flex flex-wrap items-start justify-between gap-2"><p className="font-semibold">{profile.id}</p><Badge variant={profile.secretPresent ? "secondary" : "destructive"}>{profile.secretPresent ? "ready" : "secret"}</Badge></div>
-            <p className="mt-1 text-muted-foreground">{profile.provider} / {profile.mode}</p>
-            <p className="mt-2"><span className="text-muted-foreground">Used by:</span> {profile.usedBy.join(", ") || "-"}</p>
+            <div className="flex flex-wrap items-start justify-between gap-2"><p className="font-semibold">{profile.id}</p><Badge variant={profile.secretPresent ? "secondary" : "destructive"}>{profile.secretPresent ? "sẵn sàng" : "thiếu khoá bí mật"}</Badge></div>
+            <p className="mt-1 text-muted-foreground">{profile.provider} / {formatProviderMode(profile.mode)}</p>
+            <p className="mt-2"><span className="text-muted-foreground">Được dùng bởi:</span> {profile.usedBy.join(", ") || "-"}</p>
           </div>
         ))}
       </CardContent>
@@ -278,12 +278,12 @@ function ProviderProfileList({ profiles }: { profiles: ProviderProfile[] }): Rea
 function ProviderModelList({ models }: { models: ProviderModel[] }): ReactElement {
   return (
     <Card className="border-white/10 bg-background/35">
-      <CardHeader><CardTitle>Available models</CardTitle><CardDescription>Chế độl Bestie can choose from.</CardDescription></CardHeader>
+      <CardHeader><CardTitle>Mô hình có sẵn</CardTitle><CardDescription>Các mô hình Bestie có thể sử dụng.</CardDescription></CardHeader>
       <CardContent className="grid gap-3">
         {models.map((model) => (
           <div key={model.modelRef} className="flex flex-wrap items-start justify-between gap-2 rounded-2xl border border-white/10 bg-card/60 p-4 text-sm">
             <div><p className="font-semibold">{model.modelRef}</p><p className="text-muted-foreground">{model.profile}</p></div>
-            <div className="flex gap-2">{model.primary ? <Badge>main</Badge> : null}{model.fallback ? <Badge variant="outline">backup</Badge> : null}</div>
+            <div className="flex gap-2">{model.primary ? <Badge>Chính</Badge> : null}{model.fallback ? <Badge variant="outline">Dự phòng</Badge> : null}</div>
           </div>
         ))}
       </CardContent>
@@ -301,4 +301,10 @@ function presetToForm(preset: ProviderPreset): ProviderFormState {
 
 function setFormValue(setForm: (updater: (current: ProviderFormState) => ProviderFormState) => void, key: keyof ProviderFormState, value: string): void {
   setForm((current) => ({ ...current, [key]: value }));
+}
+
+function formatProviderMode(mode: string): string {
+  if (mode === "api-key") return "API key";
+  if (mode === "local") return "cục bộ";
+  return mode;
 }
