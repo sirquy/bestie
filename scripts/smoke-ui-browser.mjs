@@ -133,6 +133,7 @@ async function assertSidebarToggle(page) {
 
 async function assertMobileSidebarToggle(page) {
   await page.setViewportSize({ width: 390, height: 844 });
+  await page.reload({ waitUntil: "networkidle" });
   await page.waitForSelector('[data-sidebar-state="expanded"]');
   const sidebarBox = await page.locator("[data-sidebar-state]").evaluate((element) => ({ height: element.getBoundingClientRect().height, viewportHeight: window.innerHeight }));
   if (sidebarBox.height < sidebarBox.viewportHeight - 80) throw new Error(`Mobile sidebar should be full height, got ${sidebarBox.height}/${sidebarBox.viewportHeight}`);

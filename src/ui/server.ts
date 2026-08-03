@@ -19,6 +19,7 @@ import { getUiSettingsSummary, updateUiSettings } from "./api/settings.js";
 import { clearUiSkillRemoteRegistryCache, deleteUiSkill, getUiSkill, getUiSkillLibrary, getUiSkillLibraryDiff, getUiSkillLibraryItem, getUiSkillsSummary, installUiSkillFromLibrary, rollbackUiSkill, testUiSkillRemoteRegistry, toggleUiSkillEnabled, writeUiSkill } from "./api/skills.js";
 import { getUiStatusSummary } from "./api/status.js";
 import { getUiToolsSummary, updateUiToolPolicy } from "./api/tools.js";
+import { applyUiUpdate, getUiUpdateSummary } from "./api/update.js";
 import { HOME_PAGE_CLIENT_SCRIPT } from "./home/client-script.js";
 import { renderHomePage } from "./home-page.js";
 
@@ -147,6 +148,21 @@ async function handleRequestAsync(request: IncomingMessage, response: ServerResp
 
   if (method === "GET" && (url.pathname === "/api/status" || url.pathname === "/api/config/summary")) {
     sendJson(response, 200, await getUiStatusSummary());
+    return;
+  }
+
+  if (method === "GET" && url.pathname === "/api/update") {
+    sendJson(response, 200, await getUiUpdateSummary());
+    return;
+  }
+
+  if (method === "POST" && url.pathname === "/api/update/apply") {
+    const body = await readJsonBody(request);
+    if (!isRecord(body) || body.confirm !== true) {
+      sendJson(response, 400, { ok: false, error: "Update requires confirm=true.", code: "UiUpdateConfirmationRequired" });
+      return;
+    }
+    sendJson(response, 200, await applyUiUpdate());
     return;
   }
 

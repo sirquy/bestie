@@ -1,6 +1,7 @@
 import type { ReactElement } from "react";
 import { useEffect, useMemo, useState } from "react";
 import {
+  ArrowUpCircle,
   Bot,
   Brain,
   Cable,
@@ -15,6 +16,7 @@ import {
   ShieldCheck,
   TerminalSquare,
   WandSparkles,
+  X,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -43,6 +45,7 @@ import type { SettingsSummary } from "@/features/settings/types";
 import type { SkillsSummary } from "@/features/skills/types";
 import type { ToolsSummary } from "@/features/tools/types";
 import { fetchJson, type JsonRecord } from "@/lib/api";
+import { alertDialog, confirmDialog } from "@/lib/dialogs";
 import { cn } from "@/lib/utils";
 import bestieAppIcon from "@/assets/bestie-app-icon.png";
 
@@ -90,6 +93,23 @@ const panelsByRoute = new Map<string, PanelDefinition>(panels.map((panel) => [pa
 const panelsById = new Map(panels.map((panel) => [panel.id, panel]));
 const legacyPanelIds = new Map(panels.map((panel) => [`${panel.id}-panel`, panel.id]));
 const SIDEBAR_COLLAPSED_KEY = "bestie.ui.sidebarCollapsed";
+const UPDATE_DISMISSED_VERSION_KEY = "bestie.ui.updateDismissedVersion";
+
+interface UpdateSummary {
+  ok: boolean;
+  packageName: string;
+  currentVersion: string;
+  latestVersion?: string;
+  updateAvailable?: boolean;
+  installCommand: string;
+  error?: string;
+}
+
+interface UpdateApplyResult {
+  ok: boolean;
+  message: string;
+  output?: string;
+}
 
 function panelFromLocation(location: Location): PanelDefinition {
   const legacyHash = location.hash.startsWith("#") ? legacyPanelIds.get(location.hash.slice(1)) : undefined;
@@ -113,6 +133,9 @@ function readSidebarCollapsed(): boolean {
 function App(): ReactElement {
   const [activePanel, setActivePanel] = useState<PanelId>(() => panelFromLocation(window.location).id);
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(readSidebarCollapsed);
+  const [updateSummary, setUpdateSummary] = useState<UpdateSummary | null>(null);
+  const [updateDismissedVersion, setUpdateDismissedVersion] = useState(() => readUpdateDismissedVersion());
+  const [updateBusy, setUpdateBusy] = useState(false);
   const [panelData, setPanelData] = useState<Record<string, JsonRecord>>({});
   const [panelErrors, setPanelErrors] = useState<Record<string, unknown>>({});
   const [loadingPanels, setLoadingPanels] = useState<Record<string, boolean>>({});
@@ -170,6 +193,28 @@ function App(): ReactElement {
 
   const activeData = panelData[selectedPanel.id];
   const activeError = panelErrors[selectedPanel.id];
+  const updateAvailable = Boolean(updateSummary?.ok && updateSummary.updateAvailable && updateSummary.latestVersion && updateSummary.latestVersion !== updateDismissedVersion);
+
+  async function dismissUpdateBanner(): Promise<void> {
+    if (!updateSummary?.latestVersion) return;
+    writeUpdateDismissedVersion(updateSummary.latestVersion);
+    setUpdateDismissedVersion(updateSummary.latestVersion);
+  }
+
+  async function applyLatestUpdate(): Promise<void> {
+    if (!updateSummary?.latestVersion) return;
+    if (!await confirmDialog({ title: "Cập nhật Bestie Agent", description: `Cài Bestie Agent ${updateSummary.latestVersion}? Lệnh sẽ chạy: ${updateSummary.installCommand}`, confirmLabel: "Cập nhật", cancelLabel: "Để sau" })) return;
+    setUpdateBusy(true);
+    try {
+      const result = await fetchJson<UpdateApplyResult>("/api/update/apply", { method: "POST", body: JSON.stringify({ confirm: true }) });
+      await alertDialog({ title: result.ok ? "Đã chạy cập nhật" : "Cập nhật ch?a th?nh c?ng", description: result.message, confirmLabel: "Đã hiểu", tone: result.ok ? "default" : "destructive" });
+    } catch (error) {
+      await alertDialog({ title: "Cập nhật ch?a th?nh c?ng", description: error instanceof Error ? error.message : "Không thể chạy cập nhật.", confirmLabel: "Đã hiểu", tone: "destructive" });
+    } finally {
+      setUpdateBusy(false);
+    }
+  }
+
   return (
     <div className="relative min-h-screen overflow-x-hidden p-3 md:p-5 lg:p-8">
       <div className="pointer-events-none fixed inset-0 -z-10 bg-[radial-gradient(circle_at_20%_0%,rgba(166,244,172,0.12),transparent_24rem),radial-gradient(circle_at_100%_20%,rgba(255,181,91,0.12),transparent_26rem)]" />
@@ -245,6 +290,7 @@ function App(): ReactElement {
         </aside>
 
         <main className={cn("grid min-w-0 gap-4 transition-[margin] duration-300", sidebarCollapsed ? "lg:ml-[5.75rem]" : "lg:ml-[17rem]")}>
+          {updateAvailable && updateSummary ? <UpdateBanner summary={updateSummary} busy={updateBusy} onApply={() => void applyLatestUpdate()} onDismiss={() => void dismissUpdateBanner()} /> : null}
           {selectedPanel.id === "chat" ? (
                 activeError ? <ChatPanelError error={activeError} /> : (
                   <ChatPanel
@@ -395,6 +441,42 @@ function App(): ReactElement {
       </div>
     </div>
   );
+}
+
+function UpdateBanner({ summary, busy, onApply, onDismiss }: { summary: UpdateSummary; busy: boolean; onApply: () => void; onDismiss: () => void }): ReactElement {
+  return (
+    <div className="rounded-2xl border border-accent/30 bg-accent/15 p-3 text-sm shadow-glow ring-1 ring-accent/10" data-update-banner>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex min-w-0 items-start gap-3">
+          <ArrowUpCircle className="mt-0.5 size-5 shrink-0 text-accent" />
+          <div className="min-w-0">
+            <p className="font-semibold">Có bản Bestie Agent mới: {summary.latestVersion}</p>
+            <p className="text-muted-foreground">Bạn đang dùng {summary.currentVersion}. Cập nhật để nhận tính năng và bản sửa mới nhất.</p>
+          </div>
+        </div>
+        <div className="flex shrink-0 flex-wrap gap-2">
+          <Button size="sm" onClick={onApply} disabled={busy}><ArrowUpCircle /> {busy ? "Đang cập nhật..." : "Cập nhật ngay"}</Button>
+          <Button size="sm" variant="outline" onClick={onDismiss} disabled={busy}>Để sau</Button>
+          <Button size="icon" variant="ghost" aria-label="Ẩn thông báo cập nhật" onClick={onDismiss} disabled={busy}><X /></Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function readUpdateDismissedVersion(): string {
+  try {
+    return window.localStorage.getItem(UPDATE_DISMISSED_VERSION_KEY) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+function writeUpdateDismissedVersion(version: string): void {
+  try {
+    window.localStorage.setItem(UPDATE_DISMISSED_VERSION_KEY, version);
+  } catch {
+  }
 }
 
 export default App;
