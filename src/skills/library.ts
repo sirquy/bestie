@@ -226,7 +226,7 @@ export function validateCuratedSkillRegistry(skills: CuratedSkillTemplate[] = []
     if (!["low", "medium", "high"].includes(skill.risk)) issues.push({ name: skill.name, field: "risk", message: "Risk level is invalid." });
     if (!Array.isArray(skill.permissions)) issues.push({ name: skill.name, field: "permissions", message: "Permissions must be an array." });
     if (!skill.changelog.trim()) issues.push({ name: skill.name, field: "changelog", message: "Changelog is required." });
-    if (!skill.content.trim().startsWith("# ")) issues.push({ name: skill.name, field: "content", message: "Content must start with a Markdown title." });
+    if (!startsWithMarkdownTitle(skill.content)) issues.push({ name: skill.name, field: "content", message: "Content must start with a Markdown title." });
     if (hashSkillContent(skill.content).length !== 64) issues.push({ name: skill.name, field: "contentHash", message: "Content hash must be sha256." });
   }
   return { ok: issues.length === 0, count: skills.length, issues };
@@ -302,6 +302,15 @@ function verifyRemoteRegistryPayload(payload: string, config: RemoteSkillRegistr
 function verifyRegistryChecksum(payload: string, checksum: string): boolean {
   const expected = checksum.trim().split(/\s+/)[0]?.replace(/^sha256:/, "");
   return Boolean(expected && expected === hashContent(payload));
+}
+
+function startsWithMarkdownTitle(content: string): boolean {
+  const trimmed = content.trimStart();
+  if (trimmed.startsWith("# ")) return true;
+  if (!trimmed.startsWith("---\n")) return false;
+  const end = trimmed.indexOf("\n---", 4);
+  if (end < 0) return false;
+  return trimmed.slice(end + 4).trimStart().startsWith("# ");
 }
 
 function requireNormalizedName(value: unknown, fieldName: string): string {

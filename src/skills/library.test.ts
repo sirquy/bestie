@@ -37,6 +37,18 @@ test("validateCuratedSkillRegistry reports duplicate and malformed entries", () 
   assert.ok(result.issues.some((issue) => issue.field === "content"));
 });
 
+test("validateCuratedSkillRegistry accepts markdown front matter before title", () => {
+  const skill = createRemoteRegistryDocument().skills[0] as import("./library.js").CuratedSkillTemplate;
+  const result = validateCuratedSkillRegistry([
+    {
+      ...skill,
+      content: "---\nname: remote-test-skill\ndescription: Test skill.\n---\n\n# Remote Test Skill\n\nUse only in tests.\n",
+    },
+  ]);
+
+  assert.equal(result.ok, true);
+});
+
 test("hashSkillContent and buildSkillDiff are stable registry primitives", () => {
   assert.equal(hashSkillContent("# Skill\n"), hashSkillContent("# Skill"));
   const diff = buildSkillDiff("# Skill\nold", "# Skill\nnew");
