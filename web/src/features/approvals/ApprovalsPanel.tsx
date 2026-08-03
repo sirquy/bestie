@@ -41,7 +41,7 @@ export function ApprovalsPanel({ data, loading, onData, onLoading }: ApprovalsPa
   }
 
   async function decide(decision: ApprovalDecision, approval: PendingActionApproval): Promise<void> {
-    const verb = decision === "approve" ? "Approve" : "Deny";
+    const verb = decision === "approve" ? "Duyệt" : "Từ chối";
     if (!await confirmDialog(`${verb} ${approval.action} #${approval.id}?`)) return;
     await runAction(async () => {
       const result = await fetchJson<ApprovalActionResult>("/api/approvals/action", { method: "POST", body: JSON.stringify({ action: decision, id: approval.id, confirm: true }) });
@@ -55,7 +55,7 @@ export function ApprovalsPanel({ data, loading, onData, onLoading }: ApprovalsPa
     return (
       <Alert className="border-accent/40 bg-accent/10">
         <ClipboardCheck className="size-4" />
-        <AlertTitle>Approvals are loading</AlertTitle>
+        <AlertTitle>Phê duyệt are loading</AlertTitle>
         <AlertDescription>Loading actions that need your review.</AlertDescription>
       </Alert>
     );
@@ -67,9 +67,9 @@ export function ApprovalsPanel({ data, loading, onData, onLoading }: ApprovalsPa
       {actionMessage ? <Alert className="border-primary/40 bg-primary/10"><Check className="size-4" /><AlertTitle>Approval updated</AlertTitle><AlertDescription>{actionMessage}</AlertDescription></Alert> : null}
 
       <div className="grid gap-3 md:grid-cols-3">
-        <Metric label="Pending" value={String(data.count)} tone={data.count ? "warn" : "good"} />
-        <Metric label="Review queue" value={data.databaseExists ? "ready" : "not ready"} tone={data.databaseExists ? "good" : "warn"} />
-        <Metric label="Review mode" value="approval required" tone="good" />
+        <Metric label="Đang chờ" value={String(data.count)} tone={data.count ? "warn" : "good"} />
+        <Metric label="Hàng chờ phê duyệt" value={data.databaseExists ? "ready" : "chưa sẵn sàng"} tone={data.databaseExists ? "good" : "warn"} />
+        <Metric label="Chế độ xem xét" value="cần phê duyệt" tone="good" />
       </div>
 
       <Card className="border-white/10 bg-background/35">
@@ -79,7 +79,7 @@ export function ApprovalsPanel({ data, loading, onData, onLoading }: ApprovalsPa
             <CardDescription>External, destructive, public, or sensitive actions wait here for explicit review.</CardDescription>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Badge variant={data.databaseExists ? "secondary" : "destructive"}><Database className="mr-1 size-3" /> {data.databaseExists ? "ready" : "not ready"}</Badge>
+            <Badge variant={data.databaseExists ? "secondary" : "destructive"}><Database className="mr-1 size-3" /> {data.databaseExists ? "ready" : "chưa sẵn sàng"}</Badge>
             <Button variant="outline" onClick={() => void reload()} disabled={loading}><RefreshCw className={loading ? "animate-spin" : ""} /> Reload</Button>
           </div>
         </CardHeader>
@@ -99,7 +99,7 @@ function ApprovalsError({ message }: { message: string }): ReactElement {
   return (
     <Alert variant="destructive">
       <AlertCircle className="size-4" />
-      <AlertTitle>Approvals request failed</AlertTitle>
+      <AlertTitle>Phê duyệt request failed</AlertTitle>
       <AlertDescription>{message}</AlertDescription>
     </Alert>
   );
@@ -116,18 +116,18 @@ function ApprovalRow({ approval, loading, onDecision }: { approval: PendingActio
             <Badge variant={approval.channel === "ui" || approval.channel === "ui-chat" ? "secondary" : "outline"}>{approval.channel}</Badge>
             <Badge variant="outline">{approval.category}</Badge>
           </div>
-          <p className="mt-2 text-muted-foreground">{approval.target || "No target"}</p>
-          <p className="mt-1 text-muted-foreground">{approval.reason || approval.proposedReason || "No reason provided"}</p>
+          <p className="mt-2 text-muted-foreground">{approval.target || "Không có đối tượng"}</p>
+          <p className="mt-1 text-muted-foreground">{approval.reason || approval.proposedReason || "Không có lý do"}</p>
         </div>
         <div className="flex gap-2">
-          <Button data-approval-action="approve" size="sm" onClick={() => void onDecision("approve", approval)} disabled={loading}><Check /> Approve</Button>
-          <Button data-approval-action="deny" size="sm" variant="outline" onClick={() => void onDecision("deny", approval)} disabled={loading}><X /> Deny</Button>
+          <Button data-approval-action="approve" size="sm" onClick={() => void onDecision("approve", approval)} disabled={loading}><Check /> Duyệt</Button>
+          <Button data-approval-action="deny" size="sm" variant="outline" onClick={() => void onDecision("deny", approval)} disabled={loading}><X /> Từ chối</Button>
         </div>
       </div>
       <Separator className="my-3" />
       <div className="grid gap-1 text-xs text-muted-foreground md:grid-cols-3">
-        <p>Status: {approval.status}</p>
-        <p>Created: {formatDate(approval.createdAt)}</p>
+        <p>Trạng thái: {approval.status}</p>
+        <p>Tạod: {formatDate(approval.createdAt)}</p>
         <p>Expires: {formatDate(approval.expiresAt)}</p>
       </div>
       {approval.userId ? <p className="mt-2 text-xs text-muted-foreground">User: {approval.userId}</p> : null}

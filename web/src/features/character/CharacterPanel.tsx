@@ -65,8 +65,8 @@ export function CharacterPanel({ data, loading, onData, onLoading }: CharacterPa
   }
 
   async function save(): Promise<void> {
-    if (!await confirmDialog("Save Bestie's personality and conversation guide?")) return;
-    await runAction(() => fetchJson<CharacterSummary>("/api/character", { method: "PUT", body: JSON.stringify({ characterText, promptText }) }), "Bestie's personality was saved.");
+    if (!await confirmDialog("Lưu tính cách và hướng dẫn trò chuyện của Bestie?")) return;
+    await runAction(() => fetchJson<CharacterSummary>("/api/character", { method: "PUT", body: JSON.stringify({ characterText, promptText }) }), "Đã lưu tính cách của Bestie.");
   }
 
   function updateDraftField(key: "name" | "ownerName" | "language", value: string): void {
@@ -84,14 +84,14 @@ export function CharacterPanel({ data, loading, onData, onLoading }: CharacterPa
   function syncPromptDraft(): void {
     const nextDraft = draft ?? {};
     const name = stringValue(nextDraft.name) || data?.character.parsed?.name || "Bestie";
-    const ownerName = stringValue(nextDraft.ownerName) || data?.character.parsed?.ownerName || "Boss";
+    const ownerName = stringValue(nextDraft.ownerName) || data?.character.parsed?.ownerName || "Sếp";
     const language = stringValue(nextDraft.language) || data?.character.parsed?.language || "vi";
     setPromptText(buildPromptDraft(name, ownerName, language, tone));
   }
 
   function insertSafetyGuardrails(): void {
-    const guardrails = "\n\n## Safety Guardrails\n\n- Do not present as human, conscious, a therapist replacement, or a romantic companion.\n- Do not expose secrets, raw .env values, API keys, tokens, or unsafe private data.\n- Drop jokes when the user is vulnerable, unsafe, or asking for serious help.\n- Keep playful bluntness warm; never be cruel, humiliating, hateful, or sexually explicit.\n";
-    if (promptText.includes("## Safety Guardrails")) return;
+    const guardrails = "\\n\\n## Quy tắc an toàn\\n\\n- Không giới thiệu Bestie là con người, có ý thức, thay thế chuyên gia tâm lý, hoặc bạn tình cảm.\\n- Không tiết lộ bí mật, nội dung .env, API key, token hoặc dữ liệu riêng tư không an toàn.\\n- Ngừng đùa khi người dùng đang dễ tổn thương, không an toàn hoặc cần hỗ trợ nghiêm túc.\\n- Giữ sự thẳng thắn vui vẻ nhưng ấm áp; không tàn nhẫn, hạ nhục, thù ghét hoặc khiêu dâm.\\n";
+    if (promptText.includes("## Quy tắc an toàn")) return;
     setPromptText(`${promptText.trimEnd()}${guardrails}`);
   }
 
@@ -99,7 +99,7 @@ export function CharacterPanel({ data, loading, onData, onLoading }: CharacterPa
     return (
       <Alert className="border-accent/40 bg-accent/10">
         <Bot className="size-4" />
-        <AlertTitle>Character Studio is loading</AlertTitle>
+        <AlertTitle>Tính cách is loading</AlertTitle>
         <AlertDescription>Loading Bestie's personality settings.</AlertDescription>
       </Alert>
     );
@@ -114,7 +114,7 @@ export function CharacterPanel({ data, loading, onData, onLoading }: CharacterPa
         <Card className="border-white/10 bg-background/35">
           <CardHeader className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
             <div>
-              <CardTitle className="flex items-center gap-2"><Bot className="size-5" /> Character Studio</CardTitle>
+              <CardTitle className="flex items-center gap-2"><Bot className="size-5" /> Tính cách</CardTitle>
               <CardDescription>Adjust how Bestie sounds and behaves.</CardDescription>
             </div>
             <div className="flex flex-wrap gap-2">
@@ -127,21 +127,21 @@ export function CharacterPanel({ data, loading, onData, onLoading }: CharacterPa
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div>
                   <p className="text-2xl font-semibold">{stringValue(draft?.name) || data.character.parsed?.name || "Bestie"}</p>
-                  <p className="text-sm text-muted-foreground">Owner: {stringValue(draft?.ownerName) || data.character.parsed?.ownerName || "-"}</p>
+                  <p className="text-sm text-muted-foreground">Chủ sở hữu: {stringValue(draft?.ownerName) || data.character.parsed?.ownerName || "-"}</p>
                 </div>
-                <Badge variant={draft ? "secondary" : "destructive"}>{draft ? stringValue(draft.language) || data.character.parsed?.language || "vi" : "needs fixing"}</Badge>
+                <Badge variant={draft ? "secondary" : "destructive"}>{draft ? stringValue(draft.language) || data.character.parsed?.language || "vi" : "cần sửa"}</Badge>
               </div>
               <Separator className="my-4" />
               <div className="grid gap-2 text-sm">
-                <FileStatus label="Personality file" exists={data.character.exists} path={data.character.path} error={data.character.error} />
-                <FileStatus label="Conversation guide" exists={data.prompt.exists} path={data.prompt.path} error={data.prompt.error} />
+                <FileStatus label="Tệp tính cách" exists={data.character.exists} path={data.character.path} error={data.character.error} />
+                <FileStatus label="Hướng dẫn trò chuyện" exists={data.prompt.exists} path={data.prompt.path} error={data.prompt.error} />
               </div>
             </div>
 
             <form id="character-form" className="grid gap-3">
-              <FormField label="Name"><Input name="name" value={stringValue(draft?.name)} onChange={(event) => updateDraftField("name", event.target.value)} /></FormField>
-              <FormField label="Owner"><Input name="ownerName" value={stringValue(draft?.ownerName)} onChange={(event) => updateDraftField("ownerName", event.target.value)} /></FormField>
-              <FormField label="Language"><Input name="language" value={stringValue(draft?.language)} onChange={(event) => updateDraftField("language", event.target.value)} /></FormField>
+              <FormField label="Tên"><Input name="name" value={stringValue(draft?.name)} onChange={(event) => updateDraftField("name", event.target.value)} /></FormField>
+              <FormField label="Chủ sở hữu"><Input name="ownerName" value={stringValue(draft?.ownerName)} onChange={(event) => updateDraftField("ownerName", event.target.value)} /></FormField>
+              <FormField label="Ngôn ngữ"><Input name="language" value={stringValue(draft?.language)} onChange={(event) => updateDraftField("language", event.target.value)} /></FormField>
               <div className="grid gap-3 rounded-2xl border border-white/10 bg-card/60 p-4">
                 <div className="flex items-center gap-2"><SlidersHorizontal className="size-4" /><p className="font-semibold">Tone Lab</p></div>
                 {toneFields.map((field) => <ToneField key={field.key} label={field.label} name={field.key} value={tone[field.key]} onChange={(value) => updateToneField(field.key, value)} />)}
@@ -175,11 +175,11 @@ export function CharacterPanel({ data, loading, onData, onLoading }: CharacterPa
         <CardContent className="grid gap-4 lg:grid-cols-[1fr_18rem]">
           <Textarea id="character-prompt" className="min-h-[26rem] font-mono text-xs" spellCheck={false} value={promptText} onChange={(event) => setPromptText(event.target.value)} />
           <div id="character-prompt-outline" className="rounded-2xl border border-white/10 bg-card/60 p-4 text-sm">
-            <p className="font-semibold">Prompt outline</p>
+            <p className="font-semibold">Nội dung outline</p>
             <Separator className="my-3" />
             <p><span className="text-muted-foreground">Lines:</span> {promptText.split("\n").length}</p>
-            <p><span className="text-muted-foreground">Characters:</span> {promptText.length}</p>
-            <p><span className="text-muted-foreground">Guardrails:</span> {promptText.includes("Safety Guardrails") ? "present" : "not inserted"}</p>
+            <p><span className="text-muted-foreground">Tính cáchs:</span> {promptText.length}</p>
+            <p><span className="text-muted-foreground">Guardrails:</span> {promptText.includes("Quy tắc an toàn") ? "present" : "chưa thêm"}</p>
           </div>
         </CardContent>
       </Card>
@@ -195,7 +195,7 @@ function CharacterError({ message }: { message: string }): ReactElement {
   return (
     <Alert variant="destructive">
       <AlertCircle className="size-4" />
-      <AlertTitle>Character request failed</AlertTitle>
+      <AlertTitle>Tính cách request failed</AlertTitle>
       <AlertDescription>{message}</AlertDescription>
     </Alert>
   );
@@ -225,10 +225,10 @@ function ToneField({ label, name, value, onChange }: { label: string; name: stri
 }
 
 const toneFields: Array<{ key: keyof CharacterTone; label: string }> = [
-  { key: "roastLevel", label: "Roast" },
-  { key: "warmthLevel", label: "Warmth" },
-  { key: "bluntnessLevel", label: "Bluntness" },
-  { key: "chaosLevel", label: "Chaos" },
+  { key: "roastLevel", label: "Trêu vui" },
+  { key: "warmthLevel", label: "Độ ấm áp" },
+  { key: "bluntnessLevel", label: "Độ thẳng thắn" },
+  { key: "chaosLevel", label: "Độ nghịch" },
 ];
 
 function parseDraft(text: string): CharacterDraft | undefined {

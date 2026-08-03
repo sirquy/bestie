@@ -83,14 +83,14 @@ export function SettingsPanel({ data, loading, onData, onLoading, onStatusRefres
         },
         confirm: true,
       }),
-    }), "Settings saved.");
+    }), "Đã lưu cài đặt.");
   }
 
   if (!data) {
     return (
       <Alert className="border-accent/40 bg-accent/10">
         <Settings className="size-4" />
-        <AlertTitle>Settings are loading</AlertTitle>
+        <AlertTitle>Cài đặt are loading</AlertTitle>
         <AlertDescription>Loading safe preferences you can edit here.</AlertDescription>
       </Alert>
     );
@@ -105,7 +105,7 @@ export function SettingsPanel({ data, loading, onData, onLoading, onStatusRefres
         <Card className="border-white/10 bg-background/35">
           <CardHeader className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
             <div>
-              <CardTitle className="flex items-center gap-2"><Settings className="size-5" /> Settings</CardTitle>
+              <CardTitle className="flex items-center gap-2"><Settings className="size-5" /> Cài đặt</CardTitle>
               <CardDescription>Safe preferences for identity, language, tone, and memory review.</CardDescription>
             </div>
             <Button variant="outline" onClick={() => void reload()} disabled={loading}>
@@ -116,10 +116,10 @@ export function SettingsPanel({ data, loading, onData, onLoading, onStatusRefres
           <CardContent>
             <form id="settings-form" className="grid gap-4" onSubmit={(event) => void save(event)}>
               <div className="grid gap-3 md:grid-cols-2">
-                <FormField label="Name"><Input name="name" value={draft.name} onChange={(event) => setDraftValue(setDraft, "name", event.target.value)} /></FormField>
-                <FormField label="Owner"><Input name="ownerName" value={draft.ownerName} onChange={(event) => setDraftValue(setDraft, "ownerName", event.target.value)} /></FormField>
-                <FormField label="Language"><Input name="language" value={draft.language} onChange={(event) => setDraftValue(setDraft, "language", event.target.value)} /></FormField>
-                <FormField label="Memory review mode">
+                <FormField label="Tên"><Input name="name" value={draft.name} onChange={(event) => setDraftValue(setDraft, "name", event.target.value)} /></FormField>
+                <FormField label="Chủ sở hữu"><Input name="ownerName" value={draft.ownerName} onChange={(event) => setDraftValue(setDraft, "ownerName", event.target.value)} /></FormField>
+                <FormField label="Ngôn ngữ"><Input name="language" value={draft.language} onChange={(event) => setDraftValue(setDraft, "language", event.target.value)} /></FormField>
+                <FormField label="Chế độ duyệt bộ nhớ">
                   <Select name="writePolicy" value={draft.writePolicy} onChange={(event) => setDraftValue(setDraft, "writePolicy", event.target.value as MemoryWritePolicy)}>
                     <option value="ask">ask</option>
                     <option value="allow">allow</option>
@@ -145,18 +145,18 @@ export function SettingsPanel({ data, loading, onData, onLoading, onStatusRefres
         </Card>
 
         <div className="grid gap-4">
-          <SettingsSummaryCard title="Agent" icon={<Settings className="size-5" />} rows={[
-            ["Name", data.agent.name],
-            ["Owner", data.agent.ownerName],
-            ["Language", data.agent.language],
-            ["Time zone", data.agent.timeZone ?? "-"],
+          <SettingsSummaryCard title="Trợ lý" icon={<Settings className="size-5" />} rows={[
+            ["Tên", data.agent.name],
+            ["Chủ sở hữu", data.agent.ownerName],
+            ["Ngôn ngữ", data.agent.language],
+            ["Múi giờ", data.agent.timeZone ?? "-"],
           ]} />
-          <SettingsSummaryCard title="Memory" icon={<Brain className="size-5" />} rows={[
-            ["Write policy", data.memory.writePolicy],
+          <SettingsSummaryCard title="Bộ nhớ" icon={<Brain className="size-5" />} rows={[
+            ["Quyền ghi", data.memory.writePolicy],
           ]} />
-          <SettingsSummaryCard title="Folders" icon={<FolderOpen className="size-5" />} rows={[
-            ["Default path", data.workspace.defaultPath ?? "-"],
-            ["External paths", String(data.workspace.externalPathCount)],
+          <SettingsSummaryCard title="Thư mục" icon={<FolderOpen className="size-5" />} rows={[
+            ["Thư mục mặc định", data.workspace.defaultPath ?? "-"],
+            ["Thư mục ngoài", String(data.workspace.externalPathCount)],
           ]} />
         </div>
       </div>
@@ -164,14 +164,14 @@ export function SettingsPanel({ data, loading, onData, onLoading, onStatusRefres
       <Card className="border-white/10 bg-background/35">
         <CardHeader>
           <CardTitle>AI setup summary</CardTitle>
-          <CardDescription>View only here. Use Providers to change AI service choices.</CardDescription>
+          <CardDescription>View only here. Use Nhà cung cấp to change AI service choices.</CardDescription>
         </CardHeader>
         <CardContent className="grid gap-3 md:grid-cols-5">
-          <MiniMetric label="Primary" value={data.llm.primary} />
-          <MiniMetric label="Auth profile" value={data.llm.authProfile} />
-          <MiniMetric label="Fallbacks" value={String(data.llm.fallbackCount)} />
-          <MiniMetric label="Connections" value={String(data.llm.profileCount)} />
-          <MiniMetric label="Models" value={String(data.llm.modelCount)} />
+          <MiniMetric label="Chính" value={data.llm.primary} />
+          <MiniMetric label="Hồ sơ xác thực" value={data.llm.authProfile} />
+          <MiniMetric label="Dự phòng" value={String(data.llm.fallbackCount)} />
+          <MiniMetric label="Kết nối" value={String(data.llm.profileCount)} />
+          <MiniMetric label="Model" value={String(data.llm.modelCount)} />
         </CardContent>
       </Card>
     </div>
@@ -186,7 +186,7 @@ function SettingsError({ message }: { message: string }): ReactElement {
   return (
     <Alert variant="destructive">
       <AlertCircle className="size-4" />
-      <AlertTitle>Settings request failed</AlertTitle>
+      <AlertTitle>Cài đặt request failed</AlertTitle>
       <AlertDescription>{message}</AlertDescription>
     </Alert>
   );

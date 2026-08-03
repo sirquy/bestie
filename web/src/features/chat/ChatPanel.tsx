@@ -137,15 +137,15 @@ export function ChatPanel({ data, loading, onData, onLoading }: ChatPanelProps):
   }
 
   async function createSession(): Promise<void> {
-    const title = await promptDialog({ title: "New chat", description: "Name this chat session.", defaultValue: "New chat", confirmLabel: "Create" }) ?? undefined;
-    const result = await runRequest(() => fetchJson<ChatSessionMessagesSummary>("/api/chat/sessions", { method: "POST", body: JSON.stringify({ title }) }), { globalLoading: true, success: "Chat session created." });
+    const title = await promptDialog({ title: "Chat mới", description: "Đặt tên cho cuộc trò chuyện này.", defaultValue: "Chat mới", confirmLabel: "Tạo" }) ?? undefined;
+    const result = await runRequest(() => fetchJson<ChatSessionMessagesSummary>("/api/chat/sessions", { method: "POST", body: JSON.stringify({ title }) }), { globalLoading: true, success: "Đã tạo cuộc trò chuyện." });
     if (!result) return;
     setActiveSession(result);
     await refreshSessions();
   }
 
   async function createSessionForMessage(content: string): Promise<ChatSessionMessagesSummary | undefined> {
-    const title = content.trim().slice(0, 48) || "New chat";
+    const title = content.trim().slice(0, 48) || "Chat mới";
     const result = await runRequest(() => fetchJson<ChatSessionMessagesSummary>("/api/chat/sessions", { method: "POST", body: JSON.stringify({ title }) }), { globalLoading: true });
     if (result) {
       setActiveSession(result);
@@ -172,12 +172,12 @@ export function ChatPanel({ data, loading, onData, onLoading }: ChatPanelProps):
     const title = draftTitle.trim();
     if (!activeSession || !title) return;
     setEditingTitle(false);
-    await updateSession({ title }, "Session renamed.");
+    await updateSession({ title }, "Đã đổi tên cuộc trò chuyện.");
   }
 
   async function deleteSession(): Promise<void> {
-    if (!activeSession || !await confirmDialog({ title: "Delete chat", description: `Delete chat session #${activeSession.session.id}?`, confirmLabel: "Delete", tone: "destructive" })) return;
-    await runRequest(() => fetchJson<ChatSessionMessagesSummary>("/api/chat/sessions/delete", { method: "POST", body: JSON.stringify({ id: activeSession.session.id, confirm: true }) }), { globalLoading: true, success: "Chat session deleted." });
+    if (!activeSession || !await confirmDialog({ title: "Xoá cuộc trò chuyện", description: `Delete chat session #${activeSession.session.id}?`, confirmLabel: "Xoá", tone: "destructive" })) return;
+    await runRequest(() => fetchJson<ChatSessionMessagesSummary>("/api/chat/sessions/delete", { method: "POST", body: JSON.stringify({ id: activeSession.session.id, confirm: true }) }), { globalLoading: true, success: "Đã xoá cuộc trò chuyện." });
     setActiveSession(null);
     await refreshSessions();
   }
@@ -213,7 +213,7 @@ export function ChatPanel({ data, loading, onData, onLoading }: ChatPanelProps):
   }
 
   async function retryLast(): Promise<void> {
-    if (!activeSession || !await confirmDialog({ title: "Retry message", description: "Retry last user message?", confirmLabel: "Retry" })) return;
+    if (!activeSession || !await confirmDialog({ title: "Thử lại tin nhắn", description: "Thử lại tin nhắn gần nhất của bạn?", confirmLabel: "Thử lại" })) return;
     const retry = await prepareRetry();
     if (!retry) return;
     setActiveSession(retry);
@@ -222,11 +222,11 @@ export function ChatPanel({ data, loading, onData, onLoading }: ChatPanelProps):
 
   async function prepareRetry(messageId?: number): Promise<ChatSessionMessagesSummary | undefined> {
     if (!activeSession) return undefined;
-    return runRequest(() => fetchJson<ChatSessionMessagesSummary>("/api/chat/retry", { method: "POST", body: JSON.stringify({ sessionId: activeSession.session.id, messageId, confirm: true }) }), { success: "Retry prepared." });
+    return runRequest(() => fetchJson<ChatSessionMessagesSummary>("/api/chat/retry", { method: "POST", body: JSON.stringify({ sessionId: activeSession.session.id, messageId, confirm: true }) }), { success: "Đã chuẩn bị thử lại." });
   }
 
   async function retryMessage(messageId: number): Promise<void> {
-    if (!activeSession || !await confirmDialog({ title: "Retry from here", description: `Retry message #${messageId}? Later messages in this branch may be trimmed.`, confirmLabel: "Retry" })) return;
+    if (!activeSession || !await confirmDialog({ title: "Thử lại từ đây", description: `Retry message #${messageId}? Later messages in this branch may be trimmed.`, confirmLabel: "Thử lại" })) return;
     const retry = await prepareRetry(messageId);
     if (!retry) return;
     setActiveSession(retry);
@@ -234,8 +234,8 @@ export function ChatPanel({ data, loading, onData, onLoading }: ChatPanelProps):
   }
 
   async function forkAt(messageId: number): Promise<void> {
-    if (!activeSession || !await confirmDialog({ title: "Fork chat", description: `Fork chat at message #${messageId}?`, confirmLabel: "Fork" })) return;
-    const fork = await runRequest(() => fetchJson<ChatSessionMessagesSummary>("/api/chat/fork", { method: "POST", body: JSON.stringify({ sessionId: activeSession.session.id, messageId, confirm: true }) }), { globalLoading: true, success: "Chat fork created." });
+    if (!activeSession || !await confirmDialog({ title: "Tạo nhánh trò chuyện", description: `Fork chat at message #${messageId}?`, confirmLabel: "Tạo nhánh" })) return;
+    const fork = await runRequest(() => fetchJson<ChatSessionMessagesSummary>("/api/chat/fork", { method: "POST", body: JSON.stringify({ sessionId: activeSession.session.id, messageId, confirm: true }) }), { globalLoading: true, success: "Đã tạo nhánh trò chuyện." });
     if (!fork) return;
     setActiveSession(fork);
     await refreshSessions();
@@ -244,9 +244,9 @@ export function ChatPanel({ data, loading, onData, onLoading }: ChatPanelProps):
   async function copyMessage(content: string): Promise<void> {
     try {
       await navigator.clipboard.writeText(content);
-      setActionMessage("Message copied.");
+      setActionMessage("Đã sao chép tin nhắn.");
     } catch {
-      setActionError("Could not copy message to clipboard.");
+      setActionError("Không thể sao chép tin nhắn.");
     }
   }
 
@@ -261,13 +261,13 @@ export function ChatPanel({ data, loading, onData, onLoading }: ChatPanelProps):
   const visibleEvents = activeSession?.events ?? [];
 
   if (!data) {
-    return <Alert className="border-accent/40 bg-accent/10"><MessageSquareText className="size-4" /><AlertTitle>Chat is loading</AlertTitle><AlertDescription>Loading your recent conversations.</AlertDescription></Alert>;
+    return <Alert className="border-accent/40 bg-accent/10"><MessageSquareText className="size-4" /><AlertTitle>Trò chuyện is loading</AlertTitle><AlertDescription>Loading your recent conversations.</AlertDescription></Alert>;
   }
 
   return (
     <div className="grid gap-3" data-chat-panel>
       {actionError ? <ChatError message={actionError} /> : null}
-      {actionMessage ? <Alert className="border-primary/40 bg-primary/10"><Bot className="size-4" /><AlertTitle>Chat update</AlertTitle><AlertDescription>{actionMessage}</AlertDescription></Alert> : null}
+      {actionMessage ? <Alert className="border-primary/40 bg-primary/10"><Bot className="size-4" /><AlertTitle>Trò chuyện update</AlertTitle><AlertDescription>{actionMessage}</AlertDescription></Alert> : null}
 
       <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-white/10 bg-background/35 p-3" data-chat-summary>
         <div className="flex flex-wrap gap-2">
@@ -278,7 +278,7 @@ export function ChatPanel({ data, loading, onData, onLoading }: ChatPanelProps):
         </div>
         <div className="flex flex-wrap gap-2">
           <Button size="sm" variant="outline" onClick={() => void reload()} disabled={loading}><RefreshCw className={loading ? "animate-spin" : ""} /> Reload</Button>
-          <Button size="sm" onClick={() => void createSession()}><Plus /> New chat</Button>
+          <Button size="sm" onClick={() => void createSession()}><Plus /> Trò chuyện mới</Button>
         </div>
       </div>
 
@@ -286,18 +286,18 @@ export function ChatPanel({ data, loading, onData, onLoading }: ChatPanelProps):
         <Card className="flex min-h-[18rem] flex-col overflow-hidden border-white/10 bg-background/35 xl:min-h-0">
           <CardHeader className="border-b border-white/10 p-4">
             <div className={`flex items-center gap-2 ${sessionsCollapsed ? "justify-center" : "justify-between"}`}>
-              {sessionsCollapsed ? null : <div><CardTitle className="flex items-center gap-2 text-base"><MessageSquareText className="size-4" /> Sessions</CardTitle><CardDescription>Search and switch chats.</CardDescription></div>}
-              <Button type="button" variant="outline" size="icon" aria-label={sessionsCollapsed ? "Expand sessions" : "Collapse sessions"} onClick={() => setSessionsCollapsed((current) => !current)}>{sessionsCollapsed ? <PanelLeftOpen /> : <PanelLeftClose />}</Button>
+              {sessionsCollapsed ? null : <div><CardTitle className="flex items-center gap-2 text-base"><MessageSquareText className="size-4" /> Phiêns</CardTitle><CardDescription>Tìm kiếm and switch chats.</CardDescription></div>}
+              <Button type="button" variant="outline" size="icon" aria-label={sessionsCollapsed ? "Mở rộng danh sách" : "Thu gọn danh sách"} onClick={() => setSessionsCollapsed((current) => !current)}>{sessionsCollapsed ? <PanelLeftOpen /> : <PanelLeftClose />}</Button>
             </div>
           </CardHeader>
           {sessionsCollapsed ? <CardContent className="flex flex-1 flex-col items-center gap-3 p-3"><MessageSquareText className="size-5 text-muted-foreground" /><Badge variant="outline">{data.sessions.length}</Badge></CardContent> : <CardContent className="flex min-h-0 flex-1 flex-col gap-3 p-3">
             <form className="grid gap-2" onSubmit={(event) => void searchSessions(event)}>
-              <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search sessions" id="chat-session-search" />
+              <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Tìm cuộc trò chuyện" id="chat-session-search" />
               <div className="grid grid-cols-[1fr_auto] gap-2">
                 <Select value={filter} onChange={(event) => setFilter(event.target.value as ChatFilter)}>
                   <option value="all">all</option><option value="approval">approval</option><option value="cancelled">cancelled</option><option value="error">error</option><option value="fork">fork</option><option value="retry">retry</option>
                 </Select>
-                <Button type="submit" variant="outline" disabled={loading} size="icon" aria-label="Search sessions"><Search /></Button>
+                <Button type="submit" variant="outline" disabled={loading} size="icon" aria-label="Tìm cuộc trò chuyện"><Search /></Button>
               </div>
             </form>
             <div className="no-scrollbar grid min-h-0 flex-1 content-start gap-2 overflow-auto pr-1" id="chat-session-list">
@@ -310,15 +310,15 @@ export function ChatPanel({ data, loading, onData, onLoading }: ChatPanelProps):
           <CardHeader className="relative z-10 shrink-0 border-b border-white/10 bg-background/80 p-4 backdrop-blur">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="min-w-0 flex-1">
-                {editingTitle && activeSession ? <div className="flex max-w-xl items-center gap-2"><Input className="h-8" value={draftTitle} autoFocus onChange={(event) => setDraftTitle(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void saveTitle(); if (event.key === "Escape") setEditingTitle(false); }} aria-label="Edit session name" /><Button size="icon" variant="outline" type="button" aria-label="Save session name" onClick={() => void saveTitle()}><Check /></Button><Button size="icon" variant="ghost" type="button" aria-label="Cancel session name edit" onClick={() => setEditingTitle(false)}><X /></Button></div> : <CardTitle className="flex min-w-0 items-center gap-2 text-lg"><span className="truncate">{activeSession ? activeSession.session.title : "No active chat"}</span>{activeSession ? <Button className="size-7 shrink-0" size="icon" variant="ghost" type="button" aria-label="Edit session name" onClick={startEditingTitle}><Pencil className="size-3.5" /></Button> : null}</CardTitle>}
-                <CardDescription>{activeSession ? `#${activeSession.session.id} / updated ${formatDate(activeSession.session.updatedAt)}` : "Create or open a session to start chatting."}</CardDescription>
+                {editingTitle && activeSession ? <div className="flex max-w-xl items-center gap-2"><Input className="h-8" value={draftTitle} autoFocus onChange={(event) => setDraftTitle(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void saveTitle(); if (event.key === "Escape") setEditingTitle(false); }} aria-label="Sửa tên cuộc trò chuyện" /><Button size="icon" variant="outline" type="button" aria-label="Lưu tên cuộc trò chuyện" onClick={() => void saveTitle()}><Check /></Button><Button size="icon" variant="ghost" type="button" aria-label="Huỷ sửa tên cuộc trò chuyện" onClick={() => setEditingTitle(false)}><X /></Button></div> : <CardTitle className="flex min-w-0 items-center gap-2 text-lg"><span className="truncate">{activeSession ? activeSession.session.title : "Chưa chọn cuộc trò chuyện"}</span>{activeSession ? <Button className="size-7 shrink-0" size="icon" variant="ghost" type="button" aria-label="Sửa tên cuộc trò chuyện" onClick={startEditingTitle}><Pencil className="size-3.5" /></Button> : null}</CardTitle>}
+                <CardDescription>{activeSession ? `#${activeSession.session.id} / updated ${formatDate(activeSession.session.updatedAt)}` : "Tạo hoặc mở một cuộc trò chuyện để bắt đầu."}</CardDescription>
               </div>
               <details className="relative">
-                <summary className="list-none rounded-full border border-white/10 p-2 text-muted-foreground hover:bg-secondary hover:text-foreground" aria-label="Chat actions"><MoreHorizontal className="size-4" /></summary>
+                <summary className="list-none rounded-full border border-white/10 p-2 text-muted-foreground hover:bg-secondary hover:text-foreground" aria-label="Tác vụ trò chuyện"><MoreHorizontal className="size-4" /></summary>
                 <div className="absolute right-0 z-30 mt-2 grid min-w-40 gap-1 rounded-2xl border border-white/10 bg-card p-1 shadow-xl">
-                  <button className="flex items-center gap-2 rounded-xl px-3 py-2 text-left text-xs hover:bg-secondary" type="button" onClick={() => setChatFullscreen((current) => !current)} data-chat-header-action="fullscreen">{chatFullscreen ? <Minimize2 className="size-3" /> : <Maximize2 className="size-3" />}{chatFullscreen ? "Exit fullscreen" : "Fullscreen"}</button>
-                  <button className="flex items-center gap-2 rounded-xl px-3 py-2 text-left text-xs hover:bg-secondary disabled:opacity-50" type="button" disabled={!activeSession} onClick={() => activeSession && void updateSession({ pinned: !activeSession.session.pinnedAt }, activeSession.session.pinnedAt ? "Session unpinned." : "Session pinned.")} data-chat-header-action="pin"><Pin className="size-3" />{activeSession?.session.pinnedAt ? "Unpin" : "Pin"}</button>
-                  <button className="flex items-center gap-2 rounded-xl px-3 py-2 text-left text-xs hover:bg-secondary disabled:opacity-50" type="button" disabled={!activeSession} onClick={() => void retryLast()} data-chat-header-action="retry"><RotateCcw className="size-3" />Retry</button>
+                  <button className="flex items-center gap-2 rounded-xl px-3 py-2 text-left text-xs hover:bg-secondary" type="button" onClick={() => setChatFullscreen((current) => !current)} data-chat-header-action="fullscreen">{chatFullscreen ? <Minimize2 className="size-3" /> : <Maximize2 className="size-3" />}{chatFullscreen ? "Thoát toàn màn hình" : "Toàn màn hình"}</button>
+                  <button className="flex items-center gap-2 rounded-xl px-3 py-2 text-left text-xs hover:bg-secondary disabled:opacity-50" type="button" disabled={!activeSession} onClick={() => activeSession && void updateSession({ pinned: !activeSession.session.pinnedAt }, activeSession.session.pinnedAt ? "Đã bỏ ghim cuộc trò chuyện." : "Đã ghim cuộc trò chuyện.")} data-chat-header-action="pin"><Pin className="size-3" />{activeSession?.session.pinnedAt ? "Bỏ ghim" : "Ghim"}</button>
+                  <button className="flex items-center gap-2 rounded-xl px-3 py-2 text-left text-xs hover:bg-secondary disabled:opacity-50" type="button" disabled={!activeSession} onClick={() => void retryLast()} data-chat-header-action="retry"><RotateCcw className="size-3" />Thử lại</button>
                 </div>
               </details>
             </div>
@@ -327,7 +327,7 @@ export function ChatPanel({ data, loading, onData, onLoading }: ChatPanelProps):
           <CardContent className="flex min-h-0 flex-1 flex-col gap-3 p-3 md:p-4">
             <div ref={transcriptRef} className="chat-transcript no-scrollbar grid min-h-0 flex-1 content-start gap-3 overflow-auto rounded-2xl border border-white/10 bg-background/25 p-3" id="chat-transcript">
               {visibleMessages.length ? visibleMessages.map((item) => <MessageBubble key={item.id} message={item} onCopy={copyMessage} onFork={forkAt} onRetry={retryMessage} />) : <EmptyText>No messages in this session.</EmptyText>}
-              {streaming ? <div className="chat-message rounded-2xl border border-primary/30 bg-primary/10 p-4 text-sm assistant"><div className="mb-2 flex items-center gap-2 font-semibold"><Loader2 className="size-4 animate-spin" /> Bestie is replying</div><p className="whitespace-pre-wrap text-muted-foreground">{streamText || "Thinking..."}</p></div> : null}
+              {streaming ? <div className="chat-message rounded-2xl border border-primary/30 bg-primary/10 p-4 text-sm assistant"><div className="mb-2 flex items-center gap-2 font-semibold"><Loader2 className="size-4 animate-spin" /> Bestie is replying</div><p className="whitespace-pre-wrap text-muted-foreground">{streamText || "Đang suy nghĩ..."}</p></div> : null}
             </div>
 
             <form className="grid gap-2 rounded-2xl border border-white/10 bg-card/50 p-3" onSubmit={(event) => void sendMessage(event)}>
@@ -335,8 +335,8 @@ export function ChatPanel({ data, loading, onData, onLoading }: ChatPanelProps):
               <Textarea value={message} onChange={(event) => setMessage(event.target.value)} onKeyDown={handleComposerKeyDown} rows={3} placeholder={`Gửi tin nhắn cho ${agentName}`} id="chat-input" className="min-h-24 resize-none border-white/10 bg-background/50" />
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
-                  <span className="rounded-full border border-white/10 px-2 py-1">Tools {toolsEnabled ? "on" : "off"}</span>
-                  <span className="rounded-full border border-white/10 px-2 py-1">Memory {memoryEnabled ? "on" : "off"}</span>
+                  <span className="rounded-full border border-white/10 px-2 py-1">Công cụ {toolsEnabled ? "on" : "off"}</span>
+                  <span className="rounded-full border border-white/10 px-2 py-1">Bộ nhớ {memoryEnabled ? "on" : "off"}</span>
                   {providerModelRef ? <span className="rounded-full border border-white/10 px-2 py-1">{providerModelRef}</span> : null}
                 </div>
                 <div className="flex gap-2">
@@ -353,14 +353,14 @@ export function ChatPanel({ data, loading, onData, onLoading }: ChatPanelProps):
             <CardHeader className="p-4">
               <div className={`flex items-center gap-2 ${controlsCollapsed ? "justify-center" : "justify-between"}`}>
                 {controlsCollapsed ? null : <div><CardTitle className="flex items-center gap-2 text-base"><Settings2 className="size-4" /> Controls</CardTitle><CardDescription>Per-session run options.</CardDescription></div>}
-                <Button type="button" variant="outline" size="icon" aria-label={controlsCollapsed ? "Expand controls" : "Collapse controls"} onClick={() => setControlsCollapsed((current) => !current)}>{controlsCollapsed ? <PanelRightOpen /> : <PanelRightClose />}</Button>
+                <Button type="button" variant="outline" size="icon" aria-label={controlsCollapsed ? "Mở rộng tuỳ chọn" : "Thu gọn tuỳ chọn"} onClick={() => setControlsCollapsed((current) => !current)}>{controlsCollapsed ? <PanelRightOpen /> : <PanelRightClose />}</Button>
               </div>
             </CardHeader>
             {controlsCollapsed ? <CardContent className="flex flex-1 flex-col items-center gap-3 p-3 pt-0"><Settings2 className="size-5 text-muted-foreground" /><Badge variant={visibleEvents.length || timeline.length ? "secondary" : "outline"}>{visibleEvents.length + timeline.length}</Badge></CardContent> : <CardContent className="no-scrollbar grid max-h-[18rem] gap-3 overflow-auto p-4 pt-0">
-              <label className="flex items-center justify-between gap-2 rounded-xl border border-white/10 bg-card/50 p-3 text-sm"><span>Tools</span><input type="checkbox" checked={toolsEnabled} onChange={(event) => setToolsEnabled(event.target.checked)} /></label>
-              <label className="flex items-center justify-between gap-2 rounded-xl border border-white/10 bg-card/50 p-3 text-sm"><span>Memory</span><input type="checkbox" checked={memoryEnabled} onChange={(event) => setMemoryEnabled(event.target.checked)} /></label>
+              <label className="flex items-center justify-between gap-2 rounded-xl border border-white/10 bg-card/50 p-3 text-sm"><span>Công cụ</span><input type="checkbox" checked={toolsEnabled} onChange={(event) => setToolsEnabled(event.target.checked)} /></label>
+              <label className="flex items-center justify-between gap-2 rounded-xl border border-white/10 bg-card/50 p-3 text-sm"><span>Bộ nhớ</span><input type="checkbox" checked={memoryEnabled} onChange={(event) => setMemoryEnabled(event.target.checked)} /></label>
               <div className="grid gap-1"><Label htmlFor="chat-provider-model">AI model</Label><Select id="chat-provider-model" value={providerModelRef} onChange={(event) => setProviderModelRef(event.target.value)}><option value="">Best available</option>{providerModels.map((model) => <option key={model.modelRef} value={model.modelRef}>{model.modelRef}{model.primary ? " · primary" : model.fallback ? " · fallback" : ""}</option>)}</Select></div>
-              <Button variant="outline" disabled={!activeSession} onClick={() => void deleteSession()}><Trash2 /> Delete session</Button>
+              <Button variant="outline" disabled={!activeSession} onClick={() => void deleteSession()}><Trash2 /> Xoá session</Button>
             </CardContent>}
           </Card>
 
@@ -396,11 +396,11 @@ async function streamChat(path: string, body: Record<string, unknown>, handlers:
       if (!event) continue;
       if (event.event === "token" && typeof event.data.token === "string") handlers.onToken(event.data.token);
       if (event.event === "timeline") handlers.onTimeline(event.data as unknown as ChatTimelineEvent);
-      if (event.event === "error") throw new Error(typeof event.data.error === "string" ? event.data.error : "Chat stream error.");
+      if (event.event === "error") throw new Error(typeof event.data.error === "string" ? event.data.error : "Lỗi khi nhận phản hồi.");
       if (event.event === "done") doneResult = event.data as unknown as ChatStreamDoneResult;
     }
   }
-  if (!doneResult) throw new Error("Chat stream ended without a done event.");
+  if (!doneResult) throw new Error("Luồng phản hồi đã kết thúc nhưng chưa báo hoàn tất.");
   return doneResult;
 }
 
@@ -420,13 +420,13 @@ function MessageBubble({ message, onCopy, onFork, onRetry }: { message: ChatMess
   return (
     <div className={`chat-message max-w-[min(44rem,86%)] rounded-2xl border p-4 text-sm ${isUser ? "ml-auto border-accent/30 bg-accent/10 user" : "mr-auto border-white/10 bg-card/70 assistant"}`} data-chat-message={message.id}>
       <div className="mb-2 flex items-center justify-between gap-3">
-        <span className="flex items-center gap-2 font-semibold">{isUser ? <User className="size-4" /> : <Bot className="size-4" />}{isUser ? "You" : "Bestie"}</span>
+        <span className="flex items-center gap-2 font-semibold">{isUser ? <User className="size-4" /> : <Bot className="size-4" />}{isUser ? "Bạn" : "Bestie"}</span>
         <details className="relative">
-          <summary className="list-none rounded-full border border-white/10 p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground" aria-label="Message actions"><MoreHorizontal className="size-4" /></summary>
+          <summary className="list-none rounded-full border border-white/10 p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground" aria-label="Tác vụ tin nhắn"><MoreHorizontal className="size-4" /></summary>
           <div className="absolute right-0 z-20 mt-2 grid min-w-32 gap-1 rounded-2xl border border-white/10 bg-card p-1 shadow-xl">
-            <button className="flex items-center gap-2 rounded-xl px-3 py-2 text-left text-xs hover:bg-secondary" type="button" onClick={() => void onFork(message.id)} data-chat-action="fork"><GitFork className="size-3" /> Fork</button>
+            <button className="flex items-center gap-2 rounded-xl px-3 py-2 text-left text-xs hover:bg-secondary" type="button" onClick={() => void onFork(message.id)} data-chat-action="fork"><GitFork className="size-3" /> Tạo nhánh</button>
             <button className="flex items-center gap-2 rounded-xl px-3 py-2 text-left text-xs hover:bg-secondary" type="button" onClick={() => void onCopy(message.content)} data-chat-action="copy"><Copy className="size-3" /> Copy</button>
-            {isUser ? <button className="flex items-center gap-2 rounded-xl px-3 py-2 text-left text-xs hover:bg-secondary" type="button" onClick={() => void onRetry(message.id)} data-chat-action="retry"><RotateCcw className="size-3" /> Retry</button> : null}
+            {isUser ? <button className="flex items-center gap-2 rounded-xl px-3 py-2 text-left text-xs hover:bg-secondary" type="button" onClick={() => void onRetry(message.id)} data-chat-action="retry"><RotateCcw className="size-3" /> Thử lại</button> : null}
           </div>
         </details>
       </div>
@@ -444,7 +444,7 @@ function MessageAttachments({ attachments }: { attachments: ChatAttachment[] }):
 function MessageAttachment({ attachment }: { attachment: ChatAttachment }): ReactElement {
   const isImage = typeof attachment.content === "string" && attachment.content.startsWith("data:image/");
   const isDownloadable = typeof attachment.content === "string" && attachment.content.startsWith("data:");
-  const preview = !isImage && attachment.content && attachment.content !== "[image data omitted]" ? attachment.content.slice(0, 240) : "";
+  const preview = !isImage && attachment.content && attachment.content !== "[đã ẩn dữ liệu ảnh]" ? attachment.content.slice(0, 240) : "";
   return (
     <div className="overflow-hidden rounded-2xl border border-white/10 bg-background/45 p-3 text-xs" data-chat-attachment={attachment.name}>
       <div className="flex flex-wrap items-center gap-2 text-muted-foreground"><FileText className="size-3.5" /><strong className="max-w-full truncate text-foreground">{attachment.name}</strong>{attachment.type ? <Badge variant="outline">{attachment.type}</Badge> : null}{attachment.size !== undefined ? <span>{formatBytes(attachment.size)}</span> : null}{isDownloadable ? <a className="rounded-full border border-white/10 px-2 py-0.5 text-foreground hover:bg-secondary" href={attachment.content} download={attachment.name}>Download</a> : null}</div>
@@ -467,7 +467,7 @@ function toTransientEvent(event: ChatTimelineEvent, index: number): ChatEvent {
 }
 
 function ChatError({ message }: { message: string }): ReactElement {
-  return <Alert variant="destructive"><AlertCircle className="size-4" /><AlertTitle>Chat request failed</AlertTitle><AlertDescription>{message}</AlertDescription></Alert>;
+  return <Alert variant="destructive"><AlertCircle className="size-4" /><AlertTitle>Trò chuyện request failed</AlertTitle><AlertDescription>{message}</AlertDescription></Alert>;
 }
 
 function EmptyText({ children }: { children: string }): ReactElement {

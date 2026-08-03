@@ -41,7 +41,7 @@ export function DoctorPanel({ data, loading, onData, onLoading }: DoctorPanelPro
     return (
       <Alert className="border-accent/40 bg-accent/10">
         <HeartPulse className="size-4" />
-        <AlertTitle>Doctor is warming up</AlertTitle>
+        <AlertTitle>Kiểm tra is warming up</AlertTitle>
         <AlertDescription>Checking Bestie's setup and connected features.</AlertDescription>
       </Alert>
     );
@@ -52,10 +52,10 @@ export function DoctorPanel({ data, loading, onData, onLoading }: DoctorPanelPro
   return (
     <div className="grid gap-4">
       <div className="grid gap-3 md:grid-cols-4">
-        <DoctorMetric label="Status" value={data.ok ? "Healthy" : "Needs care"} tone={data.ok ? "pass" : "fail"} />
-        <DoctorMetric label="Pass" value={String(data.summary.pass)} tone="pass" />
-        <DoctorMetric label="Warn" value={String(data.summary.warn)} tone="warn" />
-        <DoctorMetric label="Fail" value={String(data.summary.fail)} tone="fail" />
+        <DoctorMetric label="Trạng thái" value={data.ok ? "Ổn định" : "Cần chú ý"} tone={data.ok ? "pass" : "fail"} />
+        <DoctorMetric label="Đạt" value={String(data.summary.pass)} tone="pass" />
+        <DoctorMetric label="Cảnh báo" value={String(data.summary.warn)} tone="warn" />
+        <DoctorMetric label="Lỗi" value={String(data.summary.fail)} tone="fail" />
       </div>
 
       <Card className="border-white/10 bg-background/35">
@@ -84,7 +84,7 @@ export function DoctorPanel({ data, loading, onData, onLoading }: DoctorPanelPro
         <Card className="border-white/10 bg-background/35">
           <CardHeader>
             <CardTitle className="flex items-center gap-2"><Wrench className="size-5" /> Fixes applied</CardTitle>
-            <CardDescription>Results from the latest confirmation-gated Doctor fix run.</CardDescription>
+            <CardDescription>Results from the latest confirmation-gated Kiểm tra fix run.</CardDescription>
           </CardHeader>
           <CardContent className="grid gap-3">
             {data.report.fixes.map((fix) => <DoctorFixRow key={`${fix.name}-${fix.status}`} fix={fix} />)}
@@ -99,7 +99,7 @@ export function DoctorPanelError({ error }: { error: unknown }): ReactElement {
   return (
     <Alert variant="destructive">
       <ShieldAlert className="size-4" />
-      <AlertTitle>Doctor request failed</AlertTitle>
+      <AlertTitle>Kiểm tra request failed</AlertTitle>
       <AlertDescription>{formatError(error)}</AlertDescription>
     </Alert>
   );

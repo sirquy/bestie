@@ -41,14 +41,14 @@ export function ToolsPanel({ data, loading, onData, onLoading }: ToolsPanelProps
   }
 
   async function updatePolicy(tool: string, policy: ToolPolicy): Promise<void> {
-    await runAction(() => fetchJson<ToolsSummary>("/api/tools/policy", { method: "PUT", body: JSON.stringify({ tool, policy }) }), "Action rule updated.");
+    await runAction(() => fetchJson<ToolsSummary>("/api/tools/policy", { method: "PUT", body: JSON.stringify({ tool, policy }) }), "Đã cập nhật quy tắc thao tác.");
   }
 
   if (!data) {
     return (
       <Alert className="border-accent/40 bg-accent/10">
         <ShieldCheck className="size-4" />
-        <AlertTitle>Tools are loading</AlertTitle>
+        <AlertTitle>Công cụ are loading</AlertTitle>
         <AlertDescription>Loading what Bestie can access and do.</AlertDescription>
       </Alert>
     );
@@ -60,17 +60,17 @@ export function ToolsPanel({ data, loading, onData, onLoading }: ToolsPanelProps
       {actionMessage ? <Alert className="border-primary/40 bg-primary/10"><ShieldCheck className="size-4" /><AlertTitle>Policy updated</AlertTitle><AlertDescription>{actionMessage}</AlertDescription></Alert> : null}
 
       <div className="grid gap-3 md:grid-cols-4" data-tools-summary>
-        <Metric label="Allow" value={String(data.policies.allow)} tone="good" />
-        <Metric label="Ask" value={String(data.policies.ask)} tone="warn" />
-        <Metric label="Deny" value={String(data.policies.deny)} tone="bad" />
-        <Metric label="Action timeout" value={data.exec.timeoutMs === undefined ? "default" : `${data.exec.timeoutMs}ms`} />
+        <Metric label="Cho phép" value={String(data.policies.allow)} tone="good" />
+        <Metric label="Hỏi trước" value={String(data.policies.ask)} tone="warn" />
+        <Metric label="Từ chối" value={String(data.policies.deny)} tone="bad" />
+        <Metric label="Thời gian chờ thao tác" value={data.exec.timeoutMs === undefined ? "default" : `${data.exec.timeoutMs}ms`} />
       </div>
 
       <div className="grid gap-4 xl:grid-cols-[1fr_0.85fr]">
         <Card className="border-white/10 bg-background/35">
           <CardHeader className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
             <div>
-              <CardTitle className="flex items-center gap-2"><SlidersHorizontal className="size-5" /> Allowed actions</CardTitle>
+              <CardTitle className="flex items-center gap-2"><SlidersHorizontal className="size-5" /> Cho phéped actions</CardTitle>
               <CardDescription>Keep defaults conservative; public, destructive, and external actions should stay approval-gated.</CardDescription>
             </div>
             <Button variant="outline" onClick={() => void reload()} disabled={loading}><RefreshCw className={loading ? "animate-spin" : ""} /> Reload</Button>
@@ -82,10 +82,10 @@ export function ToolsPanel({ data, loading, onData, onLoading }: ToolsPanelProps
 
         <div className="grid gap-4">
           <Card className="border-white/10 bg-background/35">
-            <CardHeader><CardTitle className="flex items-center gap-2"><FolderOpen className="size-5" /> Folders</CardTitle><CardDescription>Folders Bestie can read or write when actions are allowed.</CardDescription></CardHeader>
+            <CardHeader><CardTitle className="flex items-center gap-2"><FolderOpen className="size-5" /> Thư mục</CardTitle><CardDescription>Thư mục Bestie can read or write when actions are allowed.</CardDescription></CardHeader>
             <CardContent className="grid gap-3 text-sm">
-              <SummaryRow label="Main folder" value={data.workspace.defaultPath ?? "-"} />
-              <SummaryRow label="Extra folders" value={String(data.workspace.externalPathCount)} />
+              <SummaryRow label="Thư mục chính" value={data.workspace.defaultPath ?? "-"} />
+              <SummaryRow label="Thư mục bổ sung" value={String(data.workspace.externalPathCount)} />
               <Separator />
               {data.workspace.externalPaths.length ? data.workspace.externalPaths.map((path) => <p key={path} className="break-all rounded-xl border border-white/10 bg-card/60 p-3 text-muted-foreground">{path}</p>) : <p className="text-muted-foreground">No extra folders added yet.</p>}
             </CardContent>
@@ -93,7 +93,7 @@ export function ToolsPanel({ data, loading, onData, onLoading }: ToolsPanelProps
 
           <Card className="border-white/10 bg-background/35">
             <CardHeader><CardTitle className="flex items-center gap-2"><TerminalSquare className="size-5" /> Command safety</CardTitle><CardDescription>Limits for actions that run commands.</CardDescription></CardHeader>
-            <CardContent><SummaryRow label="Timeout" value={data.exec.timeoutMs === undefined ? "default" : `${data.exec.timeoutMs}ms`} /></CardContent>
+            <CardContent><SummaryRow label="Thời gian chờ" value={data.exec.timeoutMs === undefined ? "default" : `${data.exec.timeoutMs}ms`} /></CardContent>
           </Card>
         </div>
       </div>
@@ -109,7 +109,7 @@ function ToolsError({ message }: { message: string }): ReactElement {
   return (
     <Alert variant="destructive">
       <AlertCircle className="size-4" />
-      <AlertTitle>Tools request failed</AlertTitle>
+      <AlertTitle>Công cụ request failed</AlertTitle>
       <AlertDescription>{message}</AlertDescription>
     </Alert>
   );

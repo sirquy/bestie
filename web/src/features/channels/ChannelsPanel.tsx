@@ -34,7 +34,7 @@ interface CronDraft {
 export function ChannelsPanel({ data, loading, onData, onLoading }: ChannelsPanelProps): ReactElement {
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
-  const [draft, setDraft] = useState<CronDraft>(() => ({ name: "New schedule", scheduleType: "interval", scheduleValue: "1h", channel: "", prompt: "Send a short update.", enabled: true }));
+  const [draft, setDraft] = useState<CronDraft>(() => ({ name: "Lịch hẹn mới", scheduleType: "interval", scheduleValue: "1h", channel: "", prompt: "Gửi một cập nhật ngắn.", enabled: true }));
 
   async function runAction(action: () => Promise<ChannelActionResult | ChannelSummary>, success?: string): Promise<void> {
     setActionError(null);
@@ -57,14 +57,14 @@ export function ChannelsPanel({ data, loading, onData, onLoading }: ChannelsPane
   }
 
   async function daemon(action: "daemon_start" | "daemon_stop" | "daemon_restart", channel: DaemonChannel): Promise<void> {
-    const verb = action === "daemon_start" ? "Start" : action === "daemon_stop" ? "Stop" : "Restart";
+    const verb = action === "daemon_start" ? "Bắt đầu" : action === "daemon_stop" ? "Dừng" : "Khởi động lại";
     if (!await confirmDialog(`${verb} ${channel} background service?`)) return;
     await runAction(() => postChannelAction({ action, channel, confirm: true }));
   }
 
   async function cronToggle(schedule: CronSchedule): Promise<void> {
     const enabled = !schedule.enabled;
-    if (!await confirmDialog(`${enabled ? "Enable" : "Disable"} scheduled message ${schedule.name}?`)) return;
+    if (!await confirmDialog(`${enabled ? "Bật" : "Tắt"} scheduled message ${schedule.name}?`)) return;
     await runAction(() => postChannelAction({ action: "cron_toggle", id: schedule.id, enabled, confirm: true }));
   }
 
@@ -81,12 +81,12 @@ export function ChannelsPanel({ data, loading, onData, onLoading }: ChannelsPane
   async function cronCreate(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
     if (!await confirmDialog(`Create scheduled message ${draft.name}?`)) return;
-    await runAction(() => postChannelAction({ action: "cron_add", name: draft.name, scheduleType: draft.scheduleType, scheduleValue: draft.scheduleValue, prompt: draft.prompt, channel: draft.channel.trim() || undefined, enabled: draft.enabled, confirm: true }), "Scheduled message saved.");
+    await runAction(() => postChannelAction({ action: "cron_add", name: draft.name, scheduleType: draft.scheduleType, scheduleValue: draft.scheduleValue, prompt: draft.prompt, channel: draft.channel.trim() || undefined, enabled: draft.enabled, confirm: true }), "Đã lưu tin nhắn hẹn giờ.");
   }
 
   if (!data) {
     return (
-      <Alert className="border-accent/40 bg-accent/10"><Cable className="size-4" /><AlertTitle>Channels are loading</AlertTitle><AlertDescription>Loading connected channels and scheduled messages.</AlertDescription></Alert>
+      <Alert className="border-accent/40 bg-accent/10"><Cable className="size-4" /><AlertTitle>Kênh are loading</AlertTitle><AlertDescription>Loading connected channels and scheduled messages.</AlertDescription></Alert>
     );
   }
 
@@ -96,15 +96,15 @@ export function ChannelsPanel({ data, loading, onData, onLoading }: ChannelsPane
       {actionMessage ? <Alert className="border-primary/40 bg-primary/10"><Check className="size-4" /><AlertTitle>Channel updated</AlertTitle><AlertDescription>{actionMessage}</AlertDescription></Alert> : null}
 
       <div className="grid gap-3 md:grid-cols-4">
-        <Metric label="Channels" value={String(data.channels.length)} />
-        <Metric label="Cron enabled" value={String(data.cron.counts.enabled)} tone="good" />
-        <Metric label="Cron disabled" value={String(data.cron.counts.disabled)} tone={data.cron.counts.disabled ? "warn" : "neutral"} />
-        <Metric label="Service" value={data.service.supported ? "supported" : "manual"} />
+        <Metric label="Kênh" value={String(data.channels.length)} />
+        <Metric label="Lịch hẹn đã bật" value={String(data.cron.counts.enabled)} tone="good" />
+        <Metric label="Lịch hẹn đã tắt" value={String(data.cron.counts.disabled)} tone={data.cron.counts.disabled ? "warn" : "neutral"} />
+        <Metric label="Dịch vụ" value={data.service.supported ? "supported" : "manual"} />
       </div>
 
       <Card className="border-white/10 bg-background/35">
         <CardHeader className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-          <div><CardTitle className="flex items-center gap-2"><Cable className="size-5" /> Channels</CardTitle><CardDescription>Manage Telegram, Zalo, and background delivery.</CardDescription></div>
+          <div><CardTitle className="flex items-center gap-2"><Cable className="size-5" /> Kênh</CardTitle><CardDescription>Manage Telegram, Zalo, and background delivery.</CardDescription></div>
           <Button variant="outline" onClick={() => void reload()} disabled={loading}><RefreshCw className={loading ? "animate-spin" : ""} /> Reload</Button>
         </CardHeader>
         <CardContent className="grid gap-3 md:grid-cols-2">
@@ -114,24 +114,24 @@ export function ChannelsPanel({ data, loading, onData, onLoading }: ChannelsPane
 
       <div className="grid gap-4 xl:grid-cols-[0.8fr_1.2fr]">
         <Card className="border-white/10 bg-background/35">
-          <CardHeader><CardTitle className="flex items-center gap-2"><CalendarClock className="size-5" /> Add cron</CardTitle><CardDescription>Create a local scheduled message. Actions stay confirmation-gated.</CardDescription></CardHeader>
+          <CardHeader><CardTitle className="flex items-center gap-2"><CalendarClock className="size-5" /> Thêm cron</CardTitle><CardDescription>Tạo a local scheduled message. Actions stay confirmation-gated.</CardDescription></CardHeader>
           <CardContent>
             <form className="grid gap-3" onSubmit={(event) => void cronCreate(event)}>
-              <FormField label="Name"><Input value={draft.name} onChange={(event) => setDraftValue(setDraft, "name", event.target.value)} /></FormField>
+              <FormField label="Tên"><Input value={draft.name} onChange={(event) => setDraftValue(setDraft, "name", event.target.value)} /></FormField>
               <div className="grid gap-3 md:grid-cols-2">
-                <FormField label="Type"><Select value={draft.scheduleType} onChange={(event) => setDraftValue(setDraft, "scheduleType", event.target.value as CronScheduleType)}><option value="interval">interval</option><option value="cron_expr">cron_expr</option><option value="once">once</option></Select></FormField>
-                <FormField label="Schedule"><Input value={draft.scheduleValue} onChange={(event) => setDraftValue(setDraft, "scheduleValue", event.target.value)} /></FormField>
+                <FormField label="Loại"><Select value={draft.scheduleType} onChange={(event) => setDraftValue(setDraft, "scheduleType", event.target.value as CronScheduleType)}><option value="interval">interval</option><option value="cron_expr">cron_expr</option><option value="once">once</option></Select></FormField>
+                <FormField label="Lịch hẹn"><Input value={draft.scheduleValue} onChange={(event) => setDraftValue(setDraft, "scheduleValue", event.target.value)} /></FormField>
               </div>
-              <FormField label="Channel target"><Input value={draft.channel} onChange={(event) => setDraftValue(setDraft, "channel", event.target.value)} placeholder="telegram:111" /></FormField>
-              <FormField label="Prompt"><Textarea value={draft.prompt} onChange={(event) => setDraftValue(setDraft, "prompt", event.target.value)} /></FormField>
-              <label className="flex items-center gap-2 text-sm text-muted-foreground"><input checked={draft.enabled} onChange={(event) => setDraft((current) => ({ ...current, enabled: event.target.checked }))} type="checkbox" /> Enabled</label>
-              <Button className="w-fit" type="submit" disabled={loading || !draft.name.trim() || !draft.scheduleValue.trim() || !draft.prompt.trim()}><Save /> Create schedule</Button>
+              <FormField label="Kênh nhận"><Input value={draft.channel} onChange={(event) => setDraftValue(setDraft, "channel", event.target.value)} placeholder="telegram:111" /></FormField>
+              <FormField label="Nội dung"><Textarea value={draft.prompt} onChange={(event) => setDraftValue(setDraft, "prompt", event.target.value)} /></FormField>
+              <label className="flex items-center gap-2 text-sm text-muted-foreground"><input checked={draft.enabled} onChange={(event) => setDraft((current) => ({ ...current, enabled: event.target.checked }))} type="checkbox" /> Đã bật</label>
+              <Button className="w-fit" type="submit" disabled={loading || !draft.name.trim() || !draft.scheduleValue.trim() || !draft.prompt.trim()}><Save /> Tạo schedule</Button>
             </form>
           </CardContent>
         </Card>
 
         <Card className="border-white/10 bg-background/35">
-          <CardHeader><CardTitle>Scheduled messages</CardTitle><CardDescription>{data.cron.databaseExists ? "Ready" : "Not ready"}</CardDescription></CardHeader>
+          <CardHeader><CardTitle>Lịch hẹnd messages</CardTitle><CardDescription>{data.cron.databaseExists ? "Sẵn sàng" : "Chưa sẵn sàng"}</CardDescription></CardHeader>
           <CardContent className="grid gap-3">
             {data.cron.schedules.length ? data.cron.schedules.map((schedule) => <CronScheduleCard key={schedule.id} schedule={schedule} loading={loading} onToggle={cronToggle} onDelete={cronDelete} onTrigger={cronTrigger} />) : <p className="rounded-2xl border border-dashed border-white/10 bg-background/25 p-4 text-sm text-muted-foreground">No scheduled messages yet.</p>}
           </CardContent>
@@ -139,7 +139,7 @@ export function ChannelsPanel({ data, loading, onData, onLoading }: ChannelsPane
       </div>
 
       <Card className="border-white/10 bg-background/35">
-        <CardHeader><CardTitle>Schedule history</CardTitle><CardDescription>Recent scheduled message results.</CardDescription></CardHeader>
+        <CardHeader><CardTitle>Lịch hẹn history</CardTitle><CardDescription>Recent scheduled message results.</CardDescription></CardHeader>
         <CardContent className="grid gap-3">
           {data.cron.logs.length ? data.cron.logs.map((log) => <CronLogRow key={log.id} log={log} />) : <p className="text-sm text-muted-foreground">No schedule history yet.</p>}
         </CardContent>
@@ -162,8 +162,8 @@ function ChannelCard({ channel, loading, onDaemon }: { channel: ConfiguredChanne
     <div className="rounded-2xl border border-white/10 bg-card/60 p-4 text-sm">
       <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-lg font-semibold">{channel.displayName}</p><p className="text-muted-foreground">{channel.id}</p></div><Badge variant={channel.enabled ? "secondary" : "outline"}>{channel.enabled ? "enabled" : "disabled"}</Badge></div>
       <Separator className="my-3" />
-      <div className="grid gap-2"><StatusLine label="Owner" value={channel.ownerConfigured ? "ready" : "not set"} /><StatusLine label="Secret" value={channel.secretPresent ? "ready" : channel.tokenEnv ? "missing" : "not required"} /><StatusLine label="Background service" value={channel.daemon.pid ? `${channel.daemon.state}` : channel.daemon.state} /></div>
-      <div className="mt-3 flex flex-wrap gap-2" data-channel-action={channel.id}><Button size="sm" onClick={() => void onDaemon("daemon_start", daemonChannel)} disabled={loading}><Play /> Start</Button><Button size="sm" variant="outline" onClick={() => void onDaemon("daemon_stop", daemonChannel)} disabled={loading}><Square /> Stop</Button><Button size="sm" variant="secondary" onClick={() => void onDaemon("daemon_restart", daemonChannel)} disabled={loading}><RefreshCw /> Restart</Button></div>
+      <div className="grid gap-2"><StatusLine label="Chủ sở hữu" value={channel.ownerConfigured ? "ready" : "chưa đặt"} /><StatusLine label="Khoá bí mật" value={channel.secretPresent ? "ready" : channel.tokenEnv ? "missing" : "không cần"} /><StatusLine label="Dịch vụ nền" value={channel.daemon.pid ? `${channel.daemon.state}` : channel.daemon.state} /></div>
+      <div className="mt-3 flex flex-wrap gap-2" data-channel-action={channel.id}><Button size="sm" onClick={() => void onDaemon("daemon_start", daemonChannel)} disabled={loading}><Play /> Bắt đầu</Button><Button size="sm" variant="outline" onClick={() => void onDaemon("daemon_stop", daemonChannel)} disabled={loading}><Square /> Dừng</Button><Button size="sm" variant="secondary" onClick={() => void onDaemon("daemon_restart", daemonChannel)} disabled={loading}><RefreshCw /> Khởi động lại</Button></div>
     </div>
   );
 }
@@ -175,13 +175,13 @@ function CronScheduleCard({ schedule, loading, onToggle, onDelete, onTrigger }: 
       <p className="mt-2 text-muted-foreground">{schedule.prompt}</p>
       <Separator className="my-3" />
       <div className="grid gap-1 text-xs text-muted-foreground"><p>Next: {formatDate(schedule.nextRunAt)}</p><p>Runs: {schedule.runCount}</p>{schedule.channel ? <p>Channel: {schedule.channel}</p> : null}{schedule.lastResult ? <p>Last: {schedule.lastResult}</p> : null}</div>
-      <div className="mt-3 flex flex-wrap gap-2"><Button size="sm" variant="outline" onClick={() => void onTrigger(schedule)} disabled={loading}><Play /> Trigger</Button><Button size="sm" variant="secondary" onClick={() => void onToggle(schedule)} disabled={loading}>{schedule.enabled ? "Disable" : "Enable"}</Button><Button size="sm" variant="outline" onClick={() => void onDelete(schedule)} disabled={loading}><Trash2 /> Delete</Button></div>
+      <div className="mt-3 flex flex-wrap gap-2"><Button size="sm" variant="outline" onClick={() => void onTrigger(schedule)} disabled={loading}><Play /> Trigger</Button><Button size="sm" variant="secondary" onClick={() => void onToggle(schedule)} disabled={loading}>{schedule.enabled ? "Tắt" : "Bật"}</Button><Button size="sm" variant="outline" onClick={() => void onDelete(schedule)} disabled={loading}><Trash2 /> Xoá</Button></div>
     </div>
   );
 }
 
 function CronLogRow({ log }: { log: { id: number; scheduleId: number; startedAt: string; finishedAt?: string; result?: string; output?: string; error?: string } }): ReactElement {
-  const detail = log.error || log.output || log.finishedAt || "in progress";
+  const detail = log.error || log.output || log.finishedAt || "đang xử lý";
   return <div className="rounded-2xl border border-white/10 bg-card/60 p-4 text-sm"><div className="flex flex-wrap justify-between gap-2"><p className="font-semibold">Log #{log.id}</p><Badge variant={log.error ? "destructive" : "secondary"}>{log.result ?? (log.error ? "error" : "running")}</Badge></div><p className="mt-1 text-muted-foreground">schedule {log.scheduleId} / started {formatDate(log.startedAt)}</p><p className="mt-2">{detail}</p></div>;
 }
 

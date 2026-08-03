@@ -36,7 +36,7 @@ export function McpPanel({ data, loading, onData, onLoading }: McpPanelProps): R
     return (
       <Alert className="border-accent/40 bg-accent/10">
         <Plug className="size-4" />
-        <AlertTitle>Extensions are loading</AlertTitle>
+        <AlertTitle>Tiện ích mở rộng are loading</AlertTitle>
         <AlertDescription>Loading connected extensions.</AlertDescription>
       </Alert>
     );
@@ -47,17 +47,17 @@ export function McpPanel({ data, loading, onData, onLoading }: McpPanelProps): R
       {actionError ? <McpError message={actionError} /> : null}
 
       <div className="grid gap-3 md:grid-cols-4" data-mcp-summary>
-        <Metric label="Enabled" value={String(data.counts.enabled)} tone="good" />
-        <Metric label="Disabled" value={String(data.counts.disabled)} tone={data.counts.disabled ? "warn" : "neutral"} />
-        <Metric label="Tools" value={String(data.counts.tools)} />
-        <Metric label="Servers" value={String(data.counts.total)} />
+        <Metric label="Đã bật" value={String(data.counts.enabled)} tone="good" />
+        <Metric label="Đã tắt" value={String(data.counts.disabled)} tone={data.counts.disabled ? "warn" : "neutral"} />
+        <Metric label="Công cụ" value={String(data.counts.tools)} />
+        <Metric label="Máy chủ" value={String(data.counts.total)} />
       </div>
 
       <Card className="border-white/10 bg-background/35">
         <CardHeader className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
           <div>
             <CardTitle className="flex items-center gap-2"><Server className="size-5" /> Connected extensions</CardTitle>
-            <CardDescription>Review connected extensions, available tools, and sign-in status. Secret values stay hidden.</CardDescription>
+            <CardDescription>Review connected extensions, available tools, and sign-in status. Giá trị bí mậts stay hidden.</CardDescription>
           </div>
           <Button variant="outline" onClick={() => void reload()} disabled={loading}><RefreshCw className={loading ? "animate-spin" : ""} /> Reload</Button>
         </CardHeader>
@@ -100,12 +100,12 @@ function McpServerCard({ server }: { server: McpServer }): ReactElement {
       </div>
       <Separator className="my-4" />
       <div className="grid gap-3 md:grid-cols-3">
-        <ConfigFlag label="Startup" value={server.commandConfigured ? "ready" : "not set"} />
-        <ConfigFlag label="Options" value={String(server.argCount)} />
-        <ConfigFlag label="URL" value={server.urlConfigured ? "ready" : "not set"} />
+        <ConfigFlag label="Khởi động" value={server.commandConfigured ? "ready" : "chưa đặt"} />
+        <ConfigFlag label="Tuỳ chọn" value={String(server.argCount)} />
+        <ConfigFlag label="URL" value={server.urlConfigured ? "ready" : "chưa đặt"} />
       </div>
-      <ChipSection label="Categories" values={server.tools.categories} attr="data-mcp-categories" />
-      <ChipSection label="Tools" values={server.tools.names} attr="data-mcp-tools" />
+      <ChipSection label="Danh mục" values={server.tools.categories} attr="data-mcp-categories" />
+      <ChipSection label="Công cụ" values={server.tools.names} attr="data-mcp-tools" />
     </article>
   );
 }
@@ -114,7 +114,7 @@ function McpToolsSummary({ servers }: { servers: McpServer[] }): ReactElement {
   const toolNames = servers.flatMap((server) => server.tools.names.map((name) => `${server.name}: ${name}`));
   return (
     <Card className="border-white/10 bg-background/35">
-      <CardHeader><CardTitle className="flex items-center gap-2"><Wrench className="size-5" /> Tools</CardTitle><CardDescription>Tool names exposed by ready Connected extensions.</CardDescription></CardHeader>
+      <CardHeader><CardTitle className="flex items-center gap-2"><Wrench className="size-5" /> Công cụ</CardTitle><CardDescription>Tool names exposed by ready Connected extensions.</CardDescription></CardHeader>
       <CardContent className="grid gap-2">{toolNames.length ? toolNames.map((name) => <Badge key={name} variant="outline" className="w-fit max-w-full break-all">{name}</Badge>) : <p className="text-sm text-muted-foreground">No extension actions available yet.</p>}</CardContent>
     </Card>
   );
@@ -136,14 +136,14 @@ function AuthServer({ server }: { server: McpServer }): ReactElement {
   return (
     <div className="rounded-2xl border border-white/10 bg-card/60 p-4 text-sm">
       <p className="font-semibold">{server.name}</p>
-      <ChipSection label="Credential names" values={server.envKeys} />
-      <ChipSection label="Header names" values={server.headerNames} />
-      <ChipSection label="Header secret names" values={server.headerEnvNames} />
+      <ChipSection label="Tên thông tin xác thực" values={server.envKeys} />
+      <ChipSection label="Tên header" values={server.headerNames} />
+      <ChipSection label="Tên header bí mật" values={server.headerEnvNames} />
       {server.auth ? (
         <div className="mt-3 rounded-xl border border-white/10 bg-background/40 p-3">
           <p><span className="text-muted-foreground">Sign-in credential:</span> {server.auth.envVar}</p>
           {server.auth.headerName ? <p><span className="text-muted-foreground">Header:</span> {server.auth.headerName}</p> : null}
-          <ChipSection label="Scopes" values={server.auth.scopes} />
+          <ChipSection label="Phạm vi" values={server.auth.scopes} />
         </div>
       ) : null}
     </div>

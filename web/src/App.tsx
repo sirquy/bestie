@@ -71,18 +71,18 @@ interface PanelDefinition {
 }
 
 const panels: PanelDefinition[] = [
-  { id: "chat", title: "Local Chat", nav: "Chat", route: "/chat", description: "Chat with Bestie and continue past conversations.", icon: MessageSquareText, endpoint: "/api/chat/sessions" },
-  { id: "doctor", title: "Doctor", nav: "Doctor", route: "/doctor", description: "Check setup health and fix common issues safely.", icon: HeartPulse, endpoint: "/api/doctor" },
-  { id: "providers", title: "Provider Hub", nav: "Providers", route: "/providers", description: "Choose AI services and manage fallback options.", icon: PlugZap, endpoint: "/api/providers" },
-  { id: "character", title: "Character Studio", nav: "Character", route: "/character", description: "Tune Bestie's personality and conversation style.", icon: Bot, endpoint: "/api/character" },
-  { id: "memory", title: "Memory Center", nav: "Memory", route: "/memory", description: "Review remembered facts and pending updates.", icon: Brain, endpoint: "/api/memory" },
-  { id: "knowledge", title: "Knowledge Graph", nav: "Knowledge", route: "/knowledge", description: "Explore connected knowledge and clean it up.", icon: GitBranch, endpoint: "/api/knowledge-graph" },
-  { id: "channels", title: "Channel Hub", nav: "Channels", route: "/channels", description: "Manage connected channels and scheduled messages.", icon: Cable, endpoint: "/api/channels" },
-  { id: "approvals", title: "Approvals", nav: "Approvals", route: "/approvals", description: "Permission-gated pending actions waiting for owner review.", icon: ClipboardCheck, endpoint: "/api/approvals" },
-  { id: "mcp", title: "Extensions", nav: "Extensions", route: "/mcp", description: "Manage connected extensions and tool access.", icon: TerminalSquare, endpoint: "/api/mcp" },
-  { id: "tools", title: "Tools & Permissions", nav: "Tools", route: "/tools", description: "Review what Bestie can access and do.", icon: ShieldCheck, endpoint: "/api/tools" },
-  { id: "skills", title: "Skills", nav: "Skills", route: "/skills", description: "Manage Bestie's installed abilities.", icon: WandSparkles, endpoint: "/api/skills" },
-  { id: "settings", title: "Settings", nav: "Settings", route: "/settings", description: "Adjust safe preferences for Bestie.", icon: Settings, endpoint: "/api/settings" },
+  { id: "chat", title: "Trò chuyện", nav: "Trò chuyện", route: "/chat", description: "Trò chuyện với Bestie và tiếp tục các cuộc hội thoại trước đó.", icon: MessageSquareText, endpoint: "/api/chat/sessions" },
+  { id: "doctor", title: "Kiểm tra", nav: "Kiểm tra", route: "/doctor", description: "Kiểm tra trạng thái thiết lập và sửa lỗi phổ biến an toàn.", icon: HeartPulse, endpoint: "/api/doctor" },
+  { id: "providers", title: "Nhà cung cấp AI", nav: "Nhà cung cấp", route: "/providers", description: "Chọn dịch vụ AI và cấu hình phương án dự phòng.", icon: PlugZap, endpoint: "/api/providers" },
+  { id: "character", title: "Tính cách", nav: "Tính cách", route: "/character", description: "Điều chỉnh tính cách và phong cách trò chuyện của Bestie.", icon: Bot, endpoint: "/api/character" },
+  { id: "memory", title: "Bộ nhớ", nav: "Bộ nhớ", route: "/memory", description: "Xem thông tin đã ghi nhớ và các cập nhật đang chờ.", icon: Brain, endpoint: "/api/memory" },
+  { id: "knowledge", title: "Bản đồ tri thức", nav: "Tri thức", route: "/knowledge", description: "Khám phá tri thức đã liên kết và dọn dẹp dữ liệu.", icon: GitBranch, endpoint: "/api/knowledge-graph" },
+  { id: "channels", title: "Kênh kết nối", nav: "Kênh", route: "/channels", description: "Quản lý kênh đã kết nối và tin nhắn hẹn giờ.", icon: Cable, endpoint: "/api/channels" },
+  { id: "approvals", title: "Phê duyệt", nav: "Phê duyệt", route: "/approvals", description: "Các hành động cần bạn xem xét trước khi thực hiện.", icon: ClipboardCheck, endpoint: "/api/approvals" },
+  { id: "mcp", title: "Tiện ích mở rộng", nav: "Tiện ích mở rộng", route: "/mcp", description: "Quản lý tiện ích mở rộng và quyền truy cập công cụ.", icon: TerminalSquare, endpoint: "/api/mcp" },
+  { id: "tools", title: "Công cụ & quyền", nav: "Công cụ", route: "/tools", description: "Xem Bestie được phép truy cập và thực hiện những gì.", icon: ShieldCheck, endpoint: "/api/tools" },
+  { id: "skills", title: "Kỹ năng", nav: "Kỹ năng", route: "/skills", description: "Quản lý các kỹ năng đã cài cho Bestie.", icon: WandSparkles, endpoint: "/api/skills" },
+  { id: "settings", title: "Cài đặt", nav: "Cài đặt", route: "/settings", description: "Điều chỉnh tuỳ chọn an toàn cho Bestie.", icon: Settings, endpoint: "/api/settings" },
 ];
 
 const defaultPanel = panels[0];
@@ -183,15 +183,15 @@ function App(): ReactElement {
               </div>
               <div className={cn("min-w-0 transition-opacity duration-200", sidebarCollapsed ? "lg:hidden" : "block")}>
                 <p className="text-lg font-bold tracking-tight">Bestie</p>
-                <p className="text-xs text-muted-foreground">Personal AI workspace</p>
+                <p className="text-xs text-muted-foreground">Không gian AI cá nhân</p>
               </div>
             </div>
             <Button
-              aria-label={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+              aria-label={sidebarCollapsed ? "Mở rộng thanh bên" : "Thu gọn thanh bên"}
               className="hidden shrink-0 border-white/10 bg-background/50 hover:bg-secondary/80 lg:inline-flex"
               data-sidebar-toggle
               size="icon"
-              title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+              title={sidebarCollapsed ? "Mở rộng thanh bên" : "Thu gọn thanh bên"}
               type="button"
               variant="outline"
               onClick={() => setSidebarCollapsed((current) => !current)}
@@ -228,7 +228,7 @@ function App(): ReactElement {
             })}
           </nav>
           <Button
-            aria-label={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+            aria-label={sidebarCollapsed ? "Mở rộng thanh bên" : "Thu gọn thanh bên"}
             className="mt-3 w-full rounded-2xl border-white/10 bg-background/50 lg:hidden"
             data-sidebar-toggle-mobile
             type="button"

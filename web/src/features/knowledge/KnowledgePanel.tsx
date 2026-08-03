@@ -78,7 +78,7 @@ export function KnowledgePanel({ data, loading, onData, onLoading }: KnowledgePa
   }
 
   async function runPendingAction(action: KnowledgeGraphAction, item: PendingKnowledgeItem): Promise<void> {
-    const label = action === "approve_pending" ? "Approve" : action === "sanitize_pending" ? "Sanitize" : "Reject";
+    const label = action === "approve_pending" ? "Duyệt" : action === "sanitize_pending" ? "Làm sạch" : "Từ chối";
     await postAction({ action, id: item.id }, `${label} pending knowledge item #${item.id}?`);
   }
 
@@ -87,7 +87,7 @@ export function KnowledgePanel({ data, loading, onData, onLoading }: KnowledgePa
     const primaryId = Number(mergePrimaryId);
     const duplicateId = Number(mergeDuplicateId);
     if (!primaryId || !duplicateId || primaryId === duplicateId) {
-      setActionError("Choose two different entities to merge.");
+      setActionError("Chọn hai thực thể khác nhau để gộp.");
       return;
     }
     await postAction({ action: "merge_entity", primaryId, duplicateId, reason }, `Merge entity #${duplicateId} into #${primaryId}? This may require approval.`);
@@ -97,7 +97,7 @@ export function KnowledgePanel({ data, loading, onData, onLoading }: KnowledgePa
     event.preventDefault();
     const id = Number(relationDraft.relationId);
     if (!id) {
-      setActionError("Choose a relation to update.");
+      setActionError("Chọn một quan hệ để cập nhật.");
       return;
     }
     const body: Record<string, unknown> = { action: "update_relation", id, reason };
@@ -106,7 +106,7 @@ export function KnowledgePanel({ data, loading, onData, onLoading }: KnowledgePa
     if (relationDraft.scope) body.scope = relationDraft.scope;
     if (relationDraft.sensitivity) body.sensitivity = relationDraft.sensitivity;
     if (Object.keys(body).length <= 3) {
-      setActionError("Provide confidence, evidence, scope, or sensitivity before updating.");
+      setActionError("Nhập độ tin cậy, bằng chứng, phạm vi hoặc độ nhạy trước khi cập nhật.");
       return;
     }
     await postAction(body, `Update relation #${id}? This may require approval.`);
@@ -116,7 +116,7 @@ export function KnowledgePanel({ data, loading, onData, onLoading }: KnowledgePa
     return (
       <Alert className="border-accent/40 bg-accent/10">
         <GitBranch className="size-4" />
-        <AlertTitle>Knowledge Graph is loading</AlertTitle>
+        <AlertTitle>Bản đồ tri thức is loading</AlertTitle>
         <AlertDescription>Reading local entities, relations, pending items, and trust review data.</AlertDescription>
       </Alert>
     );
@@ -125,34 +125,34 @@ export function KnowledgePanel({ data, loading, onData, onLoading }: KnowledgePa
   return (
     <div className="grid gap-4">
       {actionError ? <KnowledgeError message={actionError} /> : null}
-      {actionMessage ? <Alert className="border-primary/40 bg-primary/10"><Check className="size-4" /><AlertTitle>Updated</AlertTitle><AlertDescription>{actionMessage}</AlertDescription></Alert> : null}
+      {actionMessage ? <Alert className="border-primary/40 bg-primary/10"><Check className="size-4" /><AlertTitle>Cập nhậtd</AlertTitle><AlertDescription>{actionMessage}</AlertDescription></Alert> : null}
 
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5" data-knowledge-summary="true">
-        <KnowledgeMetric label="Entities" value={String(data.counts.entities)} />
-        <KnowledgeMetric label="Relations" value={String(data.counts.relations)} />
-        <KnowledgeMetric label="Pending" value={String(data.counts.pending)} tone={data.counts.pending ? "warn" : "good"} />
-        <KnowledgeMetric label="Trust" value={formatTrust(data.trust)} />
-        <KnowledgeMetric label="Status" value={data.state.paused ? "paused" : "active"} tone={data.state.paused ? "warn" : "good"} />
+        <KnowledgeMetric label="Thực thể" value={String(data.counts.entities)} />
+        <KnowledgeMetric label="Quan hệ" value={String(data.counts.relations)} />
+        <KnowledgeMetric label="Đang chờ" value={String(data.counts.pending)} tone={data.counts.pending ? "warn" : "good"} />
+        <KnowledgeMetric label="Mức tin tưởng" value={formatTrust(data.trust)} />
+        <KnowledgeMetric label="Trạng thái" value={data.state.paused ? "paused" : "active"} tone={data.state.paused ? "warn" : "good"} />
       </div>
 
       <Card className="overflow-hidden border-white/10 bg-background/35" id="knowledge-cytoscape">
         <CardHeader className="gap-4 border-b border-white/10 bg-gradient-to-r from-white/[0.06] via-white/[0.02] to-transparent">
           <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
             <div className="min-w-0">
-              <CardTitle className="flex items-center gap-2 text-xl"><GitBranch className="size-5" /> 3D Knowledge Map</CardTitle>
-              <CardDescription className="mt-2 max-w-3xl">Primary spatial view for entities, relation edges, confidence, scope, sensitivity, and trust.</CardDescription>
+              <CardTitle className="flex items-center gap-2 text-xl"><GitBranch className="size-5" /> 3D Tri thức Map</CardTitle>
+              <CardDescription className="mt-2 max-w-3xl">Chính spatial view for entities, relation edges, confidence, scope, sensitivity, and trust.</CardDescription>
             </div>
             <div className="flex flex-wrap gap-2">
-              <Badge variant={data.database.exists ? "secondary" : "destructive"}>{data.database.exists ? "knowledge ready" : "knowledge unavailable"}</Badge>
+              <Badge variant={data.database.exists ? "secondary" : "destructive"}>{data.database.exists ? "tri thức sẵn sàng" : "chưa có tri thức"}</Badge>
               <Badge variant={data.state.paused ? "destructive" : "outline"}>{data.state.paused ? "paused" : "active"}</Badge>
               <Button variant="outline" onClick={() => void reload()} disabled={loading}><RefreshCw className={loading ? "animate-spin" : ""} /> Reload</Button>
             </div>
           </div>
           <form className="grid gap-2 lg:grid-cols-[minmax(0,1fr)_auto]" onSubmit={(event) => void search(event)}>
-            <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search entities, relations, and pending knowledge" />
-            <Button type="submit" disabled={loading}><Search /> Search graph</Button>
+            <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Tìm thực thể, quan hệ và tri thức đang chờ" />
+            <Button type="submit" disabled={loading}><Search /> Tìm kiếm graph</Button>
           </form>
-          {data.query ? <p className="text-sm text-muted-foreground">Search query: <span className="text-foreground">{data.query}</span></p> : null}
+          {data.query ? <p className="text-sm text-muted-foreground">Tìm kiếm query: <span className="text-foreground">{data.query}</span></p> : null}
         </CardHeader>
         <CardContent className="grid gap-4 p-3 md:p-4">
           <KnowledgeMap3D entities={data.entities} relations={data.relations} />
@@ -163,17 +163,17 @@ export function KnowledgePanel({ data, loading, onData, onLoading }: KnowledgePa
         <Card className="border-white/10 bg-background/35">
           <CardHeader className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div>
-              <CardTitle className="flex items-center gap-2"><Database className="size-5" /> Knowledge inventory</CardTitle>
+              <CardTitle className="flex items-center gap-2"><Database className="size-5" /> Tri thức inventory</CardTitle>
               <CardDescription>Browse one type at a time to keep review focused.</CardDescription>
             </div>
             <div className="flex rounded-2xl border border-white/10 bg-background/40 p-1 text-sm">
-              <button type="button" className={`rounded-xl px-3 py-1.5 transition ${inventoryView === "entities" ? "bg-secondary text-foreground" : "text-muted-foreground hover:text-foreground"}`} onClick={() => setInventoryView("entities")}>Entities <span className="ml-1 text-xs opacity-70">{data.entities.length}</span></button>
-              <button type="button" className={`rounded-xl px-3 py-1.5 transition ${inventoryView === "relations" ? "bg-secondary text-foreground" : "text-muted-foreground hover:text-foreground"}`} onClick={() => setInventoryView("relations")}>Relations <span className="ml-1 text-xs opacity-70">{data.relations.length}</span></button>
+              <button type="button" className={`rounded-xl px-3 py-1.5 transition ${inventoryView === "entities" ? "bg-secondary text-foreground" : "text-muted-foreground hover:text-foreground"}`} onClick={() => setInventoryView("entities")}>Thực thể <span className="ml-1 text-xs opacity-70">{data.entities.length}</span></button>
+              <button type="button" className={`rounded-xl px-3 py-1.5 transition ${inventoryView === "relations" ? "bg-secondary text-foreground" : "text-muted-foreground hover:text-foreground"}`} onClick={() => setInventoryView("relations")}>Quan hệ <span className="ml-1 text-xs opacity-70">{data.relations.length}</span></button>
             </div>
           </CardHeader>
           <CardContent className="grid gap-3">
             <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-white/10 bg-card/40 px-3 py-2 text-xs text-muted-foreground">
-              <span>{inventoryView === "entities" ? "Entity names, kind, scope, confidence, and trust." : "Relation path, type, evidence preview, confidence, and trust."}</span>
+              <span>{inventoryView === "entities" ? "Tên thực thể, loại, phạm vi, độ tin cậy và mức tin tưởng." : "Đường liên kết, loại quan hệ, bằng chứng, độ tin cậy và mức tin tưởng."}</span>
               <Badge variant="outline">{inventoryView === "entities" ? data.entities.length : data.relations.length} shown</Badge>
             </div>
             <div className="no-scrollbar grid max-h-[38rem] gap-2 overflow-auto pr-1">
@@ -187,8 +187,8 @@ export function KnowledgePanel({ data, loading, onData, onLoading }: KnowledgePa
         <div className="grid content-start gap-4">
           <Card className="border-white/10 bg-background/35">
             <CardHeader>
-              <CardTitle className="flex items-center gap-2"><ShieldAlert className="size-5" /> Pending review</CardTitle>
-              <CardDescription>Approve, reject, or sanitize extracted knowledge before it lands in memory.</CardDescription>
+              <CardTitle className="flex items-center gap-2"><ShieldAlert className="size-5" /> Đang chờ review</CardTitle>
+              <CardDescription>Duyệt, reject, or sanitize extracted knowledge before it lands in memory.</CardDescription>
             </CardHeader>
             <CardContent className="no-scrollbar grid max-h-80 gap-3 overflow-auto pr-1">
               {data.pending.length ? data.pending.map((item) => <PendingRow key={item.id} item={item} loading={loading} onAction={runPendingAction} />) : <EmptyText>No pending knowledge items.</EmptyText>}
@@ -198,17 +198,17 @@ export function KnowledgePanel({ data, loading, onData, onLoading }: KnowledgePa
           <Card className="border-white/10 bg-background/35">
             <CardHeader>
               <CardTitle className="flex items-center gap-2"><Sparkles className="size-5" /> Graph actions</CardTitle>
-              <CardDescription>Confirmation-gated cleanup and relation edits.</CardDescription>
+              <CardDescription>Xác nhậnation-gated cleanup and relation edits.</CardDescription>
             </CardHeader>
             <CardContent className="grid gap-4">
               <div className="grid gap-2">
                 <Label htmlFor="knowledge-reason">Reason</Label>
-                <Textarea id="knowledge-reason" value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Optional reason for audit trail" rows={2} />
+                <Textarea id="knowledge-reason" value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Lý do tuỳ chọn để lưu lịch sử" rows={2} />
               </div>
               <form className="grid gap-3" onSubmit={(event) => void mergeEntities(event)}>
                 <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
-                  <EntitySelect id="knowledge-primary-entity" label="Primary entity" value={mergePrimaryId} onChange={setMergePrimaryId} entities={entityOptions} />
-                  <EntitySelect id="knowledge-duplicate-entity" label="Duplicate entity" value={mergeDuplicateId} onChange={setMergeDuplicateId} entities={entityOptions} />
+                  <EntitySelect id="knowledge-primary-entity" label="Thực thể chính" value={mergePrimaryId} onChange={setMergePrimaryId} entities={entityOptions} />
+                  <EntitySelect id="knowledge-duplicate-entity" label="Thực thể trùng" value={mergeDuplicateId} onChange={setMergeDuplicateId} entities={entityOptions} />
                 </div>
                 <Button type="submit" variant="outline" disabled={loading || entityOptions.length < 2} data-knowledge-graph-action="merge_entity"><Merge /> Merge entities</Button>
               </form>
@@ -222,7 +222,7 @@ export function KnowledgePanel({ data, loading, onData, onLoading }: KnowledgePa
                   </Select>
                 </div>
                 <div className="grid gap-2 md:grid-cols-3 xl:grid-cols-1 2xl:grid-cols-3">
-                  <Input value={relationDraft.confidence} onChange={(event) => setRelationDraft((current) => ({ ...current, confidence: event.target.value }))} placeholder="confidence 0-1" inputMode="decimal" />
+                  <Input value={relationDraft.confidence} onChange={(event) => setRelationDraft((current) => ({ ...current, confidence: event.target.value }))} placeholder="độ tin cậy 0-1" inputMode="decimal" />
                   <Select value={relationDraft.scope} onChange={(event) => setRelationDraft((current) => ({ ...current, scope: event.target.value as RelationEditDraft["scope"] }))}>
                     <option value="">Scope</option><option value="core">core</option><option value="project">project</option><option value="session">session</option>
                   </Select>
@@ -230,8 +230,8 @@ export function KnowledgePanel({ data, loading, onData, onLoading }: KnowledgePa
                     <option value="">Sensitivity</option><option value="normal">normal</option><option value="sensitive">sensitive</option>
                   </Select>
                 </div>
-                <Textarea value={relationDraft.evidence} onChange={(event) => setRelationDraft((current) => ({ ...current, evidence: event.target.value }))} placeholder="Updated evidence" rows={2} />
-                <Button type="submit" variant="outline" disabled={loading || !relationOptions.length} data-knowledge-graph-action="update_relation"><Check /> Update relation</Button>
+                <Textarea value={relationDraft.evidence} onChange={(event) => setRelationDraft((current) => ({ ...current, evidence: event.target.value }))} placeholder="Bằng chứng cập nhật" rows={2} />
+                <Button type="submit" variant="outline" disabled={loading || !relationOptions.length} data-knowledge-graph-action="update_relation"><Check /> Cập nhật relation</Button>
               </form>
             </CardContent>
           </Card>
@@ -249,7 +249,7 @@ function KnowledgeError({ message }: { message: string }): ReactElement {
   return (
     <Alert variant="destructive">
       <AlertCircle className="size-4" />
-      <AlertTitle>Knowledge graph request failed</AlertTitle>
+      <AlertTitle>Tri thức graph request failed</AlertTitle>
       <AlertDescription>{message}</AlertDescription>
     </Alert>
   );
@@ -448,7 +448,7 @@ function RelationRow({ relation, loading, onForget }: { relation: KnowledgeRelat
       <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
         <div className="min-w-0">
           <p className="truncate font-semibold">#{relation.id} {relation.sourceName} <span className="text-muted-foreground">→ {relation.targetName}</span></p>
-          <p className="mt-1 truncate text-xs text-muted-foreground"><span className="text-foreground/80">{relation.relationType}</span>{relation.evidence ? ` · ${relation.evidence}` : " · No evidence text."}</p>
+          <p className="mt-1 truncate text-xs text-muted-foreground"><span className="text-foreground/80">{relation.relationType}</span>{relation.evidence ? ` · ${relation.evidence}` : " · Chưa có nội dung bằng chứng."}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2 md:justify-end"><Badge variant="outline">{relation.scope}</Badge><Badge variant={relation.sensitivity === "sensitive" ? "destructive" : "secondary"}>{relation.sensitivity}</Badge><Badge variant="outline">{formatPercent(relation.confidence)}</Badge><Button size="sm" variant="ghost" onClick={() => void onForget(relation.id)} disabled={loading} data-knowledge-action="forget_relation"><Link2Off /> Forget</Button></div>
       </div>
@@ -462,13 +462,13 @@ function PendingRow({ item, loading, onAction }: { item: PendingKnowledgeItem; l
     <div className="knowledge-row rounded-2xl border border-white/10 bg-card/60 p-4 text-sm">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="font-semibold">Pending #{item.id}</p>
+          <p className="font-semibold">Đang chờ #{item.id}</p>
           <p className="mt-1 text-muted-foreground">{item.payloadSummary}</p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button size="sm" onClick={() => void onAction("approve_pending", item)} disabled={loading} data-knowledge-action="approve_pending"><Check /> Approve</Button>
-          <Button size="sm" variant="outline" onClick={() => void onAction("sanitize_pending", item)} disabled={loading} data-knowledge-action="sanitize_pending"><Sparkles /> Sanitize</Button>
-          <Button size="sm" variant="outline" onClick={() => void onAction("reject_pending", item)} disabled={loading} data-knowledge-action="reject_pending"><X /> Reject</Button>
+          <Button size="sm" onClick={() => void onAction("approve_pending", item)} disabled={loading} data-knowledge-action="approve_pending"><Check /> Duyệt</Button>
+          <Button size="sm" variant="outline" onClick={() => void onAction("sanitize_pending", item)} disabled={loading} data-knowledge-action="sanitize_pending"><Sparkles /> Làm sạch</Button>
+          <Button size="sm" variant="outline" onClick={() => void onAction("reject_pending", item)} disabled={loading} data-knowledge-action="reject_pending"><X /> Từ chối</Button>
         </div>
       </div>
       <Separator className="my-3" />

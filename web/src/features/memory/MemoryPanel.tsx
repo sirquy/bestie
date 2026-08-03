@@ -50,7 +50,7 @@ export function MemoryPanel({ data, loading, onData, onLoading }: MemoryPanelPro
   }
 
   async function updatePending(action: MemoryAction, id: number): Promise<void> {
-    const verb = action === "approve_pending" ? "Approve" : "Reject";
+    const verb = action === "approve_pending" ? "Duyệt" : "Từ chối";
     if (!await confirmDialog(`${verb} pending memory #${id}?`)) return;
     await runAction(() => fetchJson<MemorySummary>("/api/memory/action", { method: "POST", body: JSON.stringify({ action, id, confirm: true }) }), `Pending memory #${id} updated.`);
   }
@@ -59,7 +59,7 @@ export function MemoryPanel({ data, loading, onData, onLoading }: MemoryPanelPro
     return (
       <Alert className="border-accent/40 bg-accent/10">
         <Brain className="size-4" />
-        <AlertTitle>Memory Center is loading</AlertTitle>
+        <AlertTitle>Bộ nhớ is loading</AlertTitle>
         <AlertDescription>Loading saved memories and review items.</AlertDescription>
       </Alert>
     );
@@ -68,48 +68,48 @@ export function MemoryPanel({ data, loading, onData, onLoading }: MemoryPanelPro
   return (
     <div className="grid gap-4">
       {actionError ? <MemoryError message={actionError} /> : null}
-      {actionMessage ? <Alert className="border-primary/40 bg-primary/10"><Check className="size-4" /><AlertTitle>Updated</AlertTitle><AlertDescription>{actionMessage}</AlertDescription></Alert> : null}
+      {actionMessage ? <Alert className="border-primary/40 bg-primary/10"><Check className="size-4" /><AlertTitle>Cập nhậtd</AlertTitle><AlertDescription>{actionMessage}</AlertDescription></Alert> : null}
 
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
-        <MemoryMetric label="Active" value={String(data.counts.active)} />
-        <MemoryMetric label="Pending" value={String(data.counts.pending)} tone={data.counts.pending ? "warn" : "good"} />
-        <MemoryMetric label="Core" value={String(data.counts.core)} />
-        <MemoryMetric label="Project" value={String(data.counts.project)} />
-        <MemoryMetric label="Session" value={String(data.counts.session)} />
-        <MemoryMetric label="Summaries" value={String(data.counts.conversationSummaries)} />
+        <MemoryMetric label="Đang dùng" value={String(data.counts.active)} />
+        <MemoryMetric label="Đang chờ" value={String(data.counts.pending)} tone={data.counts.pending ? "warn" : "good"} />
+        <MemoryMetric label="Cốt lõi" value={String(data.counts.core)} />
+        <MemoryMetric label="Dự án" value={String(data.counts.project)} />
+        <MemoryMetric label="Phiên" value={String(data.counts.session)} />
+        <MemoryMetric label="Tóm tắt" value={String(data.counts.conversationSummaries)} />
       </div>
 
       <Card className="border-white/10 bg-background/35">
         <CardHeader className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
           <div>
-            <CardTitle className="flex items-center gap-2"><Database className="size-5" /> Memory store</CardTitle>
+            <CardTitle className="flex items-center gap-2"><Database className="size-5" /> Bộ nhớ store</CardTitle>
             <CardDescription>Saved privately on this device.</CardDescription>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Badge variant={data.database.exists ? "secondary" : "destructive"}>{data.database.exists ? "ready" : "not ready"}</Badge>
+            <Badge variant={data.database.exists ? "secondary" : "destructive"}>{data.database.exists ? "ready" : "chưa sẵn sàng"}</Badge>
             <Badge variant={data.state.paused ? "destructive" : "outline"}>{data.state.paused ? "paused" : "active"}</Badge>
             <Button variant="outline" onClick={() => void reload()} disabled={loading}><RefreshCw className={loading ? "animate-spin" : ""} /> Reload</Button>
           </div>
         </CardHeader>
         <CardContent>
           <form className="grid gap-2 md:grid-cols-[1fr_auto]" onSubmit={(event) => void search(event)}>
-            <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search active and pending memories" />
-            <Button type="submit" disabled={loading}><Search /> Search</Button>
+            <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Tìm bộ nhớ đang dùng và đang chờ" />
+            <Button type="submit" disabled={loading}><Search /> Tìm kiếm</Button>
           </form>
-          {data.query ? <p className="mt-3 text-sm text-muted-foreground">Search query: {data.query}</p> : null}
+          {data.query ? <p className="mt-3 text-sm text-muted-foreground">Tìm kiếm query: {data.query}</p> : null}
         </CardContent>
       </Card>
 
       <div className="grid gap-4 xl:grid-cols-[1fr_1fr]">
         <Card className="border-white/10 bg-background/35">
-          <CardHeader><CardTitle>Needs review</CardTitle><CardDescription>Approve or reject proposed memories before they become active.</CardDescription></CardHeader>
+          <CardHeader><CardTitle>Needs review</CardTitle><CardDescription>Duyệt or reject proposed memories before they become active.</CardDescription></CardHeader>
           <CardContent className="grid gap-3">
             {data.pending.length ? data.pending.map((item) => <PendingMemoryRow key={item.id} item={item} loading={loading} onAction={updatePending} />) : <EmptyText>No pending memories.</EmptyText>}
           </CardContent>
         </Card>
 
         <Card className="border-white/10 bg-background/35">
-          <CardHeader><CardTitle>Active memories</CardTitle><CardDescription>Facts Bestie can use in future conversations.</CardDescription></CardHeader>
+          <CardHeader><CardTitle>Đang dùng memories</CardTitle><CardDescription>Facts Bestie can use in future conversations.</CardDescription></CardHeader>
           <CardContent className="grid gap-3">
             {data.memories.length ? data.memories.map((item) => <MemoryRow key={item.id} item={item} />) : <EmptyText>No active memories found.</EmptyText>}
           </CardContent>
@@ -134,7 +134,7 @@ function MemoryError({ message }: { message: string }): ReactElement {
   return (
     <Alert variant="destructive">
       <AlertCircle className="size-4" />
-      <AlertTitle>Memory request failed</AlertTitle>
+      <AlertTitle>Bộ nhớ request failed</AlertTitle>
       <AlertDescription>{message}</AlertDescription>
     </Alert>
   );
@@ -168,8 +168,8 @@ function PendingMemoryRow({ item, loading, onAction }: { item: PendingMemoryItem
   return (
     <div className="memory-row rounded-2xl border border-white/10 bg-card/60 p-4 text-sm">
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div><p className="font-semibold">Pending {item.type}</p><p className="mt-1 text-muted-foreground">{item.content}</p></div>
-        <div className="flex gap-2"><Button size="sm" onClick={() => void onAction("approve_pending", item.id)} disabled={loading}><Check /> Approve</Button><Button size="sm" variant="outline" onClick={() => void onAction("reject_pending", item.id)} disabled={loading}><X /> Reject</Button></div>
+        <div><p className="font-semibold">Đang chờ {item.type}</p><p className="mt-1 text-muted-foreground">{item.content}</p></div>
+        <div className="flex gap-2"><Button size="sm" onClick={() => void onAction("approve_pending", item.id)} disabled={loading}><Check /> Duyệt</Button><Button size="sm" variant="outline" onClick={() => void onAction("reject_pending", item.id)} disabled={loading}><X /> Từ chối</Button></div>
       </div>
       <Separator className="my-3" />
       <p className="text-xs text-muted-foreground">{item.reason || item.source || formatDate(item.createdAt)} / consent {item.explicitConsent ? "yes" : "no"}</p>

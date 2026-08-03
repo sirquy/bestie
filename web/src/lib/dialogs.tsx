@@ -59,12 +59,12 @@ export function DialogProvider({ children }: { children: ReactNode }): ReactElem
       {dialog ? (
         <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4 backdrop-blur-sm" role="presentation" onMouseDown={() => closeWith(dialog.type === "alert" ? undefined : false)}>
           <div className="w-full max-w-md rounded-3xl border border-white/10 bg-card p-5 shadow-2xl ring-1 ring-white/10" role="dialog" aria-modal="true" aria-labelledby="bestie-dialog-title" onMouseDown={(event) => event.stopPropagation()}>
-            <h2 id="bestie-dialog-title" className="text-lg font-semibold">{dialog.options.title ?? (dialog.type === "prompt" ? "Input required" : dialog.type === "alert" ? "Notice" : "Confirm action")}</h2>
+            <h2 id="bestie-dialog-title" className="text-lg font-semibold">{dialog.options.title ?? (dialog.type === "prompt" ? "Cần nhập thông tin" : dialog.type === "alert" ? "Thông báo" : "Xác nhận thao tác")}</h2>
             <p className="mt-2 text-sm text-muted-foreground">{dialog.options.description}</p>
             {dialog.type === "prompt" ? <Input className="mt-4" autoFocus value={dialog.value} placeholder={dialog.options.placeholder} onChange={(event) => setDialog({ ...dialog, value: event.target.value })} onKeyDown={(event) => { if (event.key === "Enter") closeWith(dialog.value); if (event.key === "Escape") closeWith(null); }} /> : null}
             <div className="mt-5 flex justify-end gap-2">
-              {dialog.type !== "alert" ? <Button variant="outline" onClick={() => closeWith(dialog.type === "prompt" ? null : false)}>{dialog.options.cancelLabel ?? "Cancel"}</Button> : null}
-              <Button variant={dialog.options.tone === "destructive" ? "destructive" : "default"} onClick={() => closeWith(dialog.type === "prompt" ? dialog.value : true)}>{dialog.options.confirmLabel ?? (dialog.type === "alert" ? "OK" : "Confirm")}</Button>
+              {dialog.type !== "alert" ? <Button variant="outline" onClick={() => closeWith(dialog.type === "prompt" ? null : false)}>{dialog.options.cancelLabel ?? "Huỷ"}</Button> : null}
+              <Button variant={dialog.options.tone === "destructive" ? "destructive" : "default"} onClick={() => closeWith(dialog.type === "prompt" ? dialog.value : true)}>{dialog.options.confirmLabel ?? (dialog.type === "alert" ? "Đã hiểu" : "Xác nhận")}</Button>
             </div>
           </div>
         </div>
