@@ -52,6 +52,33 @@ test("runUpdateCommand can apply an available update", async () => {
   }
 });
 
+test("runUpdateCommand explains installer failures in user-friendly copy", async () => {
+  const paths = await createTempPaths();
+  const lines: string[] = [];
+  const previousExitCode = process.exitCode;
+
+  try {
+    await runUpdateCommand({
+      argv: ["node", "bestie", "update", "--apply"],
+      paths,
+      writeLine: (line) => lines.push(line),
+      writeError: (line) => lines.push(line),
+      versionCheckOptions: { fetchImpl: fakeLatestVersionFetch("99.0.0") },
+      runInstaller: async () => 1,
+    });
+
+    const output = lines.join("\n");
+    assert.match(output, /Không cập nhật được Bestie Agent/);
+    assert.match(output, /Vui lòng thử lại bằng: bestie update --apply/);
+    assert.match(output, /npm install -g bestie-agent@latest/);
+    assert.match(output, /Chi tiết kỹ thuật: npm install thoát với mã 1\./);
+    assert.equal(process.exitCode, 1);
+  } finally {
+    process.exitCode = previousExitCode;
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
 function fakeLatestVersionFetch(version: string): typeof fetch {
   return async () => new Response(JSON.stringify({ version }), { status: 200, headers: { "content-type": "application/json" } });
 }

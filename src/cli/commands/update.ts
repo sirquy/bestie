@@ -3,6 +3,7 @@ import { spawn } from "node:child_process";
 
 import { checkForPackageUpdate, loadPackageVersionInfo, writeUpdateCheckCache, type VersionCheckOptions, type VersionCheckResult } from "../../runtime/version.js";
 import { getRuntimePaths, type RuntimePaths } from "../../runtime/paths.js";
+import { formatUpdateInstallFailure } from "../../runtime/update-message.js";
 import { badge, keyValue, startSpinner, title } from "../ui.js";
 
 export interface UpdateCommandOptions {
@@ -77,7 +78,7 @@ export async function runUpdateCommand(options: UpdateCommandOptions | string[] 
     return;
   }
 
-  writeError(`npm install thoát với mã ${exitCode}.`);
+  writeError(formatUpdateInstallFailure(result.packageName, exitCode));
   process.exitCode = exitCode;
 }
 

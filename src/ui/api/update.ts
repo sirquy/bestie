@@ -3,6 +3,7 @@ import { mkdir } from "node:fs/promises";
 
 import { checkForPackageUpdate, loadPackageVersionInfo, writeUpdateCheckCache, type VersionCheckOptions, type VersionCheckResult } from "../../runtime/version.js";
 import { getRuntimePaths, type RuntimePaths } from "../../runtime/paths.js";
+import { buildNpmGlobalInstallCommand, formatUpdateInstallFailure } from "../../runtime/update-message.js";
 
 export interface UiUpdateSummary extends VersionCheckResult {
   ok: true;
@@ -65,13 +66,13 @@ export async function applyUiUpdate(paths: RuntimePaths = getRuntimePaths(), opt
     packageName,
     latestVersion,
     exitCode: result.exitCode,
-    message: result.exitCode === 0 ? "Đã chạy cập nhật Bestie Agent. Mở terminal mới nếu shell vẫn cache binary cũ." : `npm install thoát với mã ${result.exitCode}.`,
+    message: result.exitCode === 0 ? "Đã chạy cập nhật Bestie Agent. Mở terminal mới nếu shell vẫn cache binary cũ." : formatUpdateInstallFailure(packageName, result.exitCode),
     output: result.output.slice(-6_000),
   };
 }
 
 function buildInstallCommand(packageName: string): string {
-  return `npm install -g ${packageName}@latest`;
+  return buildNpmGlobalInstallCommand(packageName);
 }
 
 function runNpmGlobalInstall(packageName: string): Promise<{ exitCode: number; output: string }> {
