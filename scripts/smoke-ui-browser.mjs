@@ -134,12 +134,18 @@ async function assertSidebarToggle(page) {
 async function assertMobileSidebarToggle(page) {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.waitForSelector('[data-sidebar-state="expanded"]');
-  await page.getByRole("button", { name: /Thu gọn thanh bên/ }).click();
+  const sidebarBox = await page.locator("[data-sidebar-state]").evaluate((element) => ({ height: element.getBoundingClientRect().height, viewportHeight: window.innerHeight }));
+  if (sidebarBox.height < sidebarBox.viewportHeight - 80) throw new Error(`Mobile sidebar should be full height, got ${sidebarBox.height}/${sidebarBox.viewportHeight}`);
+  const navColumns = await page.locator("[data-sidebar-state] nav").evaluate((element) => getComputedStyle(element).gridTemplateColumns.split(" ").length);
+  if (navColumns !== 1) throw new Error(`Mobile sidebar menu should be one column, got ${navColumns}`);
+  await page.locator("[data-sidebar-toggle]").click();
   await page.waitForSelector('[data-sidebar-state="collapsed"]');
-  await page.locator("aside nav").waitFor({ state: "hidden" });
-  await page.getByRole("button", { name: /Mở rộng thanh bên/ }).click();
+  await page.locator("[data-sidebar-state] nav").waitFor({ state: "hidden" });
+  const mainLeft = await page.locator("main").evaluate((element) => element.getBoundingClientRect().left);
+  if (mainLeft > 24) throw new Error(`Collapsed mobile sidebar should not reserve layout width, main starts at ${mainLeft}`);
+  await page.locator("[data-sidebar-floating-toggle]").click();
   await page.waitForSelector('[data-sidebar-state="expanded"]');
-  await page.locator("aside nav").waitFor({ state: "visible" });
+  await page.locator("[data-sidebar-state] nav").waitFor({ state: "visible" });
   await page.setViewportSize({ width: 1280, height: 900 });
 }
 
