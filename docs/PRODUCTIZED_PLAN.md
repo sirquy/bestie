@@ -10,7 +10,7 @@ Core direction:
 - user-created character
 - provider-profile LLM setup across OpenAI/ChatGPT, Anthropic Claude, OpenAI-compatible endpoints, Groq, OpenRouter, Ollama, and native Gemini API-key mode
 - local SQLite memory, with optional Zep later
-- terminal, Telegram, Zalo, cron, daemon/service, and local web console surfaces
+- terminal, Telegram, Zalo, cron, daemon/service, and local Vite/React Web UI surfaces
 - safe local-first MVP
 
 Implemented local MVP order:
@@ -19,7 +19,7 @@ Implemented local MVP order:
 2. Onboarding wizard.
 3. Provider profiles and fallback diagnostics.
 4. Local SQLite memory, Doctor, and permission-gated tools.
-5. Telegram, Zalo, cron, daemon/service, installer/update, skills, MCP read foundations, and local web console.
+5. Telegram, Zalo, cron, daemon/service, installer/update, skills, MCP read foundations, and local Vite/React Web UI.
 6. Optional Zep, hosted/product UI, and avatar/voice/body layer remain later product work.
 
 ## Owner Direction Snapshot

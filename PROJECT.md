@@ -16,14 +16,14 @@ The first version should be small but alive: start with a believable character, 
 
 Current local MVP status:
 
-- Runs as terminal chat, Telegram polling, Zalo polling, cron schedules, daemon targets, and one Linux user service.
+- Runs as terminal chat, Telegram polling, Zalo polling, cron schedules, daemon targets, and user services on Linux systemd, macOS launchd, and Windows Startup.
 - Has a strong Vietnamese-first personality stored in editable local character and prompt files.
 - Remembers basic facts and preferences through local SQLite memory with inspect, search, approval, hygiene, and governance commands.
 - Can chat casually, reflect, advise, brainstorm, challenge bad ideas, and use permission-gated local tools, including configured image/video generation tools.
 - Supports configurable LLM provider profiles and model refs, including OpenAI/ChatGPT, Anthropic Claude, Groq, OpenRouter, local Ollama, custom OpenAI-compatible endpoints, and native Gemini API-key mode.
 - Logs provider failures, fallback attempts, memory updates, permission decisions, and runtime diagnostics with secret redaction.
 - Loads installed skills from `~/.bestie/skills` and supports SDK-backed MCP setup plus classified read calls.
-- Ships a localhost web console through `bestie ui` for chat, Doctor, providers, character, memory, knowledge graph, channels, approvals, MCP, tools, skills, and settings.
+- Ships a localhost Vite/React Web UI through `bestie ui` for chat, Doctor, providers, character, memory, knowledge graph, channels, approvals, MCP, tools, skills, and settings.
 - Can later evolve into hosted/product UI, avatar/body, optional Zep, and broader external actions.
 
 Do not let the local MVP become a fully autonomous public agent. Keep power behind explicit config, Doctor checks, permission review, and redacted logs.
@@ -225,7 +225,7 @@ Terminal / Telegram / Zalo / Cron
       -> Redacted logs + memory reasoning
 ```
 
-The original v1 sketch mentioned Telegram or web chat. The shipped local MVP currently prioritizes terminal, Telegram, Zalo, cron, daemon/service, SQLite memory, Doctor, local web console, MCP read foundations, and installed skills. Hosted/product UI, avatar/body, optional Zep, and broad external execution remain later work.
+The original v1 sketch mentioned Telegram or web chat. The shipped local MVP currently prioritizes terminal, Telegram, Zalo, cron, daemon/service, SQLite memory, Doctor, local Vite/React Web UI, MCP read foundations, and installed skills. Hosted/product UI, avatar/body, optional Zep, and broad external execution remain later work.
 
 Main components:
 
@@ -712,7 +712,7 @@ Installer responsibilities:
 6. Expose the `bestie` command through a predictable user-local bin directory and ensure the current shell can execute `bestie`.
 7. Offer to run onboarding first, which writes `.env`, config, character files, and initializes local runtime state.
 8. Run Doctor only after onboarding has actually run.
-9. Leave long-running runtime management to `bestie daemon ...` or `bestie service install`; the installer should not auto-start Telegram/Zalo/cron or install systemd services.
+9. Leave long-running runtime management to `bestie daemon ...` or `bestie service install`; the installer should not auto-start Telegram/Zalo/cron or install user services.
 
 Install path:
 
@@ -1157,7 +1157,7 @@ These are explicit owner requirements to preserve for future planning.
   2. onboarding wizard
   3. provider-profile LLM setup
   4. local memory, Doctor, and permissions
-  5. Telegram, Zalo, cron, daemon/service, installer/update, skills, MCP read foundations, and local web console
+  5. Telegram, Zalo, cron, daemon/service, installer/update, skills, MCP read foundations, and local Vite/React Web UI
   6. optional Zep, hosted/product UI, and avatar/voice/body layer later
 
 Principle:
@@ -1182,7 +1182,7 @@ Purpose:
 - suggest exact fixes
 - optionally apply safe fixes automatically with `--fix`
 
-This is important because the product is intended for non-expert users. If setup breaks, the user should not need to understand Node, Telegram webhooks, env files, SQLite, Zep, or systemd to recover.
+This is important because the product is intended for non-expert users. If setup breaks, the user should not need to understand Node, Telegram/Zalo setup, env files, SQLite, Zep, or user services to recover.
 
 ### Doctor Checks
 
@@ -1376,7 +1376,7 @@ The CLI should keep producing enough structured output that the UI can reuse the
 
 #### Phase UI-1 - Local Web Console
 
-Status: shipped as a zero-dependency Node HTTP console.
+Status: shipped as a localhost Node UI server serving a Vite/React Web UI.
 
 Example:
 
@@ -1384,7 +1384,7 @@ Example:
 bestie ui
 ```
 
-It binds to `127.0.0.1` by default and opens a localhost URL. Smoke runs can use:
+It binds to `127.0.0.1` by default and prints a localhost URL. Browser auto-open remains conservative. Smoke runs can use:
 
 ```bash
 bestie ui --port 0 --no-open
@@ -1392,14 +1392,14 @@ bestie ui --port 0 --no-open
 
 Current shipped panels:
 
-1. Chat session surface with local session history, retry/replay/fork/import/export, attachments, run inspector, and command palette.
+1. Chat session surface with local session history, markdown rendering, attachments, model selection, retry/replay/fork/copy actions, fullscreen chat, session title editing, and run inspector.
 2. Doctor status and confirmation-gated safe fixes.
-3. Provider setup with presets, primary model, fallbacks, and model tests.
+3. Tabbed provider setup with presets, primary model, fallbacks, saved profile/model inventory, model tests, and QuotaCheap/OpenAI-compatible support.
 4. Character setup for `character.json` and `system-prompt.md`.
-5. Memory search and pending memory review.
+5. Tabbed memory search, active memory, pending memory review, and conversation summaries.
 6. Knowledge graph map, review, trust, search, and approval-gated graph actions.
-7. Channel setup for Telegram, Zalo, cron, daemon actions, and cron logs.
-8. Approvals, MCP, Tools & Permissions, Skills, and Settings panels.
+7. Tabbed Channel Hub for Telegram, Zalo, cron schedules, state-aware daemon actions, and cron logs.
+8. Approvals, MCP, Tools & Permissions with external paths/exec timeout, Skills with remote registry modals, and low-risk Settings panels.
 
 This should be the first real UI because it avoids cloud auth complexity.
 
@@ -1601,12 +1601,12 @@ Do not build hosted UI first.
 
 Recommended for future:
 
-- Keep the current plain HTML/CSS/client JS console until a framework removes real complexity.
-- Vite + React or SvelteKit later if the form surface outgrows the static shell.
-- Tailwind or custom CSS variables
+- Current implementation uses Vite + React + TypeScript served by the local Node UI API.
+- Consider code-splitting and component polish before any hosted/product UI work.
+- Tailwind-style utility classes and custom CSS variables
 - Local API served by the agent backend
 - SQLite-backed config/memory APIs
-- WebSocket/SSE for logs and live chat test
+- SSE for chat streaming and future live log surfaces
 
 Keep UI separate enough that CLI and UI share the same service layer.
 
@@ -1625,7 +1625,7 @@ Do not duplicate business logic inside UI components.
 
 The local UI milestone currently includes:
 
-1. local web console
+1. local Vite/React Web UI
 2. character editor
 3. provider config screen
 4. Telegram/Zalo/cron channel hub
@@ -1866,7 +1866,7 @@ Future config:
 
 ### UI Implications
 
-The current local web console already includes MCP, Approvals, Doctor, and runtime log surfaces. Continued local UI polish and future hosted/product UI should preserve:
+The current local Vite/React Web UI already includes MCP, Approvals, Doctor, and runtime log surfaces. Continued local UI polish and future hosted/product UI should preserve:
 
 - MCP server list
 - MCP tool permissions
@@ -2264,7 +2264,7 @@ Focus:
 - fuller onboarding
 - Zep optional memory
 - update checks shipped locally; backup/restore/migration remain later hardening
-- local web console polish and hosted/product UI exploration
+- local Vite/React Web UI polish and hosted/product UI exploration
 
 Goal:
 

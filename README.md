@@ -4,16 +4,19 @@
   <img src="assets/bestie-logo-horizontal.jpg" alt="Bestie Agent" width="520" />
 </p>
 
-Bestie is a self-hosted AI companion CLI with a configurable character, local-first memory, provider diagnostics, Telegram/Zalo channels, installed skills, update checks, and a safety-first permission model.
+Bestie is a self-hosted, local-first AI companion runtime with a Vietnamese-first character, local memory, provider diagnostics, Telegram/Zalo channels, skills, update checks, a localhost Web UI, and a safety-first permission model.
 
-The project is early and intentionally practical: it focuses on a small local runtime that developers can inspect, modify, and run themselves.
+The project is active and practical: the shipped npm CLI/runtime is designed to be inspected, configured, and run locally by its owner.
 
 ## What Bestie Is
 
-- A TypeScript CLI for building and running a personalized AI companion.
-- Vietnamese-first by default, but configurable for other language modes.
-- Configurable LLM providers, including OpenAI-compatible endpoints, OpenAI/ChatGPT, Anthropic Claude, Groq, OpenRouter, and native Gemini API key.
-- Designed around privacy controls, local logs, explicit permissions, and user-owned memory.
+- A TypeScript CLI/runtime for running a personalized AI companion.
+- Vietnamese-first by default, with editable character files and prompt files.
+- A local Web UI through `bestie ui` for chat, diagnostics, providers, character, memory, knowledge graph, channels, approvals, MCP, tools, skills, and settings.
+- Configurable LLM providers with model refs, auth profiles, fallbacks, and provider diagnostics.
+- A local-first memory system backed by SQLite and explicit approval/governance controls.
+- A channel runtime for Telegram, Zalo, and cron schedules, with daemon/service management.
+- A permission-gated tool runtime for local files/actions, media generation, MCP read calls, and bounded internal subagents.
 
 ## What Bestie Is Not
 
@@ -21,35 +24,30 @@ Bestie is not conscious, human, a therapist replacement, a romantic companion, o
 
 ## Current Status
 
-Bestie is under active development. The local CLI foundation includes:
+The local MVP foundation is implemented and includes:
 
-- Terminal chat
-- Character prompt loading
-- Minimal onboarding
-- OpenAI-compatible, OpenAI/ChatGPT, Anthropic Claude, Groq, OpenRouter, and native Gemini chat provider calls
-- Doctor diagnostics
-- Local SQLite memory foundation
-- Telegram and Zalo local polling
-- Cron schedules and a local scheduler runtime
-- Local web console through `bestie ui` for chat sessions, Doctor, providers, character, memory, knowledge graph, channels, approvals, MCP, tools, skills, and settings
-- Manual daemon management for `telegram`, `zalo`, `cron`, or `all`
-- Linux user service management through one `bestie.service` runtime for configured service targets
-- Permission-gated local read/write/action tools
-- Permission-gated image and video generation tools backed by configured OpenAI-compatible media providers
-- Bounded internal subagent spawning for focused helper investigations
-- SDK-backed MCP server config, OAuth login, tool discovery, classification, and classified read calls
-- Installed skills loaded from `~/.bestie/skills/<skill-name>/SKILL.md`
-- `bestie update` and throttled update notices for new npm versions
-- Character regression evals
+- Terminal chat with editable character prompt loading.
+- Local Web UI built with Vite/React, served by `bestie ui`, with responsive layout, PWA install support, modal confirmations, toast notifications, and update banner.
+- Provider setup and tests for OpenAI/ChatGPT, Anthropic Claude, OpenAI-compatible providers, Groq, OpenRouter, QuotaCheap, Ollama, and native Gemini API-key mode.
+- Provider model refs, fallback order, diagnostics, and default LLM timeout of `300000ms`.
+- Local SQLite memory, pending approvals, pause/resume, hygiene/governance helpers, and knowledge graph UI.
+- Telegram and Zalo polling runtimes, shared attachment pipeline, Telegram voice helpers, and cron schedules.
+- Daemon management for `telegram`, `zalo`, `cron`, `ui`, or `all`, with duplicate-process cleanup safeguards.
+- User service support for Linux systemd, macOS launchd, and Windows Startup folder.
+- Permission-gated local read/write/action tools, external workspace path allowlist, configurable exec timeout, image/video generation tools, and bounded internal subagents.
+- SDK-backed MCP add/list/show/test/tools/classify/login/call with classified read calls.
+- Skills installed from `~/.bestie/skills`, plus an official remote GitHub skill registry (`sirquy/bestie-skills`) with verification, cache, preview, diff, install/update, rollback, enable/disable, and uninstall flows.
+- `bestie update` and throttled update notices for new npm versions.
+- Doctor diagnostics, safe local fixes, redacted logs, smoke tests, and character regression evals.
 
-Some roadmap items are intentionally not ready yet: hosted mode, broad external actions, plugin marketplace, hosted/production UI, avatar/body layer, and unrestricted tool execution.
+Still intentionally later: hosted/SaaS mode, public marketplace, avatar/body layer, optional Zep, broad autonomous external actions, unrestricted MCP execution, and named multi-agent orchestration.
 
 ## Requirements
 
-- Node.js 24
+- Node.js 24+
 - npm
-- An LLM provider API key for chat
-- Optional: Telegram bot token for Telegram mode
+- At least one LLM provider API key for cloud chat, or a local Ollama setup
+- Optional: Telegram bot token, Zalo credentials, `ffmpeg`, and media provider keys for channel/media features
 
 ## Quickstart
 
@@ -79,21 +77,26 @@ npm install -g bestie-agent
 bestie onboard
 bestie doctor
 bestie chat
+bestie ui
 ```
 
 Useful runtime commands:
 
 ```bash
-bestie channels telegram
-bestie channels telegram whoami
-bestie channels zalo
-bestie daemon restart --channel all
-bestie daemon restart --channel cron
-bestie service install
-bestie service status
+bestie status
+bestie doctor
 bestie ui
 bestie ui --port 8717
 bestie ui --port 0 --no-open
+bestie channels telegram setup
+bestie channels telegram
+bestie channels zalo
+bestie daemon status --channel all
+bestie daemon restart --channel telegram
+bestie daemon restart --channel zalo
+bestie daemon restart --channel cron
+bestie service install
+bestie service status
 bestie cron list
 bestie mcp list
 bestie mcp add demo --url https://mcp.example.com/mcp
@@ -119,7 +122,7 @@ During `bestie channels telegram setup`, leave the owner prompt blank to detect 
 
 Human-facing CLI commands print a built-in `Bestie Agent` ASCII banner. In an interactive terminal the banner animates briefly; piped output uses the static banner. Set `BESTIE_NO_BANNER=1` to hide it, or `BESTIE_BANNER=static` to keep it still. JSON modes such as `bestie doctor --json` suppress the banner automatically.
 
-Bestie uses colored badges, tables, and short progress indicators for human output. Set `NO_COLOR=1` to disable ANSI colors. Raw and machine-readable commands stay script-friendly: `bestie doctor --json`, `bestie channels doctor --json`, and `bestie memory export` suppress the banner, while log, git, transcript, and JSON payload output avoids decorative formatting.
+Bestie uses colored badges, tables, and short progress indicators for human output. Set `NO_COLOR=1` to disable ANSI colors. Raw and machine-readable commands stay script-friendly.
 
 ## Configuration
 
@@ -128,9 +131,11 @@ Bestie keeps local runtime files under `~/.bestie/` by default. Secrets belong i
 Example `~/.bestie/.env`:
 
 ```bash
-OPENAI_API_KEY=your-openai-compatible-key
+OPENAI_API_KEY=your-openai-key
 ANTHROPIC_API_KEY=your-claude-key
 GEMINI_API_KEY=your-gemini-key
+OPENROUTER_API_KEY=your-openrouter-key
+QUOTACHEAP_API_KEY=your-quotacheap-key
 BESTIE_TELEGRAM_BOT_TOKEN=your-telegram-token
 ```
 
@@ -142,6 +147,7 @@ Example provider config:
     "primary": "openai/gpt-4o-mini",
     "fallbacks": ["anthropic/claude-sonnet-4-5"],
     "authProfile": "openai:api-key",
+    "timeoutMs": 300000,
     "profiles": {
       "openai:api-key": {
         "provider": "openai",
@@ -170,11 +176,50 @@ Example provider config:
 }
 ```
 
-Model refs use `provider/model`. Profiles hold endpoint and auth mode metadata; secrets still live in `.env` through `apiKeyEnv`. HTTP providers store `baseUrl`; native Gemini API-key profiles intentionally omit `baseUrl` and let `@google/genai` use its default endpoint. Local profiles such as Ollama use `mode: "local"` and do not need an API key.
+Model refs use `provider/model`. Profiles hold endpoint and auth metadata; secrets live in `.env` through `apiKeyEnv`. HTTP providers store `baseUrl`; native Gemini API-key profiles intentionally omit `baseUrl`; local Ollama profiles use `mode: "local"` and do not need an API key.
 
-Run `bestie llm providers` to list supported providers with adapter capabilities and `bestie llm models --provider gemini` to inspect built-in model refs. Run `bestie llm setup` to choose a supported provider interactively, or `bestie llm setup --provider anthropic|openai|groq|openrouter|custom-openai|custom-anthropic|ollama|gemini|antigravity` for a faster setup path. The setup command adds/updates a profile and catalog entry; pass `--set-default` to make the selected model the active primary. Use `bestie llm models add --model provider/model --profile provider:mode` and `bestie llm models remove --model provider/model` to manage configured custom model refs. Use `bestie llm test --model provider/model` to test a configured model without switching primary, `bestie llm profiles list|show|remove --profile provider:mode` to inspect or remove inactive profiles, and `bestie llm fallbacks list|add|remove --model provider/model` to manage fallback order. OAuth providers are hidden behind provider-specific implementations; Bestie does not write placeholder OAuth config.
+Run `bestie llm providers` to list supported providers, `bestie llm models --provider gemini` to inspect built-in refs, `bestie llm setup` to configure a provider, `bestie llm test --model provider/model` to test without switching primary, and `bestie llm fallbacks list|add|remove` to manage fallback order.
 
-See `docs/CONFIG_SPEC.md` for full config details.
+See `docs/CONFIG_SPEC.md` for full config details, including `llm.image`, `workspace.externalPaths`, `internalTools.exec.timeoutMs`, `skills.registry`, channels, MCP, transcription, and speech.
+
+## Local Web UI
+
+Run the local console with:
+
+```bash
+bestie ui
+```
+
+By default it binds to `127.0.0.1`. Use `bestie ui --no-open` for terminal-only sessions, `bestie ui --port 8717` for a fixed port, or `bestie ui --port 0 --no-open` for smoke-friendly dynamic ports. The current CLI prints the local URL; automatic browser opening is intentionally conservative.
+
+The Web UI is a Vite/React app served by the local Node UI server. It uses the same `~/.bestie/` runtime files as the CLI and exposes:
+
+- Chat with sessions, markdown rendering, attachments, retry/copy/fork controls, fullscreen chat, model select, auto-scroll, and session title editing.
+- Doctor diagnostics and confirmation-gated fixes.
+- Provider tabs for model management, adding providers, saved profiles/models, and tests.
+- Character editor for identity/tone/prompt files.
+- Memory and Channels pages organized with tabs.
+- 3D knowledge graph map and inventory/review controls.
+- Approvals, MCP, Tools & Permissions, Skills, and Settings.
+- PWA install support for mobile, responsive sidebar, app icon, update banner, toasts, and modal confirmations.
+
+The UI reports secret presence and env var names only; raw `.env` values are not returned by UI APIs.
+
+## Skills
+
+Bestie loads installed skills from:
+
+```text
+~/.bestie/skills/<skill-name>/SKILL.md
+```
+
+The Web UI skill library uses the official remote registry by default:
+
+```text
+https://raw.githubusercontent.com/sirquy/bestie-skills/master/registry.json
+```
+
+Remote registry installs require HTTPS, verification, `installPolicy: "ask"`, and explicit owner confirmation. Library previews and installed skill editing open in modals; the editor is only for installed skills.
 
 ## Development Commands
 
@@ -187,26 +232,14 @@ npm run smoke:ui:all
 npm run eval:character
 ```
 
-Use focused tests while iterating, then run the full suite before opening a pull request. `npm run smoke:ui` runs the API/static UI smoke; `npm run smoke:ui:all` also launches a headless browser, verifies hydrated panels, and runs desktop/mobile screenshot layout checks for visual regressions.
-
-## Local Web Console
-
-Run the local console with:
-
-```bash
-bestie ui
-```
-
-By default it binds to `127.0.0.1` and opens the browser. Use `bestie ui --no-open` for terminal-only sessions, `bestie ui --port 8717` for a fixed port, or `bestie ui --port 0 --no-open` for smoke-friendly dynamic ports.
-
-The console uses the same `~/.bestie/` runtime files as the CLI. It shows chat sessions, runtime health, provider setup, character editing, memory and knowledge graph views, channel controls, approvals, MCP summaries, tool permissions, skills, and low-risk settings. It reports secret presence and env var names only; raw `.env` values are not returned by UI APIs.
+Use focused tests while iterating, then run the full suite before opening a pull request. `npm run smoke:ui` runs API/static UI smoke; `npm run smoke:ui:all` also launches a browser and checks desktop/mobile layout.
 
 ## Safety And Privacy
 
-- Do not commit `.bestie/`, `.env`, logs, local databases, or provider keys.
+- Do not commit `.bestie/`, `.env`, logs, local databases, generated assets, or provider keys.
 - Do not print API keys, bot tokens, auth headers, or raw `.env` contents.
-- External content from files, web pages, Telegram, MCP, and tools is untrusted.
-- Public/external/destructive actions must require explicit approval.
+- External content from files, web pages, Telegram, Zalo, MCP, skills, and tools is untrusted.
+- Public/external/destructive/money-related actions must require explicit approval.
 - Telemetry, if added, must be opt-in and privacy-first.
 
 See `SECURITY.md` and `docs/SECURITY_PRIVACY.md`.
@@ -215,13 +248,7 @@ See `SECURITY.md` and `docs/SECURITY_PRIVACY.md`.
 
 Contributions are welcome, especially small, well-tested improvements. Start with `CONTRIBUTING.md`, check open issues, and keep pull requests focused.
 
-Good first contributions include:
-
-- Documentation clarity
-- Better diagnostics and error messages
-- Focused tests
-- Provider compatibility fixes
-- Safe Telegram/local runtime polish
+Good first contributions include documentation clarity, diagnostics, focused tests, provider compatibility fixes, safe channel/runtime polish, and Web UI usability improvements.
 
 ## License
 

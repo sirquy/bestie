@@ -1,26 +1,27 @@
 # Bestie - UI Plan
 
-The first local web console is now part of the shipped local MVP through `bestie ui`. This document tracks the implemented localhost console and the future product UI direction. `PROJECT.md` remains the source of truth when scope or priority conflicts appear.
+The local Web UI is part of the shipped local MVP through `bestie ui`. This document tracks the implemented localhost console and the future product UI direction. `PROJECT.md` remains the source of truth when scope or priority conflicts appear.
 
 ## Goal
 
-Keep improving the local web console and later product UI for configuring, managing, diagnosing, and embodying the Bestie.
+Keep improving the local Web UI for configuring, managing, diagnosing, and embodying Bestie.
 
-The UI should feel like a character studio / companion control center, not a boring admin dashboard.
+The UI should feel like a character studio plus runtime cockpit, not a generic SaaS admin dashboard.
 
-## UI Phases
+## Current Stack
 
-1. CLI first: `bestie onboard`, `bestie doctor`, `bestie status` - shipped.
-2. Local web console: `bestie ui` opens `localhost` - shipped as a zero-dependency Node HTTP console.
-3. Character Studio: basic character and system prompt editing - shipped; visual/avatar-heavy authoring remains future work.
-4. Memory Center: active memory search, pending approvals, and local knowledge graph - shipped; full edit/delete/export and optional Zep status remain future work.
-5. Provider & Channel Hub: LLM provider setup plus Telegram, Zalo, cron, daemon and approval surfaces - shipped for local workflows; Discord/web chat and hosted channel setup remain future work.
-6. Doctor UI: visual health checks and confirmation-gated safe fixes - shipped for the local console.
-7. Avatar/voice/body layer - future work.
+The current UI is no longer the original static shell. It is a Vite/React/TypeScript app under `web/src`, built into `dist/ui/web`, and served by the local Node UI API server in `src/ui/server.ts`.
 
-## Current Local Console
+```text
+web/src                 React frontend
+src/ui/server.ts         localhost HTTP server + JSON API + static asset serving
+src/ui/api/*.ts          UI-facing service adapters around runtime modules
+dist/ui/web              built frontend assets included in npm package
+```
 
-Current command surface:
+The server still exposes the same local runtime APIs and binds to localhost only by default.
+
+## Command Surface
 
 ```bash
 bestie ui
@@ -28,51 +29,72 @@ bestie ui --port 8717
 bestie ui --port 0 --no-open
 ```
 
-Current panels:
+Current behavior:
 
-- Chat session surface with local conversation history, retry/replay/fork/import/export, attachments, run inspector, and command palette.
-- Doctor screen with confirmation-gated safe fixes.
-- Provider Hub with presets, setup, primary model, fallbacks, and model test.
-- Character Studio for `character.json` and `system-prompt.md`.
-- Memory Center with search and pending memory approval.
-- Knowledge Graph with map, review, trust, search, graph actions, and approval-gated writes.
-- Channel Hub for Telegram, Zalo, cron, daemon actions, and cron logs.
-- Approvals Hub for pending permission decisions.
-- MCP Hub for server, tool, auth, and transport summaries.
-- Tools & Permissions for internal tool policies and workspace paths.
-- Skills manager for local `~/.bestie/skills` editing plus a source-aware curated local skill library with metadata, preview, resettable and locally persisted source/category/status/trust/risk/permission filters with readable source labels, risk/permission-aware search, sort controls, result/status counts, registry verification status, verified remote test refresh, remote cache freshness/clearing, checksum, diff, rollback, confirmation-gated enable/disable that controls future prompt injection, confirmation-gated uninstall with local archive, and install/update confirmation with source/version/permission/checksum review.
-- Settings for low-risk agent and memory policy edits.
+- Binds to `127.0.0.1` unless explicitly passed `--host localhost`.
+- Rejects non-local hosts for the current milestone.
+- Prints the local URL; automatic browser opening remains conservative.
+- Uses the same runtime paths as CLI, normally `~/.bestie/`.
 
-Validation:
+## Current Panels
+
+- Chat: sessions, markdown messages, attachments, model selection, auto-scroll, enter-to-send, retry/copy/fork message actions, session title editing, fullscreen chat, pinned sessions, session list and inspector collapse state.
+- Doctor: diagnostics, JSON-backed report, confirmation-gated safe fixes, update-safe user-facing copy.
+- Providers: tabbed model management, provider setup, saved profiles/models, primary/fallback management, tests, and presets including OpenAI, Anthropic, Groq, OpenRouter, QuotaCheap, Gemini, and Ollama.
+- Character: editable identity/tone/prompt files. This owns character personality; Settings should not duplicate those controls.
+- Memory: tabbed active memory, pending review, and conversation summaries.
+- Knowledge: 3D knowledge graph map plus inventory/review controls.
+- Channels: tabbed Telegram/Zalo daemon controls, cron schedule CRUD, and cron logs. Channel start/stop/restart affects channel daemons only and does not stop the Web UI daemon.
+- Approvals: pending permission decisions and guarded execution for queued local UI actions.
+- MCP: server cards, transports, auth/env metadata, classifications, and tool names.
+- Tools & Permissions: policy counts, per-tool policy rows, workspace external paths, and exec timeout configuration.
+- Skills: installed skill grid, modal editor for installed skills, remote official registry preview in modal, verification/cache controls, install/update/uninstall/rollback/enable/disable confirmations.
+- Settings: low-risk system settings such as memory write policy; identity/tone belongs to Character.
+
+## UX Conventions
+
+- User-facing Vietnamese copy by default.
+- Modal confirmations for actions that replace legacy `prompt`/`alert` flows.
+- Toast notifications for transient success/error messages.
+- Responsive app shell with mobile sidebar behavior.
+- PWA manifest/service worker support so mobile users can add the Web UI to their home screen.
+- Update banner when a newer npm version is available, with CTA to run the update flow.
+- Secret values are never rendered; the UI only reports env var names and presence.
+
+## Non-Goals For The Local UI
+
+- No hosted/SaaS deployment.
+- No public network listener by default.
+- No multi-user auth model.
+- No plugin marketplace.
+- No avatar/body layer beyond future visual direction.
+- No broad external/destructive action without explicit confirmation and permission review.
+
+## Architecture Rule
+
+The frontend should stay a shell around shared runtime services.
+
+```text
+runtime services -> CLI
+runtime services -> src/ui/api -> React Web UI
+runtime services -> future hosted UI
+```
+
+Do not duplicate core business logic inside React components. Add reusable behavior in `src/runtime`, `src/chat`, `src/channels`, `src/memory`, `src/tools`, `src/mcp`, or `src/skills` as appropriate, then expose a focused UI API.
+
+## Validation
 
 ```bash
+npm run build
 npm run smoke:ui
 npm run smoke:ui:all
 ```
 
-## Design Direction
+`npm run build` compiles TypeScript and builds the Vite UI. `npm run smoke:ui` validates API/static UI routes. `npm run smoke:ui:all` also uses Playwright for browser checks and desktop/mobile layout regressions.
 
-- playful but useful
-- bold, characterful, not generic SaaS
-- avatar-forward
-- warm, expressive, personal
-- no gray admin-table slop
-- no generic purple AI startup look
+## Future Direction
 
-## Architecture
-
-The UI should reuse runtime services used by the CLI.
-
-```text
-runtime services -> CLI
-runtime services -> local web API -> shipped localhost console
-runtime services -> future hosted UI
-```
-
-Do not duplicate core logic inside the frontend.
-
-## Key Product Questions The UI Must Answer
-
-1. Who is my bestie?
-2. Is it healthy and connected?
-3. How do I tune it without breaking it?
+- Continue local UI polish before hosted UI.
+- Improve first-run onboarding and provider setup for non-technical users.
+- Add richer backup/restore/migration surfaces after CLI/runtime support is solid.
+- Keep hosted/product UI, marketplace, avatar/body, optional Zep, and broader external action execution as later scoped milestones.

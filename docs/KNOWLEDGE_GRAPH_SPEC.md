@@ -13,7 +13,7 @@ Current scope:
 - SQLite tables for active entities, active relations, and pending graph items.
 - SQLite `knowledge_audit_events` for graph provenance events.
 - CLI inspection through `bestie memory graph ...`.
-- Local UI inspection through the Knowledge Graph panel in `bestie ui`, including SVG map rendering, clickable detail inspector with timeline/audit hints, search, pending graph writes, review suggestions, and safe graph actions.
+- Local UI inspection through the Knowledge Graph panel in `bestie ui`, including an interactive 3D map, inventory/review controls, search, pending graph writes, review suggestions, and safe graph actions.
 - Internal tools: `internal.search_knowledge`, `internal.inspect_entity`, `internal.analyze_knowledge`, `internal.plan_knowledge_review`, `internal.remember_knowledge`, `internal.merge_knowledge_entities`, `internal.forget_knowledge_relation`, and `internal.update_knowledge_relation`.
 - Post-turn knowledge reasoning for terminal, Telegram, Zalo, and UI chat when `memory.writePolicy` is explicitly configured.
 - Compact graph retrieval injected into terminal, Telegram, Zalo, cron, and UI chat prompts when relevant to the current user input.

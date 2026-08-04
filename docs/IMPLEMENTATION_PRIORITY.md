@@ -27,7 +27,7 @@ Goal: prove the character feels alive.
 
 ## Next
 
-Status: completed for local development. Local SQLite memory, basic memory policy, status, Doctor MVP, Telegram/Zalo channel runtimes, cron, daemon/service management, permission-gated local tools, image/video generation tools, bounded internal subagents, SDK-backed MCP setup plus classified read calls, installed skills, npm update checks, native Gemini API-key setup, provider catalog/CLI management, local web console, and opt-in Telegram real-bot smoke are implemented and validated for local development.
+Status: completed for local development. Local SQLite memory, basic memory policy, status, Doctor MVP, Telegram/Zalo channel runtimes, cron, daemon/service management, permission-gated local tools, image/video generation tools, bounded internal subagents, SDK-backed MCP setup plus classified read calls, installed skills, npm update checks, native Gemini API-key setup, provider catalog/CLI management, local Vite/React Web UI, and opt-in Telegram real-bot smoke are implemented and validated for local development.
 
 Build:
 
@@ -35,7 +35,7 @@ Build:
 - Zalo channel runtime
 - cron schedule CRUD and scheduler runtime
 - daemon management for `telegram`, `zalo`, `cron`, or `all`
-- one Linux user service, `bestie.service`, for configured Telegram, Zalo, cron, and future service targets
+- user service management across Linux systemd, macOS launchd, and Windows Startup for configured Telegram, Zalo, cron, and Web UI targets
 - local SQLite memory
 - basic memory policy
 - status command
@@ -46,7 +46,7 @@ Build:
 - MCP add/list/show/test/tools/classify/login/call commands, remote HTTP OAuth setup, and classified read calls for trusted local workflows
 - installed skills from `~/.bestie/skills`
 - `bestie update` for npm version checks and updates
-- local web console through `bestie ui` for chat, Doctor, providers, character, memory, knowledge graph, channels, approvals, MCP, tools, skills, and settings
+- local Vite/React Web UI through `bestie ui` for chat, Doctor, providers, character, memory, knowledge graph, channels, approvals, MCP, tools, skills, settings, PWA install support, update notices, and responsive mobile layout
 
 Maintenance guardrails:
 
@@ -64,7 +64,7 @@ Build:
 - fuller onboarding
 - optional Zep memory
 - backup/restore/migration
-- hosted/product UI beyond the shipped localhost console
+- hosted/product UI beyond the shipped localhost React console
 - broader tool surfaces after permission defaults have real-channel mileage
 
 Goal: make it usable by non-technical users.

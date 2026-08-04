@@ -4,7 +4,7 @@ This document describes the current long-term architecture and the local-develop
 
 ## Overview
 
-Bestie is a local-first, self-hostable agent runtime. The core runtime is shared by the CLI, Telegram, Zalo, cron, the local web console, MCP read foundations, installed skills, and future hosted UI/multi-agent features.
+Bestie is a local-first, self-hostable agent runtime. The core runtime is shared by the CLI, Telegram, Zalo, cron, the local Vite/React Web UI, MCP read foundations, installed skills, and future hosted UI/multi-agent features.
 
 ```text
 User / Channel
@@ -57,7 +57,7 @@ Coordinates one turn:
 4. send response
 5. store redacted operational logs
 
-The current runtime also includes approved local memory recall, explicit memory writes, permission-gated tools, provider-backed image/video generation, a multi-step tool loop, bounded internal subagents for focused helper investigations, Doctor diagnostics, and a localhost UI shell around runtime APIs. Broader write/external/destructive tool maturity, optional Zep, hosted/product UI, and named multi-agent orchestration remain later work.
+The current runtime also includes approved local memory recall, explicit memory writes, permission-gated tools, provider-backed image/video generation, a multi-step tool loop, bounded internal subagents for focused helper investigations, Doctor diagnostics, and a localhost Vite/React Web UI around runtime APIs. Broader write/external/destructive tool maturity, optional Zep, hosted/product UI, and named multi-agent orchestration remain later work.
 
 ### Character System
 
@@ -78,6 +78,7 @@ Current adapters:
 - OpenAI/ChatGPT and generic OpenAI-compatible Chat Completions.
 - Anthropic Claude Messages API.
 - Native Gemini API-key mode through `@google/genai`.
+- Built-in OpenAI-compatible provider presets include Groq, OpenRouter, QuotaCheap, Ollama, and custom OpenAI-compatible endpoints.
 
 Current config uses version 2 model refs and profiles:
 
@@ -85,7 +86,7 @@ Current config uses version 2 model refs and profiles:
 - `llm.profiles` stores auth mode, endpoint metadata, and `apiKeyEnv` names.
 - `llm.modelCatalog` maps model refs to profiles.
 - HTTP providers require `baseUrl`; native Gemini intentionally omits `baseUrl` and lets the SDK use its default endpoint.
-- API keys live in `.env`; Gemini uses `GEMINI_API_KEY`.
+- API keys live in `.env`; Gemini uses `GEMINI_API_KEY`; QuotaCheap uses `QUOTACHEAP_API_KEY` by default.
 
 Adapters normalize auth, rate limit, timeout, network, malformed response, fallback, and media-only response errors for Doctor, logs, and channel/terminal display.
 
