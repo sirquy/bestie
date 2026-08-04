@@ -94,7 +94,7 @@ Phase Now config started with non-secret `agent` and `llm` fields. The current l
       "ollama/llama3.1": { "profile": "ollama:local" },
       "gemini/gemini-2.5-flash": { "profile": "gemini:api-key" }
     },
-    "timeoutMs": 60000,
+    "timeoutMs": 300000,
     "maxRetries": 1,
     "retryDelayMs": 500
   },

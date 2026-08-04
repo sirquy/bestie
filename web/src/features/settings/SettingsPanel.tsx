@@ -1,12 +1,10 @@
 import type { FormEvent, ReactElement } from "react";
 import { useEffect, useState } from "react";
-import { AlertCircle, Brain, FolderOpen, RefreshCw, Save, Settings, SlidersHorizontal, Sparkles } from "lucide-react";
+import { AlertCircle, Brain, FolderOpen, RefreshCw, Save, Settings, Sparkles, UserRound } from "lucide-react";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
@@ -24,10 +22,6 @@ interface SettingsPanelProps {
 }
 
 interface SettingsDraft {
-  name: string;
-  ownerName: string;
-  language: string;
-  toneIntensity: number;
   writePolicy: MemoryWritePolicy;
 }
 
@@ -38,13 +32,7 @@ export function SettingsPanel({ data, loading, onData, onLoading, onStatusRefres
 
   useEffect(() => {
     if (!data) return;
-    setDraft({
-      name: data.agent.name,
-      ownerName: data.agent.ownerName,
-      language: data.agent.language,
-      toneIntensity: data.agent.toneIntensity,
-      writePolicy: data.memory.writePolicy,
-    });
+    setDraft({ writePolicy: data.memory.writePolicy });
   }, [data]);
 
   async function runAction(action: () => Promise<SettingsSummary>, success?: string): Promise<void> {
@@ -69,16 +57,10 @@ export function SettingsPanel({ data, loading, onData, onLoading, onStatusRefres
 
   async function save(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
-    if (!await confirmDialog(`Lưu cài đặt cho ${draft.name || "Bestie"}?`)) return;
+    if (!await confirmDialog("Lưu cài đặt hệ thống?")) return;
     await runAction(() => fetchJson<SettingsSummary>("/api/settings", {
       method: "PUT",
       body: JSON.stringify({
-        agent: {
-          name: draft.name,
-          ownerName: draft.ownerName,
-          language: draft.language,
-          toneIntensity: draft.toneIntensity,
-        },
         memory: {
           writePolicy: draft.writePolicy,
         },
@@ -117,27 +99,16 @@ export function SettingsPanel({ data, loading, onData, onLoading, onStatusRefres
           <CardContent>
             <form id="settings-form" className="grid gap-4" onSubmit={(event) => void save(event)}>
               <div className="grid gap-3 md:grid-cols-2">
-                <FormField label="Tên"><Input name="name" value={draft.name} onChange={(event) => setDraftValue(setDraft, "name", event.target.value)} /></FormField>
-                <FormField label="Chủ sở hữu"><Input name="ownerName" value={draft.ownerName} onChange={(event) => setDraftValue(setDraft, "ownerName", event.target.value)} /></FormField>
-                <FormField label="Ngôn ngữ"><Input name="language" value={draft.language} onChange={(event) => setDraftValue(setDraft, "language", event.target.value)} /></FormField>
                 <FormField label="Chế độ duyệt bộ nhớ">
                   <Select name="writePolicy" value={draft.writePolicy} onChange={(event) => setDraftValue(setDraft, "writePolicy", event.target.value as MemoryWritePolicy)}>
                     <option value="ask">Hỏi trước</option>
-                    <option value="allow">Cho phép</option>
+                    <option value="allow">Cho ph?p</option>
                     <option value="deny">Từ chối</option>
                   </Select>
                 </FormField>
               </div>
 
-              <div className="rounded-2xl border border-white/10 bg-card/60 p-4">
-                <div className="mb-3 flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2"><SlidersHorizontal className="size-4" /><Label>Độ đậm giọng điệu</Label></div>
-                  <Badge variant="outline">{draft.toneIntensity}</Badge>
-                </div>
-                <Input name="toneIntensity" type="range" min={0} max={10} value={draft.toneIntensity} onChange={(event) => setDraftValue(setDraft, "toneIntensity", Number(event.target.value))} />
-              </div>
-
-              <Button className="w-fit" type="submit" disabled={loading || !draft.name.trim() || !draft.ownerName.trim() || !draft.language.trim()}>
+              <Button className="w-fit" type="submit" disabled={loading}>
                 <Save />
                 Lưu cài đặt
               </Button>
@@ -228,7 +199,7 @@ function FormField({ label, children }: { label: string; children: ReactElement 
 }
 
 function emptyDraft(): SettingsDraft {
-  return { name: "", ownerName: "", language: "vi", toneIntensity: 7, writePolicy: "ask" };
+  return { writePolicy: "ask" };
 }
 
 function setDraftValue<Key extends keyof SettingsDraft>(setDraft: (updater: (current: SettingsDraft) => SettingsDraft) => void, key: Key, value: SettingsDraft[Key]): void {

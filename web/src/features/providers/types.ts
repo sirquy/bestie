@@ -45,7 +45,7 @@ export interface ProviderTestResult {
   statusCode?: number;
 }
 
-export type ProviderPresetId = "openai" | "anthropic" | "groq" | "openrouter" | "gemini" | "ollama";
+export type ProviderPresetId = "openai" | "anthropic" | "groq" | "openrouter" | "quotacheap" | "gemini" | "ollama";
 
 export interface ProviderPreset {
   id: ProviderPresetId;
@@ -63,6 +63,7 @@ export const providerPresets: ProviderPreset[] = [
   { id: "anthropic", label: "Claude", provider: "anthropic", mode: "api-key", model: "claude-3-5-haiku-latest", baseUrl: "https://api.anthropic.com", apiKeyEnv: "ANTHROPIC_API_KEY", note: "Dịch vụ Claude chính thức từ Anthropic." },
   { id: "groq", label: "Groq", provider: "groq", mode: "api-key", model: "llama-3.3-70b-versatile", baseUrl: "https://api.groq.com/openai/v1", apiKeyEnv: "GROQ_API_KEY", note: "Dịch vụ suy luận nhanh, tương thích OpenAI." },
   { id: "openrouter", label: "OpenRouter", provider: "openrouter", mode: "api-key", model: "anthropic/claude-3.5-sonnet", baseUrl: "https://openrouter.ai/api/v1", apiKeyEnv: "OPENROUTER_API_KEY", note: "Bộ định tuyến model tương thích OpenAI; hỗ trợ ID model dạng phân cấp." },
+  { id: "quotacheap", label: "QuotaCheap", provider: "quotacheap", mode: "api-key", model: "gpt-4o-mini", baseUrl: "https://api.quotacheap.com/v1", apiKeyEnv: "QUOTACHEAP_API_KEY", note: "Dịch vụ OpenAI-Compatible chi phí thấp; có thể đổi model theo tài khoản của bạn." },
   { id: "gemini", label: "Gemini", provider: "gemini", mode: "api-key", model: "gemini-2.5-flash", apiKeyEnv: "GEMINI_API_KEY", note: "Kết nối Gemini chính thức; URL gốc được ẩn có chủ đích." },
   { id: "ollama", label: "Ollama", provider: "ollama", mode: "local", model: "llama3.2", baseUrl: "http://127.0.0.1:11434/v1", note: "Dịch vụ chạy cục bộ; không cần khoá bí mật." },
 ];

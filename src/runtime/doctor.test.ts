@@ -929,7 +929,7 @@ test("runDoctor checks Telegram speech reply provider and ffmpeg", async () => {
     const report = await runDoctor(paths);
 
     assert.equal(report.checks.find((check) => check.name === "Telegram speech provider")?.status, "pass");
-    assert.equal(report.checks.find((check) => check.name === "Telegram speech ffmpeg")?.status, "pass");
+    assert.equal(report.checks.find((check) => check.name === "Speech ffmpeg")?.status, "pass");
   } finally {
     process.env.PATH = oldPath;
     await rm(paths.rootDir, { recursive: true, force: true });

@@ -74,6 +74,19 @@ export const BUILTIN_LLM_PROVIDERS: BuiltinProviderCatalogEntry[] = [
     ],
   },
   {
+    id: "quotacheap",
+    label: "QuotaCheap",
+    runtimeProvider: "openai-compatible",
+    defaultBaseUrl: "https://api.quotacheap.com/v1",
+    defaultApiKeyEnv: "QUOTACHEAP_API_KEY",
+    authModes: ["api-key"],
+    defaultModel: "gpt-4o-mini",
+    models: [
+      { id: "gpt-4o-mini", label: "GPT-4o mini" },
+      { id: "gpt-4o", label: "GPT-4o" },
+    ],
+  },
+  {
     id: "ollama",
     label: "Ollama",
     runtimeProvider: "openai-compatible",

@@ -63,6 +63,31 @@ export async function updateUiToolPolicy(options: { tool: string; policy: Intern
   return getUiToolsSummary(paths);
 }
 
+export async function updateUiToolsConfig(options: { externalPaths?: string[]; execTimeoutMs?: number; paths?: RuntimePaths }): Promise<UiToolsSummary> {
+  const paths = options.paths ?? getRuntimePaths();
+  const config = await loadConfig(paths);
+  const externalPaths = options.externalPaths?.map((path) => path.trim()).filter(Boolean);
+  if (options.execTimeoutMs !== undefined && (!Number.isInteger(options.execTimeoutMs) || options.execTimeoutMs <= 0)) {
+    throw new Error("Exec timeout must be a positive integer.");
+  }
+
+  await writeConfig({
+    ...config,
+    workspace: {
+      ...(config.workspace ?? {}),
+      ...(externalPaths === undefined ? {} : { externalPaths }),
+    },
+    internalTools: {
+      ...(config.internalTools ?? {}),
+      exec: {
+        ...(config.internalTools?.exec ?? {}),
+        ...(options.execTimeoutMs === undefined ? {} : { timeoutMs: options.execTimeoutMs }),
+      },
+    },
+  }, paths);
+  return getUiToolsSummary(paths);
+}
+
 function buildPolicySummary(policies: Record<string, InternalToolPolicy>): UiToolsSummary["policies"] {
   const entries = Object.entries(policies)
     .map(([tool, policy]) => ({ tool, policy }))

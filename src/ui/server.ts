@@ -18,7 +18,7 @@ import { getUiProviderSummary, runUiProviderTest, setUiProviderPrimary, setupUiP
 import { getUiSettingsSummary, updateUiSettings } from "./api/settings.js";
 import { clearUiSkillRemoteRegistryCache, deleteUiSkill, getUiSkill, getUiSkillLibrary, getUiSkillLibraryDiff, getUiSkillLibraryItem, getUiSkillsSummary, installUiSkillFromLibrary, rollbackUiSkill, testUiSkillRemoteRegistry, toggleUiSkillEnabled, writeUiSkill } from "./api/skills.js";
 import { getUiStatusSummary } from "./api/status.js";
-import { getUiToolsSummary, updateUiToolPolicy } from "./api/tools.js";
+import { getUiToolsSummary, updateUiToolPolicy, updateUiToolsConfig } from "./api/tools.js";
 import { applyUiUpdate, getUiUpdateSummary } from "./api/update.js";
 import { HOME_PAGE_CLIENT_SCRIPT } from "./home/client-script.js";
 import { renderHomePage } from "./home-page.js";
@@ -203,6 +203,19 @@ async function handleRequestAsync(request: IncomingMessage, response: ServerResp
       return;
     }
     sendJson(response, 200, await updateUiToolPolicy({ tool: body.tool, policy: body.policy as "allow" | "ask" | "deny" }));
+    return;
+  }
+
+  if (method === "PUT" && url.pathname === "/api/tools/config") {
+    const body = await readJsonBody(request);
+    if (!isRecord(body)) {
+      sendJson(response, 400, { ok: false, error: "Tools config update requires an object body.", code: "UiToolsConfigInvalidRequest" });
+      return;
+    }
+    sendJson(response, 200, await updateUiToolsConfig({
+      ...(Array.isArray(body.externalPaths) && body.externalPaths.every((path) => typeof path === "string") ? { externalPaths: body.externalPaths } : {}),
+      ...(typeof body.execTimeoutMs === "number" ? { execTimeoutMs: body.execTimeoutMs } : {}),
+    }));
     return;
   }
 

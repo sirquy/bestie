@@ -289,7 +289,7 @@ async function checkTelegramSpeechConfig(config: AppConfig, paths: RuntimePaths,
   });
 
   const ffmpegPath = await resolveCommandPath("ffmpeg", paths);
-  const ffmpegCheck = await checkExecutablePath("Telegram speech ffmpeg", ffmpegPath, "ffmpeg", "Install ffmpeg so speech replies can be converted to Telegram Ogg/Opus voice notes.");
+  const ffmpegCheck = await checkExecutablePath("Speech ffmpeg", ffmpegPath, "ffmpeg", "Install ffmpeg so speech replies can be converted for supported chat channels.");
   checks.push(ffmpegCheck);
 
   if (options.testTelegramSpeech && hasSecret && ffmpegCheck.status === "pass") {

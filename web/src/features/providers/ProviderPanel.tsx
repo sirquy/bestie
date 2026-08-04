@@ -32,11 +32,14 @@ interface ProviderFormState {
   setDefault: boolean;
 }
 
+type ProviderTab = "manage" | "setup" | "inventory";
+
 export function ProviderPanel({ data, loading, onData, onLoading }: ProviderPanelProps): ReactElement {
   const [selectedModelRef, setSelectedModelRef] = useState("");
   const [testResult, setTestResult] = useState<ProviderTestResult | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [form, setForm] = useState<ProviderFormState>(() => presetToForm(providerPresets[0]));
+  const [activeTab, setActiveTab] = useState<ProviderTab>("manage");
 
   const modelOptions = data?.models ?? [];
   const effectiveSelectedModel = selectedModelRef || data?.primary?.modelRef || modelOptions[0]?.modelRef || "";
@@ -127,7 +130,13 @@ export function ProviderPanel({ data, loading, onData, onLoading }: ProviderPane
       {actionError ? <ToastEffect title="Không thể cập nhật mô hình AI" description={actionError} tone="error" onShown={() => setActionError(null)} /> : null}
       {testResult ? <ProviderTestNotice result={testResult} onShown={() => setTestResult(null)} /> : null}
 
-      <div className="grid gap-3 lg:grid-cols-3">
+      <div className="flex flex-wrap gap-2 rounded-2xl border border-white/10 bg-background/35 p-2">
+        <Button variant={activeTab === "manage" ? "default" : "ghost"} onClick={() => setActiveTab("manage")}>Quản lý model</Button>
+        <Button variant={activeTab === "setup" ? "default" : "ghost"} onClick={() => setActiveTab("setup")}>Thêm provider</Button>
+        <Button variant={activeTab === "inventory" ? "default" : "ghost"} onClick={() => setActiveTab("inventory")}>Danh sách đã lưu</Button>
+      </div>
+
+      {activeTab === "manage" ? <div className="grid gap-3 lg:grid-cols-3">
         <ProviderCandidateCard title="Mô hình chính" candidate={data.primary} featured />
         <Card className="border-white/10 bg-background/35 lg:col-span-2">
           <CardHeader className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
@@ -157,9 +166,18 @@ export function ProviderPanel({ data, loading, onData, onLoading }: ProviderPane
             </div>
           </CardContent>
         </Card>
-      </div>
+        <Card className="border-white/10 bg-background/35 lg:col-span-3">
+          <CardHeader>
+            <CardTitle>Mô hình dự phòng</CardTitle>
+            <CardDescription>Các mô hình Bestie có thể thử khi mô hình chính không khả dụng.</CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {data.fallbacks.length ? data.fallbacks.map((candidate) => <ProviderCandidateRow key={candidate.modelRef} candidate={candidate} />) : <p className="text-sm text-muted-foreground">Chưa thêm mô hình dự phòng.</p>}
+          </CardContent>
+        </Card>
+      </div> : null}
 
-      <div className="grid gap-4 xl:grid-cols-[1fr_1fr]">
+      {activeTab === "setup" ? <div className="grid gap-4">
         <Card className="border-white/10 bg-background/35">
           <CardHeader>
             <CardTitle className="flex items-center gap-2"><KeyRound className="size-5" /> Thiết lập dịch vụ</CardTitle>
@@ -186,22 +204,12 @@ export function ProviderPanel({ data, loading, onData, onLoading }: ProviderPane
             </form>
           </CardContent>
         </Card>
+      </div> : null}
 
-        <Card className="border-white/10 bg-background/35">
-          <CardHeader>
-            <CardTitle>Mô hình dự phòng</CardTitle>
-            <CardDescription>Các mô hình Bestie có thể thử khi mô hình chính không khả dụng.</CardDescription>
-          </CardHeader>
-          <CardContent className="grid gap-3">
-            {data.fallbacks.length ? data.fallbacks.map((candidate) => <ProviderCandidateRow key={candidate.modelRef} candidate={candidate} />) : <p className="text-sm text-muted-foreground">Chưa thêm mô hình dự phòng.</p>}
-          </CardContent>
-        </Card>
-      </div>
-
-      <div className="grid gap-4 xl:grid-cols-2">
+      {activeTab === "inventory" ? <div className="grid gap-4 xl:grid-cols-2">
         <ProviderProfileList profiles={data.profiles} />
         <ProviderModelList models={data.models} />
-      </div>
+      </div> : null}
     </div>
   );
 }

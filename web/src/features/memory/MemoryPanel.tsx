@@ -22,6 +22,7 @@ interface MemoryPanelProps {
 
 export function MemoryPanel({ data, loading, onData, onLoading }: MemoryPanelProps): ReactElement {
   const [query, setQuery] = useState("");
+  const [activeTab, setActiveTab] = useState<"active" | "pending" | "conversations">("active");
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
 
@@ -101,28 +102,36 @@ export function MemoryPanel({ data, loading, onData, onLoading }: MemoryPanelPro
         </CardContent>
       </Card>
 
-      <div className="grid gap-4 xl:grid-cols-[1fr_1fr]">
+      <div className="flex flex-wrap gap-2 rounded-2xl border border-white/10 bg-background/35 p-2">
+        <Button variant={activeTab === "active" ? "default" : "ghost"} onClick={() => setActiveTab("active")}>Bộ nhớ đang dùng</Button>
+        <Button variant={activeTab === "pending" ? "default" : "ghost"} onClick={() => setActiveTab("pending")}>Cần xem xét</Button>
+        <Button variant={activeTab === "conversations" ? "default" : "ghost"} onClick={() => setActiveTab("conversations")}>Ghi chú hội thoại</Button>
+      </div>
+
+      {activeTab === "pending" ? (
         <Card className="border-white/10 bg-background/35">
           <CardHeader><CardTitle>Cần xem xét</CardTitle><CardDescription>Duyệt hoặc từ chối các ghi nhớ được đề xuất trước khi kích hoạt.</CardDescription></CardHeader>
           <CardContent className="grid gap-3">
             {data.pending.length ? data.pending.map((item) => <PendingMemoryRow key={item.id} item={item} loading={loading} onAction={updatePending} />) : <EmptyText>Không có bộ nhớ đang chờ.</EmptyText>}
           </CardContent>
         </Card>
+      ) : null}
 
+      {activeTab === "active" ? (
         <Card className="border-white/10 bg-background/35">
           <CardHeader><CardTitle>Bộ nhớ đang dùng</CardTitle><CardDescription>Những thông tin Bestie có thể dùng trong các cuộc trò chuyện sau.</CardDescription></CardHeader>
           <CardContent className="grid gap-3">
             {data.memories.length ? data.memories.map((item) => <MemoryRow key={item.id} item={item} />) : <EmptyText>Không tìm thấy bộ nhớ đang dùng.</EmptyText>}
           </CardContent>
         </Card>
-      </div>
+      ) : null}
 
-      <Card className="border-white/10 bg-background/35">
+      {activeTab === "conversations" ? <Card className="border-white/10 bg-background/35">
         <CardHeader><CardTitle>Ghi chú hội thoại</CardTitle><CardDescription>Ghi chú ngắn giúp Bestie nhớ ngữ cảnh trò chuyện.</CardDescription></CardHeader>
         <CardContent className="grid gap-3">
           {data.conversationSummaries.length ? data.conversationSummaries.map((item) => <ConversationSummaryRow key={item.id} item={item} />) : <EmptyText>Chưa có tóm tắt cuộc trò chuyện.</EmptyText>}
         </CardContent>
-      </Card>
+      </Card> : null}
     </div>
   );
 }

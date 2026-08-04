@@ -35,6 +35,7 @@ interface CronDraft {
 export function ChannelsPanel({ data, loading, onData, onLoading }: ChannelsPanelProps): ReactElement {
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<"channels" | "cron" | "logs">("channels");
   const [draft, setDraft] = useState<CronDraft>(() => ({ name: "Lịch hẹn mới", scheduleType: "interval", scheduleValue: "1h", channel: "", prompt: "Gửi một cập nhật ngắn.", enabled: true }));
 
   async function runAction(action: () => Promise<ChannelActionResult | ChannelSummary>, success?: string): Promise<void> {
@@ -103,7 +104,13 @@ export function ChannelsPanel({ data, loading, onData, onLoading }: ChannelsPane
         <Metric label="Dịch vụ" value={data.service.supported ? "supported" : "manual"} />
       </div>
 
-      <Card className="border-white/10 bg-background/35">
+      <div className="flex flex-wrap gap-2 rounded-2xl border border-white/10 bg-background/35 p-2">
+        <Button variant={activeTab === "channels" ? "default" : "ghost"} onClick={() => setActiveTab("channels")}>Kênh</Button>
+        <Button variant={activeTab === "cron" ? "default" : "ghost"} onClick={() => setActiveTab("cron")}>Lịch hẹn</Button>
+        <Button variant={activeTab === "logs" ? "default" : "ghost"} onClick={() => setActiveTab("logs")}>Lịch sử</Button>
+      </div>
+
+      {activeTab === "channels" ? <Card className="border-white/10 bg-background/35">
         <CardHeader className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
           <div><CardTitle className="flex items-center gap-2"><Cable className="size-5" /> Kênh</CardTitle><CardDescription>Quản lý Telegram, Zalo và các tác vụ gửi nền.</CardDescription></div>
           <Button variant="outline" onClick={() => void reload()} disabled={loading}><RefreshCw className={loading ? "animate-spin" : ""} /> Tải lại</Button>
@@ -111,9 +118,9 @@ export function ChannelsPanel({ data, loading, onData, onLoading }: ChannelsPane
         <CardContent className="grid gap-3 md:grid-cols-2">
           {data.channels.map((channel) => <ChannelCard key={channel.id} channel={channel} loading={loading} onDaemon={daemon} />)}
         </CardContent>
-      </Card>
+      </Card> : null}
 
-      <div className="grid gap-4 xl:grid-cols-[0.8fr_1.2fr]">
+      {activeTab === "cron" ? <div className="grid gap-4 xl:grid-cols-[0.8fr_1.2fr]">
         <Card className="border-white/10 bg-background/35">
           <CardHeader><CardTitle className="flex items-center gap-2"><CalendarClock className="size-5" /> Thêm lịch hẹn</CardTitle><CardDescription>Tạo tin nhắn hẹn giờ cục bộ. Mọi thao tác vẫn cần xác nhận.</CardDescription></CardHeader>
           <CardContent>
@@ -137,14 +144,14 @@ export function ChannelsPanel({ data, loading, onData, onLoading }: ChannelsPane
             {data.cron.schedules.length ? data.cron.schedules.map((schedule) => <CronScheduleCard key={schedule.id} schedule={schedule} loading={loading} onToggle={cronToggle} onDelete={cronDelete} onTrigger={cronTrigger} />) : <p className="rounded-2xl border border-dashed border-white/10 bg-background/25 p-4 text-sm text-muted-foreground">Chưa có tin nhắn hẹn giờ.</p>}
           </CardContent>
         </Card>
-      </div>
+      </div> : null}
 
-      <Card className="border-white/10 bg-background/35">
+      {activeTab === "logs" ? <Card className="border-white/10 bg-background/35">
         <CardHeader><CardTitle>Lịch sử hẹn giờ</CardTitle><CardDescription>Kết quả gửi tin nhắn hẹn giờ gần đây.</CardDescription></CardHeader>
         <CardContent className="grid gap-3">
           {data.cron.logs.length ? data.cron.logs.map((log) => <CronLogRow key={log.id} log={log} />) : <p className="text-sm text-muted-foreground">Chưa có lịch sử hẹn giờ.</p>}
         </CardContent>
-      </Card>
+      </Card> : null}
     </div>
   );
 }

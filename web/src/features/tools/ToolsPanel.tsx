@@ -1,13 +1,15 @@
-import type { ReactElement } from "react";
-import { useState } from "react";
+import type { FormEvent, ReactElement } from "react";
+import { useEffect, useState } from "react";
 import { AlertCircle, FolderOpen, RefreshCw, ShieldCheck, SlidersHorizontal, TerminalSquare } from "lucide-react";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
+import { Textarea } from "@/components/ui/textarea";
 import { fetchJson, formatError } from "@/lib/api";
 import { ToastEffect } from "@/lib/toasts";
 import type { ToolPolicy, ToolPolicyEntry, ToolsSummary } from "./types";
@@ -22,6 +24,14 @@ interface ToolsPanelProps {
 export function ToolsPanel({ data, loading, onData, onLoading }: ToolsPanelProps): ReactElement {
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
+  const [externalPathsDraft, setExternalPathsDraft] = useState("");
+  const [execTimeoutDraft, setExecTimeoutDraft] = useState("");
+
+  useEffect(() => {
+    if (!data) return;
+    setExternalPathsDraft(data.workspace.externalPaths.join("\n"));
+    setExecTimeoutDraft(data.exec.timeoutMs === undefined ? "" : String(data.exec.timeoutMs));
+  }, [data]);
 
   async function runAction(action: () => Promise<ToolsSummary>, success?: string): Promise<void> {
     setActionError(null);
@@ -43,6 +53,18 @@ export function ToolsPanel({ data, loading, onData, onLoading }: ToolsPanelProps
 
   async function updatePolicy(tool: string, policy: ToolPolicy): Promise<void> {
     await runAction(() => fetchJson<ToolsSummary>("/api/tools/policy", { method: "PUT", body: JSON.stringify({ tool, policy }) }), "Đã cập nhật quy tắc thao tác.");
+  }
+
+  async function saveToolsConfig(event: FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault();
+    const execTimeoutMs = execTimeoutDraft.trim() ? Number(execTimeoutDraft.trim()) : undefined;
+    await runAction(() => fetchJson<ToolsSummary>("/api/tools/config", {
+      method: "PUT",
+      body: JSON.stringify({
+        externalPaths: externalPathsDraft.split("\n").map((path) => path.trim()).filter(Boolean),
+        ...(execTimeoutMs === undefined ? {} : { execTimeoutMs }),
+      }),
+    }), "Đã lưu cấu hình công cụ.");
   }
 
   if (!data) {
@@ -95,6 +117,17 @@ export function ToolsPanel({ data, loading, onData, onLoading }: ToolsPanelProps
           <Card className="border-white/10 bg-background/35">
             <CardHeader><CardTitle className="flex items-center gap-2"><TerminalSquare className="size-5" /> An toàn khi chạy lệnh</CardTitle><CardDescription>Giới hạn cho các thao tác có chạy lệnh.</CardDescription></CardHeader>
             <CardContent><SummaryRow label="Thời gian chờ" value={data.exec.timeoutMs === undefined ? "default" : `${data.exec.timeoutMs}ms`} /></CardContent>
+          </Card>
+
+          <Card className="border-white/10 bg-background/35">
+            <CardHeader><CardTitle>Cấu hình truy cập</CardTitle><CardDescription>Cho phép thêm thư mục ngoài workspace và chỉnh thời gian chờ chạy lệnh.</CardDescription></CardHeader>
+            <CardContent>
+              <form className="grid gap-3" onSubmit={(event) => void saveToolsConfig(event)}>
+                <Textarea value={externalPathsDraft} onChange={(event) => setExternalPathsDraft(event.target.value)} rows={5} placeholder="C:\\Users\\you\\Projects\nD:\\Data" />
+                <Input value={execTimeoutDraft} onChange={(event) => setExecTimeoutDraft(event.target.value)} inputMode="numeric" placeholder="300000" />
+                <Button className="w-fit" type="submit" disabled={loading}><TerminalSquare /> Lưu cấu hình</Button>
+              </form>
+            </CardContent>
           </Card>
         </div>
       </div>
