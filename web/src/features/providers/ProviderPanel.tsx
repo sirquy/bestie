@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { fetchJson, formatError } from "@/lib/api";
+import { ToastEffect } from "@/lib/toasts";
 import { confirmDialog } from "@/lib/dialogs";
 import { providerPresets, type ProviderCandidate, type ProviderModel, type ProviderPreset, type ProviderProfile, type ProviderSummary, type ProviderTestResult } from "./types";
 
@@ -123,8 +124,8 @@ export function ProviderPanel({ data, loading, onData, onLoading }: ProviderPane
 
   return (
     <div className="grid gap-4">
-      {actionError ? <ProviderError message={actionError} /> : null}
-      {testResult ? <ProviderTestNotice result={testResult} /> : null}
+      {actionError ? <ToastEffect title="Không thể cập nhật mô hình AI" description={actionError} tone="error" onShown={() => setActionError(null)} /> : null}
+      {testResult ? <ProviderTestNotice result={testResult} onShown={() => setTestResult(null)} /> : null}
 
       <div className="grid gap-3 lg:grid-cols-3">
         <ProviderCandidateCard title="Mô hình chính" candidate={data.primary} featured />
@@ -219,14 +220,8 @@ function ProviderError({ message }: { message: string }): ReactElement {
   );
 }
 
-function ProviderTestNotice({ result }: { result: ProviderTestResult }): ReactElement {
-  return (
-    <Alert className={result.ok ? "border-primary/40 bg-primary/10" : "border-destructive/40 bg-destructive/10"}>
-      {result.ok ? <CheckCircle2 className="size-4" /> : <AlertCircle className="size-4" />}
-      <AlertTitle>{result.ok ? "Kiểm tra mô hình thành công" : "Kiểm tra mô hình thất bại"}</AlertTitle>
-      <AlertDescription>{result.message ?? result.modelRef}{result.latencyMs ? ` (${result.latencyMs}ms)` : ""}</AlertDescription>
-    </Alert>
-  );
+function ProviderTestNotice({ result, onShown }: { result: ProviderTestResult; onShown: () => void }): ReactElement {
+  return <ToastEffect title={result.ok ? "Kiểm tra mô hình thành công" : "Kiểm tra mô hình thất bại"} description={`${result.message ?? result.modelRef}${result.latencyMs ? ` (${result.latencyMs}ms)` : ""}`} tone={result.ok ? "success" : "error"} onShown={onShown} />;
 }
 
 function ProviderCandidateCard({ title, candidate, featured = false }: { title: string; candidate?: ProviderCandidate; featured?: boolean }): ReactElement {

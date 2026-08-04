@@ -9,6 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Select } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { fetchJson, formatError } from "@/lib/api";
+import { ToastEffect } from "@/lib/toasts";
 import type { ToolPolicy, ToolPolicyEntry, ToolsSummary } from "./types";
 
 interface ToolsPanelProps {
@@ -56,8 +57,8 @@ export function ToolsPanel({ data, loading, onData, onLoading }: ToolsPanelProps
 
   return (
     <div className="grid gap-4">
-      {actionError ? <ToolsError message={actionError} /> : null}
-      {actionMessage ? <Alert className="border-primary/40 bg-primary/10"><ShieldCheck className="size-4" /><AlertTitle>Chính sách đã cập nhật</AlertTitle><AlertDescription>{actionMessage}</AlertDescription></Alert> : null}
+      {actionError ? <ToastEffect title="Không thể cập nhật chính sách" description={actionError} tone="error" onShown={() => setActionError(null)} /> : null}
+      {actionMessage ? <ToastEffect title="Chính sách đã cập nhật" description={actionMessage} tone="success" onShown={() => setActionMessage(null)} /> : null}
 
       <div className="grid gap-3 md:grid-cols-4" data-tools-summary>
         <Metric label="Cho phép" value={String(data.policies.allow)} tone="good" />

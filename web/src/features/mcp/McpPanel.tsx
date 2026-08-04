@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { fetchJson, formatError } from "@/lib/api";
+import { ToastEffect } from "@/lib/toasts";
 import type { McpServer, McpSummary } from "./types";
 
 interface McpPanelProps {
@@ -44,7 +45,7 @@ export function McpPanel({ data, loading, onData, onLoading }: McpPanelProps): R
 
   return (
     <div className="grid gap-4">
-      {actionError ? <McpError message={actionError} /> : null}
+      {actionError ? <ToastEffect title="Không thể cập nhật tiện ích mở rộng" description={actionError} tone="error" onShown={() => setActionError(null)} /> : null}
 
       <div className="grid gap-3 md:grid-cols-4" data-mcp-summary>
         <Metric label="Đã bật" value={String(data.counts.enabled)} tone="good" />

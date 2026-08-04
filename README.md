@@ -1,5 +1,9 @@
 # Bestie
 
+<p align="center">
+  <img src="assets/bestie-logo-horizontal.jpg" alt="Bestie Agent" width="520" />
+</p>
+
 Bestie is a self-hosted AI companion CLI with a configurable character, local-first memory, provider diagnostics, Telegram/Zalo channels, installed skills, update checks, and a safety-first permission model.
 
 The project is early and intentionally practical: it focuses on a small local runtime that developers can inspect, modify, and run themselves.

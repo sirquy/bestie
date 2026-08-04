@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { fetchJson, formatError } from "@/lib/api";
+import { ToastEffect } from "@/lib/toasts";
 import { confirmDialog } from "@/lib/dialogs";
 import type { MemoryWritePolicy, SettingsSummary } from "./types";
 
@@ -98,8 +99,8 @@ export function SettingsPanel({ data, loading, onData, onLoading, onStatusRefres
 
   return (
     <div className="grid gap-4">
-      {actionError ? <SettingsError message={actionError} /> : null}
-      {saveMessage ? <Alert className="border-primary/40 bg-primary/10"><Sparkles className="size-4" /><AlertTitle>Đã lưu</AlertTitle><AlertDescription>{saveMessage}</AlertDescription></Alert> : null}
+      {actionError ? <ToastEffect title="Không thể lưu cài đặt" description={actionError} tone="error" onShown={() => setActionError(null)} /> : null}
+      {saveMessage ? <ToastEffect title="Đã lưu" description={saveMessage} tone="success" onShown={() => setSaveMessage(null)} /> : null}
 
       <div className="grid gap-4 xl:grid-cols-[1fr_0.9fr]">
         <Card className="border-white/10 bg-background/35">

@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { fetchJson, formatError } from "@/lib/api";
 import { confirmDialog } from "@/lib/dialogs";
+import { ToastEffect } from "@/lib/toasts";
 import type { ConversationSummaryItem, MemoryAction, MemoryItem, MemorySummary, PendingMemoryItem } from "./types";
 
 interface MemoryPanelProps {
@@ -67,8 +68,8 @@ export function MemoryPanel({ data, loading, onData, onLoading }: MemoryPanelPro
 
   return (
     <div className="grid gap-4">
-      {actionError ? <MemoryError message={actionError} /> : null}
-      {actionMessage ? <Alert className="border-primary/40 bg-primary/10"><Check className="size-4" /><AlertTitle>Cập nhậtd</AlertTitle><AlertDescription>{actionMessage}</AlertDescription></Alert> : null}
+      {actionError ? <ToastEffect title="Không thể cập nhật bộ nhớ" description={actionError} tone="error" onShown={() => setActionError(null)} /> : null}
+      {actionMessage ? <ToastEffect title="Bộ nhớ đã cập nhật" description={actionMessage} tone="success" onShown={() => setActionMessage(null)} /> : null}
 
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
         <MemoryMetric label="Đang dùng" value={String(data.counts.active)} />

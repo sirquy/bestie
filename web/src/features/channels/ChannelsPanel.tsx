@@ -13,6 +13,7 @@ import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import { fetchJson, formatError } from "@/lib/api";
 import { confirmDialog } from "@/lib/dialogs";
+import { ToastEffect } from "@/lib/toasts";
 import type { ChannelActionResult, ChannelSummary, ConfiguredChannel, CronSchedule, CronScheduleType, DaemonChannel } from "./types";
 
 interface ChannelsPanelProps {
@@ -92,8 +93,8 @@ export function ChannelsPanel({ data, loading, onData, onLoading }: ChannelsPane
 
   return (
     <div className="grid gap-4">
-      {actionError ? <ChannelError message={actionError} /> : null}
-      {actionMessage ? <Alert className="border-primary/40 bg-primary/10"><Check className="size-4" /><AlertTitle>Kênh đã cập nhật</AlertTitle><AlertDescription>{actionMessage}</AlertDescription></Alert> : null}
+      {actionError ? <ToastEffect title="Không thể cập nhật kênh" description={actionError} tone="error" onShown={() => setActionError(null)} /> : null}
+      {actionMessage ? <ToastEffect title="Kênh đã cập nhật" description={actionMessage} tone="success" onShown={() => setActionMessage(null)} /> : null}
 
       <div className="grid gap-3 md:grid-cols-4">
         <Metric label="Kênh" value={String(data.channels.length)} />

@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import { fetchJson, formatError } from "@/lib/api";
+import { ToastEffect } from "@/lib/toasts";
 import { confirmDialog } from "@/lib/dialogs";
 import type { CharacterSummary, CharacterTone } from "./types";
 
@@ -107,8 +108,8 @@ export function CharacterPanel({ data, loading, onData, onLoading }: CharacterPa
 
   return (
     <div className="grid gap-4">
-      {actionError ? <CharacterError message={actionError} /> : null}
-      {saveMessage ? <Alert className="border-primary/40 bg-primary/10"><Sparkles className="size-4" /><AlertTitle>Đã lưu</AlertTitle><AlertDescription>{saveMessage}</AlertDescription></Alert> : null}
+      {actionError ? <ToastEffect title="Không thể lưu tính cách" description={actionError} tone="error" onShown={() => setActionError(null)} /> : null}
+      {saveMessage ? <ToastEffect title="Đã lưu" description={saveMessage} tone="success" onShown={() => setSaveMessage(null)} /> : null}
 
       <div className="grid gap-4 xl:grid-cols-[0.8fr_1.2fr]">
         <Card className="border-white/10 bg-background/35">

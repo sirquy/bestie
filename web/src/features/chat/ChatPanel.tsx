@@ -12,6 +12,7 @@ import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { fetchJson, formatError } from "@/lib/api";
 import { confirmDialog, promptDialog } from "@/lib/dialogs";
+import { ToastEffect } from "@/lib/toasts";
 import type { ChatAttachment, ChatEvent, ChatMessage, ChatRun, ChatSession, ChatSessionMessagesSummary, ChatSessionsSummary, ChatStreamDoneResult, ChatTimelineEvent } from "./types";
 
 interface ChatAttachmentDraft {
@@ -266,8 +267,8 @@ export function ChatPanel({ data, loading, onData, onLoading }: ChatPanelProps):
 
   return (
     <div className="grid gap-3" data-chat-panel>
-      {actionError ? <ChatError message={actionError} /> : null}
-      {actionMessage ? <Alert className="border-primary/40 bg-primary/10"><Bot className="size-4" /><AlertTitle>Trò chuyện đã cập nhật</AlertTitle><AlertDescription>{actionMessage}</AlertDescription></Alert> : null}
+      {actionError ? <ToastEffect title="Không thể cập nhật trò chuyện" description={actionError} tone="error" onShown={() => setActionError(null)} /> : null}
+      {actionMessage ? <ToastEffect title="Trò chuyện đã cập nhật" description={actionMessage} tone="success" onShown={() => setActionMessage(null)} /> : null}
 
       <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-white/10 bg-background/35 p-3" data-chat-summary>
         <div className="flex flex-wrap gap-2">

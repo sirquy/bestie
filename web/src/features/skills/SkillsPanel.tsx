@@ -13,6 +13,7 @@ import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import { fetchJson, formatError } from "@/lib/api";
 import { confirmDialog } from "@/lib/dialogs";
+import { ToastEffect } from "@/lib/toasts";
 import type { Skill, SkillItemResponse, SkillLibraryDiff, SkillLibraryItem, SkillLibraryItemResponse, SkillLibrarySummary, SkillRemoteRegistryTestResult, SkillsSummary } from "./types";
 
 interface SkillsPanelProps {
@@ -165,8 +166,8 @@ export function SkillsPanel({ data, loading, onData, onLoading }: SkillsPanelPro
 
   return (
     <div className="grid gap-4">
-      {actionError ? <SkillsError message={actionError} /> : null}
-      {actionMessage ? <Alert className="border-primary/40 bg-primary/10"><Check className="size-4" /><AlertTitle>Kỹ năng đã cập nhật</AlertTitle><AlertDescription>{actionMessage}</AlertDescription></Alert> : null}
+      {actionError ? <ToastEffect title="Không thể cập nhật kỹ năng" description={actionError} tone="error" onShown={() => setActionError(null)} /> : null}
+      {actionMessage ? <ToastEffect title="Kỹ năng đã cập nhật" description={actionMessage} tone="success" onShown={() => setActionMessage(null)} /> : null}
 
       <div className="grid gap-3 md:grid-cols-4" data-skills-summary>
         <Metric label="Đã cài" value={String(data.count)} tone="good" />

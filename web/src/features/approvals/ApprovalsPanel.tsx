@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { fetchJson, formatError } from "@/lib/api";
+import { ToastEffect } from "@/lib/toasts";
 import { confirmDialog } from "@/lib/dialogs";
 import type { ApprovalActionResult, ApprovalDecision, ApprovalsSummary, PendingActionApproval } from "./types";
 
@@ -63,8 +64,8 @@ export function ApprovalsPanel({ data, loading, onData, onLoading }: ApprovalsPa
 
   return (
     <div className="grid gap-4">
-      {actionError ? <ApprovalsError message={actionError} /> : null}
-      {actionMessage ? <Alert className="border-primary/40 bg-primary/10"><Check className="size-4" /><AlertTitle>Đã cập nhật phê duyệt</AlertTitle><AlertDescription>{actionMessage}</AlertDescription></Alert> : null}
+      {actionError ? <ToastEffect title="Không thể cập nhật phê duyệt" description={actionError} tone="error" onShown={() => setActionError(null)} /> : null}
+      {actionMessage ? <ToastEffect title="Đã cập nhật phê duyệt" description={actionMessage} tone="success" onShown={() => setActionMessage(null)} /> : null}
 
       <div className="grid gap-3 md:grid-cols-3">
         <Metric label="Đang chờ" value={String(data.count)} tone={data.count ? "warn" : "good"} />
