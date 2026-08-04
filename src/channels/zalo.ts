@@ -166,10 +166,14 @@ export interface ZaloClient {
   getUpdates(offset: number | undefined, timeoutSeconds: number): Promise<ZaloUpdate[]>;
   getFile?(fileId: string): Promise<ZaloFileInfo>;
   downloadFile?(filePath: string): Promise<Uint8Array>;
-  sendMessage(chatId: string, text: string): Promise<ZaloSentMessage | void>;
+  sendMessage(chatId: string, text: string, options?: ZaloSendMessageOptions): Promise<ZaloSentMessage | void>;
   sendPhoto?(chatId: string, photo: Uint8Array, options?: ZaloSendFileOptions): Promise<ZaloSentMessage | void>;
   sendDocument?(chatId: string, document: Uint8Array, options?: ZaloSendFileOptions): Promise<ZaloSentMessage | void>;
   sendChatAction(chatId: string, action: "typing"): Promise<void>;
+}
+
+export interface ZaloSendMessageOptions {
+  parseMode?: "Markdown";
 }
 
 export interface ZaloSendFileOptions {
@@ -239,8 +243,9 @@ export class ZaloHttpClient implements ZaloClient {
     return new Uint8Array(await response.arrayBuffer());
   }
 
-  async sendMessage(chatId: string, text: string): Promise<ZaloSentMessage | void> {
-    return this.call<ZaloSentMessage | void>("sendMessage", { chat_id: chatId, text });
+  async sendMessage(chatId: string, text: string, options: ZaloSendMessageOptions = {}): Promise<ZaloSentMessage | void> {
+    const parseMode = options.parseMode ?? "Markdown";
+    return this.call<ZaloSentMessage | void>("sendMessage", { chat_id: chatId, text, parse_mode: parseMode });
   }
 
   async sendPhoto(chatId: string, photo: Uint8Array, options: ZaloSendFileOptions = {}): Promise<ZaloSentMessage | void> {

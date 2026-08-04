@@ -110,6 +110,27 @@ test("ZaloHttpClient treats string timeout code as no updates", async () => {
   assert.deepEqual(await client.getUpdates(undefined, 20), []);
 });
 
+test("ZaloHttpClient sends text messages with Markdown parse mode", async () => {
+  const calls: Array<{ url: string; init?: RequestInit }> = [];
+  const client = new ZaloHttpClient("bot-token", async (input, init) => {
+    calls.push({ url: String(input), init });
+    return jsonResponse({ ok: true, result: { message_id: "123" } });
+  });
+
+  const sent = await client.sendMessage("user-1", "**Hello**");
+
+  assert.deepEqual(sent, { message_id: "123" });
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0]?.url, "https://bot-api.zaloplatforms.com/botbot-token/sendMessage");
+  assert.equal(calls[0]?.init?.method, "POST");
+  assert.deepEqual(calls[0]?.init?.headers, { "content-type": "application/json" });
+  assert.deepEqual(JSON.parse(String(calls[0]?.init?.body)), {
+    chat_id: "user-1",
+    text: "**Hello**",
+    parse_mode: "Markdown",
+  });
+});
+
 test("ZaloHttpClient sends documents through Zalo Bot API message attachments", async () => {
   const calls: Array<{ url: string; init?: RequestInit }> = [];
   const client = new ZaloHttpClient("bot-token", async (input, init) => {
