@@ -78,6 +78,49 @@ test("runDaemonCommand starts, reports, and stops the daemon", async () => {
   }
 });
 
+test("runDaemonCommand can manage channel daemons without touching Web UI", async () => {
+  const paths = await createTempPaths();
+  const output: string[] = [];
+  const killed: number[] = [];
+  const runningPids = new Set<number>();
+
+  try {
+    const spawnProcess = ((_command: string, args: string[]) => {
+      runningPids.add(4242);
+      return { pid: 4242, args, unref: () => undefined };
+    }) as never;
+
+    await runDaemonCommand({
+      argv: ["node", "bestie", "daemon", "start", "--channel", "telegram"],
+      paths,
+      manageUi: false,
+      writeLine: (message) => output.push(message),
+      printUpdateNotice: async () => undefined,
+      spawnProcess,
+      isProcessRunning: (pid) => runningPids.has(pid) && !killed.includes(pid),
+      killProcess: (pid) => killed.push(pid),
+    });
+
+    const telegram = JSON.parse(await readFile(resolve(paths.appDir, "daemon-telegram.json"), "utf8")) as { pid: number; args: string[] };
+    assert.equal(telegram.pid, 4242);
+    assert.deepEqual(telegram.args.slice(-2), ["channels", "telegram"]);
+    await assert.rejects(() => readFile(resolve(paths.appDir, "daemon-ui.json"), "utf8"), /ENOENT/);
+
+    await runDaemonCommand({
+      argv: ["node", "bestie", "daemon", "stop", "--channel", "telegram"],
+      paths,
+      manageUi: false,
+      writeLine: (message) => output.push(message),
+      isProcessRunning: (pid) => runningPids.has(pid) && !killed.includes(pid),
+      killProcess: (pid) => killed.push(pid),
+    });
+    assert.deepEqual(killed, [4242]);
+    assert.doesNotMatch(output.join("\n"), /Web UI/);
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
 test("runDaemonCommand can manage all runtime daemons", async () => {
   const paths = await createTempPaths();
   const output: string[] = [];

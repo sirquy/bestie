@@ -47,6 +47,7 @@ interface DaemonCommandOptions {
   listProcessCommandLines?: () => ProcessCommandLineSnapshot[];
   execFile?: (file: string, args: string[]) => Promise<void>;
   serviceRunner?: (channel: DaemonChannel, options: { paths: RuntimePaths; writeLine: (message: string) => void }) => Promise<void>;
+  manageUi?: boolean;
   stopTimeoutMs?: number;
   sleep?: (milliseconds: number) => Promise<void>;
 }
@@ -81,13 +82,14 @@ export async function runDaemonCommand(optionsOrArgv: string[] | DaemonCommandOp
   const channels = getSelectedDaemonChannels(argv);
   const paths = options.paths ?? getRuntimePaths();
   const writeLine = options.writeLine ?? console.log;
+  const manageUi = options.manageUi !== false;
 
   if (subcommand === "start") {
     await printDaemonUpdateNotice(options, paths, writeLine);
     for (const channel of channels) {
       await startDaemon({ ...options, paths, writeLine }, channel);
     }
-    await startUiDaemon({ ...options, paths, writeLine });
+    if (manageUi) await startUiDaemon({ ...options, paths, writeLine });
     return;
   }
 
@@ -95,7 +97,7 @@ export async function runDaemonCommand(optionsOrArgv: string[] | DaemonCommandOp
     for (const channel of channels) {
       await stopDaemon({ ...options, paths, writeLine }, channel);
     }
-    await stopUiDaemon({ ...options, paths, writeLine });
+    if (manageUi) await stopUiDaemon({ ...options, paths, writeLine });
     return;
   }
 
@@ -104,7 +106,7 @@ export async function runDaemonCommand(optionsOrArgv: string[] | DaemonCommandOp
     for (const channel of channels) {
       await restartDaemon({ ...options, paths, writeLine }, channel);
     }
-    await restartUiDaemon({ ...options, paths, writeLine });
+    if (manageUi) await restartUiDaemon({ ...options, paths, writeLine });
     return;
   }
 

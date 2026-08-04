@@ -186,6 +186,7 @@ export async function runUiChannelAction(options: UiChannelActionOptions): Promi
     await runDaemonCommand({
       argv: ["node", "bestie", "daemon", toDaemonSubcommand(options.action), "--channel", options.channel],
       paths,
+      manageUi: false,
       writeLine: (message) => messages.push(message),
     });
   }

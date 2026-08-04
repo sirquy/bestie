@@ -166,12 +166,14 @@ async function postChannelAction(body: Record<string, unknown>): Promise<Channel
 
 function ChannelCard({ channel, loading, onDaemon }: { channel: ConfiguredChannel; loading: boolean; onDaemon: (action: "daemon_start" | "daemon_stop" | "daemon_restart", channel: DaemonChannel) => Promise<void> }): ReactElement {
   const daemonChannel = channel.id as DaemonChannel;
+  const isRunning = channel.daemon.state === "running";
+  const isStopped = channel.daemon.state === "stopped";
   return (
     <div className="rounded-2xl border border-white/10 bg-card/60 p-4 text-sm">
       <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-lg font-semibold">{channel.displayName}</p><p className="text-muted-foreground">{channel.id}</p></div><Badge variant={channel.enabled ? "secondary" : "outline"}>{channel.enabled ? "đã bật" : "đã tắt"}</Badge></div>
       <Separator className="my-3" />
       <div className="grid gap-2"><StatusLine label="Chủ sở hữu" value={channel.ownerConfigured ? "sẵn sàng" : "chưa đặt"} /><StatusLine label="Khoá bí mật" value={channel.secretPresent ? "sẵn sàng" : channel.tokenEnv ? "thiếu" : "không cần"} /><StatusLine label="Dịch vụ nền" value={formatDaemonState(channel.daemon.state)} /></div>
-      <div className="mt-3 flex flex-wrap gap-2" data-channel-action={channel.id}><Button size="sm" onClick={() => void onDaemon("daemon_start", daemonChannel)} disabled={loading}><Play /> Bắt đầu</Button><Button size="sm" variant="outline" onClick={() => void onDaemon("daemon_stop", daemonChannel)} disabled={loading}><Square /> Dừng</Button><Button size="sm" variant="secondary" onClick={() => void onDaemon("daemon_restart", daemonChannel)} disabled={loading}><RefreshCw /> Khởi động lại</Button></div>
+      <div className="mt-3 flex flex-wrap gap-2" data-channel-action={channel.id}><Button size="sm" onClick={() => void onDaemon("daemon_start", daemonChannel)} disabled={loading || isRunning}><Play /> Bắt đầu</Button><Button size="sm" variant="outline" onClick={() => void onDaemon("daemon_stop", daemonChannel)} disabled={loading || isStopped}><Square /> Dừng</Button><Button size="sm" variant="secondary" onClick={() => void onDaemon("daemon_restart", daemonChannel)} disabled={loading || isRunning}><RefreshCw /> Khởi động lại</Button></div>
     </div>
   );
 }
