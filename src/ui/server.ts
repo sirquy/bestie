@@ -30,7 +30,7 @@ const BESTIE_ICON_PNG_PATH = fileURLToPath(new URL("../../assets/bestie-app-icon
 const BESTIE_ICON_ICO_PATH = fileURLToPath(new URL("../../assets/bestie-app-icon.ico", import.meta.url));
 const UI_WEB_INDEX_PATH = fileURLToPath(new URL("./web/index.html", import.meta.url));
 const UI_WEB_SERVICE_WORKER_PATH = fileURLToPath(new URL("./web/sw.js", import.meta.url));
-const UI_WEB_ROUTE_PATHS = new Set(["/chat", "/doctor", "/providers", "/character", "/memory", "/knowledge", "/channels", "/agents", "/agents/tasks", "/approvals", "/mcp", "/tools", "/skills", "/settings"]);
+const UI_WEB_ROUTE_PATHS = new Set(["/chat", "/doctor", "/providers", "/character", "/memory", "/knowledge", "/channels", "/agents", "/agents/tasks", "/approvals", "/mcp", "/tools", "/skills", "/skills/library", "/settings"]);
 
 export interface UiServerOptions {
   host?: string;

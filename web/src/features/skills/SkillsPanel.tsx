@@ -1,5 +1,5 @@
 import type { FormEvent, ReactElement } from "react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { AlertCircle, BookOpen, Check, Code2, Download, FileText, Library, RefreshCw, RotateCcw, Save, Search, ShieldCheck, Trash2, WandSparkles, X } from "lucide-react";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -26,7 +26,7 @@ interface SkillsPanelProps {
 type SkillMode = "installed" | "library";
 
 export function SkillsPanel({ data, loading, onData, onLoading }: SkillsPanelProps): ReactElement {
-  const [mode, setMode] = useState<SkillMode>("installed");
+  const [mode, setMode] = useState<SkillMode>(() => modeFromPath(window.location.pathname));
   const [library, setLibrary] = useState<SkillLibrarySummary | null>(null);
   const [libraryLoading, setLibraryLoading] = useState(false);
   const [query, setQuery] = useState("");
@@ -40,6 +40,18 @@ export function SkillsPanel({ data, loading, onData, onLoading }: SkillsPanelPro
 
   const filteredInstalled = useMemo(() => filterInstalled(data?.skills ?? [], query), [data, query]);
   const filteredLibrary = useMemo(() => filterLibrary(library?.skills ?? [], query), [library, query]);
+
+  useEffect(() => {
+    function handlePopState(): void {
+      setMode(modeFromPath(window.location.pathname));
+    }
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, []);
+
+  useEffect(() => {
+    if (mode === "library" && !library && !libraryLoading) void loadLibrary();
+  }, [library, libraryLoading, mode]);
 
   async function runSummaryAction(action: () => Promise<SkillsSummary>, success?: string): Promise<void> {
     setActionError(null);
@@ -58,6 +70,12 @@ export function SkillsPanel({ data, loading, onData, onLoading }: SkillsPanelPro
 
   async function reloadInstalled(): Promise<void> {
     await runSummaryAction(() => fetchJson<SkillsSummary>("/api/skills"));
+  }
+
+  function navigateMode(nextMode: SkillMode): void {
+    const path = nextMode === "library" ? "/skills/library" : "/skills";
+    setMode(nextMode);
+    if (window.location.pathname !== path) window.history.pushState({ panelId: "skills", skillsMode: nextMode }, "", `${path}${window.location.search}`);
   }
 
   async function loadLibrary(): Promise<void> {
@@ -170,10 +188,21 @@ export function SkillsPanel({ data, loading, onData, onLoading }: SkillsPanelPro
       {actionMessage ? <ToastEffect title="Kỹ năng đã cập nhật" description={actionMessage} tone="success" onShown={() => setActionMessage(null)} /> : null}
 
       <div className="grid gap-3 md:grid-cols-4" data-skills-summary>
-        <Metric label="Đã cài" value={String(data.count)} tone="good" />
-        <Metric label="Đã bật" value={String(data.skills.filter((skill) => skill.enabled).length)} />
-        <Metric label="Thay đổi cục bộ" value={String(data.skills.filter((skill) => skill.localChanges).length)} tone={data.skills.some((skill) => skill.localChanges) ? "warn" : "neutral"} />
-        <Metric label="Thư viện" value={library ? String(library.count) : "chưa tải"} />
+        {mode === "library" ? (
+          <>
+            <Metric label="Trong thư viện" value={library ? String(library.count) : "đang tải"} tone="good" />
+            <Metric label="Đã cài từ thư viện" value={library ? String(library.installedCount) : "0"} />
+            <Metric label="Nguồn" value={library?.registry.activeSource.name ?? "thư viện từ xa"} />
+            <Metric label="Xác minh" value={library?.registry.activeSource.verification?.status === "verified" ? "đã xác minh" : "cần kiểm tra"} tone={library?.registry.activeSource.verification?.status === "verified" ? "good" : "warn"} />
+          </>
+        ) : (
+          <>
+            <Metric label="Đã cài" value={String(data.count)} tone="good" />
+            <Metric label="Đã bật" value={String(data.skills.filter((skill) => skill.enabled).length)} />
+            <Metric label="Đã tắt" value={String(data.skills.filter((skill) => !skill.enabled).length)} />
+            <Metric label="Thay đổi cục bộ" value={String(data.skills.filter((skill) => skill.localChanges).length)} tone={data.skills.some((skill) => skill.localChanges) ? "warn" : "neutral"} />
+          </>
+        )}
       </div>
 
       <Card className="border-white/10 bg-background/35">
@@ -183,8 +212,8 @@ export function SkillsPanel({ data, loading, onData, onLoading }: SkillsPanelPro
             <CardDescription>{data.skillsDir}</CardDescription>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Button variant={mode === "installed" ? "default" : "outline"} onClick={() => setMode("installed")}>Đã cài</Button>
-            <Button variant={mode === "library" ? "default" : "outline"} onClick={() => { setMode("library"); if (!library && !libraryLoading) void loadLibrary(); }}>Thư viện</Button>
+            <Button variant={mode === "installed" ? "default" : "outline"} onClick={() => navigateMode("installed")}>Đã cài</Button>
+            <Button variant={mode === "library" ? "default" : "outline"} onClick={() => navigateMode("library")}>Thư viện</Button>
             <Button variant="outline" onClick={() => void reloadInstalled()} disabled={loading}><RefreshCw className={loading ? "animate-spin" : ""} /> Tải lại</Button>
           </div>
         </CardHeader>
@@ -386,6 +415,10 @@ function filterLibrary(skills: SkillLibraryItem[], query: string): SkillLibraryI
   const normalized = query.trim().toLowerCase();
   if (!normalized) return skills;
   return skills.filter((skill) => [skill.name, skill.title, skill.description, skill.category, skill.author, skill.sourceName, skill.trust, skill.risk, ...skill.permissions].some((value) => value.toLowerCase().includes(normalized)));
+}
+
+function modeFromPath(pathname: string): SkillMode {
+  return pathname.replace(/\/+$/, "") === "/skills/library" ? "library" : "installed";
 }
 
 function formatBytes(value: number): string {

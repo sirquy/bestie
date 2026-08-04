@@ -121,6 +121,7 @@ function panelFromLocation(location: Location): PanelDefinition {
   if (legacyHash) return panelsById.get(legacyHash) ?? defaultPanel;
   const route = normalizeRoute(location.pathname);
   if (route.startsWith("/agents/")) return panelsById.get("agents") ?? defaultPanel;
+  if (route.startsWith("/skills/")) return panelsById.get("skills") ?? defaultPanel;
   return panelsByRoute.get(route) ?? defaultPanel;
 }
 
