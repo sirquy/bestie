@@ -74,6 +74,28 @@ test("validateConfig keeps llm.timeoutMs optional for existing configs", () => {
   assert.equal(config.llm.timeoutMs, undefined);
 });
 
+test("validateConfig accepts optional Agent Workforce profiles", () => {
+  const config = validateConfig({
+    ...validConfig,
+    agents: {
+      researcher: {
+        enabled: true,
+        displayName: "Mika",
+        role: "Research Assistant",
+        description: "Research and summarize information.",
+        promptPath: "/tmp/.bestie/agents/researcher/system-prompt.md",
+        model: "openai/example-model",
+        tools: ["internal.read_file"],
+        memoryScope: "agent:researcher",
+        approvalPolicy: "ask-for-external-actions",
+      },
+    },
+  });
+
+  assert.equal(config.agents?.researcher?.displayName, "Mika");
+  assert.equal(config.agents?.researcher?.memoryScope, "agent:researcher");
+});
+
 test("validateConfig accepts optional skill remote registry contract", () => {
   const config = validateConfig({
     ...validConfig,

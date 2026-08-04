@@ -12,6 +12,7 @@ import { loadEnvFile } from "../../runtime/env.js";
 import { getRuntimePaths, type RuntimePaths } from "../../runtime/paths.js";
 import { maybePrintUpdateNotice } from "../update-notice.js";
 import { badge } from "../ui.js";
+import { runAgentsCommand } from "./agents.js";
 import { runCronCommand } from "./cron.js";
 import { runTelegramCommand } from "./telegram.js";
 import { runZaloCommand } from "./zalo.js";
@@ -21,7 +22,7 @@ const DAEMON_STOP_POLL_INTERVAL_MS = 1000;
 const DAEMON_START_SETTLE_MS = 750;
 const DAEMON_START_LOCK_TIMEOUT_MS = 15_000;
 const DAEMON_START_LOCK_STALE_MS = 60_000;
-export const DAEMON_CHANNELS = ["telegram", "zalo", "cron"] as const;
+export const DAEMON_CHANNELS = ["telegram", "zalo", "cron", "workforce"] as const;
 const execFileAsync = promisify(execFile);
 const BESTIE_APP_ICON_ICO_PATH = fileURLToPath(new URL("../../../assets/bestie-app-icon.ico", import.meta.url));
 const MACOS_LAUNCHD_SERVICES = [
@@ -31,7 +32,7 @@ const MACOS_LAUNCHD_SERVICES = [
 
 export type DaemonChannel = (typeof DAEMON_CHANNELS)[number];
 type DaemonChannelSelection = DaemonChannel | "all";
-type DaemonProcessKind = "channel" | "cron";
+type DaemonProcessKind = "channel" | "cron" | "workforce";
 type ManagedDaemonTarget = DaemonChannel | "ui";
 
 interface DaemonCommandOptions {
@@ -117,7 +118,7 @@ export async function runDaemonCommand(optionsOrArgv: string[] | DaemonCommandOp
     return;
   }
 
-  throw new UserFacingError("Cách dùng: bestie daemon start|stop|restart|status [--channel telegram|zalo|cron|all]", "DaemonUsageError");
+  throw new UserFacingError("Cách dùng: bestie daemon start|stop|restart|status [--channel telegram|zalo|cron|workforce|all]", "DaemonUsageError");
 }
 
 export async function runServiceCommand(optionsOrArgv: string[] | ServiceCommandOptions = process.argv): Promise<void> {
@@ -205,7 +206,7 @@ function isMissingSystemdUnitError(error: unknown): boolean {
 async function getInstallableServiceChannels(paths: RuntimePaths): Promise<DaemonChannel[]> {
   const config = await loadConfig(paths);
   const envValues = await loadEnvFile(paths);
-  return DAEMON_CHANNELS.filter((channel) => channel === "cron" || isChannelServiceConfigured(channel, config, envValues));
+  return DAEMON_CHANNELS.filter((channel) => channel === "cron" || channel === "workforce" || isChannelServiceConfigured(channel, config, envValues));
 }
 
 async function runServiceRuntime(options: Required<Pick<DaemonCommandOptions, "paths" | "writeLine">> & DaemonCommandOptions): Promise<void> {
@@ -461,6 +462,11 @@ async function runServiceChannel(channel: DaemonChannel, options: { paths: Runti
       return;
     }
 
+    if (channel === "workforce") {
+      await runAgentsCommand({ argv: ["node", "bestie", "agents", "run", "--watch"], paths, writeLine });
+      return;
+    }
+
     if (channel === "telegram") {
       await runTelegramCommand({ argv: ["node", "bestie", "channels", "telegram"], paths, writeLine });
       return;
@@ -473,7 +479,7 @@ async function runServiceChannel(channel: DaemonChannel, options: { paths: Runti
 }
 
 function isChannelServiceConfigured(channel: DaemonChannel, config: AppConfig, envValues: Record<string, string>): boolean {
-  if (channel === "cron") {
+  if (channel === "cron" || channel === "workforce") {
     return true;
   }
 
@@ -862,7 +868,7 @@ function getDaemonChannelSelection(argv: string[]): DaemonChannelSelection {
     return value;
   }
 
-  throw new UserFacingError("Cách dùng: bestie daemon start|stop|restart|status [--channel telegram|zalo|cron|all]", "DaemonUsageError");
+  throw new UserFacingError("Cách dùng: bestie daemon start|stop|restart|status [--channel telegram|zalo|cron|workforce|all]", "DaemonUsageError");
 }
 
 function isDaemonChannel(value: string | undefined): value is DaemonChannel {
@@ -874,8 +880,10 @@ function formatDaemonChannel(channel: DaemonChannel): string {
 }
 
 function getDaemonArgs(cliEntry: string, channel: DaemonChannel): string[] {
-  const kind: DaemonProcessKind = channel === "cron" ? "cron" : "channel";
-  return kind === "cron" ? [cliEntry, "cron", "run"] : [cliEntry, "channels", channel];
+  const kind: DaemonProcessKind = channel === "cron" ? "cron" : channel === "workforce" ? "workforce" : "channel";
+  if (kind === "cron") return [cliEntry, "cron", "run"];
+  if (kind === "workforce") return [cliEntry, "agents", "run", "--watch"];
+  return [cliEntry, "channels", channel];
 }
 
 function getSystemdUserServicePath(serviceName: string): string {
@@ -1035,6 +1043,7 @@ function isBestieManagedProcessCommand(target: ManagedDaemonTarget, commandLine:
 
   if (target === "ui") return /\sui(?:\s|$)/.test(normalized);
   if (target === "cron") return /\scron\s+run(?:\s|$)/.test(normalized);
+  if (target === "workforce") return /\sagents\s+run\s+--watch(?:\s|$)/.test(normalized);
   return new RegExp(`\\schannels\\s+${target}(?:\\s|$)`).test(normalized);
 }
 

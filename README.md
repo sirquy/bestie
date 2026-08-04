@@ -35,12 +35,13 @@ The local MVP foundation is implemented and includes:
 - Daemon management for `telegram`, `zalo`, `cron`, `ui`, or `all`, with duplicate-process cleanup safeguards.
 - User service support for Linux systemd, macOS launchd, and Windows Startup folder.
 - Permission-gated local read/write/action tools, external workspace path allowlist, configurable exec timeout, image/video generation tools, and bounded internal subagents.
+- MVP Agent Workforce registry and task inbox for fixed role agents with profile, prompt file, memory scope, approval policy, and `bestie agents` management commands.
 - SDK-backed MCP add/list/show/test/tools/classify/login/call with classified read calls.
 - Skills installed from `~/.bestie/skills`, plus an official remote GitHub skill registry (`sirquy/bestie-skills`) with verification, cache, preview, diff, install/update, rollback, enable/disable, and uninstall flows.
 - `bestie update` and throttled update notices for new npm versions.
 - Doctor diagnostics, safe local fixes, redacted logs, smoke tests, and character regression evals.
 
-Still intentionally later: hosted/SaaS mode, public marketplace, avatar/body layer, optional Zep, broad autonomous external actions, unrestricted MCP execution, and named multi-agent orchestration.
+Still intentionally later: hosted/SaaS mode, public marketplace, avatar/body layer, optional Zep, broad autonomous external actions, unrestricted MCP execution, Bestie manager routing, and multi-agent collaboration.
 
 ## Requirements
 
@@ -88,6 +89,12 @@ bestie doctor
 bestie ui
 bestie ui --port 8717
 bestie ui --port 0 --no-open
+bestie agents hire --id researcher --name Mika --role "Research Assistant" --description "Research and summarize information"
+bestie agents assign --agent researcher --title "Market brief" --brief "Summarize this week"
+bestie agents list
+bestie agents tasks --agent researcher
+bestie agents run --agent researcher --limit 1
+bestie agents run --watch --interval-ms 30000
 bestie channels telegram setup
 bestie channels telegram
 bestie channels zalo
@@ -95,6 +102,7 @@ bestie daemon status --channel all
 bestie daemon restart --channel telegram
 bestie daemon restart --channel zalo
 bestie daemon restart --channel cron
+bestie daemon restart --channel workforce
 bestie service install
 bestie service status
 bestie cron list

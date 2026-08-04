@@ -289,6 +289,14 @@ test("parseMcpToolRequest accepts internal read tool requests", () => {
     tool: "internal.spawn_subagent",
     arguments: { task: "inspect docs", name: "docs" },
   });
+  assert.deepEqual(parseMcpToolRequest('{"tool":"internal.hire_workforce_agent","arguments":{"id":"researcher","displayName":"Mika","role":"Research Assistant","description":"Research briefs"}}'), {
+    tool: "internal.hire_workforce_agent",
+    arguments: { id: "researcher", displayName: "Mika", role: "Research Assistant", description: "Research briefs" },
+  });
+  assert.deepEqual(parseMcpToolRequest('{"tool":"internal.assign_workforce_task","arguments":{"agentId":"researcher","brief":"Summarize this week"}}'), {
+    tool: "internal.assign_workforce_task",
+    arguments: { agentId: "researcher", brief: "Summarize this week" },
+  });
 });
 
 test("parseMcpToolRequestResult accepts supported tool JSON mixed with prose", () => {
@@ -441,6 +449,35 @@ test("runAgentToolRequest runs internal search_files without MCP config", async 
     assert.equal(result.ok, true);
     assert.match(JSON.stringify(result.result), /workspace\.log/);
     assert.doesNotMatch(JSON.stringify(result.result), /app\.log/);
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("runAgentToolRequest manages Agent Workforce profiles and tasks", async () => {
+  const paths = await createTempPaths();
+
+  try {
+    await mkdir(paths.appDir, { recursive: true });
+    await writeConfig(createConfig(), paths);
+
+    const hired = await runAgentToolRequest({
+      config: createConfig(),
+      paths,
+      request: { tool: "internal.hire_workforce_agent", arguments: { id: "researcher", displayName: "Mika", role: "Research Assistant", description: "Research briefs", tools: ["internal.read_url"] } },
+    });
+    const listedAgents = await runAgentToolRequest({ config: createConfig(), paths, request: { tool: "internal.list_workforce_agents", arguments: {} } });
+    const assigned = await runAgentToolRequest({ config: createConfig(), paths, request: { tool: "internal.assign_workforce_task", arguments: { agentId: "researcher", title: "Brief", brief: "Summarize this week" } } });
+    const taskId = (assigned.result as { task?: { id?: string } }).task?.id;
+    assert.ok(taskId);
+    const updated = await runAgentToolRequest({ config: createConfig(), paths, request: { tool: "internal.update_workforce_task", arguments: { id: taskId, status: "done", result: "Delivered" } } });
+    const listedTasks = await runAgentToolRequest({ config: createConfig(), paths, request: { tool: "internal.list_workforce_tasks", arguments: { agentId: "researcher", status: "done" } } });
+
+    assert.equal(hired.ok, true);
+    assert.match(JSON.stringify(listedAgents.result), /researcher/);
+    assert.equal(assigned.ok, true);
+    assert.equal(updated.ok, true);
+    assert.match(JSON.stringify(listedTasks.result), /Delivered/);
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
   }

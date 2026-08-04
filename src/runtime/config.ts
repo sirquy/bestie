@@ -11,6 +11,7 @@ export type MemoryRetrievalPolicy = "full" | "governed";
 export type InternalToolPolicy = "allow" | "ask" | "deny";
 export type WorkspaceExternalPathAccess = "read" | "write" | "readwrite";
 export type WorkspaceExternalPathConfig = string | { path: string; access?: WorkspaceExternalPathAccess };
+export type WorkforceAgentApprovalPolicy = "ask-for-external-actions" | "ask-for-all-actions" | "deny-external-actions";
 type OpenAiCompatibleSpeechConfig = Extract<NonNullable<AppConfig["speech"]>, { provider: "openai-compatible" }>;
 
 export type LlmAuthMode = "api-key" | "oauth" | "local";
@@ -212,6 +213,17 @@ export interface AppConfig {
       timeoutMs?: number;
     };
   };
+  agents?: Record<string, {
+    enabled: boolean;
+    displayName: string;
+    role: string;
+    description: string;
+    promptPath: string;
+    model?: string;
+    tools?: string[];
+    memoryScope: string;
+    approvalPolicy: WorkforceAgentApprovalPolicy;
+  }>;
 }
 
 export const DEFAULT_LLM_TIMEOUT_MS = 300_000;
@@ -285,6 +297,7 @@ export function validateConfig(config: unknown): AppConfig {
   const workspace = optionalWorkspace(config.workspace);
   const mcp = optionalMcp(config.mcp, config.mcpServers);
   const internalTools = optionalInternalTools(config.internalTools);
+  const agents = optionalAgents(config.agents);
 
   return {
     version: 2,
@@ -315,6 +328,7 @@ export function validateConfig(config: unknown): AppConfig {
     ...(workspace === undefined ? {} : { workspace }),
     ...(mcp === undefined ? {} : { mcp }),
     ...(internalTools === undefined ? {} : { internalTools }),
+    ...(agents === undefined ? {} : { agents }),
   };
 }
 
@@ -590,6 +604,42 @@ function isValidWorkspaceExternalPath(value: unknown): value is WorkspaceExterna
     return false;
   }
   return value.access === undefined || value.access === "read" || value.access === "write" || value.access === "readwrite";
+}
+
+function optionalAgents(value: unknown): AppConfig["agents"] | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  if (!isRecord(value)) {
+    throw new InvalidConfigError("agents must be an object keyed by agent id.");
+  }
+
+  const agents: NonNullable<AppConfig["agents"]> = {};
+  for (const [id, agentValue] of Object.entries(value)) {
+    if (!/^[a-z0-9][a-z0-9-]{1,62}$/.test(id)) {
+      throw new InvalidConfigError("agents keys must use lowercase letters, numbers, or hyphens.");
+    }
+    const agent = requireRecord(agentValue, `agents.${id}`);
+    const approvalPolicy = agent.approvalPolicy;
+    if (approvalPolicy !== "ask-for-external-actions" && approvalPolicy !== "ask-for-all-actions" && approvalPolicy !== "deny-external-actions") {
+      throw new InvalidConfigError(`agents.${id}.approvalPolicy must be ask-for-external-actions, ask-for-all-actions, or deny-external-actions.`);
+    }
+
+    agents[id] = {
+      enabled: requireBoolean(agent.enabled, `agents.${id}.enabled`),
+      displayName: requireString(agent.displayName, `agents.${id}.displayName`),
+      role: requireString(agent.role, `agents.${id}.role`),
+      description: requireString(agent.description, `agents.${id}.description`),
+      promptPath: requireString(agent.promptPath, `agents.${id}.promptPath`),
+      ...(agent.model === undefined ? {} : { model: requireModelRefString(agent.model, `agents.${id}.model`) }),
+      ...(agent.tools === undefined ? {} : { tools: optionalStringArray(agent.tools, `agents.${id}.tools`) ?? [] }),
+      memoryScope: requireString(agent.memoryScope, `agents.${id}.memoryScope`),
+      approvalPolicy,
+    };
+  }
+
+  return agents;
 }
 
 function optionalInternalTools(value: unknown): AppConfig["internalTools"] | undefined {

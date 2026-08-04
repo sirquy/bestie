@@ -1,4 +1,5 @@
 import { runChannelsCommand } from "./commands/channels.js";
+import { runAgentsCommand } from "./commands/agents.js";
 import { runChatCommand } from "./commands/chat.js";
 import { runCronCommand } from "./commands/cron.js";
 import { runDaemonCommand } from "./commands/daemon.js";
@@ -39,10 +40,10 @@ Tùy chọn kênh:
   Chạy bestie channels --help để xem channel adapter và chẩn đoán.
 
 Tùy chọn daemon:
-  start [--channel telegram|zalo|cron|all]    Khởi động runtime daemon trong nền
-  stop [--channel telegram|zalo|cron|all]     Dừng runtime daemon
-  restart [--channel telegram|zalo|cron|all]  Dừng rồi khởi động lại runtime daemon
-  status [--channel telegram|zalo|cron|all]   Xem trạng thái runtime daemon
+  start [--channel telegram|zalo|cron|workforce|all]    Khởi động runtime daemon trong nền
+  stop [--channel telegram|zalo|cron|workforce|all]     Dừng runtime daemon
+  restart [--channel telegram|zalo|cron|workforce|all]  Dừng rồi khởi động lại runtime daemon
+  status [--channel telegram|zalo|cron|workforce|all]   Xem trạng thái runtime daemon
 
 Tùy chọn service:
   install                                    Cài và khởi động service nền
@@ -84,6 +85,24 @@ Tùy chọn voice:
 export const cliCommandSpecs: CliCommandSpec[] = [
   { name: "onboard", description: "Tạo cấu hình .bestie và file tính cách local", handler: runOnboardCommand },
   { name: "chat", description: "Bắt đầu chat terminal sau khi onboard", handler: runChatCommand },
+  {
+    name: "agents",
+    description: "Manage fixed Agent Workforce roles",
+    handler: runAgentsCommand,
+    children: [
+      { name: "list", description: "List fixed workforce agents", handler: runAgentsCommand },
+      { name: "show <id>", description: "Show one workforce agent profile", handler: runAgentsCommand },
+      { name: "hire", description: "Create a fixed workforce agent profile", handler: runAgentsCommand },
+      { name: "assign", description: "Assign a task to a workforce agent", handler: runAgentsCommand },
+      { name: "tasks", description: "List workforce agent tasks", handler: runAgentsCommand },
+      { name: "task <id>", description: "Show one workforce agent task", handler: runAgentsCommand },
+      { name: "task-status <id>", description: "Update a workforce agent task status", handler: runAgentsCommand },
+      { name: "run", description: "Run queued workforce agent tasks", handler: runAgentsCommand },
+      { name: "pause <id>", description: "Pause a workforce agent", handler: runAgentsCommand },
+      { name: "resume <id>", description: "Resume a workforce agent", handler: runAgentsCommand },
+      { name: "remove <id>", description: "Remove a workforce agent profile", handler: runAgentsCommand },
+    ],
+  },
   { name: "status", description: "Xem trạng thái thiết lập local", handler: runStatusCommand },
   {
     name: "daemon",

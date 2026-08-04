@@ -5,6 +5,7 @@ import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 
 import { getUiApprovalsSummary, runUiApprovalAction } from "./api/approvals.js";
+import { getUiAgentsSummary, runUiAgentsAction } from "./api/agents.js";
 import type { AgentToolActivity } from "../chat/mcp-tool-use.js";
 import { SqliteMemoryStore } from "../memory/sqlite-store.js";
 import { getUiCharacterSummary, updateUiCharacter } from "./api/character.js";
@@ -29,7 +30,7 @@ const BESTIE_ICON_PNG_PATH = fileURLToPath(new URL("../../assets/bestie-app-icon
 const BESTIE_ICON_ICO_PATH = fileURLToPath(new URL("../../assets/bestie-app-icon.ico", import.meta.url));
 const UI_WEB_INDEX_PATH = fileURLToPath(new URL("./web/index.html", import.meta.url));
 const UI_WEB_SERVICE_WORKER_PATH = fileURLToPath(new URL("./web/sw.js", import.meta.url));
-const UI_WEB_ROUTE_PATHS = new Set(["/chat", "/doctor", "/providers", "/character", "/memory", "/knowledge", "/channels", "/approvals", "/mcp", "/tools", "/skills", "/settings"]);
+const UI_WEB_ROUTE_PATHS = new Set(["/chat", "/doctor", "/providers", "/character", "/memory", "/knowledge", "/channels", "/agents", "/agents/tasks", "/approvals", "/mcp", "/tools", "/skills", "/settings"]);
 
 export interface UiServerOptions {
   host?: string;
@@ -178,6 +179,11 @@ async function handleRequestAsync(request: IncomingMessage, response: ServerResp
 
   if (method === "GET" && url.pathname === "/api/channels") {
     sendJson(response, 200, await getUiChannelSummary());
+    return;
+  }
+
+  if (method === "GET" && url.pathname === "/api/agents") {
+    sendJson(response, 200, await getUiAgentsSummary());
     return;
   }
 
@@ -686,6 +692,66 @@ async function handleRequestAsync(request: IncomingMessage, response: ServerResp
     return;
   }
 
+  if (method === "POST" && url.pathname === "/api/agents/action") {
+    const body = await readJsonBody(request);
+    if (!isRecord(body) || !isUiAgentsAction(body.action)) {
+      sendJson(response, 400, { ok: false, error: "Agent action is invalid.", code: "UiAgentsInvalidActionRequest" });
+      return;
+    }
+    if (body.confirm !== true) {
+      sendJson(response, 400, { ok: false, error: "Agent Workforce actions require confirm=true.", code: "UiAgentsActionConfirmationRequired" });
+      return;
+    }
+    if (body.action === "hire" || body.action === "update") {
+      if (typeof body.id !== "string" || typeof body.displayName !== "string" || typeof body.role !== "string" || typeof body.description !== "string") {
+        sendJson(response, 400, { ok: false, error: "Saving an agent requires id, displayName, role, and description.", code: "UiAgentsInvalidActionRequest" });
+        return;
+      }
+      sendJson(response, 200, await runUiAgentsAction({
+        action: body.action,
+        id: body.id,
+        displayName: body.displayName,
+        role: body.role,
+        description: body.description,
+        ...(typeof body.model === "string" && body.model.trim() ? { model: body.model } : {}),
+        ...(Array.isArray(body.tools) && body.tools.every((tool) => typeof tool === "string") ? { tools: body.tools } : {}),
+        ...(isWorkforceApprovalPolicy(body.approvalPolicy) ? { approvalPolicy: body.approvalPolicy } : {}),
+        confirm: true,
+      }));
+      return;
+    }
+    if (body.action === "pause" || body.action === "resume" || body.action === "remove") {
+      if (typeof body.id !== "string") {
+        sendJson(response, 400, { ok: false, error: "Agent action requires id.", code: "UiAgentsInvalidActionRequest" });
+        return;
+      }
+      sendJson(response, 200, await runUiAgentsAction({ action: body.action, id: body.id, confirm: true }));
+      return;
+    }
+    if (body.action === "assign") {
+      if (typeof body.agentId !== "string" || typeof body.brief !== "string") {
+        sendJson(response, 400, { ok: false, error: "Assigning work requires agentId and brief.", code: "UiAgentsInvalidActionRequest" });
+        return;
+      }
+      sendJson(response, 200, await runUiAgentsAction({ action: "assign", agentId: body.agentId, brief: body.brief, ...(typeof body.title === "string" ? { title: body.title } : {}), confirm: true }));
+      return;
+    }
+    if (body.action === "task_status") {
+      if (typeof body.id !== "string" || !isWorkforceTaskStatus(body.status)) {
+        sendJson(response, 400, { ok: false, error: "Task status update requires id and valid status.", code: "UiAgentsInvalidActionRequest" });
+        return;
+      }
+      sendJson(response, 200, await runUiAgentsAction({ action: "task_status", id: body.id, status: body.status, ...(typeof body.result === "string" ? { result: body.result } : {}), confirm: true }));
+      return;
+    }
+    if (body.action === "run") {
+      sendJson(response, 200, await runUiAgentsAction({ action: "run", ...(typeof body.agentId === "string" ? { agentId: body.agentId } : {}), ...(typeof body.limit === "number" ? { limit: body.limit } : {}), confirm: true }));
+      return;
+    }
+    sendJson(response, 200, await runUiAgentsAction({ action: body.action, confirm: true }));
+    return;
+  }
+
   if (method === "PUT" && url.pathname === "/api/character") {
     const body = await readJsonBody(request);
     if (!isRecord(body) || (typeof body.characterText !== "string" && typeof body.promptText !== "string")) {
@@ -911,6 +977,18 @@ function isUiCronScheduleType(value: unknown): value is "interval" | "cron_expr"
 
 function isUiDaemonChannel(value: unknown): value is "telegram" | "zalo" | "cron" {
   return value === "telegram" || value === "zalo" || value === "cron";
+}
+
+function isUiAgentsAction(value: unknown): value is "hire" | "update" | "pause" | "resume" | "remove" | "assign" | "task_status" | "run" | "daemon_start" | "daemon_stop" | "daemon_restart" {
+  return value === "hire" || value === "update" || value === "pause" || value === "resume" || value === "remove" || value === "assign" || value === "task_status" || value === "run" || value === "daemon_start" || value === "daemon_stop" || value === "daemon_restart";
+}
+
+function isWorkforceTaskStatus(value: unknown): value is "queued" | "in_progress" | "done" | "blocked" | "canceled" {
+  return value === "queued" || value === "in_progress" || value === "done" || value === "blocked" || value === "canceled";
+}
+
+function isWorkforceApprovalPolicy(value: unknown): value is "ask-for-external-actions" | "ask-for-all-actions" | "deny-external-actions" {
+  return value === "ask-for-external-actions" || value === "ask-for-all-actions" || value === "deny-external-actions";
 }
 
 function isMemoryWritePolicy(value: unknown): value is "allow" | "ask" | "deny" {

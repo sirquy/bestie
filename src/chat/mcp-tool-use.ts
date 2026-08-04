@@ -18,6 +18,8 @@ import { addCronScheduleTool, listCronSchedulesTool, removeCronScheduleTool, tog
 import { imageGenerateTool, videoGenerateTool } from "../tools/media-generation-tools.js";
 import { clickBrowserPageTool, openBrowserPageTool, resetBrowserSessionTool, screenshotBrowserPageTool, snapshotBrowserPageTool, typeBrowserPageTool, type BrowserActionRisk } from "../tools/browser-tools.js";
 import { sendFileTool, sendPhotoTool, type AgentOutboundFileSender } from "../tools/channel-send-tools.js";
+import { hireWorkforceAgent, listWorkforceAgents } from "../agents/registry.js";
+import { assignWorkforceTask, listWorkforceTasks, updateWorkforceTaskStatus, type WorkforceTaskStatus } from "../agents/inbox.js";
 
 const CRON_SCHEDULE_PROMPT_GUIDANCE = '- When creating or updating a cron schedule, the cron prompt must be the future task itself, written as a standalone instruction the isolated cron runner can execute later. Never store your current reply, a success message, the schedule ID, next_run_at, or text like "I created the schedule" in the prompt. For example, if the user asks "check YouTube and summarize every day at 17:00", store a prompt like "Check the configured YouTube channel for new content and summarize the findings for the user." Then, after the tool succeeds, answer the user with the schedule confirmation separately. Use update_cron_schedule for changing an existing schedule, remove_cron_schedule/toggle_cron_schedule for changing schedule state, and trigger_cron_schedule only when the user wants to run an existing cron job now. Do not trigger a newly created schedule just to prove it exists unless the user explicitly asks for an immediate run.';
 
@@ -91,6 +93,11 @@ export const INTERNAL_TOOL_NAMES = [
   "internal.exec",
   "internal.list_processes",
   "internal.spawn_subagent",
+  "internal.list_workforce_agents",
+  "internal.hire_workforce_agent",
+  "internal.assign_workforce_task",
+  "internal.list_workforce_tasks",
+  "internal.update_workforce_task",
   "internal.image_generate",
   "internal.video_generate",
   "internal.list_memories",
@@ -426,6 +433,11 @@ export function buildMcpToolInstructions(config: AppConfig, runtimeContext?: str
     'internal.exec {"command":"npm","args":["test"],"cwd":".","timeoutMs":30000}',
     'internal.list_processes {"limit":20}',
     'internal.spawn_subagent {"task":"focused task for a helper agent","name":"optional short name","maxToolCalls":20}',
+    'internal.list_workforce_agents {}',
+    'internal.hire_workforce_agent {"id":"researcher","displayName":"Mika","role":"Research Assistant","description":"Research and summarize information","model":"optional provider/model","tools":["internal.read_file","internal.read_url"]}',
+    'internal.assign_workforce_task {"agentId":"researcher","title":"Market brief","brief":"Summarize weekly market signals"}',
+    'internal.list_workforce_tasks {"agentId":"optional-agent-id","status":"queued|in_progress|done|blocked|canceled"}',
+    'internal.update_workforce_task {"id":"task-id","status":"done","result":"optional result or blocker note"}',
     'internal.image_generate {"prompt":"image prompt","size":"1024x1024","quality":"standard|hd|auto","style":"vivid|natural","count":1,"outputPath":"optional relative workspace path.png"}',
     'internal.video_generate {"prompt":"video prompt","durationSeconds":5,"aspectRatio":"16:9","size":"optional provider size","count":1,"outputPath":"optional relative workspace path.mp4"}',
     'internal.list_memories {}',
@@ -722,6 +734,26 @@ export function formatToolActivityLabel(request: AgentToolRequest): string {
 
   if (request.tool === "internal.list_processes") {
     return "processes";
+  }
+
+  if (request.tool === "internal.list_workforce_agents") {
+    return "workforce agents";
+  }
+
+  if (request.tool === "internal.hire_workforce_agent") {
+    return stringArg(args.id) ?? "new workforce agent";
+  }
+
+  if (request.tool === "internal.assign_workforce_task") {
+    return stringArg(args.agentId) ?? "workforce task";
+  }
+
+  if (request.tool === "internal.list_workforce_tasks") {
+    return stringArg(args.agentId) ?? "workforce tasks";
+  }
+
+  if (request.tool === "internal.update_workforce_task") {
+    return stringArg(args.id) ?? "workforce task";
   }
 
   if (request.tool === "internal.image_generate") {
@@ -1053,6 +1085,44 @@ export async function runAgentToolRequest(options: RunAgentToolRequestOptions): 
 
   if (options.request.tool === "internal.spawn_subagent") {
     return runSubagentTool(options, args);
+  }
+
+  if (options.request.tool === "internal.list_workforce_agents") {
+    const agents = await listWorkforceAgents(options.paths);
+    return { ok: true, status: "pass", message: `Found ${agents.length} workforce agent(s).`, result: { agents } };
+  }
+
+  if (options.request.tool === "internal.hire_workforce_agent") {
+    const id = stringArg(args.id);
+    const displayName = stringArg(args.displayName);
+    const role = stringArg(args.role);
+    const description = stringArg(args.description);
+    if (!id || !displayName || !role || !description) return { ok: false, status: "fail", message: "internal.hire_workforce_agent requires arguments.id, displayName, role, and description." };
+    const agent = await hireWorkforceAgent(options.paths, { id, displayName, role, description, model: stringArg(args.model), tools: arrayOfStringsArg(args.tools) });
+    return { ok: true, status: "pass", message: `Hired workforce agent ${agent.id}.`, result: { agent } };
+  }
+
+  if (options.request.tool === "internal.assign_workforce_task") {
+    const agentId = stringArg(args.agentId);
+    const brief = stringArg(args.brief);
+    if (!agentId || !brief) return { ok: false, status: "fail", message: "internal.assign_workforce_task requires arguments.agentId and brief." };
+    const task = await assignWorkforceTask(options.paths, { agentId, title: stringArg(args.title), brief, createdBy: "bestie" });
+    return { ok: true, status: "pass", message: `Assigned task ${task.id} to ${task.agentId}.`, result: { task } };
+  }
+
+  if (options.request.tool === "internal.list_workforce_tasks") {
+    const status = workforceTaskStatusArg(args.status);
+    if (args.status !== undefined && status === undefined) return { ok: false, status: "fail", message: "internal.list_workforce_tasks arguments.status must be queued, in_progress, done, blocked, or canceled." };
+    const tasks = await listWorkforceTasks(options.paths, { agentId: stringArg(args.agentId), status });
+    return { ok: true, status: "pass", message: `Found ${tasks.length} workforce task(s).`, result: { tasks } };
+  }
+
+  if (options.request.tool === "internal.update_workforce_task") {
+    const id = stringArg(args.id);
+    const status = workforceTaskStatusArg(args.status);
+    if (!id || !status) return { ok: false, status: "fail", message: "internal.update_workforce_task requires arguments.id and valid status." };
+    const task = await updateWorkforceTaskStatus(options.paths, id, status, stringArg(args.result));
+    return { ok: true, status: "pass", message: `Updated task ${task.id} to ${task.status}.`, result: { task } };
   }
 
   if (options.request.tool === "internal.image_generate") {
@@ -2186,6 +2256,10 @@ function browserActionRiskArg(value: unknown): BrowserActionRisk | undefined {
 
 function browserRoleArg(value: unknown): "button" | "link" | "textbox" | "checkbox" | "menuitem" | undefined {
   return value === "button" || value === "link" || value === "textbox" || value === "checkbox" || value === "menuitem" ? value : undefined;
+}
+
+function workforceTaskStatusArg(value: unknown): WorkforceTaskStatus | undefined {
+  return value === "queued" || value === "in_progress" || value === "done" || value === "blocked" || value === "canceled" ? value : undefined;
 }
 
 function memoryIdsArg(value: unknown): number[] {

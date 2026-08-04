@@ -15,11 +15,13 @@ import {
   Settings,
   ShieldCheck,
   TerminalSquare,
+  Users,
   WandSparkles,
   X,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { AgentsPanel, AgentsPanelError } from "@/features/agents/AgentsPanel";
 import { ApprovalsPanel, ApprovalsPanelError } from "@/features/approvals/ApprovalsPanel";
 import { ChannelsPanel, ChannelsPanelError } from "@/features/channels/ChannelsPanel";
 import { CharacterPanel, CharacterPanelError } from "@/features/character/CharacterPanel";
@@ -32,6 +34,7 @@ import { ProviderPanel, ProviderPanelError } from "@/features/providers/Provider
 import { SettingsPanel, SettingsPanelError } from "@/features/settings/SettingsPanel";
 import { SkillsPanel, SkillsPanelError } from "@/features/skills/SkillsPanel";
 import { ToolsPanel, ToolsPanelError } from "@/features/tools/ToolsPanel";
+import type { AgentsSummary } from "@/features/agents/types";
 import type { ApprovalsSummary } from "@/features/approvals/types";
 import type { ChannelSummary } from "@/features/channels/types";
 import type { CharacterSummary } from "@/features/character/types";
@@ -57,6 +60,7 @@ type PanelId =
   | "memory"
   | "knowledge"
   | "channels"
+  | "agents"
   | "approvals"
   | "mcp"
   | "tools"
@@ -81,6 +85,7 @@ const panels: PanelDefinition[] = [
   { id: "memory", title: "Bộ nhớ", nav: "Bộ nhớ", route: "/memory", description: "Xem thông tin đã ghi nhớ và các cập nhật đang chờ.", icon: Brain, endpoint: "/api/memory" },
   { id: "knowledge", title: "Bản đồ tri thức", nav: "Tri thức", route: "/knowledge", description: "Khám phá tri thức đã liên kết và dọn dẹp dữ liệu.", icon: GitBranch, endpoint: "/api/knowledge-graph" },
   { id: "channels", title: "Kênh kết nối", nav: "Kênh", route: "/channels", description: "Quản lý kênh đã kết nối và tin nhắn hẹn giờ.", icon: Cable, endpoint: "/api/channels" },
+  { id: "agents", title: "Đội agent", nav: "Agent", route: "/agents", description: "Thuê agent cố định, giao việc và theo dõi hàng đợi xử lý.", icon: Users, endpoint: "/api/agents" },
   { id: "approvals", title: "Phê duyệt", nav: "Phê duyệt", route: "/approvals", description: "Các hành động cần bạn xem xét trước khi thực hiện.", icon: ClipboardCheck, endpoint: "/api/approvals" },
   { id: "mcp", title: "Tiện ích mở rộng", nav: "Tiện ích mở rộng", route: "/mcp", description: "Quản lý tiện ích mở rộng và quyền truy cập công cụ.", icon: TerminalSquare, endpoint: "/api/mcp" },
   { id: "tools", title: "Công cụ & quyền", nav: "Công cụ", route: "/tools", description: "Xem Bestie được phép truy cập và thực hiện những gì.", icon: ShieldCheck, endpoint: "/api/tools" },
@@ -114,7 +119,9 @@ interface UpdateApplyResult {
 function panelFromLocation(location: Location): PanelDefinition {
   const legacyHash = location.hash.startsWith("#") ? legacyPanelIds.get(location.hash.slice(1)) : undefined;
   if (legacyHash) return panelsById.get(legacyHash) ?? defaultPanel;
-  return panelsByRoute.get(normalizeRoute(location.pathname)) ?? defaultPanel;
+  const route = normalizeRoute(location.pathname);
+  if (route.startsWith("/agents/")) return panelsById.get("agents") ?? defaultPanel;
+  return panelsByRoute.get(route) ?? defaultPanel;
 }
 
 function normalizeRoute(pathname: string): string {
@@ -349,6 +356,18 @@ function App(): ReactElement {
                       setPanelErrors((current) => ({ ...current, channels: undefined }));
                     }}
                     onLoading={(loading) => setLoadingPanels((current) => ({ ...current, channels: loading }))}
+                  />
+                )
+              ) : selectedPanel.id === "agents" ? (
+                activeError ? <AgentsPanelError error={activeError} /> : (
+                  <AgentsPanel
+                    data={activeData as unknown as AgentsSummary | undefined}
+                    loading={Boolean(loadingPanels[selectedPanel.id])}
+                    onData={(data) => {
+                      setPanelData((current) => ({ ...current, agents: data as unknown as JsonRecord }));
+                      setPanelErrors((current) => ({ ...current, agents: undefined }));
+                    }}
+                    onLoading={(loading) => setLoadingPanels((current) => ({ ...current, agents: loading }))}
                   />
                 )
               ) : selectedPanel.id === "approvals" ? (

@@ -77,7 +77,7 @@ export const BUILTIN_LLM_PROVIDERS: BuiltinProviderCatalogEntry[] = [
     id: "quotacheap",
     label: "QuotaCheap",
     runtimeProvider: "openai-compatible",
-    defaultBaseUrl: "https://api.quotacheap.com/v1",
+    defaultBaseUrl: "https://api.quota.cheap/v1",
     defaultApiKeyEnv: "QUOTACHEAP_API_KEY",
     authModes: ["api-key"],
     defaultModel: "gpt-4o-mini",
