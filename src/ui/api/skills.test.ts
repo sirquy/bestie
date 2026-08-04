@@ -133,7 +133,7 @@ test("installUiSkillFromLibrary installs verified remote skills only when policy
   try {
     await writeConfigWithRemoteRegistry(paths, { enabled: true, url: "https://skills.example.test/registry.json", publicKey: keys.publicKey, signatureHeader: "x-bestie-signature" });
     await testUiSkillRemoteRegistry({ confirm: true, paths, fetchImpl: async () => new Response(payload, { status: 200, headers: { "x-bestie-signature": signature } }) });
-    await assert.rejects(() => installUiSkillFromLibrary({ name: "remote-test-skill", sourceId: "remote-official-test", confirm: true, paths }), /disabled by policy/);
+    await assert.rejects(() => installUiSkillFromLibrary({ name: "remote-test-skill", sourceId: "remote-official-test", confirm: true, paths }), /chưa cho phép/i);
 
     await writeConfigWithRemoteRegistry(paths, { enabled: false, url: "https://skills.example.test/registry.json", publicKey: keys.publicKey, signatureHeader: "x-bestie-signature", installPolicy: "ask" });
     const disabledLibrary = await getUiSkillLibrary(paths);

@@ -242,8 +242,8 @@ export async function installUiSkillFromLibrary(options: UiSkillInstallOptions):
   const paths = options.paths ?? getRuntimePaths();
   const { skill, source } = await resolveSkillInstallSource(paths, options.name, options.sourceId);
   const remoteOfficial = await getConfiguredRemoteRegistry(paths);
-  if (remoteOfficial.enabled !== true || remoteOfficial.installPolicy !== "ask") throw new Error("Remote skill install is disabled by policy.");
-  if (source.verification.status !== "verified") throw new Error("Remote skill install requires a verified registry.");
+  if (remoteOfficial.enabled !== true || remoteOfficial.installPolicy !== "ask") throw new Error("Chưa thể cài kỹ năng từ thư viện từ xa vì cài đặt hiện tại chưa cho phép. Hãy bật thư viện kỹ năng từ xa và chọn chế độ hỏi trước khi cài.");
+  if (source.verification.status !== "verified") throw new Error("Chưa thể cài kỹ năng vì thư viện từ xa chưa được xác minh. Hãy kiểm tra lại thư viện kỹ năng từ xa rồi thử lại.");
   const previousContent = await readSkillContentIfExists(paths, skill.name);
   if (previousContent !== undefined) await backupSkill(paths, skill.name);
   const previousManifest = await readSkillManifest(paths, skill.name);
@@ -421,7 +421,7 @@ async function toLibraryItem(skill: CuratedSkillTemplate, source: SkillRegistryS
     sourceName: source.name,
     readOnly: !installable,
     installable,
-    installBlockedReason: installable ? undefined : "Remote registry skills require an enabled verified registry and skills.registry.remoteOfficial.installPolicy=ask before install.",
+    installBlockedReason: installable ? undefined : "Chưa thể cài kỹ năng vì thư viện từ xa chưa được xác minh hoặc chưa được bật cài đặt. Hãy kiểm tra lại thư viện kỹ năng từ xa rồi thử lại.",
     verificationStatus: source.verification.status,
     verificationMethod: source.verification.method,
     cache: source.cache,
