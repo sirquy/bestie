@@ -28,7 +28,7 @@ The local MVP foundation is implemented and includes:
 
 - Terminal chat with editable character prompt loading.
 - Local Web UI built with Vite/React, served by `bestie ui`, with responsive layout, PWA install support, modal confirmations, toast notifications, and update banner.
-- Provider setup and tests for OpenAI/ChatGPT, Anthropic Claude, OpenAI-compatible providers, Groq, OpenRouter, QuotaCheap, Ollama, and native Gemini API-key mode.
+- Provider setup and tests for Codex CLI local middleware, OpenAI/ChatGPT, Anthropic Claude, OpenAI-compatible providers, Groq, OpenRouter, QuotaCheap, Ollama, and native Gemini API-key mode.
 - Provider model refs, fallback order, diagnostics, and default LLM timeout of `300000ms`.
 - Local SQLite memory, pending approvals, pause/resume, hygiene/governance helpers, and knowledge graph UI.
 - Telegram and Zalo polling runtimes, shared attachment pipeline, Telegram voice helpers, and cron schedules.
@@ -47,7 +47,7 @@ Still intentionally later: hosted/SaaS mode, public marketplace, avatar/body lay
 
 - Node.js 24+
 - npm
-- At least one LLM provider API key for cloud chat, or a local Ollama setup
+- At least one LLM provider API key for cloud chat, a local Ollama setup, or a logged-in Codex CLI install
 - Optional: Telegram bot token, Zalo credentials, `ffmpeg`, and media provider keys for channel/media features
 
 ## Quickstart
@@ -184,9 +184,9 @@ Example provider config:
 }
 ```
 
-Model refs use `provider/model`. Profiles hold endpoint and auth metadata; secrets live in `.env` through `apiKeyEnv`. HTTP providers store `baseUrl`; native Gemini API-key profiles intentionally omit `baseUrl`; local Ollama profiles use `mode: "local"` and do not need an API key.
+Model refs use `provider/model`. Profiles hold endpoint and auth metadata; secrets live in `.env` through `apiKeyEnv`. HTTP providers store `baseUrl`; native Gemini API-key profiles intentionally omit `baseUrl`; local Ollama profiles use `mode: "local"` and do not need an API key. Codex CLI profiles use `provider: "codex-cli"`, `mode: "local"`, no `baseUrl`, and reuse the user's Codex CLI login/config as middleware.
 
-Run `bestie llm providers` to list supported providers, `bestie llm models --provider gemini` to inspect built-in refs, `bestie llm setup` to configure a provider, `bestie llm test --model provider/model` to test without switching primary, and `bestie llm fallbacks list|add|remove` to manage fallback order.
+Run `bestie llm providers` to list supported providers, `bestie llm models --provider gemini` to inspect built-in refs, `bestie llm setup --provider codex-cli --set-default` to route Bestie through Codex CLI, `bestie llm setup` to configure another provider, `bestie llm test --model provider/model` to test without switching primary, and `bestie llm fallbacks list|add|remove` to manage fallback order.
 
 See `docs/CONFIG_SPEC.md` for full config details, including `llm.image`, `workspace.externalPaths`, `internalTools.exec.timeoutMs`, `skills.registry`, channels, MCP, transcription, and speech.
 

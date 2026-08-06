@@ -240,7 +240,7 @@ export async function setupUiProvider(options: UiProviderSetupOptions): Promise<
         [profileId]: {
           provider: catalog.runtimeProvider,
           mode,
-          ...(catalog.runtimeProvider === "gemini" || mode === "local" ? {} : { baseUrl: (options.baseUrl?.trim() || catalog.defaultBaseUrl).replace(/\/+$/, "") }),
+          ...(catalog.runtimeProvider === "codex-cli" || catalog.runtimeProvider === "gemini" ? {} : { baseUrl: (options.baseUrl?.trim() || requireProviderBaseUrl(catalog.defaultBaseUrl)).replace(/\/+$/, "") }),
           ...(apiKeyEnv === undefined ? {} : { apiKeyEnv }),
         },
       },
@@ -268,4 +268,11 @@ function redactProviderTestResult(result: ProviderTestResult): ProviderTestResul
     ...result,
     ...(result.message === undefined ? {} : { message: result.message.slice(0, 500) }),
   };
+}
+
+function requireProviderBaseUrl(baseUrl: string | undefined): string {
+  if (!baseUrl) {
+    throw new Error("Provider base URL is required for this provider.");
+  }
+  return baseUrl;
 }

@@ -455,6 +455,31 @@ test("runLlmCommand sets up Groq with OpenAI-compatible runtime provider", async
   }
 });
 
+
+test("runLlmCommand sets up Codex CLI as a local provider", async () => {
+  const paths = await createConfiguredTempPaths();
+
+  try {
+    await runLlmCommand({
+      argv: ["node", "bestie", "llm", "setup", "--provider", "codex-cli", "--set-default"],
+      paths,
+      questioner: createQuestioner(),
+      writeLine: () => undefined,
+    });
+
+    const config = JSON.parse(await readFile(paths.configPath, "utf8")) as AppConfig;
+    const env = await readFile(paths.envPath, "utf8");
+
+    assert.equal(config.llm.primary, "codex-cli/default");
+    assert.equal(config.llm.authProfile, "codex-cli:local");
+    assert.deepEqual(config.llm.profiles["codex-cli:local"], { provider: "codex-cli", mode: "local" });
+    assert.deepEqual(config.llm.modelCatalog["codex-cli/default"], { profile: "codex-cli:local" });
+    assert.equal(env.trim(), 'EXISTING="keep"');
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
 test("runLlmCommand sets up OpenRouter with namespaced model refs", async () => {
   const paths = await createConfiguredTempPaths();
 

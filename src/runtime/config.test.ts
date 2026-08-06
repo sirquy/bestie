@@ -59,6 +59,46 @@ test("validateConfig accepts and validates agent.timeZone", () => {
   );
 });
 
+
+test("validateConfig accepts Codex CLI local provider without baseUrl or apiKeyEnv", () => {
+  const config = validateConfig({
+    ...validConfig,
+    llm: {
+      primary: "codex-cli/default",
+      authProfile: "codex-cli:local",
+      profiles: {
+        "codex-cli:local": { provider: "codex-cli", mode: "local" },
+      },
+      modelCatalog: {
+        "codex-cli/default": { profile: "codex-cli:local" },
+      },
+    },
+  });
+
+  assert.equal(config.llm.profiles["codex-cli:local"]?.provider, "codex-cli");
+  assert.equal(config.llm.profiles["codex-cli:local"]?.baseUrl, undefined);
+  assert.equal(config.llm.profiles["codex-cli:local"]?.apiKeyEnv, undefined);
+});
+
+test("validateConfig still requires baseUrl for OpenAI-compatible local providers", () => {
+  assert.throws(
+    () => validateConfig({
+      ...validConfig,
+      llm: {
+        primary: "ollama/llama3.1",
+        authProfile: "ollama:local",
+        profiles: {
+          "ollama:local": { provider: "openai-compatible", mode: "local" },
+        },
+        modelCatalog: {
+          "ollama/llama3.1": { profile: "ollama:local" },
+        },
+      },
+    }),
+    /baseUrl is required/,
+  );
+});
+
 test("validateConfig keeps llm.timeoutMs optional for existing configs", () => {
   const config = validateConfig({
     version: 2,

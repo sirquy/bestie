@@ -11,7 +11,7 @@ export interface BuiltinProviderCatalogEntry {
   id: string;
   label: string;
   runtimeProvider: string;
-  defaultBaseUrl: string;
+  defaultBaseUrl?: string;
   defaultApiKeyEnv?: string;
   authModes: LlmAuthMode[];
   defaultModel: string;
@@ -19,6 +19,14 @@ export interface BuiltinProviderCatalogEntry {
 }
 
 export const BUILTIN_LLM_PROVIDERS: BuiltinProviderCatalogEntry[] = [
+  {
+    id: "codex-cli",
+    label: "Codex CLI",
+    runtimeProvider: "codex-cli",
+    authModes: ["local"],
+    defaultModel: "default",
+    models: [{ id: "default", label: "Codex CLI default" }],
+  },
   {
     id: "anthropic",
     label: "Anthropic",

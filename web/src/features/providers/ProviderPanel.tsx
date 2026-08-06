@@ -44,8 +44,11 @@ export function ProviderPanel({ data, loading, onData, onLoading }: ProviderPane
   const modelOptions = data?.models ?? [];
   const effectiveSelectedModel = selectedModelRef || data?.primary?.modelRef || modelOptions[0]?.modelRef || "";
   const activePreset = useMemo(() => providerPresets.find((preset) => preset.provider === form.provider) ?? providerPresets[0], [form.provider]);
-  const isGemini = form.provider.trim().toLowerCase() === "gemini";
-  const isLocal = form.mode === "local" || form.provider.trim().toLowerCase() === "ollama";
+  const normalizedProvider = form.provider.trim().toLowerCase();
+  const isGemini = normalizedProvider === "gemini";
+  const isCodexCli = normalizedProvider === "codex-cli";
+  const hidesBaseUrl = isGemini || isCodexCli;
+  const isLocal = form.mode === "local" || normalizedProvider === "ollama" || isCodexCli;
 
   async function runAction(action: () => Promise<ProviderSummary>): Promise<void> {
     setActionError(null);
@@ -102,7 +105,7 @@ export function ProviderPanel({ data, loading, onData, onLoading }: ProviderPane
         provider: form.provider.trim(),
         mode: form.mode,
         model: form.model.trim(),
-        ...(isGemini || !form.baseUrl.trim() ? {} : { baseUrl: form.baseUrl.trim() }),
+        ...(hidesBaseUrl || !form.baseUrl.trim() ? {} : { baseUrl: form.baseUrl.trim() }),
         ...(isLocal || !form.apiKeyEnv.trim() ? {} : { apiKeyEnv: form.apiKeyEnv.trim() }),
         ...(isLocal || !form.secret ? {} : { secret: form.secret }),
         setDefault: form.setDefault,

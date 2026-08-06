@@ -492,7 +492,7 @@ function requireLlmProfiles(value: unknown): Record<string, LlmProfileConfig> {
     }
     const provider = requireString(profile.provider, `${path}.provider`);
     const baseUrl = profile.baseUrl === undefined ? undefined : requireString(profile.baseUrl, `${path}.baseUrl`);
-    if (provider !== "gemini" && !baseUrl) {
+    if (provider !== "codex-cli" && provider !== "gemini" && !baseUrl) {
       throw new InvalidConfigError(`${path}.baseUrl is required for ${provider} profiles.`);
     }
     result[profileId] = {
