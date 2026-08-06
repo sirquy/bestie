@@ -46,9 +46,10 @@ export function ProviderPanel({ data, loading, onData, onLoading }: ProviderPane
   const activePreset = useMemo(() => providerPresets.find((preset) => preset.provider === form.provider) ?? providerPresets[0], [form.provider]);
   const normalizedProvider = form.provider.trim().toLowerCase();
   const isGemini = normalizedProvider === "gemini";
+  const isClaudeCli = normalizedProvider === "claude-cli";
   const isCodexCli = normalizedProvider === "codex-cli";
-  const hidesBaseUrl = isGemini || isCodexCli;
-  const isLocal = form.mode === "local" || normalizedProvider === "ollama" || isCodexCli;
+  const hidesBaseUrl = isGemini || isClaudeCli || isCodexCli;
+  const isLocal = form.mode === "local" || normalizedProvider === "ollama" || isClaudeCli || isCodexCli;
 
   async function runAction(action: () => Promise<ProviderSummary>): Promise<void> {
     setActionError(null);

@@ -240,7 +240,7 @@ export async function setupUiProvider(options: UiProviderSetupOptions): Promise<
         [profileId]: {
           provider: catalog.runtimeProvider,
           mode,
-          ...(catalog.runtimeProvider === "codex-cli" || catalog.runtimeProvider === "gemini" ? {} : { baseUrl: (options.baseUrl?.trim() || requireProviderBaseUrl(catalog.defaultBaseUrl)).replace(/\/+$/, "") }),
+          ...(catalog.runtimeProvider === "claude-cli" || catalog.runtimeProvider === "codex-cli" || catalog.runtimeProvider === "gemini" ? {} : { baseUrl: (options.baseUrl?.trim() || requireProviderBaseUrl(catalog.defaultBaseUrl)).replace(/\/+$/, "") }),
           ...(apiKeyEnv === undefined ? {} : { apiKeyEnv }),
         },
       },

@@ -16,7 +16,7 @@ import { badge, bold, keyValue, title } from "../ui.js";
 type AskLine = (question: string) => Promise<string>;
 type AskHiddenLine = (question: string) => Promise<string>;
 
-type ProviderId = "codex-cli" | "anthropic" | "openai" | "groq" | "openrouter" | "custom-openai" | "custom-anthropic" | "ollama" | "gemini" | "antigravity";
+type ProviderId = "claude-cli" | "codex-cli" | "anthropic" | "openai" | "groq" | "openrouter" | "custom-openai" | "custom-anthropic" | "ollama" | "gemini" | "antigravity";
 type AuthMode = LlmAuthMode;
 
 interface Questioner {
@@ -426,7 +426,7 @@ async function collectLlmSetupSelection(questioner: Pick<Questioner, "ask" | "as
     throw new UserFacingError(`${catalog.label} OAuth setup is not implemented yet. Choose an API-key or local provider for now.`, "UnsupportedLlmAuthModeError");
   }
 
-  const baseUrl = catalog.runtimeProvider === "codex-cli" || catalog.runtimeProvider === "gemini" ? undefined : await askNonEmpty(questioner.ask, "Base URL", catalog.defaultBaseUrl);
+  const baseUrl = catalog.runtimeProvider === "claude-cli" || catalog.runtimeProvider === "codex-cli" || catalog.runtimeProvider === "gemini" ? undefined : await askNonEmpty(questioner.ask, "Base URL", catalog.defaultBaseUrl);
   const model = await askModel(questioner, catalog.models, catalog.defaultModel);
   const modelRef = buildModelRef(catalog.id, model);
 
@@ -526,6 +526,7 @@ function getProvider(id: ProviderId): ProviderChoice {
 }
 
 function providerAliases(id: ProviderId): string[] {
+  if (id === "claude-cli") return ["claude", "claudecode", "claude-code"];
   if (id === "codex-cli") return ["codex", "codexcli"];
   if (id === "anthropic") return ["claude"];
   if (id === "openai") return ["chatgpt", "openai", "chatgptopenai"];
@@ -556,7 +557,7 @@ function hasFlag(argv: string[], flag: string): boolean {
 }
 
 function printLlmHelp(writeLine: (message: string) => void): void {
-  writeLine(`Usage:\n  bestie llm setup [--provider codex-cli|anthropic|openai|groq|openrouter|custom-openai|custom-anthropic|ollama|gemini|antigravity] [--set-default]\n  bestie llm providers\n  bestie llm models --provider <provider>\n  bestie llm models add --model <provider/model> [--profile <profile>]\n  bestie llm models remove --model <provider/model>\n  bestie llm test --model <provider/model>\n  bestie llm profiles list|show|remove [--profile <profile>]\n  bestie llm fallbacks list|add|remove [--model <provider/model>]\n\nConfigure or inspect LLM provider profiles in ~/.bestie/config.json and ~/.bestie/.env. Existing primary model stays active unless --set-default is passed.\n\nProviders:\n  Codex CLI: Local\n  Anthropic: API key\n  ChatGPT/OpenAI: API key\n  Groq: API key\n  OpenRouter: API key\n  Custom OpenAI-Compatible: API key\n  Custom Anthropic-Compatible: API key\n  Ollama: Local\n  Gemini: API key\n  Antigravity: OAuth (not implemented yet)`);
+  writeLine(`Usage:\n  bestie llm setup [--provider claude-cli|codex-cli|anthropic|openai|groq|openrouter|custom-openai|custom-anthropic|ollama|gemini|antigravity] [--set-default]\n  bestie llm providers\n  bestie llm models --provider <provider>\n  bestie llm models add --model <provider/model> [--profile <profile>]\n  bestie llm models remove --model <provider/model>\n  bestie llm test --model <provider/model>\n  bestie llm profiles list|show|remove [--profile <profile>]\n  bestie llm fallbacks list|add|remove [--model <provider/model>]\n\nConfigure or inspect LLM provider profiles in ~/.bestie/config.json and ~/.bestie/.env. Existing primary model stays active unless --set-default is passed.\n\nProviders:\n  Claude CLI: Local\n  Codex CLI: Local\n  Anthropic: API key\n  ChatGPT/OpenAI: API key\n  Groq: API key\n  OpenRouter: API key\n  Custom OpenAI-Compatible: API key\n  Custom Anthropic-Compatible: API key\n  Ollama: Local\n  Gemini: API key\n  Antigravity: OAuth (not implemented yet)`);
 }
 
 function printLlmFallbacksHelp(writeLine: (message: string) => void): void {

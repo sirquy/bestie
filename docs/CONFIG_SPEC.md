@@ -78,6 +78,10 @@ Phase Now config started with non-secret `agent` and `llm` fields. The current l
         "provider": "codex-cli",
         "mode": "local"
       },
+      "claude-cli:local": {
+        "provider": "claude-cli",
+        "mode": "local"
+      },
       "gemini:api-key": {
         "provider": "gemini",
         "mode": "api-key",
@@ -103,6 +107,7 @@ Phase Now config started with non-secret `agent` and `llm` fields. The current l
       "anthropic/claude-sonnet-4-5": { "profile": "anthropic:api-key" },
       "ollama/llama3.1": { "profile": "ollama:local" },
       "codex-cli/default": { "profile": "codex-cli:local" },
+      "claude-cli/default": { "profile": "claude-cli:local" },
       "gemini/gemini-2.5-flash": { "profile": "gemini:api-key" },
       "quotacheap/gpt-4o-mini": { "profile": "quotacheap:api-key" }
     },
@@ -244,15 +249,15 @@ LLM config rules:
 
 - `llm.primary` and `llm.fallbacks[]` are canonical `provider/model` refs. Bestie splits on the first `/`, so model IDs may contain additional slashes.
 - `llm.image.primary` and `llm.image.fallbacks[]` choose the model refs used by `internal.image_generate`. These refs must exist in `llm.modelCatalog`; their profiles must be `openai` or `openai-compatible` with `baseUrl` and `apiKeyEnv`.
-- `llm.profiles` stores non-secret endpoint/auth metadata. `mode: "api-key"` and `mode: "oauth"` require `apiKeyEnv`; `mode: "local"` does not load a secret. HTTP-backed local providers such as Ollama still require `baseUrl`; `codex-cli` and native Gemini intentionally omit `baseUrl`.
+- `llm.profiles` stores non-secret endpoint/auth metadata. `mode: "api-key"` and `mode: "oauth"` require `apiKeyEnv`; `mode: "local"` does not load a secret. HTTP-backed local providers such as Ollama still require `baseUrl`; `claude-cli`, `codex-cli`, and native Gemini intentionally omit `baseUrl`.
 - `llm.modelCatalog[modelRef].profile` chooses which auth profile backs a model ref. When absent in future generated config, runtime falls back to `llm.authProfile`; current validation expects an explicit catalog object.
-- Runtime provider labels are `openai`/`chatgpt` for OpenAI Chat Completions, `anthropic`/`claude` for Anthropic Messages, `gemini` for native Google Gemini through `@google/genai`, `codex-cli` for local Codex CLI middleware via `codex exec`, and `openai-compatible` for custom OpenAI-compatible endpoints or Ollama.
+- Runtime provider labels are `openai`/`chatgpt` for OpenAI Chat Completions, `anthropic`/`claude` for Anthropic Messages, `gemini` for native Google Gemini through `@google/genai`, `claude-cli` for local Claude CLI middleware via `claude --print`, `codex-cli` for local Codex CLI middleware via `codex exec`, and `openai-compatible` for custom OpenAI-compatible endpoints or Ollama.
 - Fallbacks are model refs, not repeated endpoint objects. Put endpoint/auth details in profiles and map model refs through `modelCatalog`.
 - `generation.image` remains backward-compatible for older configs. When `llm.image` is present, `generation.image.endpointPath` and `generation.image.timeoutMs` may still override the default image endpoint/timeout, but provider, model, base URL, and API key come from `llm.image` refs.
 
 Memory config controls local memory policy only. The SQLite database path is derived from runtime paths as `~/.bestie/data/memory.sqlite`; optional Zep remains later work and is not configured by the current schema.
 
-Use `bestie llm providers` to list supported providers with adapter capabilities and `bestie llm models --provider <provider>` to inspect built-in model refs. Use `bestie llm setup` to configure this block and merge API-key secrets into `.env`. The command adds or updates a profile and model catalog entry; it preserves the current `llm.primary` unless `--set-default` is passed. Use `bestie llm models add --model provider/model --profile provider:mode` and `bestie llm models remove --model provider/model` to manage configured custom model refs; omitted `--profile` defaults to `llm.authProfile`. Use `bestie llm test --model provider/model` to test a configured model without switching primary. Use `bestie llm profiles list`, `bestie llm profiles show --profile provider:mode`, and `bestie llm profiles remove --profile provider:mode` to inspect or remove inactive profiles; removing a profile also removes model catalog entries that point to it. Use `bestie llm fallbacks list`, `bestie llm fallbacks add --model provider/model`, and `bestie llm fallbacks remove --model provider/model` to manage fallback order; fallback refs must already exist in `llm.modelCatalog`. The command supports Codex CLI local middleware, Anthropic, ChatGPT/OpenAI, Groq, OpenRouter, QuotaCheap, Custom OpenAI-compatible, Custom Anthropic-compatible, local Ollama, Gemini API key, and Antigravity as a future OAuth provider. OAuth setup fails clearly until each provider has a real browser/device flow; Bestie does not scaffold placeholder OAuth tokens.
+Use `bestie llm providers` to list supported providers with adapter capabilities and `bestie llm models --provider <provider>` to inspect built-in model refs. Use `bestie llm setup` to configure this block and merge API-key secrets into `.env`. The command adds or updates a profile and model catalog entry; it preserves the current `llm.primary` unless `--set-default` is passed. Use `bestie llm models add --model provider/model --profile provider:mode` and `bestie llm models remove --model provider/model` to manage configured custom model refs; omitted `--profile` defaults to `llm.authProfile`. Use `bestie llm test --model provider/model` to test a configured model without switching primary. Use `bestie llm profiles list`, `bestie llm profiles show --profile provider:mode`, and `bestie llm profiles remove --profile provider:mode` to inspect or remove inactive profiles; removing a profile also removes model catalog entries that point to it. Use `bestie llm fallbacks list`, `bestie llm fallbacks add --model provider/model`, and `bestie llm fallbacks remove --model provider/model` to manage fallback order; fallback refs must already exist in `llm.modelCatalog`. The command supports Claude CLI local middleware, Codex CLI local middleware, Anthropic, ChatGPT/OpenAI, Groq, OpenRouter, QuotaCheap, Custom OpenAI-compatible, Custom Anthropic-compatible, local Ollama, Gemini API key, and Antigravity as a future OAuth provider. OAuth setup fails clearly until each provider has a real browser/device flow; Bestie does not scaffold placeholder OAuth tokens.
 
 For local audio transcription, replace the `transcription` block with a `local-whisper` provider. The command is executed directly without a shell; `args` must include `{audioPath}` and may include `{modelPath}`. The command should print the transcript to stdout.
 

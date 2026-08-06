@@ -45,7 +45,7 @@ export interface ProviderTestResult {
   statusCode?: number;
 }
 
-export type ProviderPresetId = "codex-cli" | "openai" | "anthropic" | "groq" | "openrouter" | "quotacheap" | "gemini" | "ollama";
+export type ProviderPresetId = "claude-cli" | "codex-cli" | "openai" | "anthropic" | "groq" | "openrouter" | "quotacheap" | "gemini" | "ollama";
 
 export interface ProviderPreset {
   id: ProviderPresetId;
@@ -59,7 +59,8 @@ export interface ProviderPreset {
 }
 
 export const providerPresets: ProviderPreset[] = [
-  { id: "codex-cli", label: "Codex CLI", provider: "codex-cli", mode: "local", model: "default", note: "Ch?y qua Codex CLI ?? ??ng nh?p tr?n m?y n?y; kh?ng c?n URL ho?c API key trong Bestie." },
+  { id: "claude-cli", label: "Claude CLI", provider: "claude-cli", mode: "local", model: "default", note: "Runs through the logged-in Claude CLI on this machine; Bestie does not need a URL or API key." },
+  { id: "codex-cli", label: "Codex CLI", provider: "codex-cli", mode: "local", model: "default", note: "Runs through the logged-in Codex CLI on this machine; Bestie does not need a URL or API key." },
   { id: "openai", label: "ChatGPT", provider: "openai", mode: "api-key", model: "gpt-4.1-mini", baseUrl: "https://api.openai.com/v1", apiKeyEnv: "OPENAI_API_KEY", note: "Dịch vụ tương thích OpenAI, dùng API key." },
   { id: "anthropic", label: "Claude", provider: "anthropic", mode: "api-key", model: "claude-3-5-haiku-latest", baseUrl: "https://api.anthropic.com", apiKeyEnv: "ANTHROPIC_API_KEY", note: "Dịch vụ Claude chính thức từ Anthropic." },
   { id: "groq", label: "Groq", provider: "groq", mode: "api-key", model: "llama-3.3-70b-versatile", baseUrl: "https://api.groq.com/openai/v1", apiKeyEnv: "GROQ_API_KEY", note: "Dịch vụ suy luận nhanh, tương thích OpenAI." },

@@ -28,6 +28,18 @@ export const BUILTIN_LLM_PROVIDERS: BuiltinProviderCatalogEntry[] = [
     models: [{ id: "default", label: "Codex CLI default" }],
   },
   {
+    id: "claude-cli",
+    label: "Claude CLI",
+    runtimeProvider: "claude-cli",
+    authModes: ["local"],
+    defaultModel: "default",
+    models: [
+      { id: "default", label: "Claude CLI default" },
+      { id: "sonnet", label: "Claude Sonnet alias" },
+      { id: "opus", label: "Claude Opus alias" },
+    ],
+  },
+  {
     id: "anthropic",
     label: "Anthropic",
     runtimeProvider: "anthropic",

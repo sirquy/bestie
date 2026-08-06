@@ -60,6 +60,26 @@ test("validateConfig accepts and validates agent.timeZone", () => {
 });
 
 
+test("validateConfig accepts Claude CLI local provider without baseUrl or apiKeyEnv", () => {
+  const config = validateConfig({
+    ...validConfig,
+    llm: {
+      primary: "claude-cli/default",
+      authProfile: "claude-cli:local",
+      profiles: {
+        "claude-cli:local": { provider: "claude-cli", mode: "local" },
+      },
+      modelCatalog: {
+        "claude-cli/default": { profile: "claude-cli:local" },
+      },
+    },
+  });
+
+  assert.equal(config.llm.profiles["claude-cli:local"]?.provider, "claude-cli");
+  assert.equal(config.llm.profiles["claude-cli:local"]?.baseUrl, undefined);
+  assert.equal(config.llm.profiles["claude-cli:local"]?.apiKeyEnv, undefined);
+});
+
 test("validateConfig accepts Codex CLI local provider without baseUrl or apiKeyEnv", () => {
   const config = validateConfig({
     ...validConfig,
