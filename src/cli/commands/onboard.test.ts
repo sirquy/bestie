@@ -6,7 +6,7 @@ import test from "node:test";
 
 import { getDefaultAgentsMarkdown } from "../../character/agents-template.js";
 import { runOnboardCommand } from "./onboard.js";
-import type { AppConfig } from "../../runtime/config.js";
+import { DEFAULT_LLM_TIMEOUT_MS, type AppConfig } from "../../runtime/config.js";
 import { getRuntimePaths, type RuntimePaths } from "../../runtime/paths.js";
 
 test("runOnboardCommand writes local files and skips provider test when requested", async () => {
@@ -49,7 +49,7 @@ test("runOnboardCommand writes local files and skips provider test when requeste
     assert.equal(providerTestCalled, false);
     assert.equal(config.llm.primary, "openai/test-model");
     assert.equal(config.llm.profiles["openai:api-key"]?.baseUrl, "http://127.0.0.1:9/v1");
-    assert.equal(config.llm.timeoutMs, 60_000);
+    assert.equal(config.llm.timeoutMs, DEFAULT_LLM_TIMEOUT_MS);
     assert.equal(config.agent.language, "vi");
     assert.equal(config.agent.timeZone, "Asia/Bangkok");
     assert.equal(config.agent.toneIntensity, 7);

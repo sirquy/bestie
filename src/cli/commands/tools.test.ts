@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { access, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, rm, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import test from "node:test";
@@ -80,8 +80,11 @@ test("runToolsCommand dry-runs Telegram attachment cleanup", async () => {
     await mkdir(resolve(paths.workspaceDir, "media/inbound"), { recursive: true });
     await writeFile(voicePath, new Uint8Array([1, 2, 3]));
     await writeFile(photoPath, new Uint8Array([1, 2]));
+    const oldDate = new Date(Date.now() - 10_000);
+    await utimes(voicePath, oldDate, oldDate);
+    await utimes(photoPath, oldDate, oldDate);
 
-    await runToolsCommand({ argv: ["node", "bestie", "tools", "attachments", "cleanup", "--older-than", "0s", "--kinds", "voice,audio"], paths, writeLine: (line) => lines.push(line) });
+    await runToolsCommand({ argv: ["node", "bestie", "tools", "attachments", "cleanup", "--older-than", "1s", "--kinds", "voice,audio"], paths, writeLine: (line) => lines.push(line) });
 
     assert.match(lines.join("\n"), /Sẽ xóa 1 file attachment Telegram/);
     assert.match(lines.join("\n"), /Chỉ chạy thử/);
@@ -103,8 +106,11 @@ test("runToolsCommand deletes confirmed Telegram attachments", async () => {
     await mkdir(resolve(paths.workspaceDir, "media/inbound"), { recursive: true });
     await writeFile(voicePath, new Uint8Array([1, 2, 3]));
     await writeFile(documentPath, new Uint8Array([1, 2]));
+    const oldDate = new Date(Date.now() - 10_000);
+    await utimes(voicePath, oldDate, oldDate);
+    await utimes(documentPath, oldDate, oldDate);
 
-    await runToolsCommand({ argv: ["node", "bestie", "tools", "attachments", "cleanup", "--older-than", "0s", "--kinds", "voice", "--confirm"], paths, writeLine: (line) => lines.push(line) });
+    await runToolsCommand({ argv: ["node", "bestie", "tools", "attachments", "cleanup", "--older-than", "1s", "--kinds", "voice", "--confirm"], paths, writeLine: (line) => lines.push(line) });
 
     assert.match(lines.join("\n"), /Đã xóa 1 file attachment Telegram/);
     await assert.rejects(() => access(voicePath));

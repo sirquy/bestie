@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import type { AppConfig } from "../runtime/config.js";
+import { DEFAULT_LLM_TIMEOUT_MS, type AppConfig } from "../runtime/config.js";
 import { resolvePrimaryLlmCandidate } from "./resolve-config.js";
 import { ProviderAuthError, ProviderFallbackError, ProviderNetworkError, ProviderRateLimitError, ProviderResponseError, ProviderTimeoutError } from "./errors.js";
 import { buildGeminiGenerateContentRequest } from "./adapters/gemini.js";
@@ -201,7 +201,7 @@ test("sendChatCompletion calls Gemini native SDK", async () => {
 
   assert.equal(content, "Chao tu Gemini");
   assert.deepEqual(calls, [
-    { apiKey: "secret", httpOptions: { timeout: 60000 } },
+    { apiKey: "secret", httpOptions: { timeout: DEFAULT_LLM_TIMEOUT_MS } },
     { model: "gemini-2.5-flash", contents: [{ role: "user", parts: [{ text: "Hi" }] }], config: { maxOutputTokens: 32 } },
   ]);
 });
