@@ -60,6 +60,26 @@ test("validateConfig accepts and validates agent.timeZone", () => {
 });
 
 
+test("validateConfig accepts Gemini CLI local provider without baseUrl or apiKeyEnv", () => {
+  const config = validateConfig({
+    ...validConfig,
+    llm: {
+      primary: "gemini-cli/default",
+      authProfile: "gemini-cli:local",
+      profiles: {
+        "gemini-cli:local": { provider: "gemini-cli", mode: "local" },
+      },
+      modelCatalog: {
+        "gemini-cli/default": { profile: "gemini-cli:local" },
+      },
+    },
+  });
+
+  assert.equal(config.llm.profiles["gemini-cli:local"]?.provider, "gemini-cli");
+  assert.equal(config.llm.profiles["gemini-cli:local"]?.baseUrl, undefined);
+  assert.equal(config.llm.profiles["gemini-cli:local"]?.apiKeyEnv, undefined);
+});
+
 test("validateConfig accepts Claude CLI local provider without baseUrl or apiKeyEnv", () => {
   const config = validateConfig({
     ...validConfig,

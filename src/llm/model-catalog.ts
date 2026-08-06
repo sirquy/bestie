@@ -40,6 +40,18 @@ export const BUILTIN_LLM_PROVIDERS: BuiltinProviderCatalogEntry[] = [
     ],
   },
   {
+    id: "gemini-cli",
+    label: "Gemini CLI",
+    runtimeProvider: "gemini-cli",
+    authModes: ["local"],
+    defaultModel: "default",
+    models: [
+      { id: "default", label: "Gemini CLI default" },
+      { id: "gemini-2.5-pro", label: "Gemini 2.5 Pro" },
+      { id: "gemini-2.5-flash", label: "Gemini 2.5 Flash" },
+    ],
+  },
+  {
     id: "anthropic",
     label: "Anthropic",
     runtimeProvider: "anthropic",

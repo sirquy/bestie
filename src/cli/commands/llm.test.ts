@@ -456,6 +456,30 @@ test("runLlmCommand sets up Groq with OpenAI-compatible runtime provider", async
 });
 
 
+test("runLlmCommand sets up Gemini CLI as a local provider", async () => {
+  const paths = await createConfiguredTempPaths();
+
+  try {
+    await runLlmCommand({
+      argv: ["node", "bestie", "llm", "setup", "--provider", "gemini-cli", "--set-default"],
+      paths,
+      questioner: createQuestioner(),
+      writeLine: () => undefined,
+    });
+
+    const config = JSON.parse(await readFile(paths.configPath, "utf8")) as AppConfig;
+    const env = await readFile(paths.envPath, "utf8");
+
+    assert.equal(config.llm.primary, "gemini-cli/default");
+    assert.equal(config.llm.authProfile, "gemini-cli:local");
+    assert.deepEqual(config.llm.profiles["gemini-cli:local"], { provider: "gemini-cli", mode: "local" });
+    assert.deepEqual(config.llm.modelCatalog["gemini-cli/default"], { profile: "gemini-cli:local" });
+    assert.equal(env.trim(), 'EXISTING="keep"');
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
 test("runLlmCommand sets up Claude CLI as a local provider", async () => {
   const paths = await createConfiguredTempPaths();
 

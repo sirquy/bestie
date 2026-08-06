@@ -45,7 +45,7 @@ export interface ProviderTestResult {
   statusCode?: number;
 }
 
-export type ProviderPresetId = "claude-cli" | "codex-cli" | "openai" | "anthropic" | "groq" | "openrouter" | "quotacheap" | "gemini" | "ollama";
+export type ProviderPresetId = "gemini-cli" | "claude-cli" | "codex-cli" | "openai" | "anthropic" | "groq" | "openrouter" | "quotacheap" | "gemini" | "ollama";
 
 export interface ProviderPreset {
   id: ProviderPresetId;
@@ -59,6 +59,7 @@ export interface ProviderPreset {
 }
 
 export const providerPresets: ProviderPreset[] = [
+  { id: "gemini-cli", label: "Gemini CLI", provider: "gemini-cli", mode: "local", model: "default", note: "Runs through the logged-in Gemini CLI on this machine; Bestie does not need a URL or API key." },
   { id: "claude-cli", label: "Claude CLI", provider: "claude-cli", mode: "local", model: "default", note: "Runs through the logged-in Claude CLI on this machine; Bestie does not need a URL or API key." },
   { id: "codex-cli", label: "Codex CLI", provider: "codex-cli", mode: "local", model: "default", note: "Runs through the logged-in Codex CLI on this machine; Bestie does not need a URL or API key." },
   { id: "openai", label: "ChatGPT", provider: "openai", mode: "api-key", model: "gpt-4.1-mini", baseUrl: "https://api.openai.com/v1", apiKeyEnv: "OPENAI_API_KEY", note: "Dịch vụ tương thích OpenAI, dùng API key." },
