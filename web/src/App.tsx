@@ -12,6 +12,7 @@ import {
   HeartPulse,
   MessageSquareText,
   PlugZap,
+  Route,
   Settings,
   ShieldCheck,
   TerminalSquare,
@@ -55,7 +56,8 @@ import bestieAppIcon from "@/assets/bestie-app-icon.png";
 type PanelId =
   | "chat"
   | "doctor"
-  | "providers"
+  | "models"
+  | "modelProviders"
   | "character"
   | "memory"
   | "knowledge"
@@ -80,7 +82,8 @@ interface PanelDefinition {
 const panels: PanelDefinition[] = [
   { id: "chat", title: "Trò chuyện", nav: "Trò chuyện", route: "/chat", description: "Trò chuyện với Bestie và tiếp tục các cuộc hội thoại trước đó.", icon: MessageSquareText, endpoint: "/api/chat/sessions" },
   { id: "doctor", title: "Kiểm tra", nav: "Kiểm tra", route: "/doctor", description: "Kiểm tra trạng thái thiết lập và sửa lỗi phổ biến an toàn.", icon: HeartPulse, endpoint: "/api/doctor" },
-  { id: "providers", title: "Nhà cung cấp AI", nav: "Nhà cung cấp", route: "/providers", description: "Chọn dịch vụ AI và cấu hình phương án dự phòng.", icon: PlugZap, endpoint: "/api/providers" },
+  { id: "models", title: "Quản lý model", nav: "Models", route: "/models", description: "Chọn model chính, kiểm tra model và quản lý fallback.", icon: Route, endpoint: "/api/providers" },
+  { id: "modelProviders", title: "Quản lý provider", nav: "Providers", route: "/models/providers", description: "Thêm, cấu hình và kiểm tra các provider AI.", icon: PlugZap, endpoint: "/api/providers" },
   { id: "character", title: "Tính cách", nav: "Tính cách", route: "/character", description: "Điều chỉnh tính cách và phong cách trò chuyện của Bestie.", icon: Bot, endpoint: "/api/character" },
   { id: "memory", title: "Bộ nhớ", nav: "Bộ nhớ", route: "/memory", description: "Xem thông tin đã ghi nhớ và các cập nhật đang chờ.", icon: Brain, endpoint: "/api/memory" },
   { id: "knowledge", title: "Bản đồ tri thức", nav: "Tri thức", route: "/knowledge", description: "Khám phá tri thức đã liên kết và dọn dẹp dữ liệu.", icon: GitBranch, endpoint: "/api/knowledge-graph" },
@@ -96,7 +99,10 @@ const panels: PanelDefinition[] = [
 const defaultPanel = panels[0];
 const panelsByRoute = new Map<string, PanelDefinition>(panels.map((panel) => [panel.route, panel]));
 const panelsById = new Map(panels.map((panel) => [panel.id, panel]));
-const legacyPanelIds = new Map(panels.map((panel) => [`${panel.id}-panel`, panel.id]));
+const legacyPanelIds = new Map<string, PanelId>([
+  ...panels.map((panel) => [`${panel.id}-panel`, panel.id] as const),
+  ["providers-panel", "modelProviders"],
+]);
 const SIDEBAR_COLLAPSED_KEY = "bestie.ui.sidebarCollapsed";
 const UPDATE_DISMISSED_VERSION_KEY = "bestie.ui.updateDismissedVersion";
 
@@ -120,6 +126,7 @@ function panelFromLocation(location: Location): PanelDefinition {
   const legacyHash = location.hash.startsWith("#") ? legacyPanelIds.get(location.hash.slice(1)) : undefined;
   if (legacyHash) return panelsById.get(legacyHash) ?? defaultPanel;
   const route = normalizeRoute(location.pathname);
+  if (route === "/providers") return panelsById.get("modelProviders") ?? defaultPanel;
   if (route.startsWith("/agents/")) return panelsById.get("agents") ?? defaultPanel;
   if (route.startsWith("/skills/")) return panelsById.get("skills") ?? defaultPanel;
   return panelsByRoute.get(route) ?? defaultPanel;
@@ -164,7 +171,7 @@ function App(): ReactElement {
   useEffect(() => {
     const panel = panelFromLocation(window.location);
     setActivePanel(panel.id);
-    if (window.location.hash || window.location.pathname === "/") {
+    if (window.location.hash || window.location.pathname === "/" || normalizeRoute(window.location.pathname) !== panel.route) {
       window.history.replaceState({ panelId: panel.id }, "", `${panel.route}${window.location.search}`);
     }
 
@@ -323,16 +330,17 @@ function App(): ReactElement {
                     onLoading={(loading) => setLoadingPanels((current) => ({ ...current, doctor: loading }))}
                   />
                 )
-              ) : selectedPanel.id === "providers" ? (
+              ) : selectedPanel.id === "models" || selectedPanel.id === "modelProviders" ? (
                 activeError ? <ProviderPanelError error={activeError} /> : (
                   <ProviderPanel
                     data={activeData as unknown as ProviderSummary | undefined}
                     loading={Boolean(loadingPanels[selectedPanel.id])}
+                    view={selectedPanel.id === "modelProviders" ? "providers" : "models"}
                     onData={(data) => {
-                      setPanelData((current) => ({ ...current, providers: data as unknown as JsonRecord }));
-                      setPanelErrors((current) => ({ ...current, providers: undefined }));
+                      setPanelData((current) => ({ ...current, models: data as unknown as JsonRecord, modelProviders: data as unknown as JsonRecord }));
+                      setPanelErrors((current) => ({ ...current, models: undefined, modelProviders: undefined }));
                     }}
-                    onLoading={(loading) => setLoadingPanels((current) => ({ ...current, providers: loading }))}
+                    onLoading={(loading) => setLoadingPanels((current) => ({ ...current, [selectedPanel.id]: loading }))}
                   />
                 )
               ) : selectedPanel.id === "character" ? (

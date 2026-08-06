@@ -15,9 +15,12 @@ import { ToastEffect } from "@/lib/toasts";
 import { confirmDialog } from "@/lib/dialogs";
 import { providerPresets, type ProviderCandidate, type ProviderModel, type ProviderPreset, type ProviderProfile, type ProviderSummary, type ProviderTestResult } from "./types";
 
+type ProviderPanelView = "models" | "providers";
+
 interface ProviderPanelProps {
   data?: ProviderSummary;
   loading: boolean;
+  view: ProviderPanelView;
   onData: (data: ProviderSummary) => void;
   onLoading: (loading: boolean) => void;
 }
@@ -32,15 +35,11 @@ interface ProviderFormState {
   setDefault: boolean;
 }
 
-type ProviderTab = "manage" | "setup" | "inventory";
-
-export function ProviderPanel({ data, loading, onData, onLoading }: ProviderPanelProps): ReactElement {
+export function ProviderPanel({ data, loading, view, onData, onLoading }: ProviderPanelProps): ReactElement {
   const [selectedModelRef, setSelectedModelRef] = useState("");
   const [testResult, setTestResult] = useState<ProviderTestResult | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [form, setForm] = useState<ProviderFormState>(() => presetToForm(providerPresets[0]));
-  const [activeTab, setActiveTab] = useState<ProviderTab>("manage");
-
   const modelOptions = data?.models ?? [];
   const effectiveSelectedModel = selectedModelRef || data?.primary?.modelRef || modelOptions[0]?.modelRef || "";
   const activePreset = useMemo(() => providerPresets.find((preset) => preset.provider === form.provider) ?? providerPresets[0], [form.provider]);
@@ -135,13 +134,7 @@ export function ProviderPanel({ data, loading, onData, onLoading }: ProviderPane
       {actionError ? <ToastEffect title="Không thể cập nhật mô hình AI" description={actionError} tone="error" onShown={() => setActionError(null)} /> : null}
       {testResult ? <ProviderTestNotice result={testResult} onShown={() => setTestResult(null)} /> : null}
 
-      <div className="flex flex-wrap gap-2 rounded-2xl border border-white/10 bg-background/35 p-2">
-        <Button variant={activeTab === "manage" ? "default" : "ghost"} onClick={() => setActiveTab("manage")}>Quản lý model</Button>
-        <Button variant={activeTab === "setup" ? "default" : "ghost"} onClick={() => setActiveTab("setup")}>Thêm provider</Button>
-        <Button variant={activeTab === "inventory" ? "default" : "ghost"} onClick={() => setActiveTab("inventory")}>Danh sách đã lưu</Button>
-      </div>
-
-      {activeTab === "manage" ? <div className="grid gap-3 lg:grid-cols-3">
+      {view === "models" ? <div className="grid gap-3 lg:grid-cols-3">
         <ProviderCandidateCard title="Mô hình chính" candidate={data.primary} featured />
         <Card className="border-white/10 bg-background/35 lg:col-span-2">
           <CardHeader className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
@@ -182,7 +175,7 @@ export function ProviderPanel({ data, loading, onData, onLoading }: ProviderPane
         </Card>
       </div> : null}
 
-      {activeTab === "setup" ? <div className="grid gap-4">
+      {view === "providers" ? <div className="grid gap-4">
         <Card className="border-white/10 bg-background/35">
           <CardHeader>
             <CardTitle className="flex items-center gap-2"><KeyRound className="size-5" /> Thiết lập dịch vụ</CardTitle>
@@ -197,7 +190,7 @@ export function ProviderPanel({ data, loading, onData, onLoading }: ProviderPane
                 <FormField label="Nhà cung cấp"><Input value={form.provider} onChange={(event) => setFormValue(setForm, "provider", event.target.value)} /></FormField>
                 <FormField label="Chế độ"><Select value={form.mode} onChange={(event) => setFormValue(setForm, "mode", event.target.value)}><option value="api-key">API key</option><option value="local">Cục bộ</option></Select></FormField>
                 <FormField label="Model"><Input value={form.model} onChange={(event) => setFormValue(setForm, "model", event.target.value)} /></FormField>
-                {!isGemini ? <FormField label="URL gốc"><Input value={form.baseUrl} onChange={(event) => setFormValue(setForm, "baseUrl", event.target.value)} placeholder="https://api.example.com/v1" /></FormField> : null}
+                {!hidesBaseUrl ? <FormField label="URL gốc"><Input value={form.baseUrl} onChange={(event) => setFormValue(setForm, "baseUrl", event.target.value)} placeholder="https://api.example.com/v1" /></FormField> : null}
                 {!isLocal ? <FormField label="Tên thông tin xác thực"><Input value={form.apiKeyEnv} onChange={(event) => setFormValue(setForm, "apiKeyEnv", event.target.value)} placeholder="GEMINI_API_KEY" /></FormField> : null}
                 {!isLocal ? <FormField label="Giá trị bí mật"><Input value={form.secret} onChange={(event) => setFormValue(setForm, "secret", event.target.value)} type="password" placeholder="Được lưu an toàn và sẽ bị ẩn sau khi lưu" /></FormField> : null}
               </div>
@@ -211,10 +204,8 @@ export function ProviderPanel({ data, loading, onData, onLoading }: ProviderPane
         </Card>
       </div> : null}
 
-      {activeTab === "inventory" ? <div className="grid gap-4 xl:grid-cols-2">
-        <ProviderProfileList profiles={data.profiles} />
-        <ProviderModelList models={data.models} />
-      </div> : null}
+      {view === "models" ? <ProviderModelList models={data.models} /> : null}
+      {view === "providers" ? <ProviderProfileList profiles={data.profiles} /> : null}
     </div>
   );
 }
