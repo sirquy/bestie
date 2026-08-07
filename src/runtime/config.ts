@@ -55,7 +55,15 @@ type LocalWhisperTranscriptionConfig = {
   modelPath: string;
   timeoutMs?: number;
 };
-export type TranscriptionProviderConfig = OpenAiCompatibleTranscriptionConfig | ElevenLabsTranscriptionConfig | LocalWhisperTranscriptionConfig;
+type VoiceboxTranscriptionConfig = {
+  provider: "voicebox";
+  baseUrl: string;
+  model?: "base" | "small" | "medium" | "large" | "turbo";
+  language?: string;
+  clientId?: string;
+  timeoutMs?: number;
+};
+export type TranscriptionProviderConfig = OpenAiCompatibleTranscriptionConfig | ElevenLabsTranscriptionConfig | LocalWhisperTranscriptionConfig | VoiceboxTranscriptionConfig;
 
 export type MediaGenerationProviderConfig = {
   provider: "openai-compatible";
@@ -88,7 +96,18 @@ type ElevenLabsSpeechProviderConfig = {
   outputFormat?: string;
   timeoutMs?: number;
 };
-export type SpeechProviderConfig = OpenAiCompatibleSpeechProviderConfig | ElevenLabsSpeechProviderConfig;
+type VoiceboxSpeechProviderConfig = {
+  provider: "voicebox";
+  baseUrl: string;
+  profile?: string;
+  engine?: "qwen" | "qwen_custom_voice" | "luxtts" | "chatterbox" | "chatterbox_turbo" | "tada" | "kokoro";
+  language?: string;
+  clientId?: string;
+  personality?: boolean;
+  pollIntervalMs?: number;
+  timeoutMs?: number;
+};
+export type SpeechProviderConfig = OpenAiCompatibleSpeechProviderConfig | ElevenLabsSpeechProviderConfig | VoiceboxSpeechProviderConfig;
 
 export interface AppConfig {
   version: 2;
@@ -389,8 +408,8 @@ function optionalTranscription(value: unknown): AppConfig["transcription"] | und
 function parseTranscriptionProvider(value: unknown, path: string): TranscriptionProviderConfig {
   const transcription = requireRecord(value, path);
   const provider = requireString(transcription.provider, `${path}.provider`);
-  if (provider !== "openai-compatible" && provider !== "elevenlabs" && provider !== "local-whisper") {
-    throw new InvalidConfigError(`${path}.provider must be openai-compatible, elevenlabs, or local-whisper.`);
+  if (provider !== "openai-compatible" && provider !== "elevenlabs" && provider !== "local-whisper" && provider !== "voicebox") {
+    throw new InvalidConfigError(`${path}.provider must be openai-compatible, elevenlabs, local-whisper, or voicebox.`);
   }
 
   if (provider === "elevenlabs") {
@@ -420,6 +439,22 @@ function parseTranscriptionProvider(value: unknown, path: string): Transcription
     };
   }
 
+  if (provider === "voicebox") {
+    const model = transcription.model;
+    if (model !== undefined && !["base", "small", "medium", "large", "turbo"].includes(String(model))) {
+      throw new InvalidConfigError(`${path}.model must be base, small, medium, large, or turbo.`);
+    }
+
+    return {
+      provider,
+      baseUrl: requireString(transcription.baseUrl, `${path}.baseUrl`).replace(/\/+$/, ""),
+      ...(model === undefined ? {} : { model: model as VoiceboxTranscriptionConfig["model"] }),
+      ...(transcription.language === undefined ? {} : { language: requireString(transcription.language, `${path}.language`) }),
+      ...(transcription.clientId === undefined ? {} : { clientId: requireString(transcription.clientId, `${path}.clientId`) }),
+      ...(transcription.timeoutMs === undefined ? {} : { timeoutMs: optionalPositiveInteger(transcription.timeoutMs, `${path}.timeoutMs`) }),
+    };
+  }
+
   return {
     provider,
     baseUrl: requireString(transcription.baseUrl, `${path}.baseUrl`),
@@ -445,8 +480,8 @@ function optionalSpeech(value: unknown): AppConfig["speech"] | undefined {
 function parseSpeechProvider(value: unknown, path: string): SpeechProviderConfig {
   const speech = requireRecord(value, path);
   const provider = requireString(speech.provider, `${path}.provider`);
-  if (provider !== "openai-compatible" && provider !== "elevenlabs") {
-    throw new InvalidConfigError(`${path}.provider must be openai-compatible or elevenlabs.`);
+  if (provider !== "openai-compatible" && provider !== "elevenlabs" && provider !== "voicebox") {
+    throw new InvalidConfigError(`${path}.provider must be openai-compatible, elevenlabs, or voicebox.`);
   }
 
   if (provider === "elevenlabs") {
@@ -456,6 +491,25 @@ function parseSpeechProvider(value: unknown, path: string): SpeechProviderConfig
       voiceId: requireString(speech.voiceId, `${path}.voiceId`),
       ...(speech.modelId === undefined ? {} : { modelId: requireString(speech.modelId, `${path}.modelId`) }),
       ...(speech.outputFormat === undefined ? {} : { outputFormat: requireString(speech.outputFormat, `${path}.outputFormat`) }),
+      ...(speech.timeoutMs === undefined ? {} : { timeoutMs: optionalPositiveInteger(speech.timeoutMs, `${path}.timeoutMs`) }),
+    };
+  }
+
+  if (provider === "voicebox") {
+    const engine = speech.engine;
+    if (engine !== undefined && !["qwen", "qwen_custom_voice", "luxtts", "chatterbox", "chatterbox_turbo", "tada", "kokoro"].includes(String(engine))) {
+      throw new InvalidConfigError(`${path}.engine must be qwen, qwen_custom_voice, luxtts, chatterbox, chatterbox_turbo, tada, or kokoro.`);
+    }
+
+    return {
+      provider,
+      baseUrl: requireString(speech.baseUrl, `${path}.baseUrl`).replace(/\/+$/, ""),
+      ...(speech.profile === undefined ? {} : { profile: requireString(speech.profile, `${path}.profile`) }),
+      ...(engine === undefined ? {} : { engine: engine as VoiceboxSpeechProviderConfig["engine"] }),
+      ...(speech.language === undefined ? {} : { language: requireString(speech.language, `${path}.language`) }),
+      ...(speech.clientId === undefined ? {} : { clientId: requireString(speech.clientId, `${path}.clientId`) }),
+      ...(speech.personality === undefined ? {} : { personality: requireBoolean(speech.personality, `${path}.personality`) }),
+      ...(speech.pollIntervalMs === undefined ? {} : { pollIntervalMs: optionalPositiveInteger(speech.pollIntervalMs, `${path}.pollIntervalMs`) }),
       ...(speech.timeoutMs === undefined ? {} : { timeoutMs: optionalPositiveInteger(speech.timeoutMs, `${path}.timeoutMs`) }),
     };
   }

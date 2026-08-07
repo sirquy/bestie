@@ -57,12 +57,62 @@ async function createSpeechWithProvider(config: AppConfig, input: SpeechInput, o
     throw new ProviderResponseError("speech provider is not configured.");
   }
 
+  if (config.speech.provider === "voicebox") {
+    return sendVoiceboxSpeech(config, input, options.fetchImpl ?? fetch, options.timeoutMs ?? config.speech.timeoutMs ?? DEFAULT_LLM_TIMEOUT_MS);
+  }
+
   const apiKey = await loadRequiredSecret(config.speech.apiKeyEnv, options.paths);
   if (config.speech.provider === "elevenlabs") {
     return sendElevenLabsSpeech(config, apiKey, input, options.elevenLabsClient, options.timeoutMs ?? config.speech.timeoutMs ?? DEFAULT_LLM_TIMEOUT_MS);
   }
 
   return sendSpeech(config, apiKey, input, options.fetchImpl ?? fetch, options.timeoutMs ?? config.speech.timeoutMs ?? DEFAULT_LLM_TIMEOUT_MS);
+}
+
+export async function sendVoiceboxSpeech(
+  config: AppConfig,
+  input: SpeechInput,
+  fetchImpl: FetchLike = fetch,
+  timeoutMs = config.speech?.timeoutMs ?? DEFAULT_LLM_TIMEOUT_MS,
+): Promise<SpeechResult> {
+  const speech = config.speech;
+  if (!speech || speech.provider !== "voicebox") {
+    throw new ProviderResponseError("Voicebox speech provider is not configured.");
+  }
+
+  const trimmedText = input.text.trim();
+  if (!trimmedText) {
+    throw new ProviderResponseError("speech input is empty.");
+  }
+
+  const baseUrl = speech.baseUrl.replace(/\/+$/, "");
+  const headers = buildVoiceboxHeaders(speech.clientId);
+  const generation = await fetchVoiceboxJson(
+    `${baseUrl}/speak`,
+    {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        text: trimmedText,
+        ...(speech.profile === undefined ? {} : { profile: speech.profile }),
+        ...(speech.engine === undefined ? {} : { engine: speech.engine }),
+        ...(speech.language === undefined ? {} : { language: speech.language }),
+        ...(speech.personality === undefined ? {} : { personality: speech.personality }),
+      }),
+    },
+    fetchImpl,
+    timeoutMs,
+  );
+  const generationId = readVoiceboxGenerationId(generation);
+  await waitForVoiceboxGeneration(baseUrl, generationId, headers, fetchImpl, timeoutMs, speech.pollIntervalMs ?? 1_000);
+
+  const audioResponse = await fetchVoiceboxResponse(`${baseUrl}/audio/${encodeURIComponent(generationId)}`, { method: "GET", headers }, fetchImpl, timeoutMs);
+  const bytes = new Uint8Array(await audioResponse.arrayBuffer());
+  if (bytes.byteLength === 0) {
+    throw new ProviderResponseError("Voicebox audio response is empty.");
+  }
+
+  return { bytes, mimeType: audioResponse.headers.get("content-type") ?? "audio/wav" };
 }
 
 export async function sendElevenLabsSpeech(
@@ -243,6 +293,10 @@ function describeSpeechCandidate(config: AppConfig): ProviderFallbackTarget {
     return { provider: speech.provider, model: speech.model };
   }
 
+  if (speech.provider === "voicebox") {
+    return { provider: speech.provider, model: speech.profile ?? speech.clientId ?? "default" };
+  }
+
   return { provider: speech.provider, model: speech.modelId ?? speech.voiceId };
 }
 
@@ -256,6 +310,88 @@ function buildSpeechFallbackCandidates(config: AppConfig): AppConfig[] {
     { ...config, speech: primary },
     ...(config.speech.fallbacks ?? []).map((speech) => ({ ...config, speech })),
   ];
+}
+
+function buildVoiceboxHeaders(clientId: string | undefined): Record<string, string> {
+  return {
+    "content-type": "application/json",
+    ...(clientId === undefined ? {} : { "x-voicebox-client-id": clientId }),
+  };
+}
+
+async function waitForVoiceboxGeneration(baseUrl: string, generationId: string, headers: Record<string, string>, fetchImpl: FetchLike, timeoutMs: number, pollIntervalMs: number): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() <= deadline) {
+    const status = await fetchVoiceboxJson(`${baseUrl}/generate/${encodeURIComponent(generationId)}/status`, { method: "GET", headers }, fetchImpl, Math.max(deadline - Date.now(), 1));
+    const generationStatus = isRecord(status) && typeof status.status === "string" ? status.status : undefined;
+    if (generationStatus === "completed") {
+      return;
+    }
+    if (generationStatus === "failed") {
+      const error = isRecord(status) && typeof status.error === "string" ? status.error : "Voicebox generation failed.";
+      throw new ProviderResponseError(error);
+    }
+    await sleep(Math.min(Math.max(pollIntervalMs, 100), Math.max(deadline - Date.now(), 1)));
+  }
+
+  throw new ProviderTimeoutError(timeoutMs);
+}
+
+async function fetchVoiceboxJson(url: string, init: RequestInit, fetchImpl: FetchLike, timeoutMs: number): Promise<unknown> {
+  const response = await fetchVoiceboxResponse(url, init, fetchImpl, timeoutMs);
+  try {
+    return await response.json();
+  } catch {
+    throw new ProviderResponseError("Voicebox returned invalid JSON.");
+  }
+}
+
+async function fetchVoiceboxResponse(url: string, init: RequestInit, fetchImpl: FetchLike, timeoutMs: number): Promise<Response> {
+  const abortController = new AbortController();
+  let didTimeout = false;
+  const timeout = setTimeout(() => {
+    didTimeout = true;
+    abortController.abort();
+  }, timeoutMs);
+
+  try {
+    const response = await fetchImpl(url, { ...init, signal: abortController.signal });
+    if (response.status === 401 || response.status === 403) {
+      throw new ProviderAuthError();
+    }
+    if (response.status === 429) {
+      throw new ProviderRateLimitError();
+    }
+    if (!response.ok) {
+      throw new ProviderResponseError(await formatProviderHttpError(response));
+    }
+    return response;
+  } catch (error) {
+    if (error instanceof ProviderAuthError || error instanceof ProviderRateLimitError || error instanceof ProviderResponseError) {
+      throw error;
+    }
+    if (didTimeout || isAbortError(error)) {
+      throw new ProviderTimeoutError(timeoutMs);
+    }
+    throw new ProviderNetworkError(error instanceof Error ? error.message : "Unknown Voicebox network error.");
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function readVoiceboxGenerationId(value: unknown): string {
+  if (isRecord(value) && typeof value.id === "string" && value.id.trim()) {
+    return value.id;
+  }
+  throw new ProviderResponseError("Voicebox response is missing generation id.");
+}
+
+function sleep(milliseconds: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function mapElevenLabsError(error: unknown, timeoutMs: number): Error {

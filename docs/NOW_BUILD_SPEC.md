@@ -225,7 +225,7 @@ Original Phase Now did not introduce channel, memory, tool, MCP, or UI dependenc
 - Logs are written for command start, provider test result, chat request success/failure, and handled errors.
 - Logs redact API keys and token-like values.
 - Provider fallback diagnostics are available without exposing secrets: raw structured attempts stay in local logs, while `/providers` redacts and truncates displayed error text.
-- No Telegram, Zep, MCP, plugin, installer, avatar, voice, or UI code was required for the original phase. Telegram/Zalo, local SQLite memory, cron, Doctor, tools, MCP read foundations, installed skills, local Vite/React Web UI, installer/update flows, daemon/service management, and Telegram voice helpers were added after this phase as local MVP work.
+- No Telegram, Zep, MCP, plugin, installer, avatar, voice, or UI code was required for the original phase. Telegram/Zalo, local SQLite memory, cron, Doctor, tools, MCP read foundations, installed skills, local Vite/React Web UI, installer/update flows, daemon/service management, and shared voice helpers were added after this phase as local MVP work.
 
 ## Validation Plan
 

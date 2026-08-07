@@ -31,7 +31,7 @@ The local MVP foundation is implemented and includes:
 - Provider setup and tests for Gemini CLI, Claude CLI, and Codex CLI local middleware, OpenAI/ChatGPT, Anthropic Claude, OpenAI-compatible providers, Groq, OpenRouter, QuotaCheap, Ollama, and native Gemini API-key mode.
 - Provider model refs, fallback order, diagnostics, and default LLM timeout of `300000ms`.
 - Local SQLite memory, pending approvals, pause/resume, hygiene/governance helpers, and knowledge graph UI.
-- Telegram and Zalo polling runtimes, shared attachment pipeline, Telegram voice helpers, and cron schedules.
+- Telegram and Zalo polling runtimes, shared attachment pipeline, channel-neutral voice helpers, and cron schedules.
 - Daemon management for `telegram`, `zalo`, `cron`, `ui`, or `all`, with duplicate-process cleanup safeguards.
 - User service support for Linux systemd, macOS launchd, and Windows Startup folder.
 - Permission-gated local read/write/action tools, external workspace path allowlist, configurable exec timeout, image/video generation tools, and bounded internal subagents.
@@ -114,17 +114,18 @@ bestie update
 bestie update --apply
 ```
 
-Telegram voice helpers:
+Shared voice helpers:
 
 ```bash
-bestie channels telegram voice setup-local
-bestie channels telegram voice setup-elevenlabs
-bestie channels telegram voice models
-bestie channels telegram voice download-model small
-bestie channels telegram voice download-model small --confirm --use
+bestie voice setup-local
+bestie voice setup-elevenlabs
+bestie voice setup-voicebox
+bestie voice models
+bestie voice download-model small
+bestie voice download-model small --confirm --use
 ```
 
-`setup-local` configures local whisper.cpp transcription when the local binary, model, and `ffmpeg` are present. `setup-elevenlabs` configures ElevenLabs speech replies and stores only the API key environment value in `~/.bestie/.env`. `models` lists local `.bin` models and marks the configured one; `download-model` previews by default and downloads only with `--confirm`.
+`voice` is channel-neutral: Telegram, Zalo, Web UI, and future channels should reuse the same top-level speech/transcription config. Use only `bestie voice ...` for voice setup; channel commands should consume the shared config rather than expose voice setup aliases. `setup-local` configures local whisper.cpp transcription when the local binary, model, and `ffmpeg` are present. `setup-elevenlabs` configures ElevenLabs speech replies and stores only the API key environment value in `~/.bestie/.env`. `setup-voicebox` configures local Voicebox speech and transcription at `http://127.0.0.1:17493` by default. `models` lists local `.bin` models and marks the configured one; `download-model` previews by default and downloads only with `--confirm`.
 
 During `bestie channels telegram setup`, leave the owner prompt blank to detect the owner from the latest message sent to the bot. You can also run `bestie channels telegram whoami` after messaging the bot to print the numeric id and username.
 
@@ -261,4 +262,3 @@ Good first contributions include documentation clarity, diagnostics, focused tes
 ## License
 
 This project is released under the MIT License. See `LICENSE`.
-

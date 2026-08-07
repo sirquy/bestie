@@ -14,11 +14,13 @@ Build a local polling bot that runs from the CLI:
 bestie channels telegram
 bestie channels telegram setup
 bestie channels telegram whoami
-bestie channels telegram voice setup-local
-bestie channels telegram voice models
-bestie channels telegram voice download-model small --confirm --use
+bestie voice setup-local
+bestie voice models
+bestie voice download-model small --confirm --use
 bestie channels telegram --once --transcript .bestie/logs/telegram-smoke.jsonl
 ```
+
+Voice providers and transcription/speech config are channel-neutral and should be configured through `bestie voice ...`, then reused by Telegram, Zalo, Web UI, and future channels. Telegram does not expose a `channels telegram voice` setup alias.
 
 In scope:
 

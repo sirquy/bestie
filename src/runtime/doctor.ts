@@ -242,6 +242,14 @@ async function checkTranscriptionConfig(config: AppConfig, paths: RuntimePaths):
     }];
   }
 
+  if (config.transcription.provider === "voicebox") {
+    return [{
+      name: "Transcription provider",
+      status: "pass",
+      message: `Voicebox transcription is configured at ${config.transcription.baseUrl}.`,
+    }];
+  }
+
   const checks: DoctorCheck[] = [];
   const commandPath = await resolveCommandPath(config.transcription.command, paths);
   const modelPath = resolveMaybeRelative(paths.rootDir, config.transcription.modelPath);
@@ -279,13 +287,17 @@ async function checkTelegramSpeechConfig(config: AppConfig, paths: RuntimePaths,
   }
 
   const checks: DoctorCheck[] = [];
-  const envValues = await loadEnvFile(paths);
-  const hasSecret = Boolean(process.env[config.speech.apiKeyEnv] ?? envValues[config.speech.apiKeyEnv]);
+  const envValues = config.speech.provider === "voicebox" ? {} : await loadEnvFile(paths);
+  const hasSecret = config.speech.provider === "voicebox" ? true : Boolean(process.env[config.speech.apiKeyEnv] ?? envValues[config.speech.apiKeyEnv]);
   checks.push({
     name: "Telegram speech provider",
     status: hasSecret ? "pass" : "fail",
-    message: hasSecret ? `${formatSpeechProviderName(config.speech.provider)} speech API key env ${config.speech.apiKeyEnv} is present.` : `${formatSpeechProviderName(config.speech.provider)} speech API key env ${config.speech.apiKeyEnv} is missing.`,
-    fix: hasSecret ? undefined : `Add ${config.speech.apiKeyEnv} to ${paths.envPath} or set channels.telegram.voiceReplyPolicy to deny.`,
+    message: config.speech.provider === "voicebox"
+      ? `Voicebox speech is configured at ${config.speech.baseUrl}.`
+      : hasSecret
+        ? `${formatSpeechProviderName(config.speech.provider)} speech API key env ${config.speech.apiKeyEnv} is present.`
+        : `${formatSpeechProviderName(config.speech.provider)} speech API key env ${config.speech.apiKeyEnv} is missing.`,
+    fix: hasSecret || config.speech.provider === "voicebox" ? undefined : `Add ${config.speech.apiKeyEnv} to ${paths.envPath} or set channels.telegram.voiceReplyPolicy to deny.`,
   });
 
   const ffmpegPath = await resolveCommandPath("ffmpeg", paths);
@@ -300,7 +312,9 @@ async function checkTelegramSpeechConfig(config: AppConfig, paths: RuntimePaths,
 }
 
 function formatSpeechProviderName(provider: NonNullable<AppConfig["speech"]>["provider"]): string {
-  return provider === "elevenlabs" ? "ElevenLabs" : "OpenAI-compatible";
+  if (provider === "elevenlabs") return "ElevenLabs";
+  if (provider === "voicebox") return "Voicebox";
+  return "OpenAI-compatible";
 }
 
 async function checkTelegramSpeechRoundTrip(config: AppConfig, paths: RuntimePaths, tester: TelegramSpeechTester): Promise<DoctorCheck> {

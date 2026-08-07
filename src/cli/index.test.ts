@@ -708,7 +708,7 @@ test("nested command help is available for channels and MCP", async () => {
   assert.match(mcpHelp.stdout, /Usage: bestie mcp/);
   assert.match(mcpHelp.stdout, /classify <server> <tool>/);
   assert.match(telegramHelp.stdout, /Usage: bestie channels telegram/);
-  assert.match(telegramHelp.stdout, /voice\s+Alias cho lệnh voice dùng chung/);
+  assert.doesNotMatch(telegramHelp.stdout, /voice\s+Alias cho lệnh voice dùng chung/);
 });
 
 test("linked bin entrypoint runs through npm symlinks", async (t) => {

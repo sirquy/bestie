@@ -374,7 +374,7 @@ COMPOSIO_CONSUMER_API_KEY=
 
 Secrets must not be printed after entry and must be redacted from logs. Gemini setup and onboarding use `GEMINI_API_KEY`; OpenAI-compatible custom providers may use `OPENAI_API_KEY` or a user-chosen env var name.
 
-Telegram voice setup commands follow the same rule. `bestie channels telegram voice setup-elevenlabs` prompts for `ELEVENLABS_API_KEY` and writes the secret only to `.bestie/.env`; `.bestie/config.json` stores the env var name plus non-secret voice/model IDs. `bestie channels telegram voice setup-local`, `models`, and `download-model` should print only local paths, model names, sizes, and status details.
+Shared voice setup commands follow the same rule. `bestie voice setup-elevenlabs` prompts for `ELEVENLABS_API_KEY` and writes the secret only to `.bestie/.env`; `.bestie/config.json` stores the env var name plus non-secret voice/model IDs. `bestie voice setup-voicebox` stores only non-secret local Voicebox connection details such as `baseUrl`, `clientId`, profile, engine, and model names. `bestie voice setup-local`, `models`, and `download-model` should print only local paths, model names, sizes, and status details. Channel commands must consume the shared top-level voice config and should not expose channel-specific voice setup aliases.
 
 Set `BESTIE_NO_BANNER=1` to suppress the decorative CLI banner for human-facing commands in scripts. Set `BESTIE_BANNER=static` to disable the interactive animation while keeping the static banner. Machine-readable JSON outputs such as `bestie doctor --json`, `bestie channels doctor --json`, and `bestie memory export` suppress the banner automatically.
 

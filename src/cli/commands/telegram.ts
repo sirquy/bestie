@@ -12,7 +12,6 @@ import { UserFacingError } from "../../runtime/errors.js";
 import { getRuntimePaths, type RuntimePaths } from "../../runtime/paths.js";
 import { createCliQuestioner } from "../prompt.js";
 import { badge, bold, color, dim, keyValue, table, title, withColorMode } from "../ui.js";
-import { runVoiceCommand } from "./voice.js";
 
 const DEFAULT_TELEGRAM_TOKEN_ENV = "BESTIE_TELEGRAM_BOT_TOKEN";
 
@@ -34,7 +33,6 @@ interface TelegramCommandOptions {
   transcriptionFetchImpl?: FetchLike;
   speechFetchImpl?: FetchLike;
   speechVoiceConverter?: TelegramSpeechVoiceConverter;
-  modelDownloadFetchImpl?: typeof fetch;
   writeLine?: (message: string) => void;
   useColor?: boolean;
 }
@@ -55,29 +53,14 @@ export async function runTelegramCommand(optionsOrArgv: string[] | TelegramComma
   const paths = options.paths ?? getRuntimePaths();
   const writeLine = options.writeLine ?? console.log;
 
-  if (argv[argStart] === "voice" && argv[argStart + 1] === "setup-local") {
-    await runVoiceCommand({ argv, paths, questioner: options.questioner, modelDownloadFetchImpl: options.modelDownloadFetchImpl, writeLine, useColor: options.useColor ?? output.isTTY });
-    return;
-  }
-
-  if (argv[argStart] === "voice" && argv[argStart + 1] === "setup-elevenlabs") {
-    await runVoiceCommand({ argv, paths, questioner: options.questioner, modelDownloadFetchImpl: options.modelDownloadFetchImpl, writeLine, useColor: options.useColor ?? output.isTTY });
-    return;
-  }
-
-  if (argv[argStart] === "voice" && argv[argStart + 1] === "models") {
-    await runVoiceCommand({ argv, paths, questioner: options.questioner, modelDownloadFetchImpl: options.modelDownloadFetchImpl, writeLine, useColor: options.useColor ?? output.isTTY });
-    return;
-  }
-
-  if (argv[argStart] === "voice" && argv[argStart + 1] === "download-model") {
-    await runVoiceCommand({ argv, paths, questioner: options.questioner, modelDownloadFetchImpl: options.modelDownloadFetchImpl, writeLine, useColor: options.useColor ?? output.isTTY });
-    return;
-  }
-
   if (argv.includes("setup")) {
     await runTelegramSetup({ paths, questioner: options.questioner, clientFactory: options.clientFactory, writeLine, useColor: options.useColor ?? output.isTTY });
     return;
+  }
+
+  const subcommand = argv[argStart];
+  if (subcommand && subcommand !== "whoami" && !subcommand.startsWith("--")) {
+    throw new UserFacingError("Cách dùng: bestie channels telegram [setup|whoami|--once]", "TelegramUsageError");
   }
 
   const config = await loadConfig(paths);

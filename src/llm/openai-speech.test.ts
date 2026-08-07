@@ -7,7 +7,7 @@ import test from "node:test";
 import type { AppConfig } from "../runtime/config.js";
 import type { RuntimePaths } from "../runtime/paths.js";
 import { ProviderAuthError, ProviderFallbackError, ProviderResponseError } from "./errors.js";
-import { createSpeech, sendElevenLabsSpeech, sendSpeech } from "./openai-speech.js";
+import { createSpeech, sendElevenLabsSpeech, sendSpeech, sendVoiceboxSpeech } from "./openai-speech.js";
 
 const config: AppConfig = {
   version: 2,
@@ -70,6 +70,41 @@ test("sendSpeech posts OpenAI-compatible speech JSON and returns audio bytes", a
   assert.equal(requestHeaders!.get("authorization"), "Bearer secret");
   assert.equal(requestHeaders!.get("content-type"), "application/json");
   assert.deepEqual(requestBody!, { model: "google-tts/vi", input: "xin chào" });
+});
+
+
+test("sendVoiceboxSpeech calls speak, polls status, and downloads audio", async () => {
+  const requests: Array<{ url: string; method?: string; headers: Headers; body?: unknown }> = [];
+  const fetchImpl = async (url: string | URL | Request, init?: RequestInit) => {
+    requests.push({ url: String(url), method: init?.method, headers: new Headers(init?.headers), body: init?.body ? JSON.parse(String(init.body)) : undefined });
+    if (String(url).endsWith("/speak")) {
+      return new Response(JSON.stringify({ id: "gen-1", status: "generating" }), { status: 200, headers: { "content-type": "application/json" } });
+    }
+    if (String(url).endsWith("/generate/gen-1/status")) {
+      return new Response(JSON.stringify({ id: "gen-1", status: "completed" }), { status: 200, headers: { "content-type": "application/json" } });
+    }
+    if (String(url).endsWith("/audio/gen-1")) {
+      return new Response(new Uint8Array([9, 8, 7]), { status: 200, headers: { "content-type": "audio/wav" } });
+    }
+    return new Response("not found", { status: 404 });
+  };
+
+  const speech = await sendVoiceboxSpeech(
+    { ...config, speech: { provider: "voicebox", baseUrl: "http://127.0.0.1:17493/", profile: "Morgan", engine: "qwen", language: "en", clientId: "bestie", personality: true, pollIntervalMs: 100 } },
+    { text: " build complete " },
+    fetchImpl,
+    5_000,
+  );
+
+  assert.deepEqual([...speech.bytes], [9, 8, 7]);
+  assert.equal(speech.mimeType, "audio/wav");
+  assert.deepEqual(requests.map((request) => request.url), [
+    "http://127.0.0.1:17493/speak",
+    "http://127.0.0.1:17493/generate/gen-1/status",
+    "http://127.0.0.1:17493/audio/gen-1",
+  ]);
+  assert.equal(requests[0].headers.get("x-voicebox-client-id"), "bestie");
+  assert.deepEqual(requests[0].body, { text: "build complete", profile: "Morgan", engine: "qwen", language: "en", personality: true });
 });
 
 test("sendSpeech maps auth errors", async () => {
@@ -266,3 +301,4 @@ async function createTempPaths(): Promise<RuntimePaths> {
     workspaceDir: resolve(appDir, "workspace"),
   };
 }
+

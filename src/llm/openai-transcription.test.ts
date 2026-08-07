@@ -7,7 +7,7 @@ import test from "node:test";
 import type { AppConfig } from "../runtime/config.js";
 import type { RuntimePaths } from "../runtime/paths.js";
 import { ProviderAuthError, ProviderFallbackError, ProviderResponseError, ProviderTimeoutError } from "./errors.js";
-import { createAudioTranscription, sendAudioTranscription, sendElevenLabsAudioTranscription } from "./openai-transcription.js";
+import { createAudioTranscription, sendAudioTranscription, sendElevenLabsAudioTranscription, sendVoiceboxAudioTranscription } from "./openai-transcription.js";
 
 const config: AppConfig = {
   version: 2,
@@ -59,6 +59,36 @@ test("sendAudioTranscription posts OpenAI-compatible multipart form data", async
   assert.equal(file.name, "message.ogg");
   assert.equal(file.type, "audio/ogg");
   assert.equal(await file.text(), "\u0001\u0002\u0003");
+});
+
+
+test("sendVoiceboxAudioTranscription posts Voicebox multipart form data", async () => {
+  let requestUrl = "";
+  let requestHeaders: Headers;
+  let requestBody: FormData;
+  const fetchImpl = async (url: string | URL | Request, init?: RequestInit) => {
+    requestUrl = String(url);
+    requestHeaders = new Headers(init?.headers);
+    requestBody = init?.body as FormData;
+    return new Response(JSON.stringify({ text: "xin chào t? voicebox", duration: 1.2 }), { status: 200 });
+  };
+
+  const text = await sendVoiceboxAudioTranscription(
+    { ...config, transcription: { provider: "voicebox", baseUrl: "http://127.0.0.1:17493/", model: "turbo", language: "vi", clientId: "bestie" } },
+    { bytes: new Uint8Array([1, 2, 3]), localPath: "/tmp/message.ogg", mimeType: "audio/ogg" },
+    fetchImpl,
+  );
+
+  assert.equal(text, "xin chào t? voicebox");
+  assert.equal(requestUrl, "http://127.0.0.1:17493/transcribe");
+  assert.equal(requestHeaders!.get("x-voicebox-client-id"), "bestie");
+  assert.equal(requestHeaders!.has("content-type"), false);
+  assert.equal(requestBody!.get("model"), "turbo");
+  assert.equal(requestBody!.get("language"), "vi");
+  const file = requestBody!.get("file");
+  assert.ok(file instanceof File);
+  assert.equal(file.name, "message.ogg");
+  assert.equal(file.type, "audio/ogg");
 });
 
 test("sendAudioTranscription maps auth errors", async () => {
@@ -349,3 +379,4 @@ async function createTempPaths(): Promise<RuntimePaths> {
     workspaceDir: resolve(appDir, "workspace"),
   };
 }
+

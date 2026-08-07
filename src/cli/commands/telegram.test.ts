@@ -335,6 +335,19 @@ test("runTelegramCommand whoami explains when no recent Telegram sender exists",
   }
 });
 
+test("runTelegramCommand rejects removed voice setup alias", async () => {
+  const paths = await createTempPaths();
+
+  try {
+    await assert.rejects(
+      () => runTelegramCommand({ argv: ["node", "bestie", "channels", "telegram", "voice", "setup-local"], paths, writeLine: () => undefined }),
+      /bestie channels telegram \[setup\|whoami\|--once\]/,
+    );
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
 test("runVoiceCommand setup-local writes wrapper and local transcription config", async () => {
   const paths = await createTempPaths();
   const output: string[] = [];
@@ -486,8 +499,8 @@ test("runVoiceCommand setup-elevenlabs writes speech config and API key env", as
     );
     await writeEnvFile({ OPENAI_API_KEY: "sk-test" }, paths);
 
-    await runTelegramCommand({
-      argv: ["node", "bestie", "channels", "telegram", "voice", "setup-elevenlabs"],
+    await runVoiceCommand({
+      argv: ["node", "bestie", "voice", "setup-elevenlabs"],
       paths,
       questioner: {
         ask: async () => "",
@@ -541,6 +554,93 @@ test("runVoiceCommand setup-elevenlabs writes speech config and API key env", as
   }
 });
 
+test("runVoiceCommand setup-voicebox writes local speech and transcription config", async () => {
+  const paths = await createTempPaths();
+  const output: string[] = [];
+  const answers = ["http://127.0.0.1:17493/", "bestie", "Morgan", "qwen", "en", "turbo", "en", "yes"];
+  let closed = false;
+
+  try {
+    await mkdir(paths.appDir, { recursive: true });
+    await writeConfig(
+      {
+        version: 2,
+        agent: { name: "Miu", ownerName: "Boss", language: "vi", toneIntensity: 7 },
+        llm: {
+      primary: "openai/test-model",
+      authProfile: "openai:api-key",
+      profiles: {
+        "openai:api-key": {
+          provider: "openai-compatible",
+          mode: "api-key",
+          baseUrl: "https://example.com/v1",
+          apiKeyEnv: "OPENAI_API_KEY",
+        },
+      },
+      modelCatalog: {
+        "openai/test-model": { profile: "openai:api-key" },
+      }
+    },
+        channels: { telegram: { enabled: true, botTokenEnv: "BESTIE_TELEGRAM_BOT_TOKEN", ownerUserId: "12345" } },
+      },
+      paths,
+    );
+
+    await runVoiceCommand({
+      argv: ["node", "bestie", "voice", "setup-voicebox"],
+      paths,
+      questioner: {
+        ask: async () => answers.shift() ?? "",
+        askHidden: async () => "",
+        close: () => {
+          closed = true;
+        },
+      },
+      writeLine: (message) => output.push(message),
+      useColor: false,
+    });
+
+    const config = JSON.parse(await readFile(paths.configPath, "utf8")) as {
+      transcription?: { provider: string; baseUrl: string; model: string; language: string; clientId: string; timeoutMs: number };
+      speech?: { provider: string; baseUrl: string; profile: string; engine: string; language: string; clientId: string; personality: boolean; timeoutMs: number; pollIntervalMs: number };
+      channels?: { telegram?: { voiceReplyPolicy?: string; voiceReplyMaxChars?: number; voiceReplyCooldownMs?: number; attachments?: { downloadPolicy?: string; transcriptionPolicy?: string; transcriptionMaxBytes?: number; deleteAfterProcessingKinds?: string[] } } };
+    };
+
+    assert.equal(closed, true);
+    assert.equal(answers.length, 0);
+    assert.deepEqual(config.transcription, {
+      provider: "voicebox",
+      baseUrl: "http://127.0.0.1:17493",
+      model: "turbo",
+      language: "en",
+      clientId: "bestie",
+      timeoutMs: 120_000,
+    });
+    assert.deepEqual(config.speech, {
+      provider: "voicebox",
+      baseUrl: "http://127.0.0.1:17493",
+      profile: "Morgan",
+      engine: "qwen",
+      language: "en",
+      clientId: "bestie",
+      personality: true,
+      timeoutMs: 180_000,
+      pollIntervalMs: 1_000,
+    });
+    assert.equal(config.channels?.telegram?.voiceReplyPolicy, "voice-input-only");
+    assert.equal(config.channels?.telegram?.voiceReplyMaxChars, 800);
+    assert.equal(config.channels?.telegram?.voiceReplyCooldownMs, 30_000);
+    assert.equal(config.channels?.telegram?.attachments?.downloadPolicy, "allow");
+    assert.equal(config.channels?.telegram?.attachments?.transcriptionPolicy, "allow");
+    assert.equal(config.channels?.telegram?.attachments?.transcriptionMaxBytes, 10_485_760);
+    assert.deepEqual(config.channels?.telegram?.attachments?.deleteAfterProcessingKinds, ["voice", "audio"]);
+    assert.ok(output.some((line) => line.includes("Voicebox cho Bestie")));
+    assert.ok(output.every((line) => !/\x1b\[[0-9;]*m/.test(line)));
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
 test("runVoiceCommand setup-elevenlabs omits language code for mixed language default", async () => {
   const paths = await createTempPaths();
 
@@ -569,8 +669,8 @@ test("runVoiceCommand setup-elevenlabs omits language code for mixed language de
       paths,
     );
 
-    await runTelegramCommand({
-      argv: ["node", "bestie", "channels", "telegram", "voice", "setup-elevenlabs"],
+    await runVoiceCommand({
+      argv: ["node", "bestie", "voice", "setup-elevenlabs"],
       paths,
       questioner: {
         ask: async () => "",
@@ -748,8 +848,8 @@ test("runVoiceCommand download-model previews without downloading by default", a
       paths,
     );
 
-    await runTelegramCommand({
-      argv: ["node", "bestie", "channels", "telegram", "voice", "download-model", "small"],
+    await runVoiceCommand({
+      argv: ["node", "bestie", "voice", "download-model", "small"],
       paths,
       modelDownloadFetchImpl: async () => {
         fetchCalled = true;
@@ -798,8 +898,8 @@ test("runVoiceCommand download-model downloads and can update config", async () 
       paths,
     );
 
-    await runTelegramCommand({
-      argv: ["node", "bestie", "channels", "telegram", "voice", "download-model", "tiny", "--confirm", "--use"],
+    await runVoiceCommand({
+      argv: ["node", "bestie", "voice", "download-model", "tiny", "--confirm", "--use"],
       paths,
       modelDownloadFetchImpl: async () => new Response("model bytes", { headers: { "content-length": "11" } }),
       writeLine: (message) => output.push(message),
@@ -849,8 +949,8 @@ test("runVoiceCommand download-model refuses to overwrite without force", async 
 
     await assert.rejects(
       () =>
-        runTelegramCommand({
-          argv: ["node", "bestie", "channels", "telegram", "voice", "download-model", "tiny", "--confirm"],
+        runVoiceCommand({
+          argv: ["node", "bestie", "voice", "download-model", "tiny", "--confirm"],
           paths,
           modelDownloadFetchImpl: async () => new Response("model bytes"),
           writeLine: () => undefined,
@@ -1313,3 +1413,7 @@ async function createTempPaths(): Promise<RuntimePaths> {
     workspaceDir: resolve(appDir, "workspace"),
   };
 }
+
+
+
+

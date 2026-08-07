@@ -82,12 +82,71 @@ async function createAudioTranscriptionWithProvider(
     return createLocalAudioTranscription(config, { localPath: input.localPath });
   }
 
+  if (config.transcription.provider === "voicebox") {
+    return sendVoiceboxAudioTranscription(config, input, options.fetchImpl ?? fetch, options.timeoutMs ?? config.transcription.timeoutMs ?? DEFAULT_LLM_TIMEOUT_MS);
+  }
+
   if (config.transcription.provider !== "openai-compatible") {
     throw new ProviderResponseError("transcription provider is not configured.");
   }
 
   const apiKey = await loadRequiredSecret(config.transcription.apiKeyEnv, options.paths);
   return sendAudioTranscription(config, apiKey, input, options.fetchImpl ?? fetch, options.timeoutMs ?? config.transcription.timeoutMs ?? DEFAULT_LLM_TIMEOUT_MS);
+}
+
+export async function sendVoiceboxAudioTranscription(
+  config: AppConfig,
+  input: AudioTranscriptionInput,
+  fetchImpl: FetchLike = fetch,
+  timeoutMs = config.transcription?.timeoutMs ?? DEFAULT_LLM_TIMEOUT_MS,
+): Promise<string> {
+  const transcription = config.transcription;
+  if (!transcription || transcription.provider !== "voicebox") {
+    throw new ProviderResponseError("Voicebox transcription provider is not configured.");
+  }
+
+  const abortController = new AbortController();
+  let didTimeout = false;
+  const timeout = setTimeout(() => {
+    didTimeout = true;
+    abortController.abort();
+  }, timeoutMs);
+  let response: Response;
+
+  try {
+    response = await fetchImpl(`${transcription.baseUrl.replace(/\/+$/, "")}/transcribe`, {
+      method: "POST",
+      headers: transcription.clientId ? { "x-voicebox-client-id": transcription.clientId } : undefined,
+      body: buildVoiceboxTranscriptionForm(config, input),
+      signal: abortController.signal,
+    });
+  } catch (error) {
+    if (didTimeout || isAbortError(error)) {
+      throw new ProviderTimeoutError(timeoutMs);
+    }
+    throw new ProviderNetworkError(error instanceof Error ? error.message : "Unknown Voicebox network error.");
+  }
+
+  try {
+    if (response.status === 401 || response.status === 403) {
+      throw new ProviderAuthError();
+    }
+    if (response.status === 429) {
+      throw new ProviderRateLimitError();
+    }
+    if (!response.ok) {
+      throw new ProviderResponseError(await formatProviderHttpError(response));
+    }
+
+    const responseBody = await parseJsonResponse(response, timeoutMs, () => didTimeout);
+    const text = extractTranscriptionText(responseBody);
+    if (!text) {
+      throw new ProviderResponseError("missing Voicebox transcription text.");
+    }
+    return text;
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 export async function sendElevenLabsAudioTranscription(
@@ -221,6 +280,25 @@ function buildAudioTranscriptionForm(config: AppConfig, input: AudioTranscriptio
   return form;
 }
 
+function buildVoiceboxTranscriptionForm(config: AppConfig, input: AudioTranscriptionInput): FormData {
+  const transcription = config.transcription;
+  if (!transcription || transcription.provider !== "voicebox") {
+    throw new ProviderResponseError("Voicebox transcription provider is not configured.");
+  }
+
+  const form = new FormData();
+  const mimeType = input.mimeType || "application/octet-stream";
+  const fileName = basename(input.localPath) || "telegram-audio.bin";
+  form.append("file", new Blob([Buffer.from(input.bytes)], { type: mimeType }), fileName);
+  if (transcription.model !== undefined) {
+    form.append("model", transcription.model);
+  }
+  if (transcription.language !== undefined) {
+    form.append("language", transcription.language);
+  }
+  return form;
+}
+
 function buildElevenLabsAudioFile(input: AudioTranscriptionInput): File {
   const mimeType = input.mimeType || "application/octet-stream";
   const fileName = basename(input.localPath) || "telegram-audio.bin";
@@ -305,6 +383,10 @@ function describeTranscriptionCandidate(config: AppConfig): ProviderFallbackTarg
     return { provider: transcription.provider, model: transcription.modelId ?? "scribe_v2" };
   }
 
+  if (transcription.provider === "voicebox") {
+    return { provider: transcription.provider, model: transcription.model ?? "turbo" };
+  }
+
   return { provider: transcription.provider, model: transcription.command };
 }
 
@@ -341,3 +423,4 @@ function isAbortError(error: unknown): boolean {
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
+

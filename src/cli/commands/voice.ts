@@ -19,6 +19,11 @@ const DEFAULT_ELEVENLABS_VOICE_ID = "NOpBlnGInO9m6vDvFkFC";
 const DEFAULT_ELEVENLABS_MODEL_ID = "eleven_v3";
 const DEFAULT_ELEVENLABS_TRANSCRIPTION_MODEL_ID = "scribe_v2";
 const DEFAULT_ELEVENLABS_OUTPUT_FORMAT = "mp3_44100_128";
+const DEFAULT_VOICEBOX_BASE_URL = "http://127.0.0.1:17493";
+const DEFAULT_VOICEBOX_CLIENT_ID = "bestie";
+const DEFAULT_VOICEBOX_ENGINE = "qwen";
+const DEFAULT_VOICEBOX_STT_MODEL = "turbo";
+const VOICEBOX_SUPPORTED_LANGUAGES = new Set(["zh", "en", "ja", "ko", "de", "fr", "ru", "pt", "es", "it", "he", "ar", "da", "el", "fi", "hi", "ms", "nl", "no", "pl", "sv", "sw", "tr"]);
 const LOCAL_VOICE_WRAPPER_PATH = ".bestie/tools/local-whisper-transcribe.sh";
 const LOCAL_WHISPER_COMMAND_PATH = ".bestie/tools/whisper-bin/whisper-cli";
 const LOCAL_WHISPER_MODEL_PATH = ".bestie/models/ggml-small.bin";
@@ -109,6 +114,11 @@ export async function runVoiceCommand(optionsOrArgv: string[] | VoiceCommandOpti
     return;
   }
 
+  if (subcommand === "setup-voicebox") {
+    await runVoiceboxSetup({ paths, questioner: options.questioner, writeLine, useColor: options.useColor ?? output.isTTY });
+    return;
+  }
+
   if (subcommand === "models") {
     await runVoiceModels({ paths, writeLine, useColor: options.useColor ?? output.isTTY });
     return;
@@ -119,11 +129,10 @@ export async function runVoiceCommand(optionsOrArgv: string[] | VoiceCommandOpti
     return;
   }
 
-  throw new UserFacingError("Cách dùng: bestie voice setup-local|setup-elevenlabs|models|download-model", "VoiceUsageError");
+  throw new UserFacingError("Cách dùng: bestie voice setup-local|setup-elevenlabs|setup-voicebox|models|download-model", "VoiceUsageError");
 }
 
 function getVoiceArgStart(argv: string[]): number {
-  if (argv[2] === "channels" && argv[3] === "telegram" && argv[4] === "voice") return 5;
   if (argv[2] === "voice") return 3;
   return 3;
 }
@@ -301,6 +310,48 @@ async function runVoiceElevenLabsSetup(options: { paths: RuntimePaths; questione
   }
 }
 
+async function runVoiceboxSetup(options: { paths: RuntimePaths; questioner?: VoiceQuestioner; writeLine: (message: string) => void; useColor: boolean }): Promise<void> {
+  const questioner = options.questioner ?? createQuestioner();
+  const render = withColorMode(options.useColor);
+
+  try {
+    const config = await loadConfig(options.paths);
+    const baseUrl = normalizeBaseUrl(await askWithDefault(questioner.ask, "Voicebox server URL", config.speech?.provider === "voicebox" ? config.speech.baseUrl : DEFAULT_VOICEBOX_BASE_URL));
+    const clientId = await askWithDefault(questioner.ask, "Voicebox client id", config.speech?.provider === "voicebox" ? config.speech.clientId ?? DEFAULT_VOICEBOX_CLIENT_ID : DEFAULT_VOICEBOX_CLIENT_ID);
+    const profile = (await questioner.ask("Voice profile name/id (blank = Voicebox default binding): ")).trim();
+    const engine = parseVoiceboxEngine(await askWithDefault(questioner.ask, "TTS engine", config.speech?.provider === "voicebox" ? config.speech.engine ?? DEFAULT_VOICEBOX_ENGINE : DEFAULT_VOICEBOX_ENGINE));
+    const speechLanguage = await askWithDefault(questioner.ask, "Speech language", getVoiceboxLanguage(config.agent.language));
+    const transcriptionModel = parseVoiceboxSttModel(await askWithDefault(questioner.ask, "Whisper STT model", config.transcription?.provider === "voicebox" ? config.transcription.model ?? DEFAULT_VOICEBOX_STT_MODEL : DEFAULT_VOICEBOX_STT_MODEL));
+    const transcriptionLanguage = await askWithDefault(questioner.ask, "Transcription language", getVoiceboxLanguage(config.agent.language));
+    const personality = await askYesNo(questioner.ask, "Use Voicebox profile personality rewrite by default?", false);
+
+    const nextConfig = enableVoiceboxConfig(config, {
+      baseUrl,
+      clientId,
+      profile,
+      engine,
+      speechLanguage,
+      transcriptionModel,
+      transcriptionLanguage,
+      personality,
+    });
+
+    await writeConfig(nextConfig, options.paths);
+
+    options.writeLine(render(() => title("Voicebox cho Bestie")));
+    options.writeLine(render(() => keyValue("Server", baseUrl)));
+    options.writeLine(render(() => keyValue("Client id", clientId)));
+    options.writeLine(render(() => keyValue("Voice profile", profile || "Voicebox default binding")));
+    options.writeLine(render(() => keyValue("TTS engine", engine)));
+    options.writeLine(render(() => keyValue("STT model", transcriptionModel)));
+    options.writeLine(render(() => keyValue("Personality", personality ? "on" : "off")));
+    options.writeLine(render(() => `${badge("OK", "green")} Saved local Voicebox voice config.`));
+    options.writeLine(render(() => `${badge("NEXT")} Start Voicebox, choose a voice binding for client id \`${clientId}\` if no profile was entered, then send a short voice message.`));
+  } finally {
+    questioner.close();
+  }
+}
+
 function enableVoiceLocalConfig(config: AppConfig, modelPath = LOCAL_WHISPER_MODEL_PATH): AppConfig {
   const telegram = config.channels?.telegram;
   const attachments = telegram?.attachments;
@@ -364,6 +415,46 @@ function enableVoiceElevenLabsConfig(config: AppConfig, speech: { voiceId: strin
   };
 }
 
+function enableVoiceboxConfig(config: AppConfig, voicebox: { baseUrl: string; clientId: string; profile: string; engine: "qwen" | "qwen_custom_voice" | "luxtts" | "chatterbox" | "chatterbox_turbo" | "tada" | "kokoro"; speechLanguage: string; transcriptionModel: "base" | "small" | "medium" | "large" | "turbo"; transcriptionLanguage: string; personality: boolean }): AppConfig {
+  const telegram = config.channels?.telegram;
+  const attachments = telegram?.attachments;
+
+  return {
+    ...config,
+    transcription: {
+      provider: "voicebox",
+      baseUrl: voicebox.baseUrl,
+      model: voicebox.transcriptionModel,
+      language: voicebox.transcriptionLanguage,
+      clientId: voicebox.clientId,
+      timeoutMs: config.transcription?.timeoutMs ?? 120_000,
+    },
+    speech: {
+      provider: "voicebox",
+      baseUrl: voicebox.baseUrl,
+      ...(voicebox.profile ? { profile: voicebox.profile } : {}),
+      engine: voicebox.engine,
+      language: voicebox.speechLanguage,
+      clientId: voicebox.clientId,
+      personality: voicebox.personality,
+      timeoutMs: config.speech?.timeoutMs ?? 180_000,
+      pollIntervalMs: 1_000,
+    },
+    channels: {
+      ...config.channels,
+      telegram: telegram
+        ? {
+            ...telegram,
+            voiceReplyPolicy: "voice-input-only",
+            voiceReplyMaxChars: telegram.voiceReplyMaxChars ?? 800,
+            voiceReplyCooldownMs: telegram.voiceReplyCooldownMs ?? 30_000,
+            attachments: enableVoiceAttachmentConfig(attachments),
+          }
+        : undefined,
+    },
+  };
+}
+
 function enableVoiceAttachmentConfig(attachments: NonNullable<NonNullable<NonNullable<AppConfig["channels"]>["telegram"]>["attachments"]> | undefined) {
   return {
     ...attachments,
@@ -411,6 +502,42 @@ function describeLocalWhisperModel(name: string, language: AppConfig["agent"]["l
     return "nhóm chất lượng tốt nhất, chậm nhất và lớn nhất";
   }
   return "chưa rõ kích thước model";
+}
+
+function parseVoiceboxEngine(value: string): "qwen" | "qwen_custom_voice" | "luxtts" | "chatterbox" | "chatterbox_turbo" | "tada" | "kokoro" {
+  if (["qwen", "qwen_custom_voice", "luxtts", "chatterbox", "chatterbox_turbo", "tada", "kokoro"].includes(value)) {
+    return value as "qwen" | "qwen_custom_voice" | "luxtts" | "chatterbox" | "chatterbox_turbo" | "tada" | "kokoro";
+  }
+  throw new UserFacingError("Voicebox TTS engine must be qwen, qwen_custom_voice, luxtts, chatterbox, chatterbox_turbo, tada, or kokoro.", "VoiceboxInvalidEngineError");
+}
+
+function parseVoiceboxSttModel(value: string): "base" | "small" | "medium" | "large" | "turbo" {
+  if (["base", "small", "medium", "large", "turbo"].includes(value)) {
+    return value as "base" | "small" | "medium" | "large" | "turbo";
+  }
+  throw new UserFacingError("Voicebox STT model must be base, small, medium, large, or turbo.", "VoiceboxInvalidSttModelError");
+}
+
+async function askYesNo(ask: AskLine, label: string, defaultValue: boolean): Promise<boolean> {
+  const defaultText = defaultValue ? "yes" : "no";
+  const answer = (await ask(`${label} [${defaultText}]: `)).trim().toLowerCase();
+  if (!answer) return defaultValue;
+  return ["y", "yes", "co", "có", "true", "1"].includes(answer);
+}
+
+function normalizeBaseUrl(value: string): string {
+  const trimmed = value.trim().replace(/\/+$/, "");
+  if (!/^https?:\/\//i.test(trimmed)) {
+    throw new UserFacingError("Voicebox server URL must start with http:// or https://.", "VoiceboxInvalidBaseUrlError");
+  }
+  return trimmed;
+}
+
+function getVoiceboxLanguage(language: AppConfig["agent"]["language"]): string {
+  if (isAutoLanguage(language) || !VOICEBOX_SUPPORTED_LANGUAGES.has(language.toLowerCase())) {
+    return "en";
+  }
+  return language.toLowerCase();
 }
 
 async function askWithDefault(ask: AskLine, label: string, defaultValue: string): Promise<string> {

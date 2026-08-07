@@ -78,6 +78,7 @@ Tùy chọn cron:
 Tùy chọn voice:
   setup-local       Cấu hình transcription local bằng whisper.cpp
   setup-elevenlabs  Cấu hình speech và transcription bằng ElevenLabs
+  setup-voicebox    Cấu hình speech và transcription local qua Voicebox
   models            Liệt kê model whisper.cpp local
   download-model    Tải một model whisper.cpp local
 `;
@@ -172,6 +173,7 @@ export const cliCommandSpecs: CliCommandSpec[] = [
     children: [
       { name: "setup-local", description: "Cấu hình transcription local bằng whisper.cpp", handler: runVoiceCommand },
       { name: "setup-elevenlabs", description: "Cấu hình hỗ trợ voice bằng ElevenLabs", handler: runVoiceCommand },
+      { name: "setup-voicebox", description: "Cấu hình voice local qua Voicebox", handler: runVoiceCommand },
       { name: "models", description: "Liệt kê model whisper.cpp local", handler: runVoiceCommand },
       { name: "download-model <model>", description: "Tải model whisper.cpp local", handler: runVoiceCommand },
     ],
@@ -211,7 +213,6 @@ function createChannelsCommandSpec(name: "channel" | "channels", hidden: boolean
         children: [
           { name: "setup", description: "Cấu hình Telegram owner id/username và bot token", handler: runChannelsCommand },
           { name: "whoami", description: "Xem id và username từ tin nhắn Telegram bot gần nhất", handler: runChannelsCommand },
-          { name: "voice", description: "Alias cho lệnh voice dùng chung", handler: runChannelsCommand },
         ],
       },
       {
@@ -223,4 +224,5 @@ function createChannelsCommandSpec(name: "channel" | "channels", hidden: boolean
     ],
   };
 }
+
 

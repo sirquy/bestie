@@ -55,7 +55,7 @@ chmod +x .bestie/tools/local-whisper-transcribe.sh
 If the local files above already exist, configure this mode automatically:
 
 ```bash
-npm run start -- channels telegram voice setup-local
+npm run start -- voice setup-local
 ```
 
 The command validates `.bestie/tools/whisper-bin/whisper-cli`, `.bestie/models/ggml-small.bin`, and `ffmpeg`, writes the wrapper, and merges the transcription/attachment config below without storing secrets.
@@ -63,19 +63,19 @@ The command validates `.bestie/tools/whisper-bin/whisper-cli`, `.bestie/models/g
 List local whisper.cpp models and the currently configured model:
 
 ```bash
-npm run start -- channels telegram voice models
+npm run start -- voice models
 ```
 
 Preview a controlled model download:
 
 ```bash
-npm run start -- channels telegram voice download-model small
+npm run start -- voice download-model small
 ```
 
 Download and switch the local transcription config to that model:
 
 ```bash
-npm run start -- channels telegram voice download-model small --confirm --use
+npm run start -- voice download-model small --confirm --use
 ```
 
 Supported names are `tiny`, `small`, `medium`, and `large-v3-turbo`. Existing files are not overwritten unless `--force` is provided.

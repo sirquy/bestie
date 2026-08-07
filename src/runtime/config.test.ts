@@ -354,6 +354,29 @@ test("validateConfig accepts optional ElevenLabs transcription provider", () => 
   });
 });
 
+test("validateConfig accepts optional Voicebox transcription provider", () => {
+  const config = validateConfig({
+    ...validConfig,
+    transcription: {
+      provider: "voicebox",
+      baseUrl: "http://127.0.0.1:17493/",
+      model: "turbo",
+      language: "en",
+      clientId: "bestie",
+      timeoutMs: 120_000,
+    },
+  });
+
+  assert.deepEqual(config.transcription, {
+    provider: "voicebox",
+    baseUrl: "http://127.0.0.1:17493",
+    model: "turbo",
+    language: "en",
+    clientId: "bestie",
+    timeoutMs: 120_000,
+  });
+});
+
 test("validateConfig accepts optional transcription fallbacks", () => {
   const config = validateConfig({
     ...validConfig,
@@ -417,6 +440,35 @@ test("validateConfig accepts optional ElevenLabs speech provider", () => {
     modelId: "eleven_v3",
     outputFormat: "mp3_44100_128",
     timeoutMs: 45_000,
+  });
+});
+
+test("validateConfig accepts optional Voicebox speech provider", () => {
+  const config = validateConfig({
+    ...validConfig,
+    speech: {
+      provider: "voicebox",
+      baseUrl: "http://127.0.0.1:17493/",
+      profile: "Morgan",
+      engine: "qwen",
+      language: "en",
+      clientId: "bestie",
+      personality: true,
+      pollIntervalMs: 1_000,
+      timeoutMs: 180_000,
+    },
+  });
+
+  assert.deepEqual(config.speech, {
+    provider: "voicebox",
+    baseUrl: "http://127.0.0.1:17493",
+    profile: "Morgan",
+    engine: "qwen",
+    language: "en",
+    clientId: "bestie",
+    personality: true,
+    pollIntervalMs: 1_000,
+    timeoutMs: 180_000,
   });
 });
 
@@ -688,7 +740,7 @@ test("validateConfig rejects invalid llm retry settings", () => {
 test("validateConfig rejects invalid transcription provider config", () => {
   assert.throws(
     () => validateConfig({ ...validConfig, transcription: { provider: "local", baseUrl: "https://audio.example.com/v1", model: "whisper-1", apiKeyEnv: "BESTIE_TRANSCRIPTION_API_KEY" } }),
-    /transcription.provider must be openai-compatible, elevenlabs, or local-whisper/,
+    /transcription.provider must be openai-compatible, elevenlabs, local-whisper, or voicebox/,
   );
   assert.throws(
     () => validateConfig({ ...validConfig, transcription: { provider: "openai-compatible", baseUrl: "", model: "whisper-1", apiKeyEnv: "BESTIE_TRANSCRIPTION_API_KEY" } }),
@@ -727,7 +779,7 @@ test("validateConfig rejects invalid transcription provider config", () => {
 test("validateConfig rejects invalid speech provider config", () => {
   assert.throws(
     () => validateConfig({ ...validConfig, speech: { provider: "local", baseUrl: "http://localhost:20128/v1", model: "google-tts/vi", apiKeyEnv: "BESTIE_TTS_API_KEY" } }),
-    /speech.provider must be openai-compatible or elevenlabs/,
+    /speech.provider must be openai-compatible, elevenlabs, or voicebox/,
   );
   assert.throws(
     () => validateConfig({ ...validConfig, speech: { provider: "elevenlabs", apiKeyEnv: "ELEVENLABS_API_KEY", voiceId: "" } }),
