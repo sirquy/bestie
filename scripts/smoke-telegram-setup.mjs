@@ -14,9 +14,23 @@ try {
   await mkdir(paths.appDir, { recursive: true });
   await writeConfig(
     {
-      version: 1,
+      version: 2,
       agent: { name: "Bestie", ownerName: "Boss", language: "vi", toneIntensity: 7 },
-      llm: { provider: "openai-compatible", baseUrl: "http://127.0.0.1:9/v1", model: "test-model", apiKeyEnv: "OPENAI_API_KEY" },
+      llm: {
+        primary: "openai/test-model",
+        authProfile: "openai:api-key",
+        profiles: {
+          "openai:api-key": {
+            provider: "openai-compatible",
+            mode: "api-key",
+            baseUrl: "http://127.0.0.1:9/v1",
+            apiKeyEnv: "OPENAI_API_KEY",
+          },
+        },
+        modelCatalog: {
+          "openai/test-model": { profile: "openai:api-key" },
+        },
+      },
     },
     paths,
   );
@@ -26,10 +40,21 @@ try {
     argv: ["node", "bestie", "channels", "telegram", "setup"],
     paths,
     questioner: {
-      ask: async () => "12345",
+      ask: async () => "",
       askHidden: async () => "test-telegram-token",
+      confirm: async () => true,
       close: () => undefined,
     },
+    clientFactory: () => ({
+      getUpdates: async () => [{
+        update_id: 1,
+        message: { message_id: 10, date: 1, chat: { id: 12345, type: "private", first_name: "Quy" }, from: { id: 12345, is_bot: false, first_name: "Quy", last_name: "Nguyen", username: "quy_nguyen" }, text: "hi" },
+      }],
+      sendMessage: async () => undefined,
+      editMessageText: async () => undefined,
+      sendChatAction: async () => undefined,
+      setMyCommands: async () => undefined,
+    }),
     writeLine: (message) => output.push(message),
     useColor: false,
   });
@@ -41,10 +66,11 @@ try {
   assertIncludes(configText, '"ownerUserId": "12345"');
   assertIncludes(envText, 'BESTIE_TELEGRAM_BOT_TOKEN="test-telegram-token"');
   const outputText = output.join("\n");
-  assertIncludes(outputText, "Account");
   assertIncludes(outputText, "Bot token");
-  assertIncludes(outputText, "Input is hidden");
-  assertIncludes(outputText, "Telegram setup saved");
+  assertIncludes(outputText, "Nội dung nhập sẽ được ẩn");
+  assertIncludes(outputText, "Đã nhận tin nhắn từ Quy Nguyen");
+  assertIncludes(outputText, "Đã xác nhận chủ sở hữu: Quy Nguyen");
+  assertIncludes(outputText, "Đã lưu cấu hình Telegram");
   assertNotIncludes(outputText, "test-telegram-token");
   console.log("Telegram setup smoke passed.");
 } finally {

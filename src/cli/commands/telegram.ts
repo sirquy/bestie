@@ -20,7 +20,7 @@ type AskLine = (question: string) => Promise<string>;
 interface TelegramQuestioner {
   ask: AskLine;
   askHidden: AskLine;
-  confirm?: (question: string, defaultValue?: boolean) => Promise<boolean>;
+  confirm: (question: string, defaultValue?: boolean) => Promise<boolean>;
   close: () => void;
 }
 
@@ -165,29 +165,22 @@ async function runTelegramSetup(options: { paths: RuntimePaths; questioner?: Tel
   try {
     ui.intro(options.paths);
 
-    ui.section("Tài khoản", "Kết nối một bot Telegram với runtime cục bộ này.");
     const config = await loadConfig(options.paths);
-    let ownerUserId = (await questioner.ask("[1/2] Telegram owner id hoặc username. Dùng numeric id, username, hoặc @username được phép chat với Bestie. Để trống để tự phát hiện từ tin nhắn bot mới nhất: ")).trim();
     ui.section("Bot token", "Dán token bí mật. Nội dung nhập sẽ được ẩn.");
-    const token = await questioner.askHidden("[2/2] Bot token. Dán Telegram bot token; nội dung nhập sẽ được ẩn: ");
+    const token = await questioner.askHidden("[1/2] Bot token. Dán Telegram bot token; nội dung nhập sẽ được ẩn: ");
 
     if (!token.trim()) {
       throw new UserFacingError("Bắt buộc phải có Telegram bot token.", "TelegramMissingTokenError");
     }
 
-    if (!ownerUserId) {
-      ownerUserId = await detectTelegramOwnerFromSetup({ token: token.trim(), questioner, clientFactory: options.clientFactory, ui });
-    }
-
-    if (!ownerUserId) {
-      throw new UserFacingError("Bắt buộc phải có Telegram owner id hoặc username. Hãy gửi một tin nhắn cho bot, chạy lại setup, hoặc nhập owner thủ công.", "TelegramMissingOwnerError");
-    }
-
-    ui.success("Đã thu thập owner Telegram và bot token.");
+    ui.success("Đã nhận bot token.");
+    ui.section("Xác nhận chủ sở hữu", "Gửi một tin nhắn bất kỳ đến bot Telegram của bạn. Bestie đang chờ để nhận diện tài khoản.");
+    const owner = await waitForTelegramOwnerConfirmation({ token: token.trim(), questioner, clientFactory: options.clientFactory, writeLine: options.writeLine });
+    ui.success(`Đã xác nhận chủ sở hữu: ${owner.displayName}.`);
 
     ui.section("Lưu cấu hình", "Đang cập nhật config cục bộ và file env chứa secret.");
     await mkdir(options.paths.appDir, { recursive: true });
-    await writeConfig(enableTelegramConfig(config, ownerUserId), options.paths);
+    await writeConfig(enableTelegramConfig(config, String(owner.id)), options.paths);
     await writeEnvFile({ ...(await loadEnvFile(options.paths)), [DEFAULT_TELEGRAM_TOKEN_ENV]: token.trim() }, options.paths);
 
     ui.success("Đã lưu cấu hình Telegram.");
@@ -201,22 +194,37 @@ async function runTelegramSetup(options: { paths: RuntimePaths; questioner?: Tel
   }
 }
 
-async function detectTelegramOwnerFromSetup(options: { token: string; questioner: TelegramQuestioner; clientFactory?: (token: string) => TelegramClient; ui: TelegramSetupUi }): Promise<string> {
-  options.ui.section("Tra cứu owner", "Đang đọc tin nhắn mới nhất gửi tới bot này.");
+async function waitForTelegramOwnerConfirmation(options: { token: string; questioner: TelegramQuestioner; clientFactory?: (token: string) => TelegramClient; writeLine: (message: string) => void }): Promise<{ id: number; displayName: string }> {
   const client = options.clientFactory?.(options.token) ?? new TelegramHttpClient(options.token);
-  const owner = await getRecentTelegramOwner(client);
+  let offset: number | undefined;
 
-  if (!owner) {
-    options.ui.info("Chưa thấy tin nhắn Telegram gần đây từ người dùng. Hãy gửi một tin nhắn cho bot, rồi chạy lại setup hoặc `bestie channels telegram whoami`.");
-    return "";
+  while (true) {
+    const updates = await client.getUpdates(offset);
+
+    for (const update of updates) {
+      offset = update.update_id + 1;
+      const sender = update.message?.from ?? update.callback_query?.from;
+
+      if (!sender || sender.is_bot) {
+        continue;
+      }
+
+      const displayName = formatTelegramDisplayName(sender);
+      options.writeLine(`Đã nhận tin nhắn từ ${displayName} (Telegram ID: ${sender.id}).`);
+      if (await options.questioner.confirm(`Đây có phải tài khoản của bạn, ${displayName}?`, true)) {
+        return { id: sender.id, displayName };
+      }
+
+      options.writeLine("Chưa xác nhận tài khoản này. Hãy gửi một tin nhắn từ đúng tài khoản Telegram của bạn.");
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 500));
   }
+}
 
-  const suggestedOwner = owner.username ? `@${owner.username}` : String(owner.id);
-  options.ui.info(`Tìm thấy người gửi Telegram gần đây: ${suggestedOwner} (id ${owner.id}).`);
-  const shouldUseOwner = options.questioner.confirm
-    ? await options.questioner.confirm(`Dùng ${suggestedOwner} làm owner Telegram?`, true)
-    : !["n", "no"].includes((await options.questioner.ask(`Dùng ${suggestedOwner} làm owner Telegram? [Y/n]: `)).trim().toLowerCase());
-  return shouldUseOwner ? suggestedOwner : "";
+function formatTelegramDisplayName(sender: { first_name: string; last_name?: string; username?: string }): string {
+  const name = [sender.first_name, sender.last_name].filter(Boolean).join(" ").trim();
+  return name || (sender.username ? `@${sender.username}` : "Không có tên hiển thị");
 }
 
 async function getRecentTelegramOwner(client: TelegramClient): Promise<{ id: number; username?: string } | undefined> {
@@ -235,7 +243,7 @@ function createTelegramSetupUi(writeLine: (message: string) => void, useColor: b
       writeLine(render(() => dim("Kết nối bot Telegram với runtime Bestie cục bộ.")));
       writeLine(`${render(() => color("cyan", "Runtime"))} ${paths.appDir}`);
       writeLine(`${render(() => color("cyan", "Riêng tư"))} Bot token được lưu cục bộ trong .bestie/.env và được ẩn khi nhập.`);
-      writeLine(render(() => `${dim("Các bước")} Tài khoản -> Lưu cấu hình -> File đã lưu\n`));
+      writeLine(render(() => `${dim("Các bước")} Bot token -> Xác nhận chủ sở hữu -> Lưu cấu hình -> File đã lưu\n`));
     },
     section: (sectionTitle, detail) => {
       writeLine(render(() => `${color("cyan", "\n>")} ${bold(sectionTitle)}${detail ? ` ${dim(detail)}` : ""}`));

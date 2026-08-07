@@ -47,15 +47,22 @@ test("runTelegramCommand setup writes Telegram config and token env", async () =
       argv: ["node", "bestie", "channels", "telegram", "setup"],
       paths,
       questioner: {
-        ask: async (question) => {
-          assert.match(question, /owner id hoặc username/i);
-          return "@boss_user";
-        },
+        ask: async () => "",
         askHidden: async () => "telegram-secret-token",
+        confirm: async () => true,
         close: () => {
           closed = true;
         },
       },
+      clientFactory: () => ({
+        async getUpdates() {
+          return [{ update_id: 1, message: { message_id: 10, date: 1, chat: { id: 12345, type: "private", first_name: "Boss" }, from: { id: 12345, is_bot: false, first_name: "Quy", last_name: "Nguyen", username: "boss_user" }, text: "hi" } }];
+        },
+        async sendMessage() {},
+        async editMessageText() {},
+        async sendChatAction() {},
+        async setMyCommands() {},
+      }),
       writeLine: (message) => output.push(message),
     });
 
@@ -67,14 +74,14 @@ test("runTelegramCommand setup writes Telegram config and token env", async () =
     assert.equal(closed, true);
     assert.equal(config.channels?.telegram?.enabled, true);
     assert.equal(config.channels?.telegram?.botTokenEnv, "BESTIE_TELEGRAM_BOT_TOKEN");
-    assert.equal(config.channels?.telegram?.ownerUserId, "@boss_user");
+    assert.equal(config.channels?.telegram?.ownerUserId, "12345");
     assert.match(envText, /OPENAI_API_KEY="sk-test"/);
     assert.match(envText, /BESTIE_TELEGRAM_BOT_TOKEN="telegram-secret-token"/);
     assert.ok(output.some((line) => line.includes("Thiết lập Telegram")));
     assert.ok(output.some((line) => line.includes("Runtime")));
-    assert.ok(output.some((line) => line.includes("Tài khoản") && line.includes("Kết nối một bot Telegram")));
     assert.ok(output.some((line) => line.includes("Bot token") && line.includes("Nội dung nhập sẽ được ẩn")));
-    assert.ok(output.some((line) => line.includes("OK") && line.includes("Đã thu thập owner Telegram")));
+    assert.ok(output.some((line) => line.includes("Đã nhận tin nhắn từ Quy Nguyen") && line.includes("12345")));
+    assert.ok(output.some((line) => line.includes("Đã xác nhận chủ sở hữu: Quy Nguyen")));
     assert.ok(output.some((line) => line.includes("Đã lưu cấu hình Telegram")));
     assert.ok(output.some((line) => line.includes("Token env") && line.includes("BESTIE_TELEGRAM_BOT_TOKEN")));
     assert.ok(output.some((line) => line.includes("DONE") && line.includes("Thiết lập Telegram đã hoàn tất")));
@@ -84,11 +91,11 @@ test("runTelegramCommand setup writes Telegram config and token env", async () =
   }
 });
 
-test("runTelegramCommand setup can detect owner username when owner prompt is blank", async () => {
+test("runTelegramCommand setup continues after an unconfirmed Telegram sender", async () => {
   const paths = await createTempPaths();
   const output: string[] = [];
-  let askCount = 0;
-  let confirmQuestion = "";
+  let pollCount = 0;
+  const confirmations: string[] = [];
 
   try {
     await mkdir(paths.appDir, { recursive: true });
@@ -119,21 +126,21 @@ test("runTelegramCommand setup can detect owner username when owner prompt is bl
       argv: ["node", "bestie", "channels", "telegram", "setup"],
       paths,
       questioner: {
-        ask: async (question) => {
-          askCount += 1;
-          return "";
-        },
+        ask: async () => "",
         askHidden: async () => "telegram-secret-token",
         confirm: async (question, defaultValue) => {
-          confirmQuestion = question;
+          confirmations.push(question);
           assert.equal(defaultValue, true);
-          return true;
+          return confirmations.length > 1;
         },
         close: () => undefined,
       },
       clientFactory: () => ({
         async getUpdates() {
-          return [{ update_id: 1, message: { message_id: 10, date: 1, chat: { id: 777, type: "private", first_name: "Boss" }, from: { id: 12345, is_bot: false, first_name: "Boss", username: "boss_user" }, text: "hi" } }];
+          pollCount += 1;
+          return pollCount === 1
+            ? [{ update_id: 1, message: { message_id: 10, date: 1, chat: { id: 777, type: "private", first_name: "Other" }, from: { id: 100, is_bot: false, first_name: "Other", username: "other_user" }, text: "hi" } }]
+            : [{ update_id: 2, message: { message_id: 11, date: 2, chat: { id: 12345, type: "private", first_name: "Boss" }, from: { id: 12345, is_bot: false, first_name: "Quy", last_name: "Nguyen", username: "boss_user" }, text: "hi" } }];
         },
         async sendMessage() {},
         async editMessageText() {},
@@ -148,20 +155,19 @@ test("runTelegramCommand setup can detect owner username when owner prompt is bl
       channels?: { telegram?: { ownerUserId: string } };
     };
 
-    assert.equal(askCount, 1);
-    assert.equal(confirmQuestion, "Dùng @boss_user làm owner Telegram?");
-    assert.equal(config.channels?.telegram?.ownerUserId, "@boss_user");
-    assert.ok(output.some((line) => line.includes("Tra cứu owner")));
-    assert.ok(output.some((line) => line.includes("Tìm thấy người gửi Telegram gần đây: @boss_user")));
+    assert.equal(config.channels?.telegram?.ownerUserId, "12345");
+    assert.deepEqual(confirmations, ["Đây có phải tài khoản của bạn, Other?", "Đây có phải tài khoản của bạn, Quy Nguyen?"]);
+    assert.ok(output.some((line) => line.includes("Chưa xác nhận tài khoản này")));
     assert.ok(output.every((line) => !line.includes("telegram-secret-token")));
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
   }
 });
 
-test("runTelegramCommand setup explains blank owner when no recent Telegram sender exists", async () => {
+test("runTelegramCommand setup ignores bot updates before confirming the owner", async () => {
   const paths = await createTempPaths();
   const output: string[] = [];
+  let pollCount = 0;
 
   try {
     await mkdir(paths.appDir, { recursive: true });
@@ -188,34 +194,34 @@ test("runTelegramCommand setup explains blank owner when no recent Telegram send
       paths,
     );
 
-    await assert.rejects(
-      () => runTelegramCommand({
-        argv: ["node", "bestie", "channels", "telegram", "setup"],
-        paths,
-        questioner: {
-          ask: async () => "",
-          askHidden: async () => "telegram-secret-token",
-          close: () => undefined,
+    await runTelegramCommand({
+      argv: ["node", "bestie", "channels", "telegram", "setup"],
+      paths,
+      questioner: {
+        ask: async () => "",
+        askHidden: async () => "telegram-secret-token",
+        confirm: async () => true,
+        close: () => undefined,
+      },
+      clientFactory: () => ({
+        async getUpdates() {
+          pollCount += 1;
+          return pollCount === 1
+            ? [{ update_id: 1, message: { message_id: 10, date: 1, chat: { id: 99, type: "private", first_name: "Bot" }, from: { id: 99, is_bot: true, first_name: "Bot" }, text: "hello" } }]
+            : [{ update_id: 2, message: { message_id: 11, date: 2, chat: { id: 12345, type: "private", first_name: "Boss" }, from: { id: 12345, is_bot: false, first_name: "Boss" }, text: "hi" } }];
         },
-        clientFactory: () => ({
-          async getUpdates() {
-            return [];
-          },
-          async sendMessage() {},
-          async editMessageText() {},
-          async sendChatAction() {},
-          async setMyCommands() {},
-        }),
-        writeLine: (message) => output.push(message),
-        useColor: false,
+        async sendMessage() {},
+        async editMessageText() {},
+        async sendChatAction() {},
+        async setMyCommands() {},
       }),
-      /gửi một tin nhắn cho bot/,
-    );
+      writeLine: (message) => output.push(message),
+      useColor: false,
+    });
 
-    assert.ok(output.some((line) => line.includes("Chưa thấy tin nhắn Telegram gần đây")));
-    const config = JSON.parse(await readFile(paths.configPath, "utf8")) as { channels?: { telegram?: { enabled: boolean } } };
-    assert.equal(config.channels?.telegram, undefined);
-    await assert.rejects(() => access(paths.envPath), /ENOENT/);
+    const config = JSON.parse(await readFile(paths.configPath, "utf8")) as { channels?: { telegram?: { ownerUserId: string } } };
+    assert.equal(config.channels?.telegram?.ownerUserId, "12345");
+    assert.ok(output.some((line) => line.includes("Đã nhận tin nhắn từ Boss")));
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
   }
