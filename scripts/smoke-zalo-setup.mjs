@@ -14,9 +14,23 @@ try {
   await mkdir(paths.appDir, { recursive: true });
   await writeConfig(
     {
-      version: 1,
+      version: 2,
       agent: { name: "Bestie", ownerName: "Boss", language: "vi", toneIntensity: 7 },
-      llm: { provider: "openai-compatible", baseUrl: "http://127.0.0.1:9/v1", model: "test-model", apiKeyEnv: "OPENAI_API_KEY" },
+      llm: {
+        primary: "openai/test-model",
+        authProfile: "openai:api-key",
+        profiles: {
+          "openai:api-key": {
+            provider: "openai-compatible",
+            mode: "api-key",
+            baseUrl: "http://127.0.0.1:9/v1",
+            apiKeyEnv: "OPENAI_API_KEY",
+          },
+        },
+        modelCatalog: {
+          "openai/test-model": { profile: "openai:api-key" },
+        },
+      },
     },
     paths,
   );
@@ -41,10 +55,10 @@ try {
   assertIncludes(configText, '"ownerUserId": "zalo-owner-1"');
   assertIncludes(envText, 'BESTIE_ZALO_BOT_TOKEN="test-zalo-token"');
   const outputText = output.join("\n");
-  assertIncludes(outputText, "Account");
+  assertIncludes(outputText, "Tài khoản");
   assertIncludes(outputText, "Bot token");
-  assertIncludes(outputText, "Input is hidden");
-  assertIncludes(outputText, "Zalo setup saved");
+  assertIncludes(outputText, "Nội dung nhập sẽ được ẩn");
+  assertIncludes(outputText, "Đã lưu cấu hình Zalo");
   assertNotIncludes(outputText, "test-zalo-token");
   console.log("Zalo setup smoke passed.");
 } finally {
