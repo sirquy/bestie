@@ -77,6 +77,8 @@ export interface ZaloUser {
   is_bot?: boolean;
   first_name?: string;
   last_name?: string;
+  display_name?: string;
+  displayName?: string;
   username?: string;
 }
 

@@ -40,10 +40,19 @@ try {
     argv: ["node", "bestie", "channels", "zalo", "setup"],
     paths,
     questioner: {
-      ask: async () => "zalo-owner-1",
+      ask: async () => "",
       askHidden: async () => "test-zalo-token",
+      confirm: async () => true,
       close: () => undefined,
     },
+    clientFactory: () => ({
+      getUpdates: async () => [{
+        update_id: 1,
+        message: { from: { id: "zalo-owner-1", display_name: "Quy Nguyen" }, chat: { id: "zalo-owner-1" }, text: "hi" },
+      }],
+      sendMessage: async () => undefined,
+      sendChatAction: async () => undefined,
+    }),
     writeLine: (message) => output.push(message),
     useColor: false,
   });
@@ -55,8 +64,9 @@ try {
   assertIncludes(configText, '"ownerUserId": "zalo-owner-1"');
   assertIncludes(envText, 'BESTIE_ZALO_BOT_TOKEN="test-zalo-token"');
   const outputText = output.join("\n");
-  assertIncludes(outputText, "Tài khoản");
   assertIncludes(outputText, "Bot token");
+  assertIncludes(outputText, "Đã nhận tin nhắn từ Quy Nguyen");
+  assertIncludes(outputText, "Đã xác nhận chủ sở hữu: Quy Nguyen");
   assertIncludes(outputText, "Nội dung nhập sẽ được ẩn");
   assertIncludes(outputText, "Đã lưu cấu hình Zalo");
   assertNotIncludes(outputText, "test-zalo-token");

@@ -18,6 +18,7 @@ type AskLine = (question: string) => Promise<string>;
 interface ZaloQuestioner {
   ask: AskLine;
   askHidden: AskLine;
+  confirm: (question: string, defaultValue?: boolean) => Promise<boolean>;
   close: () => void;
 }
 
@@ -47,7 +48,7 @@ export async function runZaloCommand(optionsOrArgv: string[] | ZaloCommandOption
   const writeLine = options.writeLine ?? console.log;
 
   if (argv.includes("setup")) {
-    await runZaloSetup({ paths, questioner: options.questioner, writeLine, useColor: options.useColor ?? output.isTTY });
+    await runZaloSetup({ paths, questioner: options.questioner, clientFactory: options.clientFactory, writeLine, useColor: options.useColor ?? output.isTTY });
     return;
   }
 
@@ -96,30 +97,28 @@ export async function runZaloCommand(optionsOrArgv: string[] | ZaloCommandOption
   }
 }
 
-async function runZaloSetup(options: { paths: RuntimePaths; questioner?: ZaloQuestioner; writeLine: (message: string) => void; useColor?: boolean }): Promise<void> {
+async function runZaloSetup(options: { paths: RuntimePaths; questioner?: ZaloQuestioner; clientFactory?: (token: string) => ZaloClient; writeLine: (message: string) => void; useColor?: boolean }): Promise<void> {
   const questioner = options.questioner ?? createQuestioner();
   const ui = createZaloSetupUi(options.writeLine, options.useColor ?? output.isTTY);
 
   try {
     ui.intro(options.paths);
-    ui.section("Tài khoản", "Kết nối một bot Zalo với runtime cục bộ này.");
     const config = await loadConfig(options.paths);
-    const ownerUserId = (await questioner.ask("[1/2] Zalo owner user id được phép chat với Bestie: ")).trim();
     ui.section("Bot token", "Dán token bí mật. Nội dung nhập sẽ được ẩn.");
-    const token = await questioner.askHidden("[2/2] Bot token. Dán Zalo Bot Token; nội dung nhập sẽ được ẩn: ");
-
-    if (!ownerUserId) {
-      throw new UserFacingError("Bắt buộc phải có Zalo owner user id.", "ZaloMissingOwnerError");
-    }
+    const token = await questioner.askHidden("[1/2] Bot token. Dán Zalo Bot Token; nội dung nhập sẽ được ẩn: ");
 
     if (!token.trim()) {
       throw new UserFacingError("Bắt buộc phải có Zalo bot token.", "ZaloMissingTokenError");
     }
 
-    ui.success("Đã thu thập owner Zalo và bot token.");
+    ui.success("Đã nhận bot token.");
+    ui.section("Xác nhận chủ sở hữu", "Gửi một tin nhắn bất kỳ đến bot Zalo của bạn. Bestie đang chờ để nhận diện tài khoản.");
+    const client = options.clientFactory?.(token.trim()) ?? new ZaloHttpClient(token.trim());
+    const owner = await waitForZaloOwnerConfirmation(client, questioner, options.writeLine);
+    ui.success(`Đã xác nhận chủ sở hữu: ${owner.displayName}.`);
     ui.section("Lưu cấu hình", "Đang cập nhật config cục bộ và file env chứa secret.");
     await mkdir(options.paths.appDir, { recursive: true });
-    await writeConfig(enableZaloConfig(config, ownerUserId), options.paths);
+    await writeConfig(enableZaloConfig(config, owner.userId), options.paths);
     await writeEnvFile({ ...(await loadEnvFile(options.paths)), [DEFAULT_ZALO_TOKEN_ENV]: token.trim() }, options.paths);
 
     ui.success("Đã lưu cấu hình Zalo.");
@@ -131,6 +130,47 @@ async function runZaloSetup(options: { paths: RuntimePaths; questioner?: ZaloQue
   } finally {
     questioner.close();
   }
+}
+
+async function waitForZaloOwnerConfirmation(client: ZaloClient, questioner: ZaloQuestioner, writeLine: (message: string) => void): Promise<{ userId: string; displayName: string }> {
+  let offset: number | undefined;
+
+  while (true) {
+    const updates = await client.getUpdates(offset, 25);
+
+    for (const update of updates) {
+      offset = update.update_id + 1;
+      const message = update.message;
+      const userId = message ? extractZaloSetupUserId(message) : undefined;
+
+      if (!message || !userId || message.from?.is_bot) {
+        continue;
+      }
+
+      const displayName = extractZaloDisplayName(message) ?? "Không có tên hiển thị";
+      writeLine(`Đã nhận tin nhắn từ ${displayName} (Zalo ID: ${userId}).`);
+      if (await questioner.confirm(`Đây có phải tài khoản của bạn, ${displayName}?`, true)) {
+        return { userId, displayName };
+      }
+
+      writeLine("Chưa xác nhận tài khoản này. Hãy gửi một tin nhắn từ đúng tài khoản Zalo của bạn.");
+    }
+  }
+}
+
+function extractZaloSetupUserId(message: ZaloUpdate["message"]): string | undefined {
+  const userId = message?.from?.id ?? message?.sender?.id ?? message?.user?.id ?? message?.user_id ?? message?.uid ?? message?.sender_id ?? message?.from_id;
+  return userId === undefined ? undefined : String(userId);
+}
+
+function extractZaloDisplayName(message: ZaloUpdate["message"]): string | undefined {
+  const sender = message?.from ?? message?.sender ?? message?.user;
+  const displayName = sender?.display_name ?? sender?.displayName;
+  if (typeof displayName === "string" && displayName.trim()) {
+    return displayName.trim();
+  }
+
+  return [sender?.first_name, sender?.last_name].filter((value): value is string => Boolean(value?.trim())).join(" ") || undefined;
 }
 
 function enableZaloConfig(config: AppConfig, ownerUserId: string): AppConfig {

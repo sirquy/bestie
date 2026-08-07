@@ -44,12 +44,21 @@ test("runZaloCommand setup writes Zalo config and token env", async () => {
       argv: ["node", "bestie", "channels", "zalo", "setup"],
       paths,
       questioner: {
-        ask: async () => "zalo-owner-1",
+        ask: async () => "",
         askHidden: async () => "zalo-secret-token",
+        confirm: async () => true,
         close: () => {
           closed = true;
         },
       },
+      clientFactory: () => ({
+        getUpdates: async () => [{
+          update_id: 1,
+          message: { from: { id: "zalo-owner-1", display_name: "Quy Nguyen" }, chat: { id: "zalo-owner-1" }, text: "hi" },
+        }],
+        sendMessage: async () => undefined,
+        sendChatAction: async () => undefined,
+      }),
       writeLine: (message) => output.push(message),
     });
 
@@ -66,6 +75,8 @@ test("runZaloCommand setup writes Zalo config and token env", async () => {
     assert.match(envText, /BESTIE_ZALO_BOT_TOKEN="zalo-secret-token"/);
     assert.ok(output.some((line) => line.includes("Thiết lập Zalo")));
     assert.ok(output.some((line) => line.includes("Bot token") && line.includes("Nội dung nhập sẽ được ẩn")));
+    assert.ok(output.some((line) => line.includes("Đã nhận tin nhắn từ Quy Nguyen") && line.includes("zalo-owner-1")));
+    assert.ok(output.some((line) => line.includes("Đã xác nhận chủ sở hữu: Quy Nguyen")));
     assert.ok(output.some((line) => line.includes("Đã lưu cấu hình Zalo")));
     assert.ok(output.every((line) => !line.includes("zalo-secret-token")));
   } finally {
