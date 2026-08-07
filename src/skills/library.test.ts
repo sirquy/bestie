@@ -49,6 +49,18 @@ test("validateCuratedSkillRegistry accepts markdown front matter before title", 
   assert.equal(result.ok, true);
 });
 
+test("validateCuratedSkillRegistry accepts CRLF markdown front matter before title", () => {
+  const skill = createRemoteRegistryDocument().skills[0] as import("./library.js").CuratedSkillTemplate;
+  const result = validateCuratedSkillRegistry([
+    {
+      ...skill,
+      content: "---\r\nname: remote-test-skill\r\ndescription: Test skill.\r\n---\r\n\r\n# Remote Test Skill\r\n\r\nUse only in tests.\r\n",
+    },
+  ]);
+
+  assert.equal(result.ok, true);
+});
+
 test("hashSkillContent and buildSkillDiff are stable registry primitives", () => {
   assert.equal(hashSkillContent("# Skill\n"), hashSkillContent("# Skill"));
   const diff = buildSkillDiff("# Skill\nold", "# Skill\nnew");

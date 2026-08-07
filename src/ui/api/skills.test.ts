@@ -63,6 +63,30 @@ test("getUiSkillLibrary reports configured remote registry verification contract
   }
 });
 
+test("getUiSkillLibrary defaults an omitted remote install policy to ask", async () => {
+  const paths = await createTempPaths();
+
+  try {
+    await mkdir(paths.appDir, { recursive: true });
+    await writeFile(paths.configPath, `${JSON.stringify({
+      version: 2,
+      agent: { name: "Miu", ownerName: "Boss", language: "vi", toneIntensity: 7 },
+      llm: {
+        primary: "openai/test-model",
+        authProfile: "openai:api-key",
+        profiles: { "openai:api-key": { provider: "openai-compatible", mode: "api-key", baseUrl: "https://example.test/v1", apiKeyEnv: "OPENAI_API_KEY" } },
+        modelCatalog: { "openai/test-model": { profile: "openai:api-key" } },
+      },
+      skills: { registry: { remoteOfficial: { enabled: true, url: "https://skills.example.test/registry.json", checksumUrl: "https://skills.example.test/registry.sha256" } } },
+    }, null, 2)}\n`);
+
+    const library = await getUiSkillLibrary(paths);
+    assert.equal(library.skills.find((skill) => skill.name === "firecrawl")?.installable, true);
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
 test("testUiSkillRemoteRegistry verifies configured signed remote payload", async () => {
   const paths = await createTempPaths();
   const keys = createTestKeys();
@@ -70,7 +94,7 @@ test("testUiSkillRemoteRegistry verifies configured signed remote payload", asyn
   const signature = signPayload(payload, keys.privateKey);
 
   try {
-    await writeConfigWithRemoteRegistry(paths, { enabled: true, url: "https://skills.example.test/registry.json", publicKey: keys.publicKey, signatureHeader: "x-bestie-signature" });
+    await writeConfigWithRemoteRegistry(paths, { enabled: true, url: "https://skills.example.test/registry.json", publicKey: keys.publicKey, signatureHeader: "x-bestie-signature", installPolicy: "deny" });
     await assert.rejects(() => testUiSkillRemoteRegistry({ confirm: false, paths }), /confirm=true/);
 
     const result = await testUiSkillRemoteRegistry({
@@ -131,7 +155,7 @@ test("installUiSkillFromLibrary installs verified remote skills only when policy
   const signature = signPayload(payload, keys.privateKey);
 
   try {
-    await writeConfigWithRemoteRegistry(paths, { enabled: true, url: "https://skills.example.test/registry.json", publicKey: keys.publicKey, signatureHeader: "x-bestie-signature" });
+    await writeConfigWithRemoteRegistry(paths, { enabled: true, url: "https://skills.example.test/registry.json", publicKey: keys.publicKey, signatureHeader: "x-bestie-signature", installPolicy: "deny" });
     await testUiSkillRemoteRegistry({ confirm: true, paths, fetchImpl: async () => new Response(payload, { status: 200, headers: { "x-bestie-signature": signature } }) });
     await assert.rejects(() => installUiSkillFromLibrary({ name: "remote-test-skill", sourceId: "remote-official-test", confirm: true, paths }), /chưa cho phép/i);
 

@@ -305,7 +305,7 @@ function verifyRegistryChecksum(payload: string, checksum: string): boolean {
 }
 
 function startsWithMarkdownTitle(content: string): boolean {
-  const trimmed = content.trimStart();
+  const trimmed = content.trimStart().replace(/\r\n/g, "\n");
   if (trimmed.startsWith("# ")) return true;
   if (!trimmed.startsWith("---\n")) return false;
   const end = trimmed.indexOf("\n---", 4);

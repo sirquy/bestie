@@ -451,11 +451,13 @@ async function readSkillContentIfExists(paths: RuntimePaths, name: string): Prom
 }
 
 async function getConfiguredRemoteRegistry(paths: RuntimePaths): Promise<RemoteSkillRegistryConfig> {
-  if (!(await configExists(paths))) return getDefaultRemoteSkillRegistryConfig();
+  const defaults = getDefaultRemoteSkillRegistryConfig();
+  if (!(await configExists(paths))) return defaults;
   try {
-    return (await loadConfig(paths)).skills?.registry?.remoteOfficial ?? getDefaultRemoteSkillRegistryConfig();
+    const configured = (await loadConfig(paths)).skills?.registry?.remoteOfficial;
+    return configured ? { ...defaults, ...configured } : defaults;
   } catch {
-    return getDefaultRemoteSkillRegistryConfig();
+    return defaults;
   }
 }
 
