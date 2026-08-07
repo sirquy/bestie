@@ -16,7 +16,7 @@ The project is active and practical: the shipped npm CLI/runtime is designed to 
 - Configurable LLM providers with model refs, auth profiles, fallbacks, and provider diagnostics.
 - A local-first memory system backed by SQLite and explicit approval/governance controls.
 - A channel runtime for Telegram, Zalo, and cron schedules, with daemon/service management.
-- A permission-gated tool runtime for local files/actions, media generation, MCP read calls, and bounded internal subagents.
+- A permission-gated tool runtime for local files/actions, media generation, permission-gated MCP calls, and bounded internal subagents.
 
 ## What Bestie Is Not
 
@@ -261,3 +261,4 @@ Good first contributions include documentation clarity, diagnostics, focused tes
 ## License
 
 This project is released under the MIT License. See `LICENSE`.
+

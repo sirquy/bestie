@@ -299,6 +299,15 @@ test("parseMcpToolRequest accepts internal read tool requests", () => {
   });
 });
 
+test("parseMcpToolRequest accepts permission-gated MCP call requests", () => {
+  assert.deepEqual(parseMcpToolRequest('{"tool":"mcp.call","server":"voicebox","name":"voicebox.speak","arguments":{"text":"Build complete"}}'), {
+    tool: "mcp.call",
+    server: "voicebox",
+    name: "voicebox.speak",
+    arguments: { text: "Build complete" },
+  });
+});
+
 test("parseMcpToolRequestResult accepts supported tool JSON mixed with prose", () => {
   const result = parseMcpToolRequestResult('Để review code, Miu cần xem qua src trước.\n\n{"tool":"internal.list_files","arguments":{"path":"src","limit":50}}');
 
@@ -356,7 +365,7 @@ test("parseMcpToolRequestResult allows normal final answers that mention tools",
   assert.equal(result.kind, "none");
 });
 
-test("runMcpToolRequest enforces local read allowlist before calling MCP", async () => {
+test("runMcpToolRequest enforces local MCP allowlist before calling MCP", async () => {
   const paths = await createTempPaths();
   await mkdir(paths.appDir, { recursive: true });
   let called = false;
@@ -379,7 +388,7 @@ test("runMcpToolRequest enforces local read allowlist before calling MCP", async
     const writeCategory = await runMcpToolRequest({
       config: createConfig({ tools: [{ name: "write_file", category: "local_write" }] }),
       paths,
-      request: { tool: "mcp.read", server: "fs", name: "write_file", arguments: {} },
+      request: { tool: "mcp.call", server: "fs", name: "write_file", arguments: {} },
       callTool: async () => {
         called = true;
         return { ok: true, status: "pass", message: "should not call" };
@@ -387,7 +396,7 @@ test("runMcpToolRequest enforces local read allowlist before calling MCP", async
     });
 
     assert.equal(writeCategory.ok, false);
-    assert.match(writeCategory.message, /only read tools/);
+    assert.match(writeCategory.message, /Approval required but no approver was available/);
     assert.equal(called, false);
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
@@ -449,6 +458,31 @@ test("runAgentToolRequest runs internal search_files without MCP config", async 
     assert.equal(result.ok, true);
     assert.match(JSON.stringify(result.result), /workspace\.log/);
     assert.doesNotMatch(JSON.stringify(result.result), /app\.log/);
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("runMcpToolRequest executes non-read MCP tools after approval", async () => {
+  const paths = await createTempPaths();
+  await mkdir(paths.appDir, { recursive: true });
+  let reviewedCategory = "";
+
+  try {
+    const result = await runMcpToolRequest({
+      config: createConfig({ tools: [{ name: "speak", category: "local_write" }] }),
+      paths,
+      request: { tool: "mcp.call", server: "fs", name: "speak", arguments: { text: "done" } },
+      approver: async (request) => {
+        reviewedCategory = request.category;
+        assert.equal(request.payloadJson, JSON.stringify({ tool: "mcp.call", server: "fs", name: "speak", arguments: { text: "done" } }));
+        return { approved: true, reason: "Approved local voice output." };
+      },
+      callTool: async (_server, toolName, args) => ({ ok: true, status: "pass", message: `${toolName} ok`, result: args }),
+    });
+
+    assert.equal(reviewedCategory, "local_write");
+    assert.deepEqual(result, { ok: true, status: "pass", message: "speak ok", result: { text: "done" } });
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
   }

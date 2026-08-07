@@ -57,7 +57,7 @@ export interface CompleteWithAgentToolsOptions {
 }
 
 export interface McpToolRequest {
-  tool: "mcp.read";
+  tool: "mcp.read" | "mcp.call";
   server: string;
   name: string;
   arguments: Record<string, unknown>;
@@ -154,6 +154,7 @@ export interface RunMcpToolRequestOptions {
   approver?: PermissionApprover;
   policy?: PermissionPolicy;
   callTool?: typeof callMcpServerTool;
+  skipPermissionReview?: boolean;
 }
 
 export interface RunAgentToolRequestOptions extends Omit<RunMcpToolRequestOptions, "request"> {
@@ -241,7 +242,7 @@ export function parseMcpToolRequestResult(text: string): McpToolRequestParseResu
 
   if (!rawJson?.startsWith("{") || !rawJson.endsWith("}")) {
     if (looksLikeMixedToolJson(trimmed)) {
-      return { kind: "invalid", message: "A tool request was mentioned, but the runtime could not find one complete JSON object. Retry with exactly one supported tool JSON object such as {\"tool\":\"internal.mcp_list_servers\",\"arguments\":{}} or {\"tool\":\"mcp.read\",\"server\":\"server-name\",\"name\":\"tool-name\",\"arguments\":{}}." };
+      return { kind: "invalid", message: "A tool request was mentioned, but the runtime could not find one complete JSON object. Retry with exactly one supported tool JSON object such as {\"tool\":\"internal.mcp_list_servers\",\"arguments\":{}} or {\"tool\":\"mcp.call\",\"server\":\"server-name\",\"name\":\"tool-name\",\"arguments\":{}}." };
     }
     return { kind: "none" };
   }
@@ -249,7 +250,7 @@ export function parseMcpToolRequestResult(text: string): McpToolRequestParseResu
   try {
     const parsed = JSON.parse(rawJson) as unknown;
     if (!isRecord(parsed) || typeof parsed.tool !== "string") {
-      return { kind: "invalid", message: "Tool requests must use internal.* or mcp.read schema. Shell command JSON such as {\"cmd\":...} is not supported." };
+      return { kind: "invalid", message: "Tool requests must use internal.* or mcp.call schema. Shell command JSON such as {\"cmd\":...} is not supported." };
     }
 
     const args = parsed.arguments === undefined ? {} : parsed.arguments;
@@ -261,11 +262,11 @@ export function parseMcpToolRequestResult(text: string): McpToolRequestParseResu
       return { kind: "valid", request: { tool: parsed.tool, arguments: args } };
     }
 
-    if (parsed.tool !== "mcp.read" || typeof parsed.server !== "string" || typeof parsed.name !== "string") {
-      return { kind: "invalid", message: "Tool requests must use only these schemas: {\"tool\":\"internal.read_file\",\"arguments\":{\"path\":\"...\"}} or {\"tool\":\"mcp.read\",\"server\":\"server-name\",\"name\":\"tool-name\",\"arguments\":{}}. Shell command JSON such as {\"cmd\":...} is not supported." };
+    if ((parsed.tool !== "mcp.call" && parsed.tool !== "mcp.read") || typeof parsed.server !== "string" || typeof parsed.name !== "string") {
+      return { kind: "invalid", message: "Tool requests must use only these schemas: {\"tool\":\"internal.read_file\",\"arguments\":{\"path\":\"...\"}} or {\"tool\":\"mcp.call\",\"server\":\"server-name\",\"name\":\"tool-name\",\"arguments\":{}}. Shell command JSON such as {\"cmd\":...} is not supported." };
     }
 
-    return { kind: "valid", request: { tool: "mcp.read", server: parsed.server, name: parsed.name, arguments: args } };
+    return { kind: "valid", request: { tool: parsed.tool, server: parsed.server, name: parsed.name, arguments: args } };
   } catch (error) {
     return { kind: "invalid", message: `Tool request JSON could not be parsed: ${formatUnknownError(error)}. Retry with valid JSON only, using double-quoted keys/strings, no trailing commas, and one of the supported schemas.` };
   }
@@ -396,12 +397,12 @@ function isPlainFinalResponse(text: string): boolean {
 }
 
 export function buildMcpToolInstructions(config: AppConfig, runtimeContext?: string): string | undefined {
-  const readTools = (config.mcp?.servers ?? [])
+  const mcpTools = (config.mcp?.servers ?? [])
     .filter((server) => server.enabled)
-    .flatMap((server) => (server.tools ?? []).filter((tool) => tool.category === "read").map((tool) => `${server.name}/${tool.name}`));
+    .flatMap((server) => (server.tools ?? []).map((tool) => `${server.name}/${tool.name} (${tool.category})`));
 
   const contextSection = runtimeContext?.trim() ? `\nRuntime context:\n${runtimeContext.trim()}` : "";
-  const mcpSection = readTools.length === 0 ? "" : `\nAvailable read-only MCP tools:\n${readTools.map((tool) => `- ${tool}`).join("\n")}`;
+  const mcpSection = mcpTools.length === 0 ? "" : `\nAvailable configured MCP tools (category controls permission):\n${mcpTools.map((tool) => `- ${tool}`).join("\n")}`;
 
   const tools = [
     'internal.read_file {"path":"relative/or/allowed/absolute/path"}',
@@ -474,7 +475,7 @@ export function buildMcpToolInstructions(config: AppConfig, runtimeContext?: str
     '- Prefer scope "core" only for long-lived identity/preferences, "project" for repository or product decisions, and "session" for short-lived working context.',
   ].join("\n");
 
-  return `Available internal tools:${contextSection}\n- ${tools.join("\n- ")}${mcpSection}\n\n${memoryWriteGuidance}\n\nTool selection guide:\n- Answer directly only when the request does not depend on local files, logs, repo contents, git state, HTTP(S) links, configured MCP data, MCP server discovery, validation output, live runtime state, or making a requested local change.\n- When a tool is needed, choose the smallest executable tool that can produce the missing evidence or perform the requested action. Do not describe a future tool call; return the tool JSON.\n- Approved local memories and knowledge graph facts may already be included as system context. Use that context directly when it answers the user; do not call memory or knowledge tools just to rediscover information already shown there.\n${CRON_SCHEDULE_PROMPT_GUIDANCE}\n- If the user gives an MCP server link, MCP docs link, or asks to install/connect/configure an MCP server, do the setup yourself through tools. Do not tell the user to edit config.json, run bestie mcp commands, manually classify tools, restart/reload Bestie, or discover auth endpoints themselves. Only ask the user for account-consent actions, the returned auth code/result, or missing provider facts that cannot be discovered from the URL/docs.\n- Use MCP tools/configuration in this order when the user asks to install, discover, login, or configure an MCP service: read service docs with read_url when needed, inspect existing config with mcp_list_servers, then prefer internal.exec command bestie args ["mcp","add","server-name","--url","https://provider.example/mcp","--oauth-client-id","client-id"] for URL-based servers. The add command discovers OAuth metadata when possible and saves config without guessing auth URLs. If the user only provides a docs page, read it first, extract the real MCP endpoint/client id from that page, then run bestie mcp add yourself. Use mcp_discover_oauth, mcp_prepare_server_config, and mcp_apply_server_config only when docs require custom config not covered by bestie mcp add. OAuth config should include tokenUrl when available; without tokenUrl, bestie mcp login can generate the authorization URL but cannot exchange the returned code. If the server auth is oauth, run internal.exec with command bestie and args ["mcp","login","server-name"] after config is saved; use only the generated login command output URL in the final answer and ask the user to log in/approve. OAuth metadata authorization_endpoint or config auth.authorizationUrl is not a clickable user auth URL; never send it to the user as the authorization URL unless it already includes OAuth query parameters such as client_id, response_type, redirect_uri, state, and code_challenge. After the user sends the auth code, run internal.exec with command bestie and args ["mcp","login","server-name","--code","<code>"], then use mcp_list_tools with connect=true to verify discovery and auto-classify annotated tools. Do not guess auth URLs by hand; let bestie mcp login generate PKCE/state URLs. Do not put raw secrets in config; use env var names via env, headersEnv, or auth.envVar.\n\nMemory and knowledge tools:\n- Use memory tools for durable user preferences, communication style, project decisions, personal/user facts, and cleanup of stale, duplicate, conflicting, or wrongly scoped memories.\n- Use knowledge tools for entity/relation questions, graph searches, structured facts, relation inspection, graph hygiene, and cleanup of duplicate or incorrect entities/relations.\n- Use memory and knowledge tools only when the included context is missing or insufficient, when the user explicitly asks to search/list/inspect memories or graph knowledge, when saving durable memory/knowledge, when cleaning stale/incorrect/duplicate records, or when checking whether core/project/session scopes need rebalancing.\n- Prefer memory over knowledge graph for conversational continuity and user preferences. Prefer knowledge graph for structured relationships between projects, people, channels, providers, tools, files, and decisions. If they conflict, prefer newer verified live state or inspect the source before relying on either.\n- Never store secrets, tokens, credentials, raw private file contents, or unnecessary sensitive personal details in memory or knowledge graph.\n\nOutbound channel files:\n- Use internal.send_photo/internal.send_file only when Runtime context says the current channel is Telegram, Zalo, or Web UI. In Telegram/Zalo/Web UI chats, use these tools to send generated or local workspace files back to the active chat; omit arguments.channel for the current chat, or set it explicitly to "telegram:<chatId>"/"zalo:<chatId>" for another supported destination. Do not use these tools from terminal or isolated cron contexts because those runtimes cannot send outbound files directly.\n\nLocal files, commands, and runtime state:\n- Use file tools for repo/local context: read_file for a known path, list_files to inspect a directory, search_files to discover likely paths, read_many_files for a small known set, read_markdown_bundle for repo/docs summaries. If the user asks you to edit a known config or project file, read the file if needed, then use edit_file/write_file/apply_patch; do not merely explain the edit unless the tool is denied or unavailable.\n- Generic list/search requests such as "list files" or internal.list_files with path "." inspect the agent workspace, defaulting to .bestie/workspace. Use an explicit project path such as "src", "docs", or an absolute project root path when the user asks to inspect repository files.\n- Relative read_file/read_many_files/read_markdown_bundle paths resolve from the project root. Relative write/edit/exec paths resolve from the agent workspace to avoid polluting the project root.\n- Absolute paths outside the project root and agent workspace are allowed only when covered by workspace.externalPaths in config.\n- Use read_logs only for recent runtime behavior, failures, diagnostics, or debugging questions.\n- Use read_url when the user gives an HTTP(S) link whose page content is needed, such as MCP setup docs, package pages, or install instructions; it obeys internalTools.policies and may require approval.\n- Use git tools for repository state questions: git_status for changed files, git_diff for current or staged patches, git_log for recent commits.\n- Use write/edit/apply_patch/exec/process tools when the user asks you to change files, update config, run validation, commit changes, or inspect running processes; these tools obey internalTools.policies and may require approval.\n\nMCP read tools:\n- Use internal.mcp_list_servers when the user asks what MCP servers are configured or available. Use internal.mcp_list_tools when the user asks what a configured MCP server can do, or before claiming a remote MCP server has no tools.\n- Use configured MCP read tools only for external configured data that internal local tools cannot provide. If a server has discovered tools but no configured tool categories, explain that discovery works but tool execution still needs allowlisted categories.\n\nTool-use rule:\n- When asked for a tool decision, reply with exactly one JSON object and no extra text.\n- Use {"answer":"..."} only when no tool is needed, or when the tool results already satisfy the original request. The answer value is the user-facing final response, not a plan or hidden reasoning.\n- If a listed tool is needed, reply with that executable tool JSON immediately and nothing else. Do not put prose before or after tool JSON.\n- After any empty, denied, or failed result, still reply with exactly one JSON object: either one clearly useful adjacent tool request, or {"answer":"..."} that transparently says what was unavailable. Do not invent missing facts.\n- Internal examples: {"tool":"internal.mcp_list_servers","arguments":{}} or {"tool":"internal.mcp_list_tools","arguments":{"server":"composio","connect":true}}\n- MCP example: {"tool":"mcp.read","server":"server-name","name":"tool-name","arguments":{}}\n- Do not invent shell command JSON, cmd fields, workdir fields, bash commands, sed, cat, rg, terminal actions, or non-git patch markers. Only the tool schemas above can be executed. internal.apply_patch requires a git apply compatible diff, not *** Begin Patch format.\n- The runtime can execute multiple tool calls in sequence, then show you each result so you can continue or answer the user.`;
+  return `Available internal tools:${contextSection}\n- ${tools.join("\n- ")}${mcpSection}\n\n${memoryWriteGuidance}\n\nTool selection guide:\n- Answer directly only when the request does not depend on local files, logs, repo contents, git state, HTTP(S) links, configured MCP data, MCP server discovery, validation output, live runtime state, or making a requested local change.\n- When a tool is needed, choose the smallest executable tool that can produce the missing evidence or perform the requested action. Do not describe a future tool call; return the tool JSON.\n- Approved local memories and knowledge graph facts may already be included as system context. Use that context directly when it answers the user; do not call memory or knowledge tools just to rediscover information already shown there.\n${CRON_SCHEDULE_PROMPT_GUIDANCE}\n- If the user gives an MCP server link, MCP docs link, or asks to install/connect/configure an MCP server, do the setup yourself through tools. Do not tell the user to edit config.json, run bestie mcp commands, manually classify tools, restart/reload Bestie, or discover auth endpoints themselves. Only ask the user for account-consent actions, the returned auth code/result, or missing provider facts that cannot be discovered from the URL/docs.\n- Use MCP tools/configuration in this order when the user asks to install, discover, login, or configure an MCP service: read service docs with read_url when needed, inspect existing config with mcp_list_servers, then prefer internal.exec command bestie args ["mcp","add","server-name","--url","https://provider.example/mcp","--oauth-client-id","client-id"] for URL-based servers. The add command discovers OAuth metadata when possible and saves config without guessing auth URLs. If the user only provides a docs page, read it first, extract the real MCP endpoint/client id from that page, then run bestie mcp add yourself. Use mcp_discover_oauth, mcp_prepare_server_config, and mcp_apply_server_config only when docs require custom config not covered by bestie mcp add. OAuth config should include tokenUrl when available; without tokenUrl, bestie mcp login can generate the authorization URL but cannot exchange the returned code. If the server auth is oauth, run internal.exec with command bestie and args ["mcp","login","server-name"] after config is saved; use only the generated login command output URL in the final answer and ask the user to log in/approve. OAuth metadata authorization_endpoint or config auth.authorizationUrl is not a clickable user auth URL; never send it to the user as the authorization URL unless it already includes OAuth query parameters such as client_id, response_type, redirect_uri, state, and code_challenge. After the user sends the auth code, run internal.exec with command bestie and args ["mcp","login","server-name","--code","<code>"], then use mcp_list_tools with connect=true to verify discovery and auto-classify annotated tools. Do not guess auth URLs by hand; let bestie mcp login generate PKCE/state URLs. Do not put raw secrets in config; use env var names via env, headersEnv, or auth.envVar.\n\nMemory and knowledge tools:\n- Use memory tools for durable user preferences, communication style, project decisions, personal/user facts, and cleanup of stale, duplicate, conflicting, or wrongly scoped memories.\n- Use knowledge tools for entity/relation questions, graph searches, structured facts, relation inspection, graph hygiene, and cleanup of duplicate or incorrect entities/relations.\n- Use memory and knowledge tools only when the included context is missing or insufficient, when the user explicitly asks to search/list/inspect memories or graph knowledge, when saving durable memory/knowledge, when cleaning stale/incorrect/duplicate records, or when checking whether core/project/session scopes need rebalancing.\n- Prefer memory over knowledge graph for conversational continuity and user preferences. Prefer knowledge graph for structured relationships between projects, people, channels, providers, tools, files, and decisions. If they conflict, prefer newer verified live state or inspect the source before relying on either.\n- Never store secrets, tokens, credentials, raw private file contents, or unnecessary sensitive personal details in memory or knowledge graph.\n\nOutbound channel files:\n- Use internal.send_photo/internal.send_file only when Runtime context says the current channel is Telegram, Zalo, or Web UI. In Telegram/Zalo/Web UI chats, use these tools to send generated or local workspace files back to the active chat; omit arguments.channel for the current chat, or set it explicitly to "telegram:<chatId>"/"zalo:<chatId>" for another supported destination. Do not use these tools from terminal or isolated cron contexts because those runtimes cannot send outbound files directly.\n\nLocal files, commands, and runtime state:\n- Use file tools for repo/local context: read_file for a known path, list_files to inspect a directory, search_files to discover likely paths, read_many_files for a small known set, read_markdown_bundle for repo/docs summaries. If the user asks you to edit a known config or project file, read the file if needed, then use edit_file/write_file/apply_patch; do not merely explain the edit unless the tool is denied or unavailable.\n- Generic list/search requests such as "list files" or internal.list_files with path "." inspect the agent workspace, defaulting to .bestie/workspace. Use an explicit project path such as "src", "docs", or an absolute project root path when the user asks to inspect repository files.\n- Relative read_file/read_many_files/read_markdown_bundle paths resolve from the project root. Relative write/edit/exec paths resolve from the agent workspace to avoid polluting the project root.\n- Absolute paths outside the project root and agent workspace are allowed only when covered by workspace.externalPaths in config.\n- Use read_logs only for recent runtime behavior, failures, diagnostics, or debugging questions.\n- Use read_url when the user gives an HTTP(S) link whose page content is needed, such as MCP setup docs, package pages, or install instructions; it obeys internalTools.policies and may require approval.\n- Use git tools for repository state questions: git_status for changed files, git_diff for current or staged patches, git_log for recent commits.\n- Use write/edit/apply_patch/exec/process tools when the user asks you to change files, update config, run validation, commit changes, or inspect running processes; these tools obey internalTools.policies and may require approval.\n\nMCP tools:\n- Use internal.mcp_list_servers when the user asks what MCP servers are configured or available. Use internal.mcp_list_tools when the user asks what a configured MCP server can do, or before claiming a remote MCP server has no tools.\n- Use configured MCP tools only when internal tools cannot provide the needed capability. Read tools may run directly when trusted; local_write, external_write, public_action, destructive, money, and unknown categories go through explicit permission review and may be denied or queued for approval depending on channel context. If a server has discovered tools but no configured tool categories, explain that discovery works but tool execution still needs allowlisted categories.\n\nTool-use rule:\n- When asked for a tool decision, reply with exactly one JSON object and no extra text.\n- Use {"answer":"..."} only when no tool is needed, or when the tool results already satisfy the original request. The answer value is the user-facing final response, not a plan or hidden reasoning.\n- If a listed tool is needed, reply with that executable tool JSON immediately and nothing else. Do not put prose before or after tool JSON.\n- After any empty, denied, or failed result, still reply with exactly one JSON object: either one clearly useful adjacent tool request, or {"answer":"..."} that transparently says what was unavailable. Do not invent missing facts.\n- Internal examples: {"tool":"internal.mcp_list_servers","arguments":{}} or {"tool":"internal.mcp_list_tools","arguments":{"server":"composio","connect":true}}\n- MCP example: {"tool":"mcp.call","server":"server-name","name":"tool-name","arguments":{}}\n- Do not invent shell command JSON, cmd fields, workdir fields, bash commands, sed, cat, rg, terminal actions, or non-git patch markers. Only the tool schemas above can be executed. internal.apply_patch requires a git apply compatible diff, not *** Begin Patch format.\n- The runtime can execute multiple tool calls in sequence, then show you each result so you can continue or answer the user.`;
 }
 
 export function buildAgentToolDecisionMessage(): string {
@@ -588,15 +589,15 @@ function buildMcpToolRecoveryHint(toolName: string, toolResult: McpToolCallResul
   const message = toolResult.message;
 
   if (/MCP server not found/i.test(message)) {
-    return `The MCP server name was not found. In the next tool decision, use {"tool":"internal.mcp_list_servers","arguments":{}} to inspect configured server names, then retry mcp.read with an exact listed server/tool name or return {"answer":"..."} if no suitable server exists.`;
+    return `The MCP server name was not found. In the next tool decision, use {"tool":"internal.mcp_list_servers","arguments":{}} to inspect configured server names, then retry mcp.call with an exact listed server/tool name or return {"answer":"..."} if no suitable server exists.`;
   }
 
   if (/not configured in the local allowlist|no configured tool/i.test(message)) {
-    return `The MCP server exists, but this tool is not locally allowlisted. In the next tool decision, use {"tool":"internal.mcp_list_tools","arguments":{"server":"${serverName}","connect":true}} to discover available tools and configured categories, then retry mcp.read only with an exact read-classified tool or return {"answer":"..."} explaining that the tool needs classification.`;
+    return `The MCP server exists, but this tool is not locally allowlisted. In the next tool decision, use {"tool":"internal.mcp_list_tools","arguments":{"server":"${serverName}","connect":true}} to discover available tools and configured categories, then retry mcp.call only with an exact locally classified tool or return {"answer":"..."} explaining that the tool needs classification.`;
   }
 
   if (/only read tools can be called|categorized as/i.test(message)) {
-    return "This MCP tool is not classified as read-only, so the current runtime must not call it. Do not retry the same mcp.read request. Return {\"answer\":\"...\"} explaining that the MCP tool category blocks execution, or use a read-only adjacent tool if one is clearly available.";
+    return "This MCP tool is not classified as read-only, so the current runtime must not call it. Do not retry the same mcp.call request. Return {\"answer\":\"...\"} explaining that the MCP tool category blocks execution, or use a read-only adjacent tool if one is clearly available.";
   }
 
   if (/missing env var|authorization|auth|token|login/i.test(message)) {
@@ -604,10 +605,10 @@ function buildMcpToolRecoveryHint(toolName: string, toolResult: McpToolCallResul
   }
 
   if (/invalid|argument|schema|params|parameter/i.test(message)) {
-    return `The MCP call likely failed because the arguments or tool name were wrong. In the next tool decision, use {"tool":"internal.mcp_list_tools","arguments":{"server":"${serverName}","connect":true}} to inspect the exact tool schema when useful, then retry mcp.read with corrected JSON arguments. Do not repeat the same failing request unchanged.`;
+    return `The MCP call likely failed because the arguments or tool name were wrong. In the next tool decision, use {"tool":"internal.mcp_list_tools","arguments":{"server":"${serverName}","connect":true}} to inspect the exact tool schema when useful, then retry mcp.call with corrected JSON arguments. Do not repeat the same failing request unchanged.`;
   }
 
-  return `The MCP call failed. In the next tool decision, either use {"tool":"internal.mcp_list_tools","arguments":{"server":"${serverName}","connect":true}} to re-check available tools, retry mcp.read only if you can correct the server/tool/arguments, or return {"answer":"..."} explaining the limitation. Do not repeat the same failing MCP request unchanged.`;
+  return `The MCP call failed. In the next tool decision, either use {"tool":"internal.mcp_list_tools","arguments":{"server":"${serverName}","connect":true}} to re-check available tools, retry mcp.call only if you can correct the server/tool/arguments, or return {"answer":"..."} explaining the limitation. Do not repeat the same failing MCP request unchanged.`;
 }
 
 function isEmptyToolResult(result: unknown): boolean {
@@ -623,11 +624,11 @@ function isEmptyToolResult(result: unknown): boolean {
 }
 
 export function formatToolRequestName(request: { tool: string; server?: string; name?: string }): string {
-  return request.tool === "mcp.read" ? `${request.server}/${request.name}` : request.tool;
+  return request.tool === "mcp.read" || request.tool === "mcp.call" ? `${request.server}/${request.name}` : request.tool;
 }
 
 export function buildInvalidMcpToolRequestMessage(message: string): string {
-  return `The previous assistant message is not an executable tool-loop decision: ${message}\nRetry immediately with exactly one JSON object and no extra text: either {"answer":"final answer text"} for a completed answer, or a supported internal/MCP tool request for work that still needs execution. Use valid JSON with double-quoted keys/strings, no trailing commas, and an object-valued arguments field. Do not describe what you will do next. Do not wrap JSON in prose or markdown fences. If the user requested an action and a supported tool can perform it, return that tool request instead of advice. Useful MCP recovery tools: {"tool":"internal.mcp_list_servers","arguments":{}} and {"tool":"internal.mcp_list_tools","arguments":{"server":"server-name","connect":true}}. MCP read schema: {"tool":"mcp.read","server":"server-name","name":"tool-name","arguments":{}}.`;
+  return `The previous assistant message is not an executable tool-loop decision: ${message}\nRetry immediately with exactly one JSON object and no extra text: either {"answer":"final answer text"} for a completed answer, or a supported internal/MCP tool request for work that still needs execution. Use valid JSON with double-quoted keys/strings, no trailing commas, and an object-valued arguments field. Do not describe what you will do next. Do not wrap JSON in prose or markdown fences. If the user requested an action and a supported tool can perform it, return that tool request instead of advice. Useful MCP recovery tools: {"tool":"internal.mcp_list_servers","arguments":{}} and {"tool":"internal.mcp_list_tools","arguments":{"server":"server-name","connect":true}}. MCP call schema: {"tool":"mcp.call","server":"server-name","name":"tool-name","arguments":{}}.`;
 }
 
 function formatUnknownError(error: unknown): string {
@@ -641,7 +642,7 @@ function truncateLogMessage(message: string): string {
 export function formatToolActivityLabel(request: AgentToolRequest): string {
   const args = request.arguments;
 
-  if (request.tool === "mcp.read") {
+  if (request.tool === "mcp.read" || request.tool === "mcp.call") {
     return `${request.server}/${request.name}`;
   }
 
@@ -870,35 +871,34 @@ export async function runMcpToolRequest(options: RunMcpToolRequestOptions): Prom
     return { ok: false, status: "fail", message: `MCP tool ${server.name}/${options.request.name} is not configured in the local allowlist.` };
   }
 
-  if (configuredTool.category !== "read") {
-    return { ok: false, status: "fail", message: `MCP tool ${server.name}/${options.request.name} is categorized as ${configuredTool.category}, but only read tools can be called in this MVP.` };
-  }
+  if (!options.skipPermissionReview) {
+    const permission = await reviewActionPermission(
+      {
+        category: configuredTool.category,
+        action: `mcp_tool_call:${server.name}/${options.request.name}`,
+        target: `mcp:${server.name}/${options.request.name}`,
+        reason: `Run a ${configuredTool.category} MCP tool call requested by agent runtime.`,
+        trusted: configuredTool.category === "read",
+        payloadJson: JSON.stringify(options.request),
+      },
+      {
+        paths: options.paths,
+        approver: options.approver,
+        policy: options.policy,
+        knownSecrets: [...Object.values(server.env), ...Object.values(server.headersEnv)],
+      },
+    );
 
-  const permission = await reviewActionPermission(
-    {
-      category: configuredTool.category,
-      action: `mcp_tool_call:${server.name}/${options.request.name}`,
-      target: `mcp:${server.name}/${options.request.name}`,
-      reason: "Run a read-only MCP tool call requested by terminal chat.",
-      trusted: true,
-    },
-    {
-      paths: options.paths,
-      approver: options.approver,
-      policy: options.policy,
-      knownSecrets: Object.values(server.env),
-    },
-  );
-
-  if (permission.decision !== "allow") {
-    return { ok: false, status: "fail", message: `MCP tool call denied: ${permission.reason}` };
+    if (permission.decision !== "allow") {
+      return { ok: false, status: "fail", message: `MCP tool call denied: ${permission.reason}` };
+    }
   }
 
   return (options.callTool ?? callMcpServerTool)(server, options.request.name, options.request.arguments, { env: await loadEnvFile(options.paths) });
 }
 
 export async function runAgentToolRequest(options: RunAgentToolRequestOptions): Promise<McpToolCallResult> {
-  if (options.request.tool === "mcp.read") {
+  if (options.request.tool === "mcp.read" || options.request.tool === "mcp.call") {
     return runMcpToolRequest({ ...options, request: options.request });
   }
 
@@ -2285,3 +2285,5 @@ function arrayOfStringsArg(value: unknown): string[] | undefined {
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
+
+

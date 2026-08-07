@@ -261,7 +261,7 @@ test("runMcpCommand calls an MCP tool through the read permission gate", async (
     await writeConfig({ ...config, mcp: { servers: [{ name: "fs", enabled: true, command: "node", env: { SECRET_TOKEN: "hidden-secret-value" }, tools: [{ name: "read_file", category: "read" }] }] } }, paths);
 
     await runMcpCommand({
-      argv: ["node", "bestie", "mcp", "call", "fs", "read_file", "--read", "--json", "{\"path\":\"README.md\"}"],
+      argv: ["node", "bestie", "mcp", "call", "fs", "read_file", "--json", "{\"path\":\"README.md\"}"],
       paths,
       callTool: async (server, toolName, args) => ({ ok: true, status: "pass", message: `MCP tool ${server.name}/${toolName} returned a result.`, result: { args } }),
       writeLine: (line) => lines.push(line),
@@ -276,7 +276,7 @@ test("runMcpCommand calls an MCP tool through the read permission gate", async (
   }
 });
 
-test("runMcpCommand refuses MCP tool calls without read scope", async () => {
+test("runMcpCommand allows read MCP tool calls without legacy --read flag", async () => {
   const paths = await createTempPaths();
   const lines: string[] = [];
 
@@ -284,9 +284,42 @@ test("runMcpCommand refuses MCP tool calls without read scope", async () => {
     await mkdir(paths.appDir, { recursive: true });
     await writeConfig({ ...config, mcp: { servers: [{ name: "fs", enabled: true, command: "node", tools: [{ name: "read_file", category: "read" }] }] } }, paths);
 
-    await runMcpCommand({ argv: ["node", "bestie", "mcp", "call", "fs", "read_file"], paths, writeLine: (line) => lines.push(line) });
+    await runMcpCommand({
+      argv: ["node", "bestie", "mcp", "call", "fs", "read_file"],
+      paths,
+      callTool: async (server, toolName) => ({ ok: true, status: "pass", message: `MCP tool ${server.name}/${toolName} returned a result.`, result: { ok: true } }),
+      writeLine: (line) => lines.push(line),
+    });
 
-    assert.deepEqual(lines, ["WARN: MCP tool calls require --read for the current read-only MVP."]);
+    assert.deepEqual(lines, ["PASS: MCP tool fs/read_file returned a result.", JSON.stringify({ ok: true }, null, 2)]);
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("runMcpCommand gates non-read MCP tool calls through approval", async () => {
+  const paths = await createTempPaths();
+  const lines: string[] = [];
+  let reviewedPayload = "";
+
+  try {
+    await mkdir(paths.appDir, { recursive: true });
+    await writeConfig({ ...config, mcp: { servers: [{ name: "voicebox", enabled: true, command: "node", tools: [{ name: "voicebox.speak", category: "local_write" }] }] } }, paths);
+
+    await runMcpCommand({
+      argv: ["node", "bestie", "mcp", "call", "voicebox", "voicebox.speak", "--json", "{\"text\":\"Done\"}"],
+      paths,
+      approver: async (request) => {
+        reviewedPayload = request.payloadJson ?? "";
+        assert.equal(request.category, "local_write");
+        return { approved: true, reason: "Approved voice output." };
+      },
+      callTool: async (server, toolName, args) => ({ ok: true, status: "pass", message: `MCP tool ${server.name}/${toolName} returned a result.`, result: { args } }),
+      writeLine: (line) => lines.push(line),
+    });
+
+    assert.equal(reviewedPayload, JSON.stringify({ tool: "mcp.call", server: "voicebox", name: "voicebox.speak", arguments: { text: "Done" } }));
+    assert.deepEqual(lines, ["PASS: MCP tool voicebox/voicebox.speak returned a result.", JSON.stringify({ args: { text: "Done" } }, null, 2)]);
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
   }
@@ -407,7 +440,7 @@ test("runMcpCommand refuses MCP tool calls without local tool classification", a
   }
 });
 
-test("runMcpCommand refuses non-read MCP tool categories in read-only MVP", async () => {
+test("runMcpCommand denies non-read MCP tool categories without an approver", async () => {
   const paths = await createTempPaths();
   const lines: string[] = [];
 
@@ -415,9 +448,9 @@ test("runMcpCommand refuses non-read MCP tool categories in read-only MVP", asyn
     await mkdir(paths.appDir, { recursive: true });
     await writeConfig({ ...config, mcp: { servers: [{ name: "fs", enabled: true, command: "node", tools: [{ name: "write_file", category: "local_write" }] }] } }, paths);
 
-    await runMcpCommand({ argv: ["node", "bestie", "mcp", "call", "fs", "write_file", "--read"], paths, writeLine: (line) => lines.push(line) });
+    await runMcpCommand({ argv: ["node", "bestie", "mcp", "call", "fs", "write_file"], paths, writeLine: (line) => lines.push(line) });
 
-    assert.deepEqual(lines, ["FAIL: MCP tool fs/write_file is categorized as local_write, but only read tools can be called in this MVP."]);
+    assert.match(lines[0] ?? "", /^FAIL: MCP tool call denied: Approval required but no approver was available/);
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
   }
@@ -745,3 +778,4 @@ function readRequestBody(request: IncomingMessage): Promise<string> {
     request.on("error", reject);
   });
 }
+

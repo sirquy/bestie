@@ -316,6 +316,40 @@ test("executeApprovedAction executes approved memory cleanup payloads", async ()
   }
 });
 
+test("executeApprovedAction executes approved MCP payloads once", async () => {
+  const paths = await createTempPaths();
+  const store = await SqliteMemoryStore.open(paths);
+  const calls: unknown[] = [];
+
+  try {
+    const approval = store.addPendingActionApproval({
+      channel: "telegram",
+      category: "local_write",
+      action: "mcp_tool_call:voicebox/voicebox.speak",
+      target: "mcp:voicebox/voicebox.speak",
+      payloadJson: JSON.stringify({ tool: "mcp.call", server: "voicebox", name: "voicebox.speak", arguments: { text: "Done" } }),
+    });
+    const approved = store.approvePendingActionApproval(approval.id);
+
+    assert.ok(approved);
+    const result = await executeApprovedAction(store, approved, "approve", {
+      config: createConfig(),
+      paths,
+      toolRunner: async (options) => {
+        calls.push({ request: options.request, skipPermissionReview: options.skipPermissionReview });
+        return { ok: true, status: "pass", message: "spoke", result: { generationId: "gen_1" } };
+      },
+    });
+
+    assert.equal(result.status, "executed");
+    assert.match(result.message, /Executed mcp\.call/);
+    assert.deepEqual(calls, [{ request: { tool: "mcp.call", server: "voicebox", name: "voicebox.speak", arguments: { text: "Done" } }, skipPermissionReview: true }]);
+  } finally {
+    store.close();
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
 
 test("executeApprovedAction rejects invalid stored internal tool payloads", async () => {
   const paths = await createTempPaths();

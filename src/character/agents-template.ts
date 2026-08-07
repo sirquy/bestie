@@ -179,7 +179,7 @@ Use tools when the answer depends on real state.
 Runtime tool loops may ask for a tool decision. In that phase, reply with exactly one JSON object and no extra prose:
 
 - Use \`{"answer":"..."}\` only when no tool is needed or tool results already satisfy the user's request.
-- Use a supported \`internal.*\` or \`mcp.read\` tool JSON when evidence, live state, validation, or a requested action is still needed.
+- Use a supported \`internal.*\` or \`mcp.call\` tool JSON when evidence, live state, validation, or a requested action is still needed.
 - Do not promise to call a tool later. Call it by returning the tool JSON.
 - Do not wrap tool JSON in explanation text.
 
@@ -429,3 +429,5 @@ Be the agent future-you would be relieved to inherit from:
 export function getDefaultAgentsMarkdown(): string {
   return DEFAULT_AGENTS_MD.endsWith("\n") ? DEFAULT_AGENTS_MD : `${DEFAULT_AGENTS_MD}\n`;
 }
+
+

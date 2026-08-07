@@ -247,10 +247,6 @@ async function callConfiguredMcpServerTool(
     throw new UserFacingError("MCP tool name is required.", "McpMissingToolNameError");
   }
 
-  if (!argv.includes("--read")) {
-    return { ok: false, status: "warn", message: "MCP tool calls require --read for the current read-only MVP." };
-  }
-
   const server = findMcpServer(config, serverName);
 
   if (!server) {
@@ -262,23 +258,21 @@ async function callConfiguredMcpServerTool(
     return { ok: false, status: "fail", message: `MCP tool ${serverName}/${toolName} is not configured in the local allowlist.` };
   }
 
-  if (configuredTool.category !== "read") {
-    return { ok: false, status: "fail", message: `MCP tool ${serverName}/${toolName} is categorized as ${configuredTool.category}, but only read tools can be called in this MVP.` };
-  }
-
+  const env = await loadEnvFile(paths);
   const permission = await reviewActionPermission(
     {
       category: configuredTool.category,
       action: `mcp_tool_call:${serverName}/${toolName}`,
       target: `mcp:${serverName}/${toolName}`,
-      reason: "Run a read-only MCP tool call requested from the local CLI.",
-      trusted: true,
+      reason: `Run a ${configuredTool.category} MCP tool call requested from the local CLI.`,
+      trusted: configuredTool.category === "read",
+      payloadJson: JSON.stringify({ tool: "mcp.call", server: serverName, name: toolName, arguments: parseJsonArgs(argv) }),
     },
     {
       paths,
       approver: options.approver ?? (argv.includes("--ask") ? await createCliPermissionApprover({ writeLine: options.writeLine }) : undefined),
       policy: argv.includes("--ask") ? { ...options.policy, allowTrustedRead: false } : options.policy,
-      knownSecrets: Object.values(server.env),
+      knownSecrets: [...Object.values(server.env), ...Object.values(server.headersEnv).flatMap((envName) => env[envName] ? [env[envName]] : [])],
     },
   );
 
@@ -286,7 +280,7 @@ async function callConfiguredMcpServerTool(
     return { ok: false, status: "fail", message: `MCP tool call denied: ${permission.reason}` };
   }
 
-  return callTool(server, toolName, parseJsonArgs(argv), { env: await loadEnvFile(paths) });
+  return callTool(server, toolName, parseJsonArgs(argv), { env });
 }
 
 function parseJsonArgs(argv: string[]): Record<string, unknown> {

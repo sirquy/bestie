@@ -199,7 +199,7 @@ Terminal user input
   -> redacted log event
 ```
 
-Original Phase Now did not introduce channel, memory, tool, MCP, or UI dependencies into the chat loop. The current code has since added local memory recall and writes, permission-gated internal tools, provider-backed image/video generation, classified read-only MCP calls, Telegram/Zalo/cron runtimes, and a localhost UI shell around shared runtime services. Broader external/destructive tool use, hosted UI, optional Zep, and named multi-agent orchestration remain out of current scope.
+Original Phase Now did not introduce channel, memory, tool, MCP, or UI dependencies into the chat loop. The current code has since added local memory recall and writes, permission-gated internal tools, provider-backed image/video generation, classified permission-gated MCP calls, Telegram/Zalo/cron runtimes, and a localhost UI shell around shared runtime services. Broader external/destructive tool use, hosted UI, optional Zep, and named multi-agent orchestration remain out of current scope.
 
 ## Failure States
 
@@ -391,3 +391,4 @@ Validation:
 - Should local dev config live under `.bestie/` inside the repo first, or immediately use user-level paths from `PROJECT.md`?
 - Which OpenAI-compatible provider should be the default example in docs: OpenAI, OpenRouter, QuotaCheap or custom?
 - What exact character name and default owner nickname should onboarding suggest?
+

@@ -18,7 +18,7 @@ export interface ApprovalExecutionResult {
   toolResult?: McpToolCallResult;
 }
 
-export async function executeApprovedAction(store: SqliteMemoryStore, approval: PendingActionApproval, decision: ApprovalDecision, options?: { config?: AppConfig; paths?: RuntimePaths; outboundFileSender?: AgentOutboundFileSender }): Promise<ApprovalExecutionResult> {
+export async function executeApprovedAction(store: SqliteMemoryStore, approval: PendingActionApproval, decision: ApprovalDecision, options?: { config?: AppConfig; paths?: RuntimePaths; outboundFileSender?: AgentOutboundFileSender; toolRunner?: typeof runAgentToolRequest }): Promise<ApprovalExecutionResult> {
   const currentApproval = store.getPendingActionApprovalById(approval.id);
   if (!currentApproval || (decision === "approve" && currentApproval.status !== "approved") || (decision === "deny" && currentApproval.status !== "denied")) {
     return { status: "invalid", shortText: "Approval is not executable.", message: `Approval ${approval.id} is not in an executable state.` };
@@ -33,7 +33,7 @@ export async function executeApprovedAction(store: SqliteMemoryStore, approval: 
   }
 
   if (approval.payloadJson && options?.config && options.paths) {
-    return executeInternalToolApproval(store, approval, decision, { config: options.config, paths: options.paths, outboundFileSender: options.outboundFileSender });
+    return executeInternalToolApproval(store, approval, decision, { config: options.config, paths: options.paths, outboundFileSender: options.outboundFileSender, toolRunner: options.toolRunner });
   }
 
   return {
@@ -46,7 +46,7 @@ export async function executeApprovedAction(store: SqliteMemoryStore, approval: 
   };
 }
 
-async function executeInternalToolApproval(store: SqliteMemoryStore, approval: PendingActionApproval, decision: ApprovalDecision, options: { config: AppConfig; paths: RuntimePaths; outboundFileSender?: AgentOutboundFileSender }): Promise<ApprovalExecutionResult> {
+async function executeInternalToolApproval(store: SqliteMemoryStore, approval: PendingActionApproval, decision: ApprovalDecision, options: { config: AppConfig; paths: RuntimePaths; outboundFileSender?: AgentOutboundFileSender; toolRunner?: typeof runAgentToolRequest }): Promise<ApprovalExecutionResult> {
   if (decision === "deny") {
     return { status: "denied", shortText: "Action denied.", message: `Approval ${approval.status}: ${approval.id}.` };
   }
@@ -60,8 +60,12 @@ async function executeInternalToolApproval(store: SqliteMemoryStore, approval: P
     return { status: "invalid", shortText: "Approval already executed.", message: `Approval ${approval.id} was already executed or is no longer approved.` };
   }
 
-  const toolConfig = { ...options.config, internalTools: { ...options.config.internalTools, policies: { ...(options.config.internalTools?.policies ?? {}), [request.tool]: "allow" as const } } };
-  const result = await runAgentToolRequest({ config: toolConfig, paths: options.paths, request, outboundFileSender: options.outboundFileSender });
+  const isMcpRequest = request.tool === "mcp.read" || request.tool === "mcp.call";
+  const toolConfig = isMcpRequest
+    ? options.config
+    : { ...options.config, internalTools: { ...options.config.internalTools, policies: { ...(options.config.internalTools?.policies ?? {}), [request.tool]: "allow" as const } } };
+  const toolRunner = options.toolRunner ?? runAgentToolRequest;
+  const result = await toolRunner({ config: toolConfig, paths: options.paths, request, outboundFileSender: options.outboundFileSender, skipPermissionReview: isMcpRequest });
 
   return {
     status: result.ok ? "executed" : "invalid",
@@ -77,8 +81,11 @@ function parseApprovedToolRequest(payloadJson: string | undefined): AgentToolReq
 
   try {
     const parsed = JSON.parse(payloadJson) as Partial<AgentToolRequest>;
-    if (typeof parsed.tool !== "string" || parsed.tool === "mcp.read" || typeof parsed.arguments !== "object" || parsed.arguments === null) {
+    if (typeof parsed.tool !== "string" || typeof parsed.arguments !== "object" || parsed.arguments === null) {
       return undefined;
+    }
+    if ((parsed.tool === "mcp.read" || parsed.tool === "mcp.call") && typeof (parsed as { server?: unknown }).server === "string" && typeof (parsed as { name?: unknown }).name === "string") {
+      return { tool: parsed.tool, server: (parsed as { server: string }).server, name: (parsed as { name: string }).name, arguments: parsed.arguments as Record<string, unknown> };
     }
     return isInternalToolName(parsed.tool) ? { tool: parsed.tool, arguments: parsed.arguments as Record<string, unknown> } : undefined;
   } catch {

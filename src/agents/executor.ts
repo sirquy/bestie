@@ -118,7 +118,7 @@ function buildWorkforceToolRunner(agent: WorkforceAgentRecord, options: RunWorkf
 }
 
 function formatAgentToolName(request: AgentToolRequest): string {
-  return request.tool === "mcp.read" ? `mcp.${request.server}.${request.name}` : request.tool;
+  return request.tool === "mcp.read" || request.tool === "mcp.call" ? `mcp.${request.server}.${request.name}` : request.tool;
 }
 
 function sleep(milliseconds: number): Promise<void> {
@@ -140,3 +140,4 @@ async function buildWorkforceMessages(agent: WorkforceAgentRecord, task: Workfor
     { role: "user", content: [`Task title: ${task.title}`, `Task brief:\n${task.brief}`].join("\n\n") },
   ];
 }
+

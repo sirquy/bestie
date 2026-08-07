@@ -223,3 +223,4 @@ function createChannelsCommandSpec(name: "channel" | "channels", hidden: boolean
     ],
   };
 }
+

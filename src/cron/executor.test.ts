@@ -78,7 +78,7 @@ test("cron isolated prompt exposes internal and configured MCP tools", () => {
   assert.match(prompt, /Use current scheduler state/);
   assert.match(prompt, /Available internal tools/);
   assert.match(prompt, /internal\.mcp_list_tools/);
-  assert.match(prompt, /Available read-only MCP tools/);
+  assert.match(prompt, /Available configured MCP tools/);
   assert.match(prompt, /composio\/gmail_search/);
 });
 
@@ -380,3 +380,4 @@ test("CronExecutor one-shot job sets empty next_run_at", async () => {
     await rm(paths.rootDir, { recursive: true, force: true });
   }
 });
+

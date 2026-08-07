@@ -19,7 +19,7 @@ test("terminal chat formatting uses readable labels without TTY color", () => {
   assert.equal(formatErrorMessage("Provider unavailable."), "[FAIL] Provider unavailable.");
 });
 
-test("buildTerminalSystemPrompt lists configured read-only MCP tools", () => {
+test("buildTerminalSystemPrompt lists configured MCP tools with categories", () => {
   const prompt = buildTerminalSystemPrompt("system prompt", {
     ...createConfig(),
     mcp: {
@@ -31,9 +31,9 @@ test("buildTerminalSystemPrompt lists configured read-only MCP tools", () => {
     },
   });
 
-  assert.match(prompt, /Available read-only MCP tools/);
+  assert.match(prompt, /Available configured MCP tools/);
   assert.match(prompt, /fs\/read_file/);
-  assert.doesNotMatch(prompt, /writey\/write_file/);
+  assert.match(prompt, /writey\/write_file \(local_write\)/);
   assert.doesNotMatch(prompt, /ignored/);
   assert.match(prompt, /Tool-use rule/);
   assert.match(prompt, /Do not put prose before or after tool JSON/);
@@ -921,3 +921,4 @@ async function readLogEvents(paths: RuntimePaths): Promise<Array<Record<string, 
       return { event: entry.event, ...entry.detail };
     });
 }
+
