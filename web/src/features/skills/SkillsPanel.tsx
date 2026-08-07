@@ -315,7 +315,7 @@ function LibraryPreviewModal({ item, diff, loading, onClose, onInstall }: { item
         </div>
         <div className="grid gap-4 overflow-auto p-4">
           <LibraryDetails item={item.skill} diff={diff} />
-          <pre className="max-h-[48vh] overflow-auto rounded-2xl border border-white/10 bg-background/40 p-4 text-sm leading-relaxed text-muted-foreground whitespace-pre-wrap">{item.content}</pre>
+          <pre className="h-[min(48vh,34rem)] min-h-64 overflow-auto rounded-2xl border border-white/10 bg-background/40 p-4 text-sm leading-relaxed text-muted-foreground whitespace-pre-wrap">{item.content}</pre>
         </div>
         <div className="flex flex-wrap justify-end gap-2 border-t border-white/10 p-4">
           <Button type="button" variant="outline" onClick={onClose}>Đóng</Button>
@@ -388,7 +388,7 @@ function LibraryDetails({ item, diff }: { item: SkillLibraryItem; diff: SkillLib
       <div className="flex flex-wrap gap-2"><Badge variant="outline">{item.author}</Badge><Badge variant="outline">{item.sourceName}</Badge><Badge variant={item.localChanges ? "destructive" : "secondary"}>{item.localChanges ? "đã sửa cục bộ" : item.installed ? "đã cài" : "chưa cài"}</Badge></div>
       <p className="text-muted-foreground">{item.changelog || item.preview}</p>
       {item.permissions.length ? <p className="text-muted-foreground">Cần quyền: {item.permissions.join(", ")}</p> : null}
-      {diff ? <div className="rounded-xl border border-white/10 bg-background/35 p-3"><p className="font-semibold">Xem trước thay đổi: +{diff.addedLines} / -{diff.removedLines}</p><pre className="no-scrollbar mt-2 max-h-48 overflow-auto whitespace-pre-wrap text-xs text-muted-foreground">{diff.preview.slice(0, 30).map((line) => `${line.kind === "added" ? "+" : line.kind === "removed" ? "-" : " "} ${line.text}`).join("\n")}</pre></div> : null}
+      {diff?.installed && (diff.updateAvailable || diff.localChanges) ? <div className="rounded-xl border border-white/10 bg-background/35 p-3"><p className="font-semibold">Xem trước thay đổi: +{diff.addedLines} / -{diff.removedLines}</p><pre className="no-scrollbar mt-2 max-h-48 overflow-auto whitespace-pre-wrap text-xs text-muted-foreground">{diff.preview.slice(0, 30).map((line) => `${line.kind === "added" ? "+" : line.kind === "removed" ? "-" : " "} ${line.text}`).join("\n")}</pre></div> : null}
     </div>
   );
 }
