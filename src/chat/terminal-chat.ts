@@ -14,9 +14,12 @@ import { fallbackLogDetail, formatProviderFallbackDiagnostics, formatProviderFal
 import { loadLlmCandidateSecret, resolvePrimaryLlmCandidate } from "../llm/resolve-config.js";
 import type { ChatCompletionOptions, ChatMessage } from "../llm/types.js";
 import { createCliQuestioner } from "../cli/prompt.js";
-import { badge, bold, color, dim, rule } from "../cli/ui.js";
+import { badge, dim } from "../cli/ui.js";
 import { appendConversationTurn, buildChatMessages, getRecentMessageLimit } from "./message-builder.js";
 import { buildMcpToolSystemPrompt, completeWithAgentTools, runAgentToolRequest, type AgentToolActivity, type RunAgentToolRequestOptions } from "./mcp-tool-use.js";
+import { createTerminalChatInput } from "./terminal-chat-input.js";
+import { formatTerminalAssistantMessage, formatTerminalAssistantStart, formatTerminalError, formatTerminalGoodbye, formatTerminalPrompt, formatTerminalThinking, formatTerminalToolActivity, renderTerminalChatHeader } from "./terminal-chat-ui.js";
+import { terminalSlashCommands } from "./terminal-slash-commands.js";
 
 export interface TerminalChatOptions {
   config: AppConfig;
@@ -42,6 +45,7 @@ export type McpToolRunner = (options: RunAgentToolRequestOptions) => Promise<{ o
 
 export async function runTerminalChat(options: TerminalChatOptions): Promise<void> {
   const questioner = options.questioner ?? createQuestioner();
+  const chatInput = createTerminalChatInput({ askFallback: questioner.ask });
   const writeLine = options.writeLine ?? console.log;
   const writeChunk = options.writeChunk ?? ((message) => output.write(message));
   const chatCompletion = options.chatCompletion ?? ((config, _apiKeyValue, requestOptions) => sendChatCompletionWithFallbacks(config, { ...requestOptions, stream: requestOptions.stream ?? true }, { paths: options.paths }));
@@ -63,7 +67,7 @@ export async function runTerminalChat(options: TerminalChatOptions): Promise<voi
 
   try {
     while (true) {
-      const answer = await questioner.ask(formatPrompt(options.ownerName));
+      const answer = await chatInput(formatPrompt(options.ownerName));
 
       if (answer === undefined) {
         return;
@@ -76,7 +80,7 @@ export async function runTerminalChat(options: TerminalChatOptions): Promise<voi
       }
 
       if (userInput === "/exit") {
-        writeLine("Bye.");
+        writeLine(formatTerminalGoodbye());
         return;
       }
 
@@ -187,26 +191,21 @@ export function buildTerminalSystemPrompt(systemPrompt: string, config: AppConfi
 function printChatHeader(options: TerminalChatOptions, writeLine: (message: string) => void = console.log): void {
   const agentName = options.agentName ?? options.config.agent.name;
   const ownerName = options.ownerName ?? options.config.agent.ownerName;
-  writeLine(`${bold(color("magenta", "Bestie chat"))} ${dim("local terminal session")}`);
-  writeLine(`${dim("Runtime")} ${options.paths.appDir}`);
-  writeLine(`${dim("Model")} ${options.config.llm.primary}`);
-  writeLine(`${badge("BOT", "cyan")} ${bold(agentName)} ${dim("with")} ${badge("YOU", "green")} ${bold(ownerName)}`);
-  writeLine(`${dim("Commands")} /help  /status  /providers  /memory  /pending  /exit`);
-  writeLine(rule(28));
+  for (const line of renderTerminalChatHeader({ agentName, ownerName, model: options.config.llm.primary, runtimePath: options.paths.appDir })) {
+    writeLine(line);
+  }
 }
 
 export function formatPrompt(ownerName?: string): string {
-  const label = ownerName ? `${ownerName}` : "you";
-  return `${badge("YOU", "green")} ${label} ${dim(">")} `;
+  return formatTerminalPrompt(ownerName);
 }
 
 export function formatAssistantMessage(agentName: string | undefined, message: string): string {
-  const label = agentName ?? "bestie";
-  return `${badge("BOT", "cyan")} ${label} ${dim(">")} ${message}`;
+  return formatTerminalAssistantMessage(agentName, message);
 }
 
 export function formatErrorMessage(message: string): string {
-  return `${badge("FAIL", "red")} ${message}`;
+  return formatTerminalError(message);
 }
 
 function startChatIndicator(agentName: string | undefined): { clear: () => void; stop: () => void } {
@@ -219,7 +218,7 @@ function startChatIndicator(agentName: string | undefined): { clear: () => void;
   let frame = 0;
 
   const render = () => {
-    output.write(`\r${badge("BOT", "yellow")} ${label} ${dim("thinking")}${frames[frame % frames.length]}   `);
+    output.write(`\r${formatTerminalThinking(label, frames[frame % frames.length] ?? "")}   `);
     frame += 1;
   };
 
@@ -242,7 +241,7 @@ function printTerminalToolActivity(agentName: string | undefined, activity: Agen
     return;
   }
 
-  writeLine(formatAssistantMessage(agentName, `${badge("TOOL", "yellow")} ${activity.toolName} ${dim(activity.label)}`));
+  writeLine(formatTerminalToolActivity(agentName, activity.toolName, activity.label));
 }
 
 function createTerminalAnswerStreamer(
@@ -262,7 +261,7 @@ function createTerminalAnswerStreamer(
 
       if (!started) {
         indicator.clear();
-        writeChunk(formatAssistantMessage(agentName, ""));
+        writeChunk(formatTerminalAssistantStart(agentName));
         started = true;
       }
 
@@ -286,7 +285,7 @@ async function handleSlashCommand(userInput: string, paths: RuntimePaths, writeL
   }
 
   if (userInput === "/help") {
-    writeLine("Commands: /help, /status, /providers, /memory, /memory pause, /memory resume, /pending, /exit");
+    writeLine(`Commands: ${terminalSlashCommands.map((command) => command.command).join(", ")}`);
     return true;
   }
 
