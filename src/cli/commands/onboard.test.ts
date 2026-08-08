@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { resolve } from "node:path";
 import test from "node:test";
@@ -8,6 +8,8 @@ import { getDefaultAgentsMarkdown } from "../../character/agents-template.js";
 import { runOnboardCommand } from "./onboard.js";
 import { DEFAULT_LLM_TIMEOUT_MS, type AppConfig } from "../../runtime/config.js";
 import { getRuntimePaths, type RuntimePaths } from "../../runtime/paths.js";
+import { writeConfig } from "../../runtime/config.js";
+import { writeEnvFile } from "../../runtime/env.js";
 
 test("runOnboardCommand writes local files and skips provider test when requested", async () => {
   const paths = await createTempPaths();
@@ -95,6 +97,56 @@ test("runOnboardCommand runs provider test when not skipped", async () => {
     assert.ok(output.some((line) => line.includes("Kiểm tra nhà cung cấp")));
     assert.ok(output.some((line) => line.includes("mocked provider unavailable")));
     assert.ok(output.some((line) => line.includes("DONE") && line.includes("Thiết lập ban đầu đã hoàn tất")));
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("runOnboardCommand preserves unrelated existing config and env values", async () => {
+  const paths = await createTempPaths();
+
+  try {
+    await mkdir(paths.appDir, { recursive: true });
+    await writeConfig({
+      version: 2,
+      agent: { name: "Old Miu", ownerName: "Old Boss", language: "en", timeZone: "America/New_York", toneIntensity: 4 },
+      llm: {
+        primary: "anthropic/old-model",
+        authProfile: "anthropic:api-key",
+        profiles: {
+          "anthropic:api-key": { provider: "anthropic", mode: "api-key", baseUrl: "https://api.anthropic.com/v1", apiKeyEnv: "ANTHROPIC_API_KEY" },
+        },
+        modelCatalog: { "anthropic/old-model": { profile: "anthropic:api-key" } },
+        fallbacks: ["anthropic/old-model"],
+      },
+      channels: { telegram: { enabled: true, botTokenEnv: "BESTIE_TELEGRAM_BOT_TOKEN", ownerUserId: "12345" } },
+      skills: { registry: { remoteOfficial: { enabled: true, url: "https://skills.example.test/registry.json", installPolicy: "ask" } } },
+      workspace: { defaultPath: "C:/bestie-workspace" },
+      internalTools: { policies: { "internal.exec": "ask" } },
+    }, paths);
+    await writeEnvFile({ ANTHROPIC_API_KEY: "old-key", BESTIE_TELEGRAM_BOT_TOKEN: "telegram-token", CUSTOM_SETTING: "preserved" }, paths);
+
+    await runOnboardCommand({
+      argv: ["node", "bestie", "onboard", "--skip-provider-test"],
+      paths,
+      questioner: createQuestioner(),
+      writeLine: () => undefined,
+    });
+
+    const config = JSON.parse(await readFile(paths.configPath, "utf8")) as AppConfig;
+    const envText = await readFile(paths.envPath, "utf8");
+    assert.equal(config.agent.name, "Miu");
+    assert.equal(config.llm.primary, "openai/test-model");
+    assert.deepEqual(config.llm.fallbacks, ["anthropic/old-model"]);
+    assert.equal(config.llm.profiles["anthropic:api-key"]?.apiKeyEnv, "ANTHROPIC_API_KEY");
+    assert.equal(config.channels?.telegram?.ownerUserId, "12345");
+    assert.equal(config.skills?.registry?.remoteOfficial?.installPolicy, "ask");
+    assert.equal(config.workspace?.defaultPath, "C:/bestie-workspace");
+    assert.equal(config.internalTools?.policies?.["internal.exec"], "ask");
+    assert.match(envText, /ANTHROPIC_API_KEY="old-key"/);
+    assert.match(envText, /BESTIE_TELEGRAM_BOT_TOKEN="telegram-token"/);
+    assert.match(envText, /CUSTOM_SETTING="preserved"/);
+    assert.match(envText, /OPENAI_API_KEY="test-key"/);
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
   }

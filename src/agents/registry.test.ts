@@ -44,6 +44,21 @@ test("hireWorkforceAgent creates a fixed role agent profile and prompt", async (
   }
 });
 
+test("hireWorkforceAgent rejects a model that is not a provider/model reference", async () => {
+  const paths = await createTempPaths();
+  try {
+    await writeConfig(createTestConfig(), paths);
+
+    await assert.rejects(
+      () => hireWorkforceAgent(paths, { id: "customer-success", displayName: "Cami", role: "Customer Success", description: "Support customers.", model: "openai:gpt-4.1-mini" }),
+      /model must use provider\/model format/,
+    );
+    assert.equal((await loadConfig(paths)).agents?.["customer-success"], undefined);
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
 test("workforce registry lists, pauses, resumes, and removes agents", async () => {
   const paths = await createTempPaths();
   try {

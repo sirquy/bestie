@@ -81,7 +81,7 @@ export async function hireWorkforceAgent(paths: RuntimePaths, input: HireWorkfor
     role: requireNonEmpty(input.role, "role"),
     description: requireNonEmpty(input.description, "description"),
     promptPath,
-    ...(input.model === undefined ? {} : { model: requireNonEmpty(input.model, "model") }),
+    ...(input.model === undefined ? {} : { model: normalizeAgentModel(input.model) }),
     ...(input.tools === undefined || input.tools.length === 0 ? {} : { tools: normalizeTools(input.tools) }),
     memoryScope: `agent:${id}`,
     approvalPolicy: input.approvalPolicy ?? "ask-for-external-actions",
@@ -120,7 +120,7 @@ export async function updateWorkforceAgent(paths: RuntimePaths, id: string, inpu
     displayName: requireNonEmpty(input.displayName, "displayName"),
     role: requireNonEmpty(input.role, "role"),
     description: requireNonEmpty(input.description, "description"),
-    ...(input.model === undefined || !input.model.trim() ? {} : { model: requireNonEmpty(input.model, "model") }),
+    ...(input.model === undefined || !input.model.trim() ? {} : { model: normalizeAgentModel(input.model) }),
     ...(input.tools === undefined || input.tools.length === 0 ? {} : { tools: normalizeTools(input.tools) }),
     approvalPolicy: input.approvalPolicy ?? existing.approvalPolicy,
   };
@@ -157,6 +157,15 @@ function normalizeTools(tools: string[]): string[] {
   const normalized = tools.map((tool) => requireNonEmpty(tool, "tool")).filter((tool, index, values) => values.indexOf(tool) === index);
   if (normalized.length === 0) {
     throw new Error("tools must include at least one non-empty tool name.");
+  }
+  return normalized;
+}
+
+function normalizeAgentModel(model: string): string {
+  const normalized = requireNonEmpty(model, "model");
+  const slashIndex = normalized.indexOf("/");
+  if (slashIndex <= 0 || slashIndex >= normalized.length - 1) {
+    throw new Error("model must use provider/model format, for example openai/gpt-4.1-mini.");
   }
   return normalized;
 }

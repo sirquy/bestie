@@ -7,8 +7,8 @@ import { generateCharacterConfig, generateSystemPrompt } from "../../character/p
 import { writeCharacterFiles } from "../../character/writer.js";
 import { buildModelRef } from "../../llm/model-ref.js";
 import { testLlmProvider } from "../../llm/provider-test.js";
-import { DEFAULT_LLM_MAX_RETRIES, DEFAULT_LLM_RETRY_DELAY_MS, DEFAULT_LLM_TIMEOUT_MS, type AppConfig, writeConfig } from "../../runtime/config.js";
-import { writeEnvFile } from "../../runtime/env.js";
+import { DEFAULT_LLM_MAX_RETRIES, DEFAULT_LLM_RETRY_DELAY_MS, DEFAULT_LLM_TIMEOUT_MS, configExists, loadConfig, type AppConfig, writeConfig } from "../../runtime/config.js";
+import { loadEnvFile, writeEnvFile } from "../../runtime/env.js";
 import { appendLog } from "../../runtime/logger.js";
 import { getRuntimePaths, type RuntimePaths } from "../../runtime/paths.js";
 import { createCliQuestioner } from "../prompt.js";
@@ -105,7 +105,8 @@ export async function runOnboardCommand(optionsOrArgv: string[] | OnboardCommand
     ui.success("Đã thu thập hồ sơ và thông tin nhà cung cấp.");
 
     ui.section("Tạo cấu hình", "Đang tạo file tính cách cục bộ và cấu hình nhà cung cấp.");
-    const config = buildConfig(answers);
+    const existingConfig = await loadExistingConfig(paths);
+    const config = buildConfig(answers, existingConfig);
     const character = generateCharacterConfig({
       name: answers.agentName,
       ownerName: answers.ownerName,
@@ -116,7 +117,7 @@ export async function runOnboardCommand(optionsOrArgv: string[] | OnboardCommand
     const systemPrompt = generateSystemPrompt(character);
 
     await writeConfig(config, paths);
-    await writeEnvFile({ [answers.apiKeyEnv]: answers.apiKey }, paths);
+    await writeEnvFile({ ...(await loadEnvFile(paths)), [answers.apiKeyEnv]: answers.apiKey }, paths);
     await writeCharacterFiles(character, systemPrompt, paths);
     await writeAgentsFile(paths);
     ui.success("Đã ghi các file runtime cục bộ.");
@@ -275,10 +276,50 @@ function createPromptTheme(useColor: boolean): PromptTheme {
   };
 }
 
-function buildConfig(answers: OnboardingAnswers): AppConfig {
+async function loadExistingConfig(paths: RuntimePaths): Promise<AppConfig | undefined> {
+  if (!(await configExists(paths))) {
+    return undefined;
+  }
+
+  return loadConfig(paths);
+}
+
+function buildConfig(answers: OnboardingAnswers, existingConfig?: AppConfig): AppConfig {
   const providerDefaults = getLlmProviderDefaults(answers.provider);
   const modelRef = buildModelRef(providerDefaults.catalogProvider, answers.model);
   const profileId = `${providerDefaults.catalogProvider}:api-key`;
+  const newProfile = {
+    provider: providerDefaults.runtimeProvider,
+    mode: "api-key" as const,
+    baseUrl: answers.baseUrl.replace(/\/+$/, ""),
+    apiKeyEnv: answers.apiKeyEnv,
+  };
+
+  if (existingConfig) {
+    return {
+      ...existingConfig,
+      agent: {
+        ...existingConfig.agent,
+        name: answers.agentName,
+        ownerName: answers.ownerName,
+        language: answers.language,
+        timeZone: answers.timeZone,
+        toneIntensity: answers.toneIntensity,
+      },
+      llm: {
+        ...existingConfig.llm,
+        primary: modelRef,
+        authProfile: profileId,
+        profiles: { ...existingConfig.llm.profiles, [profileId]: newProfile },
+        modelCatalog: { ...existingConfig.llm.modelCatalog, [modelRef]: { profile: profileId } },
+      },
+      memory: {
+        ...existingConfig.memory,
+        writePolicy: answers.memoryWritePolicy,
+        deletePolicy: answers.memoryDeletePolicy,
+      },
+    };
+  }
 
   return {
     version: 2,
@@ -293,12 +334,7 @@ function buildConfig(answers: OnboardingAnswers): AppConfig {
       primary: modelRef,
       authProfile: profileId,
       profiles: {
-        [profileId]: {
-          provider: providerDefaults.runtimeProvider,
-          mode: "api-key",
-          baseUrl: answers.baseUrl.replace(/\/+$/, ""),
-          apiKeyEnv: answers.apiKeyEnv,
-        },
+        [profileId]: newProfile,
       },
       modelCatalog: {
         [modelRef]: { profile: profileId },
