@@ -32,6 +32,8 @@ const BESTIE_ICON_ICO_PATH = fileURLToPath(new URL("../../assets/bestie-app-icon
 const UI_WEB_INDEX_PATH = fileURLToPath(new URL("./web/index.html", import.meta.url));
 const UI_WEB_SERVICE_WORKER_PATH = fileURLToPath(new URL("./web/sw.js", import.meta.url));
 const UI_WEB_ROUTE_PATHS = new Set(["/chat", "/doctor", "/providers", "/character", "/memory", "/knowledge", "/channels", "/agents", "/agents/tasks", "/approvals", "/mcp", "/tools", "/skills", "/skills/library", "/settings"]);
+const ROBOTS_TXT = "User-agent: *\nDisallow: /\n";
+const NO_INDEX_HEADER_VALUE = "noindex, nofollow, noarchive, nosnippet";
 
 export interface UiServerOptions {
   host?: string;
@@ -82,8 +84,18 @@ function handleRequest(request: IncomingMessage, response: ServerResponse): void
 }
 
 async function handleRequestAsync(request: IncomingMessage, response: ServerResponse): Promise<void> {
+  response.setHeader("x-robots-tag", NO_INDEX_HEADER_VALUE);
   const method = request.method ?? "GET";
   const url = new URL(request.url ?? "/", "http://127.0.0.1");
+
+  if (method === "GET" && url.pathname === "/robots.txt") {
+    response.writeHead(200, {
+      "cache-control": "no-store",
+      "content-type": "text/plain; charset=utf-8",
+    });
+    response.end(ROBOTS_TXT);
+    return;
+  }
 
   if (method === "GET" && url.pathname === "/api/health") {
     sendJson(response, 200, { ok: true, service: "bestie-ui" });
