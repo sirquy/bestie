@@ -60,6 +60,7 @@ export function ChatPanel({ data, loading, onData, onLoading }: ChatPanelProps):
   const [timeline, setTimeline] = useState<ChatTimelineEvent[]>([]);
   const [sessionsCollapsed, setSessionsCollapsed] = useState(() => readStoredBoolean(CHAT_SESSIONS_COLLAPSED_KEY));
   const [controlsCollapsed, setControlsCollapsed] = useState(() => readStoredBoolean(CHAT_CONTROLS_COLLAPSED_KEY));
+  const [mobileSheet, setMobileSheet] = useState<"sessions" | "controls" | null>(null);
   const [chatFullscreen, setChatFullscreen] = useState(false);
   const [editingTitle, setEditingTitle] = useState(false);
   const [draftTitle, setDraftTitle] = useState("");
@@ -275,7 +276,7 @@ export function ChatPanel({ data, loading, onData, onLoading }: ChatPanelProps):
       {actionError ? <ToastEffect title="Không thể cập nhật trò chuyện" description={actionError} tone="error" onShown={() => setActionError(null)} /> : null}
       {actionMessage ? <ToastEffect title="Trò chuyện đã cập nhật" description={actionMessage} tone="success" onShown={() => setActionMessage(null)} /> : null}
 
-      <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-white/10 bg-background/35 p-3" data-chat-summary>
+      <div className="hidden flex-wrap items-center justify-between gap-2 rounded-2xl border border-white/10 bg-background/35 p-3 xl:flex" data-chat-summary>
         <div className="flex flex-wrap gap-2">
           <Badge variant="secondary">{data.sessions.length} phiên</Badge>
           <Badge variant="outline">{visibleMessages.length} tin nhắn</Badge>
@@ -289,7 +290,7 @@ export function ChatPanel({ data, loading, onData, onLoading }: ChatPanelProps):
       </div>
 
       <div className="grid gap-3 xl:h-[calc(100vh-4.5rem)] xl:min-h-[38rem] xl:grid-cols-[var(--chat-session-rail)_minmax(0,1fr)_var(--chat-control-rail)]" style={{ "--chat-session-rail": sessionsCollapsed ? "4.25rem" : "18rem", "--chat-control-rail": controlsCollapsed ? "4.25rem" : "20rem" } as CSSProperties}>
-        <Card className="flex min-h-[18rem] flex-col overflow-hidden border-white/10 bg-background/35 xl:min-h-0">
+        <Card className="hidden min-h-[18rem] flex-col overflow-hidden border-white/10 bg-background/35 xl:flex xl:min-h-0">
           <CardHeader className="border-b border-white/10 p-4">
             <div className={`flex items-center gap-2 ${sessionsCollapsed ? "justify-center" : "justify-between"}`}>
               {sessionsCollapsed ? null : <div><CardTitle className="flex items-center gap-2 text-base"><MessageSquareText className="size-4" /> Phiêns</CardTitle><CardDescription>Tìm kiếm và chuyển giữa các cuộc trò chuyện.</CardDescription></div>}
@@ -312,8 +313,12 @@ export function ChatPanel({ data, loading, onData, onLoading }: ChatPanelProps):
           </CardContent>}
         </Card>
 
-        <Card className={`flex min-h-[34rem] flex-col overflow-hidden border-white/10 bg-background/35 xl:min-h-0 ${chatFullscreen ? "fixed inset-3 z-50 bg-background/95 shadow-2xl backdrop-blur-xl md:inset-6" : ""}`} data-chat-fullscreen={chatFullscreen ? "true" : "false"}>
-          <CardHeader className="relative z-10 shrink-0 border-b border-white/10 bg-background/80 p-4 backdrop-blur">
+        <Card className={`flex h-[calc(100dvh-1.5rem)] min-h-0 flex-col overflow-hidden border-white/10 bg-background/35 xl:h-auto xl:min-h-0 ${chatFullscreen ? "fixed inset-3 z-50 bg-background/95 shadow-2xl backdrop-blur-xl md:inset-6" : ""}`} data-chat-fullscreen={chatFullscreen ? "true" : "false"}>
+          <CardHeader className="relative z-10 shrink-0 border-b border-white/10 bg-background/80 p-3 backdrop-blur md:p-4">
+            <div className="mb-3 flex items-center justify-between gap-2 xl:hidden" data-chat-mobile-toolbar>
+              <Button type="button" size="sm" variant="outline" onClick={() => setMobileSheet("sessions")}><MessageSquareText /> Lịch sử <Badge variant="secondary">{data.sessions.length}</Badge></Button>
+              <Button type="button" size="sm" variant="outline" onClick={() => setMobileSheet("controls")}><Settings2 /> Tuỳ chọn</Button>
+            </div>
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="min-w-0 flex-1">
                 {editingTitle && activeSession ? <div className="flex max-w-xl items-center gap-2"><Input className="h-8" value={draftTitle} autoFocus onChange={(event) => setDraftTitle(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void saveTitle(); if (event.key === "Escape") setEditingTitle(false); }} aria-label="Sửa tên cuộc trò chuyện" /><Button size="icon" variant="outline" type="button" aria-label="Lưu tên cuộc trò chuyện" onClick={() => void saveTitle()}><Check /></Button><Button size="icon" variant="ghost" type="button" aria-label="Huỷ sửa tên cuộc trò chuyện" onClick={() => setEditingTitle(false)}><X /></Button></div> : <CardTitle className="flex min-w-0 items-center gap-2 text-lg"><span className="truncate">{activeSession ? activeSession.session.title : "Chưa chọn cuộc trò chuyện"}</span>{activeSession ? <Button className="size-7 shrink-0" size="icon" variant="ghost" type="button" aria-label="Sửa tên cuộc trò chuyện" onClick={startEditingTitle}><Pencil className="size-3.5" /></Button> : null}</CardTitle>}
@@ -330,15 +335,15 @@ export function ChatPanel({ data, loading, onData, onLoading }: ChatPanelProps):
             </div>
           </CardHeader>
 
-          <CardContent className="flex min-h-0 flex-1 flex-col gap-3 p-3 md:p-4">
-            <div ref={transcriptRef} className="chat-transcript no-scrollbar grid min-h-0 flex-1 content-start gap-3 overflow-auto rounded-2xl border border-white/10 bg-background/25 p-3" id="chat-transcript">
+          <CardContent className="flex min-h-0 flex-1 flex-col gap-3 p-2 sm:p-3 md:p-4">
+            <div ref={transcriptRef} className="chat-transcript no-scrollbar grid min-h-0 flex-1 content-start gap-3 overflow-auto rounded-2xl border border-white/10 bg-background/25 p-3 sm:p-4" id="chat-transcript">
               {visibleMessages.length ? visibleMessages.map((item) => <MessageBubble key={item.id} message={item} onCopy={copyMessage} onFork={forkAt} onRetry={retryMessage} />) : <EmptyText>Chưa có tin nhắn trong cuộc trò chuyện này.</EmptyText>}
               {streaming ? <div className="chat-message rounded-2xl border border-primary/30 bg-primary/10 p-4 text-sm assistant"><div className="mb-2 flex items-center gap-2 font-semibold"><Loader2 className="size-4 animate-spin" /> Bestie đang trả lời</div><p className="whitespace-pre-wrap text-muted-foreground">{streamText || "Đang suy nghĩ..."}</p></div> : null}
             </div>
 
-            <form className="grid gap-2 rounded-2xl border border-white/10 bg-card/50 p-3" onSubmit={(event) => void sendMessage(event)}>
+            <form className="grid gap-2 rounded-2xl border border-white/10 bg-card/50 p-2.5 sm:p-3" onSubmit={(event) => void sendMessage(event)}>
               {attachments.length ? <div className="flex flex-wrap gap-2">{attachments.map((attachment, index) => <span key={`${attachment.name}-${index}`} className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-background/50 px-3 py-1 text-xs"><FileText className="size-3" />{attachment.name}<button type="button" aria-label={`Gỡ ${attachment.name}`} onClick={() => setAttachments((current) => current.filter((_, itemIndex) => itemIndex !== index))}><X className="size-3" /></button></span>)}</div> : null}
-              <Textarea value={message} onChange={(event) => setMessage(event.target.value)} onKeyDown={handleComposerKeyDown} rows={3} placeholder={`Gửi tin nhắn cho ${agentName}`} id="chat-input" className="min-h-24 resize-none border-white/10 bg-background/50" />
+              <Textarea value={message} onChange={(event) => setMessage(event.target.value)} onKeyDown={handleComposerKeyDown} rows={3} placeholder={`Gửi tin nhắn cho ${agentName}`} id="chat-input" className="min-h-20 resize-none border-white/10 bg-background/50 sm:min-h-24" />
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
                   <span className="rounded-full border border-white/10 px-2 py-1">Công cụ {toolsEnabled ? "bật" : "tắt"}</span>
@@ -354,7 +359,7 @@ export function ChatPanel({ data, loading, onData, onLoading }: ChatPanelProps):
           </CardContent>
         </Card>
 
-        <aside className="flex min-h-0 flex-col gap-3">
+        <aside className="hidden min-h-0 flex-col gap-3 xl:flex">
           <Card className="flex min-h-0 shrink-0 flex-col overflow-hidden border-white/10 bg-background/35">
             <CardHeader className="p-4">
               <div className={`flex items-center gap-2 ${controlsCollapsed ? "justify-center" : "justify-between"}`}>
@@ -376,6 +381,12 @@ export function ChatPanel({ data, loading, onData, onLoading }: ChatPanelProps):
           </Card>}
         </aside>
       </div>
+      {mobileSheet ? <div className="fixed inset-0 z-[60] bg-black/55 backdrop-blur-sm xl:hidden" role="dialog" aria-modal="true" aria-label={mobileSheet === "sessions" ? "Lịch sử trò chuyện" : "Tuỳ chọn trò chuyện"} onClick={() => setMobileSheet(null)}>
+        <section className="absolute inset-x-0 bottom-0 max-h-[78dvh] rounded-t-[1.75rem] border border-white/10 bg-card p-4 shadow-2xl" onClick={(event) => event.stopPropagation()} data-chat-mobile-sheet={mobileSheet}>
+          <div className="mb-4 flex items-center justify-between"><div><p className="font-semibold">{mobileSheet === "sessions" ? "Lịch sử trò chuyện" : "Tuỳ chọn trò chuyện"}</p><p className="text-xs text-muted-foreground">{mobileSheet === "sessions" ? "Mở hoặc tìm cuộc trò chuyện." : "Điều chỉnh cho phiên hiện tại."}</p></div><Button type="button" size="icon" variant="ghost" aria-label="Đóng bảng" onClick={() => setMobileSheet(null)}><X /></Button></div>
+          {mobileSheet === "sessions" ? <div className="grid max-h-[62dvh] gap-3 overflow-auto"><div className="flex gap-2"><Button size="sm" onClick={() => void createSession()}><Plus /> Chat mới</Button><Button size="sm" variant="outline" onClick={() => void reload()} disabled={loading}><RefreshCw className={loading ? "animate-spin" : ""} /> Tải lại</Button></div><form className="grid grid-cols-[1fr_auto] gap-2" onSubmit={(event) => void searchSessions(event)}><Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Tìm cuộc trò chuyện" /><Button type="submit" size="icon" variant="outline" aria-label="Tìm cuộc trò chuyện"><Search /></Button></form><div className="grid gap-2">{sortedSessions.map((session) => <SessionRow key={session.id} session={session} active={activeSession?.session.id === session.id} onOpen={async (id) => { await openSession(id); setMobileSheet(null); }} />)}</div></div> : <div className="grid gap-3"><label className="flex items-center justify-between rounded-xl border border-white/10 p-3 text-sm"><span>Công cụ</span><input type="checkbox" checked={toolsEnabled} onChange={(event) => setToolsEnabled(event.target.checked)} /></label><label className="flex items-center justify-between rounded-xl border border-white/10 p-3 text-sm"><span>Bộ nhớ</span><input type="checkbox" checked={memoryEnabled} onChange={(event) => setMemoryEnabled(event.target.checked)} /></label><div className="grid gap-2"><Label htmlFor="chat-mobile-provider-model">Model AI</Label><Select id="chat-mobile-provider-model" value={providerModelRef} onChange={(event) => setProviderModelRef(event.target.value)}><option value="">Tốt nhất hiện có</option>{providerModels.map((model) => <option key={model.modelRef} value={model.modelRef}>{model.modelRef}{model.primary ? " · chính" : ""}</option>)}</Select></div>{activeSession ? <Button variant="outline" onClick={() => void deleteSession()}><Trash2 /> Xoá cuộc trò chuyện</Button> : null}</div>}
+        </section>
+      </div> : null}
     </div>
   );
 }

@@ -32,8 +32,9 @@ try {
   await assertSidebarToggle(page);
   await assertMobileSidebarToggle(page);
   await assertChatPanel(page);
+  await assertMobileChatPanel(page);
   await assertPanel(page, "Kiểm tra", "/doctor", ["Kiểm tra sức khoẻ", "Sửa lỗi thường gặp"]);
-  await assertPanel(page, "Nhà cung cấp", "/providers", ["Lựa chọn mô hình AI", "ChatGPT", "Đặt làm chính"]);
+  await assertPanel(page, "Models", "/models", ["Lựa chọn mô hình AI", "openai/test-model", "Đặt làm chính"]);
   await assertPanel(page, "Tính cách", "/character", ["Chi tiết tính cách", "Hướng dẫn trò chuyện"]);
   await assertPanel(page, "Bộ nhớ", "/memory", ["Kho bộ nhớ", "Cần xem xét"]);
   await assertKnowledgePanel(page);
@@ -85,7 +86,7 @@ async function assertChatPanel(page) {
   await page.waitForSelector("[data-chat-session]");
   await page.locator("[data-chat-session]").first().click();
   await page.waitForSelector("#chat-transcript .chat-message");
-  await page.waitForSelector('textarea[placeholder="Gửi tin nhắn cho Bestie"]');
+  await page.waitForSelector("#chat-input");
   await page.waitForSelector('#chat-provider-model option[value="openai/test-model"]', { state: "attached" });
   await page.waitForSelector("#chat-transcript strong");
   await page.waitForSelector("#chat-transcript code");
@@ -119,6 +120,49 @@ async function assertChatPanel(page) {
   await page.getByRole("button", { name: "Mở rộng tuỳ chọn" }).click();
   await page.waitForSelector("#chat-session-list");
   await page.waitForSelector("#chat-inspector");
+}
+
+async function assertMobileChatPanel(page) {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.reload({ waitUntil: "networkidle" });
+  await expectPath(page, "/chat");
+  await page.locator("[data-sidebar-toggle]").click();
+  await page.waitForSelector('[data-sidebar-state="collapsed"]');
+  await page.waitForSelector("[data-chat-mobile-toolbar]");
+  await page.waitForSelector("#chat-transcript .chat-message");
+  await page.waitForSelector("#chat-input");
+  await page.locator("#chat-session-list").waitFor({ state: "hidden" });
+  await page.locator("#chat-inspector").waitFor({ state: "hidden" });
+
+  const chatLayout = await page.locator("#chat-transcript").evaluate((transcript) => {
+    const input = document.querySelector("#chat-input");
+    if (!(input instanceof HTMLElement)) throw new Error("Chat composer is missing");
+    const transcriptBox = transcript.getBoundingClientRect();
+    const inputBox = input.getBoundingClientRect();
+    return {
+      transcriptHeight: transcriptBox.height,
+      inputBottom: inputBox.bottom,
+      viewportHeight: window.innerHeight,
+    };
+  });
+  if (chatLayout.transcriptHeight < 250) throw new Error(`Mobile transcript should remain spacious, got ${chatLayout.transcriptHeight}px`);
+  if (chatLayout.inputBottom > chatLayout.viewportHeight) throw new Error(`Mobile composer should remain in view, bottom is ${chatLayout.inputBottom}/${chatLayout.viewportHeight}`);
+
+  await page.getByRole("button", { name: /Lịch sử/ }).click();
+  await page.waitForSelector('[data-chat-mobile-sheet="sessions"]');
+  await page.getByRole("button", { name: "Đóng bảng" }).click();
+  await page.locator('[data-chat-mobile-sheet="sessions"]').waitFor({ state: "hidden" });
+
+  await page.getByRole("button", { name: "Tuỳ chọn" }).click();
+  await page.waitForSelector('[data-chat-mobile-sheet="controls"]');
+  await page.waitForSelector("#chat-mobile-provider-model");
+  await page.getByRole("button", { name: "Đóng bảng" }).click();
+  await page.locator('[data-chat-mobile-sheet="controls"]').waitFor({ state: "hidden" });
+  await page.locator("[data-sidebar-floating-toggle]").click();
+  await page.waitForSelector('[data-sidebar-state="expanded"]');
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.reload({ waitUntil: "networkidle" });
+  await page.waitForSelector('[data-sidebar-state="expanded"]');
 }
 
 async function assertSidebarToggle(page) {
