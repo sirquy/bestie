@@ -31,6 +31,7 @@ import { DoctorPanel, DoctorPanelError } from "@/features/doctor/DoctorPanel";
 import { KnowledgePanel, KnowledgePanelError } from "@/features/knowledge/KnowledgePanel";
 import { MemoryPanel, MemoryPanelError } from "@/features/memory/MemoryPanel";
 import { McpPanel, McpPanelError } from "@/features/mcp/McpPanel";
+import { OnboardingScreen } from "@/features/onboarding/OnboardingScreen";
 import { ProviderPanel, ProviderPanelError } from "@/features/providers/ProviderPanel";
 import { SettingsPanel, SettingsPanelError } from "@/features/settings/SettingsPanel";
 import { SkillsPanel, SkillsPanelError } from "@/features/skills/SkillsPanel";
@@ -122,6 +123,11 @@ interface UpdateApplyResult {
   output?: string;
 }
 
+interface RuntimeStatus {
+  ok: boolean;
+  config: { exists: boolean };
+}
+
 function panelFromLocation(location: Location): PanelDefinition {
   const legacyHash = location.hash.startsWith("#") ? legacyPanelIds.get(location.hash.slice(1)) : undefined;
   if (legacyHash) return panelsById.get(legacyHash) ?? defaultPanel;
@@ -146,6 +152,7 @@ function readSidebarCollapsed(): boolean {
 }
 
 function App(): ReactElement {
+  const [runtimeStatus, setRuntimeStatus] = useState<RuntimeStatus>();
   const [activePanel, setActivePanel] = useState<PanelId>(() => panelFromLocation(window.location).id);
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(readSidebarCollapsed);
   const [updateSummary, setUpdateSummary] = useState<UpdateSummary | null>(null);
@@ -154,6 +161,12 @@ function App(): ReactElement {
   const [panelData, setPanelData] = useState<Record<string, JsonRecord>>({});
   const [panelErrors, setPanelErrors] = useState<Record<string, unknown>>({});
   const [loadingPanels, setLoadingPanels] = useState<Record<string, boolean>>({});
+
+  useEffect(() => {
+    void fetchJson<RuntimeStatus>("/api/status")
+      .then(setRuntimeStatus)
+      .catch(() => setRuntimeStatus({ ok: false, config: { exists: false } }));
+  }, []);
 
   const selectedPanel = useMemo(() => panels.find((panel) => panel.id === activePanel) ?? panels[0], [activePanel]);
 
@@ -195,6 +208,7 @@ function App(): ReactElement {
   }, [sidebarCollapsed]);
 
   useEffect(() => {
+    if (!runtimeStatus?.ok || !runtimeStatus.config.exists) return;
     if (!selectedPanel.endpoint || panelData[selectedPanel.id] || loadingPanels[selectedPanel.id]) return;
     setLoadingPanels((current) => ({ ...current, [selectedPanel.id]: true }));
     void fetchJson(selectedPanel.endpoint)
@@ -204,7 +218,7 @@ function App(): ReactElement {
       })
       .catch((fetchError: unknown) => setPanelErrors((current) => ({ ...current, [selectedPanel.id]: fetchError })))
       .finally(() => setLoadingPanels((current) => ({ ...current, [selectedPanel.id]: false })));
-  }, [loadingPanels, panelData, selectedPanel]);
+  }, [loadingPanels, panelData, runtimeStatus, selectedPanel]);
 
   const activeData = panelData[selectedPanel.id];
   const activeError = panelErrors[selectedPanel.id];
@@ -228,6 +242,19 @@ function App(): ReactElement {
     } finally {
       setUpdateBusy(false);
     }
+  }
+
+  if (!runtimeStatus) return <div className="grid min-h-screen place-items-center text-sm text-muted-foreground">Đang chuẩn bị Bestie...</div>;
+  if (!runtimeStatus.ok || !runtimeStatus.config.exists) {
+    return <OnboardingScreen onComplete={async () => {
+      await fetchJson("/api/chat/sessions", { method: "POST", body: JSON.stringify({ title: "Cuộc trò chuyện đầu tiên" }) });
+      setRuntimeStatus({ ok: true, config: { exists: true } });
+      setPanelData({});
+      setPanelErrors({});
+      setLoadingPanels({});
+      window.history.replaceState({}, "", "/chat");
+      setActivePanel("chat");
+    }} />;
   }
 
   return (

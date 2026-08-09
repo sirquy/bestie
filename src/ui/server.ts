@@ -15,6 +15,7 @@ import { getUiDoctorSummary, runUiDoctorFix } from "./api/doctor.js";
 import { getUiKnowledgeGraphSummary, runUiKnowledgeGraphAction, searchUiKnowledgeGraph } from "./api/knowledge-graph.js";
 import { getUiMemorySummary, runUiMemoryAction, searchUiMemories } from "./api/memory.js";
 import { getUiMcpSummary } from "./api/mcp.js";
+import { runUiOnboarding } from "./api/onboarding.js";
 import { getUiProviderSummary, runUiProviderTest, setUiProviderPrimary, setupUiProvider, updateUiProviderFallback } from "./api/providers.js";
 import { getUiSettingsSummary, updateUiSettings } from "./api/settings.js";
 import { clearUiSkillRemoteRegistryCache, deleteUiSkill, getUiSkill, getUiSkillLibrary, getUiSkillLibraryDiff, getUiSkillLibraryItem, getUiSkillsSummary, installUiSkillFromLibrary, rollbackUiSkill, testUiSkillRemoteRegistry, toggleUiSkillEnabled, writeUiSkill } from "./api/skills.js";
@@ -149,6 +150,28 @@ async function handleRequestAsync(request: IncomingMessage, response: ServerResp
 
   if (method === "GET" && (url.pathname === "/api/status" || url.pathname === "/api/config/summary")) {
     sendJson(response, 200, await getUiStatusSummary());
+    return;
+  }
+
+  if (method === "POST" && url.pathname === "/api/onboarding") {
+    const body = await readJsonBody(request);
+    if (!isRecord(body) || typeof body.agentName !== "string" || typeof body.ownerName !== "string" || typeof body.provider !== "string") {
+      sendJson(response, 400, { ok: false, error: "agentName, ownerName, and provider are required.", code: "UiOnboardingInvalidRequest" });
+      return;
+    }
+    sendJson(response, 200, await runUiOnboarding({
+      agentName: body.agentName,
+      ownerName: body.ownerName,
+      provider: body.provider,
+      ...(typeof body.language === "string" ? { language: body.language } : {}),
+      ...(typeof body.timeZone === "string" ? { timeZone: body.timeZone } : {}),
+      ...(typeof body.toneIntensity === "number" ? { toneIntensity: body.toneIntensity } : {}),
+      ...(typeof body.mode === "string" ? { mode: body.mode as never } : {}),
+      ...(typeof body.model === "string" ? { model: body.model } : {}),
+      ...(typeof body.baseUrl === "string" ? { baseUrl: body.baseUrl } : {}),
+      ...(typeof body.apiKeyEnv === "string" ? { apiKeyEnv: body.apiKeyEnv } : {}),
+      ...(typeof body.secret === "string" ? { secret: body.secret } : {}),
+    }));
     return;
   }
 

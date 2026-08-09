@@ -81,6 +81,11 @@ export function ChatPanel({ data, loading, onData, onLoading }: ChatPanelProps):
   }, []);
 
   useEffect(() => {
+    if (activeSession || sortedSessions.length === 0) return;
+    void openSession(sortedSessions[0].id);
+  }, [activeSession, sortedSessions]);
+
+  useEffect(() => {
     transcriptRef.current?.scrollTo({ top: transcriptRef.current.scrollHeight, behavior: "smooth" });
   }, [activeSession?.session.id, visibleMessageKey(activeSession?.messages ?? []), streamText]);
 

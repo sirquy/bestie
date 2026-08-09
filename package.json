@@ -59,9 +59,10 @@
     "smoke:tools": "npm run build && npm run smoke:tools:run",
     "smoke:tools:run": "node dist/cli/index.js tools logs --lines 5 | grep -q 'action_permission_decision' && node dist/cli/index.js tools memories --limit 5 >/dev/null && node dist/cli/index.js tools git status >/dev/null",
     "smoke:ui": "npm run build && npm run smoke:ui:run",
-    "smoke:ui:all": "npm run build && npm run smoke:ui:run && npm run smoke:ui:browser:run",
+    "smoke:ui:all": "npm run build && npm run smoke:ui:run && npm run smoke:ui:browser:run && node scripts/smoke-ui-onboarding-browser.mjs",
     "smoke:ui:browser": "npm run build && npm run smoke:ui:browser:run",
     "smoke:ui:browser:run": "node scripts/smoke-ui-browser.mjs",
+    "smoke:ui:onboarding:browser": "npm run build && node scripts/smoke-ui-onboarding-browser.mjs",
     "smoke:ui:run": "node scripts/smoke-ui.mjs"
   },
   "engines": {
