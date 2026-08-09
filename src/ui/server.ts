@@ -93,8 +93,8 @@ async function handleRequestAsync(request: IncomingMessage, response: ServerResp
   const url = new URL(request.url ?? "/", "http://127.0.0.1");
 
   if (method === "GET" && url.pathname === "/api/auth/status") {
-    const session = auth.validateSession(readCookie(request, "bestie_ui_session"));
-    sendJson(response, 200, { ok: true, configured: await auth.isConfigured(), authenticated: Boolean(session), ...(session ? { csrfToken: session.csrfToken } : {}) });
+    const session = auth.validateSession(readCookie(request, "bestie_ui_session"), { touch: url.searchParams.get("touch") === "1" });
+    sendJson(response, 200, { ok: true, configured: await auth.isConfigured(), authenticated: Boolean(session), ...(session ? { csrfToken: session.csrfToken, session: auth.getSessionStatus(session) } : {}) });
     return;
   }
 

@@ -44,8 +44,8 @@ try {
 
   await page.goto(server.url, { waitUntil: "domcontentloaded" });
   await page.getByText("Tạo mã mở khóa", { exact: false }).waitFor();
-  await page.getByLabel("Mã mở khóa").fill("123456");
-  await page.getByLabel("Nhập lại mã").fill("123456");
+  await fillPin(page, "Mã mở khóa", "123456");
+  await fillPin(page, "Nhập lại mã", "123456");
   await page.getByRole("button", { name: "Lưu và mở Bestie" }).click();
   await page.getByText("Tạo người bạn đồng hành của bạn", { exact: false }).waitFor().catch(async () => {
     throw new Error(`Onboarding screen did not render. Errors: ${pageErrors.join(" | ")}; body: ${(await page.locator("body").innerText()).slice(0, 500)}`);
@@ -70,18 +70,20 @@ try {
   await page.getByRole("dialog", { name: "Khóa Bestie" }).waitFor();
   await page.getByRole("button", { name: "Khóa ngay" }).click();
   await page.getByText("Mở khóa Bestie", { exact: false }).waitFor();
-  await page.getByLabel("Mã mở khóa").fill("123456");
+  await fillPin(page, "Mã mở khóa", "123456");
   await page.getByRole("button", { name: "Mở khóa" }).click();
   await page.locator("#chat-input").waitFor();
   await page.getByRole("link", { name: "Cài đặt" }).click();
-  await page.getByLabel("Mã mở khóa hiện tại").fill("123456");
-  await page.getByLabel("Mã mở khóa mới").fill("654321");
-  await page.getByLabel("Nhập lại mã mới").fill("654321");
+  await page.getByText("Bestie đang mở khóa trên máy này", { exact: false }).waitFor();
+  await page.getByText("Tự khóa sau", { exact: false }).waitFor();
+  await fillPin(page, "Mã mở khóa hiện tại", "123456");
+  await fillPin(page, "Mã mở khóa mới", "654321");
+  await fillPin(page, "Nhập lại mã mới", "654321");
   await page.getByRole("button", { name: "Đổi mã mở khóa" }).click();
   await page.getByRole("dialog", { name: "Xác nhận" }).waitFor();
   await page.getByRole("button", { name: "Xác nhận" }).click();
   await page.getByText("Mở khóa Bestie", { exact: false }).waitFor();
-  await page.getByLabel("Mã mở khóa").fill("654321");
+  await fillPin(page, "Mã mở khóa", "654321");
   await page.getByRole("button", { name: "Mở khóa" }).click();
   await page.getByRole("link", { name: "Trò chuyện" }).click();
   await page.locator("#chat-input").waitFor();
@@ -97,4 +99,10 @@ try {
   if (previousUserProfile === undefined) delete process.env.USERPROFILE;
   else process.env.USERPROFILE = previousUserProfile;
   await rm(homeDir, { recursive: true, force: true });
+}
+
+async function fillPin(page, label, pin) {
+  const firstCell = page.getByLabel(`${label}, số 1`);
+  await firstCell.click();
+  await firstCell.pressSequentially(pin);
 }

@@ -6,7 +6,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
-import { Input } from "@/components/ui/input";
+import { PinCodeInput } from "@/components/ui/pin-code-input";
 import { Select } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { fetchJson, formatError, setCsrfToken } from "@/lib/api";
@@ -27,17 +27,39 @@ interface SettingsDraft {
   writePolicy: MemoryWritePolicy;
 }
 
+interface UiSessionStatus {
+  authenticated: boolean;
+  session?: {
+    idleExpiresAt: string;
+    sessionExpiresAt: string;
+  };
+}
+
 export function SettingsPanel({ data, loading, onData, onLoading, onStatusRefresh, onLocked }: SettingsPanelProps): ReactElement {
   const [draft, setDraft] = useState<SettingsDraft>(() => emptyDraft());
   const [actionError, setActionError] = useState<string | null>(null);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const [pinDraft, setPinDraft] = useState({ currentPin: "", nextPin: "", confirmation: "" });
   const [pinBusy, setPinBusy] = useState(false);
+  const [sessionStatus, setSessionStatus] = useState<UiSessionStatus>();
 
   useEffect(() => {
     if (!data) return;
     setDraft({ writePolicy: data.memory.writePolicy });
   }, [data]);
+
+  useEffect(() => {
+    async function refreshSession(): Promise<void> {
+      try {
+        setSessionStatus(await fetchJson<UiSessionStatus>("/api/auth/status"));
+      } catch {
+        setSessionStatus({ authenticated: false });
+      }
+    }
+    void refreshSession();
+    const timer = window.setInterval(() => void refreshSession(), 30_000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   async function runAction(action: () => Promise<SettingsSummary>, success?: string): Promise<void> {
     setActionError(null);
@@ -75,8 +97,8 @@ export function SettingsPanel({ data, loading, onData, onLoading, onStatusRefres
 
   async function changePin(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
-    if (!/^\d{6,8}$/.test(pinDraft.currentPin) || !/^\d{6,8}$/.test(pinDraft.nextPin)) {
-      setActionError("Mã hiện tại và mã mới cần gồm 6 đến 8 chữ số.");
+    if (!/^\d{6}$/.test(pinDraft.currentPin) || !/^\d{6}$/.test(pinDraft.nextPin)) {
+      setActionError("Mã hiện tại và mã mới cần đúng 6 chữ số.");
       return;
     }
     if (pinDraft.nextPin !== pinDraft.confirmation) {
@@ -88,6 +110,20 @@ export function SettingsPanel({ data, loading, onData, onLoading, onStatusRefres
     setActionError(null);
     try {
       await fetchJson("/api/auth/change-pin", { method: "POST", body: JSON.stringify({ currentPin: pinDraft.currentPin, nextPin: pinDraft.nextPin }) });
+      setCsrfToken(undefined);
+      onLocked?.();
+    } catch (error: unknown) {
+      setActionError(formatError(error));
+    } finally {
+      setPinBusy(false);
+    }
+  }
+
+  async function lockNow(): Promise<void> {
+    if (!await confirmDialog("Khóa Bestie ngay? Bạn sẽ cần nhập mã mở khóa để tiếp tục.")) return;
+    setPinBusy(true);
+    try {
+      await fetchJson("/api/auth/logout", { method: "POST" });
       setCsrfToken(undefined);
       onLocked?.();
     } catch (error: unknown) {
@@ -178,9 +214,16 @@ export function SettingsPanel({ data, loading, onData, onLoading, onStatusRefres
       <Card className="border-white/10 bg-background/35">
         <CardHeader>
           <CardTitle className="flex items-center gap-2"><ShieldCheck className="size-5" /> Bảo mật UI</CardTitle>
-          <CardDescription>Đổi mã mở khóa trên máy này. Bestie sẽ khóa ngay sau khi mã mới được lưu.</CardDescription>
+          <CardDescription>Xem phiên mở khóa, khóa ngay hoặc đổi mã trên máy này.</CardDescription>
         </CardHeader>
         <CardContent>
+          <div className="mb-6 grid gap-3 rounded-lg border border-white/10 bg-card/40 p-4 sm:grid-cols-[1fr_auto] sm:items-center">
+            <div>
+              <p className="font-medium">{sessionStatus?.authenticated ? "Bestie đang mở khóa trên máy này" : "Phiên mở khóa đã kết thúc"}</p>
+              {sessionStatus?.session ? <p className="mt-1 text-sm text-muted-foreground">Tự khóa sau {formatRemaining(sessionStatus.session.idleExpiresAt)} không hoạt động; phiên này hết hạn sau {formatRemaining(sessionStatus.session.sessionExpiresAt)}.</p> : <p className="mt-1 text-sm text-muted-foreground">Tải lại trạng thái phiên để kiểm tra lại.</p>}
+            </div>
+            <Button className="w-fit" disabled={!sessionStatus?.authenticated || pinBusy} onClick={() => void lockNow()} type="button" variant="outline"><ShieldCheck /> Khóa Bestie</Button>
+          </div>
           <form className="grid max-w-xl gap-4" onSubmit={(event) => void changePin(event)}>
             <PinField id="current-unlock-pin" label="Mã mở khóa hiện tại" value={pinDraft.currentPin} onChange={(value) => setPinDraft((current) => ({ ...current, currentPin: value }))} />
             <div className="grid gap-4 md:grid-cols-2">
@@ -244,7 +287,14 @@ function FormField({ label, children }: { label: string; children: ReactElement 
 }
 
 function PinField({ id, label, value, onChange }: { id: string; label: string; value: string; onChange: (value: string) => void }): ReactElement {
-  return <div className="grid gap-2"><Label htmlFor={id}>{label}</Label><Input autoComplete="off" id={id} inputMode="numeric" maxLength={8} onChange={(event) => onChange(event.target.value.replace(/\D/g, ""))} placeholder="6 đến 8 chữ số" type="password" value={value} /></div>;
+  return <div className="grid gap-2"><Label>{label}</Label><PinCodeInput id={id} label={label} onChange={onChange} value={value} /></div>;
+}
+
+function formatRemaining(expiresAt: string): string {
+  const milliseconds = Math.max(0, new Date(expiresAt).getTime() - Date.now());
+  const minutes = Math.ceil(milliseconds / 60_000);
+  if (minutes < 60) return `${minutes} phút`;
+  return `${Math.ceil(minutes / 60)} giờ`;
 }
 
 function emptyDraft(): SettingsDraft {

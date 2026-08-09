@@ -46,3 +46,26 @@ test("UI auth changes the PIN and invalidates existing sessions", async () => {
   await assert.rejects(auth.login("123456"), /Incorrect unlock PIN/);
   assert.ok(await auth.login("654321"));
 });
+
+test("UI auth can inspect a session without extending its idle lifetime", async () => {
+  const paths = getRuntimePaths(await mkdtemp(join(tmpdir(), "bestie-ui-auth-")));
+  let now = 1000;
+  const auth = new UiAuthService(paths, () => now);
+  await auth.setup("123456");
+  const login = await auth.login("123456");
+  now += 5 * 60 * 1000;
+  const status = auth.getSessionStatus(auth.validateSession(login.sessionId, { touch: false })!);
+  assert.equal(status.idleExpiresAt, new Date(1000 + 30 * 60 * 1000).toISOString());
+  auth.validateSession(login.sessionId);
+  assert.equal(auth.getSessionStatus(auth.validateSession(login.sessionId, { touch: false })!).idleExpiresAt, new Date(1000 + 35 * 60 * 1000).toISOString());
+});
+
+test("UI auth accepts exactly six-digit PINs", async () => {
+  const paths = getRuntimePaths(await mkdtemp(join(tmpdir(), "bestie-ui-auth-")));
+  const auth = new UiAuthService(paths);
+  await assert.rejects(auth.setup("12345"), /exactly 6 digits/);
+  await assert.rejects(auth.setup("1234567"), /exactly 6 digits/);
+  await auth.setup("123456");
+  await assert.rejects(auth.login("12345"), /Incorrect unlock PIN/);
+  await assert.rejects(auth.login("1234567"), /Incorrect unlock PIN/);
+});

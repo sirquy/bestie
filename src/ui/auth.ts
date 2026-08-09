@@ -23,6 +23,11 @@ interface UiAuthSession {
   lastSeenAt: number;
 }
 
+export interface UiAuthSessionStatus {
+  idleExpiresAt: string;
+  sessionExpiresAt: string;
+}
+
 export class UiAuthService {
   private readonly sessions = new Map<string, UiAuthSession>();
   private readonly authPath: string;
@@ -74,7 +79,7 @@ export class UiAuthService {
     this.clearSessions();
   }
 
-  validateSession(sessionId: string | undefined): UiAuthSession | undefined {
+  validateSession(sessionId: string | undefined, options: { touch?: boolean } = {}): UiAuthSession | undefined {
     if (!sessionId) return undefined;
     const session = this.sessions.get(sessionId);
     const now = this.now();
@@ -82,12 +87,19 @@ export class UiAuthService {
       this.sessions.delete(sessionId);
       return undefined;
     }
-    session.lastSeenAt = now;
+    if (options.touch !== false) session.lastSeenAt = now;
     return session;
   }
 
   validateCsrf(session: UiAuthSession, token: string | undefined): boolean {
     return Boolean(token && token.length === session.csrfToken.length && timingSafeEqual(Buffer.from(token), Buffer.from(session.csrfToken)));
+  }
+
+  getSessionStatus(session: UiAuthSession): UiAuthSessionStatus {
+    return {
+      idleExpiresAt: new Date(session.lastSeenAt + IDLE_TTL_MS).toISOString(),
+      sessionExpiresAt: new Date(session.createdAt + SESSION_TTL_MS).toISOString(),
+    };
   }
 
   clearSessions(): void {
@@ -129,7 +141,7 @@ async function createRecord(pin: string): Promise<UiAuthRecord> {
 }
 
 async function verifyPin(pin: string, record: UiAuthRecord): Promise<boolean> {
-  if (!/^\d{6,8}$/.test(pin)) return false;
+  if (!/^\d{6}$/.test(pin)) return false;
   const hash = Buffer.from(await hashPin(pin, record.salt));
   const expected = Buffer.from(record.pinHash);
   return hash.length === expected.length && timingSafeEqual(hash, expected);
@@ -140,7 +152,7 @@ async function hashPin(pin: string, salt: string): Promise<string> {
 }
 
 function assertValidPin(pin: string): void {
-  if (!/^\d{6,8}$/.test(pin)) throw new Error("Unlock PIN must contain 6 to 8 digits.");
+  if (!/^\d{6}$/.test(pin)) throw new Error("Unlock PIN must contain exactly 6 digits.");
 }
 
 function randomToken(): string {

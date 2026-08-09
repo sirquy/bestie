@@ -2,7 +2,7 @@ import { type FormEvent, type ReactElement, useEffect, useState } from "react";
 import { KeyRound, Loader2, ShieldCheck } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { PinCodeInput } from "@/components/ui/pin-code-input";
 import { fetchJson, setCsrfToken } from "@/lib/api";
 
 interface AuthStatus {
@@ -38,8 +38,8 @@ export function UnlockScreen({ onUnlocked }: { onUnlocked: () => void }): ReactE
   async function submit(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
     if (!status || busy) return;
-    if (!/^\d{6,8}$/.test(pin)) {
-      setError("Mã mở khóa cần gồm 6 đến 8 chữ số.");
+    if (!/^\d{6}$/.test(pin)) {
+      setError("Mã mở khóa cần đúng 6 chữ số.");
       return;
     }
     if (!status.configured && pin !== confirmation) {
@@ -74,9 +74,9 @@ export function UnlockScreen({ onUnlocked }: { onUnlocked: () => void }): ReactE
           {setup ? "Chọn một mã số riêng để bảo vệ chat, cài đặt và dữ liệu Bestie trên máy này." : "Nhập mã số để tiếp tục vào bảng điều khiển."}
         </p>
         <form className="mt-6 space-y-4" onSubmit={submit}>
-          <label className="block text-sm font-medium" htmlFor="ui-unlock-pin">Mã mở khóa</label>
-          <Input autoComplete={setup ? "new-password" : "current-password"} autoFocus inputMode="numeric" maxLength={8} id="ui-unlock-pin" onChange={(event) => setPin(event.target.value.replace(/\D/g, ""))} placeholder="6 đến 8 chữ số" type="password" value={pin} />
-          {setup ? <><label className="block text-sm font-medium" htmlFor="ui-unlock-confirmation">Nhập lại mã</label><Input autoComplete="new-password" inputMode="numeric" maxLength={8} id="ui-unlock-confirmation" onChange={(event) => setConfirmation(event.target.value.replace(/\D/g, ""))} placeholder="Nhập lại mã" type="password" value={confirmation} /></> : null}
+          <label className="block text-sm font-medium" htmlFor="ui-unlock-pin">Mã mở khóa gồm 6 số</label>
+          <PinCodeInput autoComplete={setup ? "new-password" : "current-password"} autoFocus id="unlock-pin" label="Mã mở khóa" onChange={setPin} value={pin} />
+          {setup ? <><label className="block text-sm font-medium" htmlFor="ui-unlock-confirmation">Nhập lại mã gồm 6 số</label><PinCodeInput autoComplete="new-password" id="unlock-confirmation" label="Nhập lại mã" onChange={setConfirmation} value={confirmation} /></> : null}
           {error ? <p className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive" role="alert">{error}</p> : null}
           <Button className="w-full" disabled={!status || busy} size="lg" type="submit">
             {busy ? <Loader2 className="animate-spin" /> : <KeyRound />}{setup ? "Lưu và mở Bestie" : "Mở khóa"}
