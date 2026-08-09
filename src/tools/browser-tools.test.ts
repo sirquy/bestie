@@ -16,7 +16,7 @@ test("browser tools reject non-http URLs before launching", async () => {
     assert.equal(rejectedUrl.allowed, false);
     assert.match(rejectedUrl.reason, /http or https/);
   } finally {
-    await rm(paths.rootDir, { recursive: true, force: true });
+    await rm(paths.rootDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
   }
 });
 
@@ -39,7 +39,7 @@ test("browser open captures localhost screenshot evidence", async (t) => {
     assert.ok(result.elements?.some((element) => element.kind === "button" && element.text === "Continue"));
   } finally {
     await server.close();
-    await rm(paths.rootDir, { recursive: true, force: true });
+    await rm(paths.rootDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
   }
 });
 

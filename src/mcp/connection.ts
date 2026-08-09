@@ -80,9 +80,6 @@ async function withMcpClient<T extends McpConnectionCheck>(server: McpServerSumm
   const transport = transportResult.transport;
 
   const client = new Client({ name: "bestie", version: "0.1.0" }, { capabilities: {} });
-  const timeout = setTimeout(() => {
-    void client.close().catch(() => undefined);
-  }, timeoutMs);
 
   try {
     await client.connect(transport, { timeout: timeoutMs });
@@ -90,7 +87,6 @@ async function withMcpClient<T extends McpConnectionCheck>(server: McpServerSumm
   } catch (error) {
     return { ok: false, status: "fail", message: formatMcpSdkError(server, error) } as T;
   } finally {
-    clearTimeout(timeout);
     await client.close().catch(() => undefined);
   }
 }
