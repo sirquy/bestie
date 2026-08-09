@@ -66,6 +66,13 @@ try {
   await page.locator("#chat-input").fill("Cho mình kết quả thật.");
   await page.locator("#chat-send").click();
   await page.getByText("Kết quả thật từ mock provider.", { exact: false }).waitFor();
+  await page.getByRole("button", { name: "Khóa Bestie" }).click();
+  await page.getByRole("dialog", { name: "Khóa Bestie" }).waitFor();
+  await page.getByRole("button", { name: "Khóa ngay" }).click();
+  await page.getByText("Mở khóa Bestie", { exact: false }).waitFor();
+  await page.getByLabel("Mã mở khóa").fill("123456");
+  await page.getByRole("button", { name: "Mở khóa" }).click();
+  await page.locator("#chat-input").waitFor();
 
   if (pageErrors.length) throw new Error(`Browser emitted errors: ${pageErrors.join(" | ")}`);
   process.stdout.write(`${JSON.stringify({ ok: true, service: "bestie-ui-onboarding-browser" })}\n`);

@@ -10,6 +10,7 @@ import {
   ClipboardCheck,
   GitBranch,
   HeartPulse,
+  LockKeyhole,
   MessageSquareText,
   PlugZap,
   Route,
@@ -49,7 +50,7 @@ import type { ProviderSummary } from "@/features/providers/types";
 import type { SettingsSummary } from "@/features/settings/types";
 import type { SkillsSummary } from "@/features/skills/types";
 import type { ToolsSummary } from "@/features/tools/types";
-import { fetchJson, type JsonRecord } from "@/lib/api";
+import { fetchJson, setCsrfToken, type JsonRecord } from "@/lib/api";
 import { alertDialog, confirmDialog } from "@/lib/dialogs";
 import { cn } from "@/lib/utils";
 import bestieAppIcon from "@/assets/bestie-app-icon.png";
@@ -151,7 +152,7 @@ function readSidebarCollapsed(): boolean {
   }
 }
 
-function App(): ReactElement {
+function App({ onLocked }: { onLocked: () => void }): ReactElement {
   const [runtimeStatus, setRuntimeStatus] = useState<RuntimeStatus>();
   const [activePanel, setActivePanel] = useState<PanelId>(() => panelFromLocation(window.location).id);
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(readSidebarCollapsed);
@@ -244,6 +245,17 @@ function App(): ReactElement {
     }
   }
 
+  async function lockBestie(): Promise<void> {
+    if (!await confirmDialog({ title: "Khóa Bestie", description: "Bạn sẽ cần nhập mã mở khóa để tiếp tục dùng bảng điều khiển trên máy này.", confirmLabel: "Khóa ngay", cancelLabel: "Để sau" })) return;
+    try {
+      await fetchJson("/api/auth/logout", { method: "POST" });
+      setCsrfToken(undefined);
+      onLocked();
+    } catch (error) {
+      await alertDialog({ title: "Chưa thể khóa Bestie", description: error instanceof Error ? error.message : "Không thể kết thúc phiên hiện tại.", confirmLabel: "Đã hiểu", tone: "destructive" });
+    }
+  }
+
   if (!runtimeStatus) return <div className="grid min-h-screen place-items-center text-sm text-muted-foreground">Đang chuẩn bị Bestie...</div>;
   if (!runtimeStatus.ok || !runtimeStatus.config.exists) {
     return <OnboardingScreen onComplete={async () => {
@@ -329,6 +341,19 @@ function App(): ReactElement {
               );
             })}
           </nav>
+          <div className={cn("mt-4 border-t border-white/10 pt-3", sidebarCollapsed ? "hidden lg:block" : "block")}>
+            <Button
+              aria-label="Khóa Bestie"
+              className={cn("h-9 w-full justify-start rounded-xl text-muted-foreground hover:bg-secondary/70 hover:text-foreground", sidebarCollapsed ? "lg:justify-center lg:px-0" : "")}
+              title={sidebarCollapsed ? "Khóa Bestie" : undefined}
+              type="button"
+              variant="ghost"
+              onClick={() => void lockBestie()}
+            >
+              <LockKeyhole />
+              <span className={cn(sidebarCollapsed ? "lg:sr-only" : "")}>Khóa Bestie</span>
+            </Button>
+          </div>
         </aside>
 
         <main className={cn("grid min-w-0 gap-4 transition-[margin] duration-300", sidebarCollapsed ? "lg:ml-[5.75rem]" : "lg:ml-[17rem]")}>

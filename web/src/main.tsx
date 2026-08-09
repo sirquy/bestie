@@ -10,7 +10,7 @@ import { ToastProvider } from "./lib/toasts";
 
 function BestieRoot(): React.ReactElement {
   const [unlocked, setUnlocked] = useState(false);
-  return unlocked ? <App /> : <UnlockScreen onUnlocked={() => setUnlocked(true)} />;
+  return unlocked ? <App onLocked={() => setUnlocked(false)} /> : <UnlockScreen onUnlocked={() => setUnlocked(true)} />;
 }
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
