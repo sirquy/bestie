@@ -1,12 +1,13 @@
 import assert from "node:assert/strict";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import test from "node:test";
 
 import { loadConfig, writeConfig, type AppConfig } from "../runtime/config.js";
 import type { RuntimePaths } from "../runtime/paths.js";
+import { hashSkillRegistry, type CuratedSkillTemplate } from "../skills/library.js";
 import { buildAgentToolDecisionMessage, buildAgentToolResultMessage, buildMcpToolInstructions, buildMcpToolResultMessage, completeWithAgentTools, INTERNAL_TOOL_NAMES, parseAgentToolDecisionResult, parseMcpToolRequest, parseMcpToolRequestResult, runAgentToolRequest, runMcpToolRequest } from "./mcp-tool-use.js";
 
 test("parseMcpToolRequest accepts plain and fenced read requests", () => {
@@ -458,6 +459,53 @@ test("runAgentToolRequest runs internal search_files without MCP config", async 
     assert.equal(result.ok, true);
     assert.match(JSON.stringify(result.result), /workspace\.log/);
     assert.doesNotMatch(JSON.stringify(result.result), /app\.log/);
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("runAgentToolRequest searches and previews verified remote library skills", async () => {
+  const paths = await createTempPaths();
+
+  try {
+    await seedVerifiedSkillRegistry(paths);
+    const search = await runAgentToolRequest({ config: createConfig(), paths, request: { tool: "internal.search_skill_library", arguments: { query: "research" } } });
+    assert.equal(search.ok, true);
+    assert.match(JSON.stringify(search.result), /verified-library-skill/);
+
+    const preview = await runAgentToolRequest({ config: createConfig(), paths, request: { tool: "internal.preview_skill_library_skill", arguments: { name: "verified-library-skill" } } });
+    assert.equal(preview.ok, true);
+    assert.match(JSON.stringify(preview.result), /# Verified Library Skill/);
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("runAgentToolRequest installs verified library skills only after explicit approval", async () => {
+  const paths = await createTempPaths();
+
+  try {
+    await seedVerifiedSkillRegistry(paths);
+    const request = { tool: "internal.install_skill_from_library" as const, arguments: { name: "verified-library-skill" } };
+    const denied = await runAgentToolRequest({ config: createConfig(), paths, request, policy: { allowLocalWrite: true } });
+    assert.equal(denied.ok, false);
+    assert.match(denied.message, /Approval required/);
+
+    let approvalAction = "";
+    const installed = await runAgentToolRequest({
+      config: createConfig(),
+      paths,
+      request,
+      approver: async (approval) => {
+        approvalAction = approval.action;
+        assert.equal(approval.category, "local_write");
+        assert.match(approval.payloadJson ?? "", /verified-library-skill/);
+        return { approved: true };
+      },
+    });
+    assert.equal(installed.ok, true);
+    assert.equal(approvalAction, "internal.install_skill_from_library");
+    assert.match(await readFile(resolve(paths.appDir, "skills", "verified-library-skill", "SKILL.md"), "utf8"), /Verified Library Skill/);
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
   }
@@ -2673,6 +2721,30 @@ async function createTempPaths(): Promise<RuntimePaths> {
     memoryDbPath: resolve(dataDir, "memory.sqlite"),
     workspaceDir: resolve(appDir, "workspace"),
   };
+}
+
+async function seedVerifiedSkillRegistry(paths: RuntimePaths): Promise<void> {
+  const skills: CuratedSkillTemplate[] = [{
+    name: "verified-library-skill",
+    title: "Verified Library Skill",
+    description: "Research skill available from a verified registry.",
+    category: "research",
+    version: "1.0.0",
+    author: "Bestie",
+    trust: "official",
+    risk: "low",
+    permissions: ["network"],
+    changelog: "Initial version.",
+    content: "# Verified Library Skill\n\nUse for verified research tasks.\n",
+  }];
+  const registryHash = hashSkillRegistry(skills);
+  await mkdir(paths.dataDir, { recursive: true });
+  await writeFile(resolve(paths.dataDir, "skill-remote-registry-cache.json"), `${JSON.stringify({
+    source: { id: "verified-test-library", name: "Verified Test Library", kind: "remote", enabled: true, trust: "official", skillCount: skills.length, verification: { status: "verified", method: "sha256-sidecar", detail: "Test registry verified.", registryHash }, cache: { cachedAt: new Date().toISOString(), ageMs: 0, status: "fresh" } },
+    skills,
+    validation: { ok: true, count: skills.length, issues: [] },
+    registryHash,
+  }, null, 2)}\n`);
 }
 
 async function runGit(cwd: string, args: string[]): Promise<void> {

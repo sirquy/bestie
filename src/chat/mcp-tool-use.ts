@@ -20,6 +20,7 @@ import { clickBrowserPageTool, openBrowserPageTool, resetBrowserSessionTool, scr
 import { sendFileTool, sendPhotoTool, type AgentOutboundFileSender } from "../tools/channel-send-tools.js";
 import { hireWorkforceAgent, listWorkforceAgents } from "../agents/registry.js";
 import { assignWorkforceTask, listWorkforceTasks, updateWorkforceTaskStatus, type WorkforceTaskStatus } from "../agents/inbox.js";
+import { getUiSkillLibrary, getUiSkillLibraryItem, installUiSkillFromLibrary } from "../ui/api/skills.js";
 
 const CRON_SCHEDULE_PROMPT_GUIDANCE = '- When creating or updating a cron schedule, the cron prompt must be the future task itself, written as a standalone instruction the isolated cron runner can execute later. Never store your current reply, a success message, the schedule ID, next_run_at, or text like "I created the schedule" in the prompt. For example, if the user asks "check YouTube and summarize every day at 17:00", store a prompt like "Check the configured YouTube channel for new content and summarize the findings for the user." Then, after the tool succeeds, answer the user with the schedule confirmation separately. Use update_cron_schedule for changing an existing schedule, remove_cron_schedule/toggle_cron_schedule for changing schedule state, and trigger_cron_schedule only when the user wants to run an existing cron job now. Do not trigger a newly created schedule just to prove it exists unless the user explicitly asks for an immediate run.';
 
@@ -92,6 +93,9 @@ export const INTERNAL_TOOL_NAMES = [
   "internal.apply_patch",
   "internal.exec",
   "internal.list_processes",
+  "internal.search_skill_library",
+  "internal.preview_skill_library_skill",
+  "internal.install_skill_from_library",
   "internal.spawn_subagent",
   "internal.list_workforce_agents",
   "internal.hire_workforce_agent",
@@ -433,6 +437,9 @@ export function buildMcpToolInstructions(config: AppConfig, runtimeContext?: str
     'internal.apply_patch {"patch":"git apply compatible patch"}',
     'internal.exec {"command":"npm","args":["test"],"cwd":".","timeoutMs":30000}',
     'internal.list_processes {"limit":20}',
+    'internal.search_skill_library {"query":"optional words to match name, title, description, category, permissions, or risk","limit":20}',
+    'internal.preview_skill_library_skill {"name":"exact-skill-name","sourceId":"optional-source-id"}',
+    'internal.install_skill_from_library {"name":"exact-skill-name","sourceId":"optional-source-id"}',
     'internal.spawn_subagent {"task":"focused task for a helper agent","name":"optional short name","maxToolCalls":20}',
     'internal.list_workforce_agents {}',
     'internal.hire_workforce_agent {"id":"researcher","displayName":"Mika","role":"Research Assistant","description":"Research and summarize information","model":"optional provider/model","tools":["internal.read_file","internal.read_url"]}',
@@ -737,6 +744,14 @@ export function formatToolActivityLabel(request: AgentToolRequest): string {
     return "processes";
   }
 
+  if (request.tool === "internal.search_skill_library") {
+    return stringArg(args.query) ?? "skill library";
+  }
+
+  if (request.tool === "internal.preview_skill_library_skill" || request.tool === "internal.install_skill_from_library") {
+    return stringArg(args.name) ?? "skill";
+  }
+
   if (request.tool === "internal.list_workforce_agents") {
     return "workforce agents";
   }
@@ -944,6 +959,22 @@ export async function runAgentToolRequest(options: RunAgentToolRequestOptions): 
     if (!url) return { ok: false, status: "fail", message: "internal.read_url requires arguments.url." };
     const result = await readUrlTool({ config: options.config, paths: options.paths, url, maxBytes: numberArg(args.maxBytes), timeoutMs: numberArg(args.timeoutMs), approver: options.approver });
     return { ok: result.allowed, status: result.allowed ? "pass" : "fail", message: result.reason, result: { url: result.url, statusCode: result.statusCode, contentType: result.contentType, content: result.content, truncated: result.truncated } };
+  }
+
+  if (options.request.tool === "internal.search_skill_library") {
+    return searchSkillLibraryTool(options.paths, stringArg(args.query), numberArg(args.limit));
+  }
+
+  if (options.request.tool === "internal.preview_skill_library_skill") {
+    const name = stringArg(args.name);
+    if (!name) return { ok: false, status: "fail", message: "internal.preview_skill_library_skill requires arguments.name." };
+    return previewSkillLibraryTool(options.paths, name, stringArg(args.sourceId));
+  }
+
+  if (options.request.tool === "internal.install_skill_from_library") {
+    const name = stringArg(args.name);
+    if (!name) return { ok: false, status: "fail", message: "internal.install_skill_from_library requires arguments.name." };
+    return installSkillFromLibraryTool(options, name, stringArg(args.sourceId));
   }
 
   if (options.request.tool === "internal.browser_open") {
@@ -1268,6 +1299,37 @@ export async function runAgentToolRequest(options: RunAgentToolRequestOptions): 
 
 export function isInternalToolName(value: string): value is InternalToolRequest["tool"] {
   return (INTERNAL_TOOL_NAMES as readonly string[]).includes(value);
+}
+
+async function searchSkillLibraryTool(paths: RuntimePaths, query?: string, limit?: number): Promise<McpToolCallResult> {
+  const library = await getUiSkillLibrary(paths);
+  const normalizedQuery = query?.trim().toLowerCase() ?? "";
+  const maxResults = Math.min(Math.max(limit ?? 20, 1), 50);
+  const skills = library.skills.filter((skill) => !normalizedQuery || [skill.name, skill.title, skill.description, skill.category, skill.author, skill.risk, skill.trust, ...skill.permissions].join(" ").toLowerCase().includes(normalizedQuery)).slice(0, maxResults).map((skill) => ({ name: skill.name, title: skill.title, description: skill.description, category: skill.category, version: skill.version, trust: skill.trust, risk: skill.risk, permissions: skill.permissions, sourceId: skill.sourceId, verificationStatus: skill.verificationStatus, installable: skill.installable, installed: skill.installed }));
+  return { ok: true, status: "pass", message: `${skills.length} skill library result(s).`, result: { query: query?.trim() || undefined, registry: library.registry.activeSource, skills } };
+}
+
+async function previewSkillLibraryTool(paths: RuntimePaths, name: string, sourceId?: string): Promise<McpToolCallResult> {
+  try {
+    const item = await getUiSkillLibraryItem(name, paths, sourceId);
+    return { ok: true, status: "pass", message: `Previewed skill ${item.skill.name}.`, result: { skill: item.skill, content: item.content } };
+  } catch (error) {
+    return { ok: false, status: "fail", message: formatUnknownError(error) };
+  }
+}
+
+async function installSkillFromLibraryTool(options: RunAgentToolRequestOptions, name: string, sourceId?: string): Promise<McpToolCallResult> {
+  const toolName = "internal.install_skill_from_library";
+  if (options.config.internalTools?.policies?.[toolName] === "deny") return { ok: false, status: "fail", message: `Skill library install denied: ${toolName} is denied by config.` };
+  const permission = await reviewActionPermission({ category: "local_write", action: toolName, target: `skill-library:${name}`, reason: "Install a verified remote skill into the local Bestie skills directory.", trusted: false, payloadJson: JSON.stringify({ tool: toolName, arguments: { name, ...(sourceId ? { sourceId } : {}) } }) }, { paths: options.paths, approver: options.approver, policy: { ...options.policy, allowLocalWrite: false } });
+  if (permission.decision !== "allow") return { ok: false, status: "fail", message: `Skill library install denied: ${permission.reason}` };
+  try {
+    const summary = await installUiSkillFromLibrary({ name, sourceId, confirm: true, paths: options.paths });
+    const skill = summary.skills.find((item) => item.name === name.trim().toLowerCase());
+    return { ok: true, status: "pass", message: `Installed skill ${skill?.name ?? name}.`, result: { skill, skillsDir: summary.skillsDir } };
+  } catch (error) {
+    return { ok: false, status: "fail", message: formatUnknownError(error) };
+  }
 }
 
 async function runSubagentTool(options: RunAgentToolRequestOptions, args: Record<string, unknown>): Promise<McpToolCallResult> {
