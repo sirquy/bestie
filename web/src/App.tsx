@@ -514,6 +514,7 @@ function App({ onLocked }: { onLocked: () => void }): ReactElement {
                     }}
                     onLoading={(loading) => setLoadingPanels((current) => ({ ...current, settings: loading }))}
                     onStatusRefresh={refreshStatus}
+                    onLocked={onLocked}
                   />
                 )
           ) : null}

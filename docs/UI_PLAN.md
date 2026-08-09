@@ -62,6 +62,7 @@ Current behavior:
 - Secret values are never rendered; the UI only reports env var names and presence.
 - UI Local Unlock requires a 6-8 digit owner PIN. The PIN is stored only as a salted `scrypt` hash in local runtime data; browser sessions are in-memory at the server, use `HttpOnly`/`SameSite=Strict` cookies, expire after 12 hours or 30 minutes idle, and reset when the UI process stops. State-changing requests require same-origin and CSRF validation. Recovery is local-only through `bestie ui auth reset`.
 - The sidebar includes `Khóa Bestie`, which ends the current UI session and returns to the PIN screen without stopping channel or daemon runtimes.
+- Settings includes a `Bảo mật UI` card for changing the unlock PIN. It requires the current PIN, a confirmed new PIN, same-origin/CSRF validation, and revokes all active UI sessions on success.
 
 ## Non-Goals For The Local UI
 

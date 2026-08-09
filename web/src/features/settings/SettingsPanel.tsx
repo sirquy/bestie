@@ -1,14 +1,15 @@
 import type { FormEvent, ReactElement } from "react";
 import { useEffect, useState } from "react";
-import { AlertCircle, Brain, FolderOpen, RefreshCw, Save, Settings, Sparkles, UserRound } from "lucide-react";
+import { AlertCircle, Brain, FolderOpen, KeyRound, RefreshCw, Save, Settings, ShieldCheck, Sparkles, UserRound } from "lucide-react";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
-import { fetchJson, formatError } from "@/lib/api";
+import { fetchJson, formatError, setCsrfToken } from "@/lib/api";
 import { ToastEffect } from "@/lib/toasts";
 import { confirmDialog } from "@/lib/dialogs";
 import type { MemoryWritePolicy, SettingsSummary } from "./types";
@@ -19,16 +20,19 @@ interface SettingsPanelProps {
   onData: (data: SettingsSummary) => void;
   onLoading: (loading: boolean) => void;
   onStatusRefresh?: () => void;
+  onLocked?: () => void;
 }
 
 interface SettingsDraft {
   writePolicy: MemoryWritePolicy;
 }
 
-export function SettingsPanel({ data, loading, onData, onLoading, onStatusRefresh }: SettingsPanelProps): ReactElement {
+export function SettingsPanel({ data, loading, onData, onLoading, onStatusRefresh, onLocked }: SettingsPanelProps): ReactElement {
   const [draft, setDraft] = useState<SettingsDraft>(() => emptyDraft());
   const [actionError, setActionError] = useState<string | null>(null);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
+  const [pinDraft, setPinDraft] = useState({ currentPin: "", nextPin: "", confirmation: "" });
+  const [pinBusy, setPinBusy] = useState(false);
 
   useEffect(() => {
     if (!data) return;
@@ -67,6 +71,30 @@ export function SettingsPanel({ data, loading, onData, onLoading, onStatusRefres
         confirm: true,
       }),
     }), "Đã lưu cài đặt.");
+  }
+
+  async function changePin(event: FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault();
+    if (!/^\d{6,8}$/.test(pinDraft.currentPin) || !/^\d{6,8}$/.test(pinDraft.nextPin)) {
+      setActionError("Mã hiện tại và mã mới cần gồm 6 đến 8 chữ số.");
+      return;
+    }
+    if (pinDraft.nextPin !== pinDraft.confirmation) {
+      setActionError("Mã mở khóa mới và phần nhập lại chưa khớp.");
+      return;
+    }
+    if (!await confirmDialog("Đổi mã mở khóa? Bạn sẽ cần dùng mã mới để mở Bestie ngay sau thao tác này.")) return;
+    setPinBusy(true);
+    setActionError(null);
+    try {
+      await fetchJson("/api/auth/change-pin", { method: "POST", body: JSON.stringify({ currentPin: pinDraft.currentPin, nextPin: pinDraft.nextPin }) });
+      setCsrfToken(undefined);
+      onLocked?.();
+    } catch (error: unknown) {
+      setActionError(formatError(error));
+    } finally {
+      setPinBusy(false);
+    }
   }
 
   if (!data) {
@@ -146,6 +174,23 @@ export function SettingsPanel({ data, loading, onData, onLoading, onStatusRefres
           <MiniMetric label="Model" value={String(data.llm.modelCount)} />
         </CardContent>
       </Card>
+
+      <Card className="border-white/10 bg-background/35">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2"><ShieldCheck className="size-5" /> Bảo mật UI</CardTitle>
+          <CardDescription>Đổi mã mở khóa trên máy này. Bestie sẽ khóa ngay sau khi mã mới được lưu.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form className="grid max-w-xl gap-4" onSubmit={(event) => void changePin(event)}>
+            <PinField id="current-unlock-pin" label="Mã mở khóa hiện tại" value={pinDraft.currentPin} onChange={(value) => setPinDraft((current) => ({ ...current, currentPin: value }))} />
+            <div className="grid gap-4 md:grid-cols-2">
+              <PinField id="next-unlock-pin" label="Mã mở khóa mới" value={pinDraft.nextPin} onChange={(value) => setPinDraft((current) => ({ ...current, nextPin: value }))} />
+              <PinField id="next-unlock-pin-confirmation" label="Nhập lại mã mới" value={pinDraft.confirmation} onChange={(value) => setPinDraft((current) => ({ ...current, confirmation: value }))} />
+            </div>
+            <Button className="w-fit" disabled={pinBusy} type="submit"><KeyRound />{pinBusy ? "Đang đổi mã..." : "Đổi mã mở khóa"}</Button>
+          </form>
+        </CardContent>
+      </Card>
     </div>
   );
 }
@@ -196,6 +241,10 @@ function MiniMetric({ label, value }: { label: string; value: string }): ReactEl
 
 function FormField({ label, children }: { label: string; children: ReactElement }): ReactElement {
   return <div className="grid gap-2"><Label>{label}</Label>{children}</div>;
+}
+
+function PinField({ id, label, value, onChange }: { id: string; label: string; value: string; onChange: (value: string) => void }): ReactElement {
+  return <div className="grid gap-2"><Label htmlFor={id}>{label}</Label><Input autoComplete="off" id={id} inputMode="numeric" maxLength={8} onChange={(event) => onChange(event.target.value.replace(/\D/g, ""))} placeholder="6 đến 8 chữ số" type="password" value={value} /></div>;
 }
 
 function emptyDraft(): SettingsDraft {

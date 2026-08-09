@@ -26,6 +26,8 @@ test("UI server requires local unlock and validates same-origin CSRF mutations",
 
     const authenticated = await fetch(`${server.url}/api/health`, { headers: { cookie } });
     assert.equal(authenticated.status, 200);
+    const invalidPinChange = await fetch(`${server.url}/api/auth/change-pin`, { method: "POST", headers: { cookie, origin: server.url, "x-bestie-csrf": setupBody.csrfToken ?? "", "content-type": "application/json" }, body: JSON.stringify({ currentPin: "000000", nextPin: "654321" }) });
+    assert.equal(invalidPinChange.status, 400);
     const blockedMutation = await fetch(`${server.url}/api/auth/logout`, { method: "POST", headers: { cookie } });
     assert.equal(blockedMutation.status, 403);
     const logout = await fetch(`${server.url}/api/auth/logout`, { method: "POST", headers: { cookie, origin: server.url, "x-bestie-csrf": setupBody.csrfToken ?? "" } });

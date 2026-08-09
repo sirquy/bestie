@@ -34,3 +34,15 @@ test("UI auth rate limits incorrect PIN attempts and reset removes the local cre
   assert.equal(await auth.reset(), true);
   assert.equal(await auth.isConfigured(), false);
 });
+
+test("UI auth changes the PIN and invalidates existing sessions", async () => {
+  const paths = getRuntimePaths(await mkdtemp(join(tmpdir(), "bestie-ui-auth-")));
+  const auth = new UiAuthService(paths);
+  await auth.setup("123456");
+  const oldSession = await auth.login("123456");
+  await assert.rejects(auth.changePin("000000", "654321"), /Current unlock PIN is incorrect/);
+  await auth.changePin("123456", "654321");
+  assert.equal(auth.validateSession(oldSession.sessionId), undefined);
+  await assert.rejects(auth.login("123456"), /Incorrect unlock PIN/);
+  assert.ok(await auth.login("654321"));
+});

@@ -66,6 +66,14 @@ export class UiAuthService {
     return { sessionId, csrfToken };
   }
 
+  async changePin(currentPin: string, nextPin: string): Promise<void> {
+    const record = await this.readRecord();
+    if (!record || !await verifyPin(currentPin, record)) throw new Error("Current unlock PIN is incorrect.");
+    assertValidPin(nextPin);
+    await this.writeRecord(await createRecord(nextPin));
+    this.clearSessions();
+  }
+
   validateSession(sessionId: string | undefined): UiAuthSession | undefined {
     if (!sessionId) return undefined;
     const session = this.sessions.get(sessionId);

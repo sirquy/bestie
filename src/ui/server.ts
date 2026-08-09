@@ -143,6 +143,28 @@ async function handleRequestAsync(request: IncomingMessage, response: ServerResp
     return;
   }
 
+  if (method === "POST" && url.pathname === "/api/auth/change-pin") {
+    const session = auth.validateSession(readCookie(request, "bestie_ui_session"));
+    if (!session || !isSameOriginRequest(request) || !auth.validateCsrf(session, readHeader(request, "x-bestie-csrf"))) {
+      sendJson(response, 403, { ok: false, error: "Unlock session validation failed.", code: "UiAuthForbidden" });
+      return;
+    }
+    const body = await readJsonBody(request);
+    if (!isRecord(body) || typeof body.currentPin !== "string" || typeof body.nextPin !== "string") {
+      sendJson(response, 400, { ok: false, error: "Current and new unlock PINs are required.", code: "UiAuthInvalidChangePin" });
+      return;
+    }
+    try {
+      await auth.changePin(body.currentPin, body.nextPin);
+    } catch (error) {
+      sendJson(response, 400, { ok: false, error: error instanceof Error ? error.message : "Could not change unlock PIN.", code: "UiAuthChangePinFailed" });
+      return;
+    }
+    clearSessionCookie(response);
+    sendJson(response, 200, { ok: true });
+    return;
+  }
+
   if (url.pathname.startsWith("/api/")) {
     const session = auth.validateSession(readCookie(request, "bestie_ui_session"));
     if (!session) {

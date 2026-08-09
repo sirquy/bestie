@@ -73,6 +73,18 @@ try {
   await page.getByLabel("Mã mở khóa").fill("123456");
   await page.getByRole("button", { name: "Mở khóa" }).click();
   await page.locator("#chat-input").waitFor();
+  await page.getByRole("link", { name: "Cài đặt" }).click();
+  await page.getByLabel("Mã mở khóa hiện tại").fill("123456");
+  await page.getByLabel("Mã mở khóa mới").fill("654321");
+  await page.getByLabel("Nhập lại mã mới").fill("654321");
+  await page.getByRole("button", { name: "Đổi mã mở khóa" }).click();
+  await page.getByRole("dialog", { name: "Xác nhận" }).waitFor();
+  await page.getByRole("button", { name: "Xác nhận" }).click();
+  await page.getByText("Mở khóa Bestie", { exact: false }).waitFor();
+  await page.getByLabel("Mã mở khóa").fill("654321");
+  await page.getByRole("button", { name: "Mở khóa" }).click();
+  await page.getByRole("link", { name: "Trò chuyện" }).click();
+  await page.locator("#chat-input").waitFor();
 
   if (pageErrors.length) throw new Error(`Browser emitted errors: ${pageErrors.join(" | ")}`);
   process.stdout.write(`${JSON.stringify({ ok: true, service: "bestie-ui-onboarding-browser" })}\n`);
