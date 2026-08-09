@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { fetchJson, formatError } from "@/lib/api";
+import { fetchJson, formatError, getCsrfHeaders } from "@/lib/api";
 import { confirmDialog, promptDialog } from "@/lib/dialogs";
 import { ToastEffect } from "@/lib/toasts";
 import type { ChatAttachment, ChatEvent, ChatMessage, ChatRun, ChatSession, ChatSessionMessagesSummary, ChatSessionsSummary, ChatStreamDoneResult, ChatTimelineEvent } from "./types";
@@ -396,7 +396,7 @@ export function ChatPanelError({ error }: { error: unknown }): ReactElement {
 }
 
 async function streamChat(path: string, body: Record<string, unknown>, handlers: { onToken: (token: string) => void; onTimeline: (event: ChatTimelineEvent) => void }): Promise<ChatStreamDoneResult> {
-  const response = await fetch(path, { method: "POST", headers: { accept: "text/event-stream", "content-type": "application/json" }, body: JSON.stringify(body) });
+  const response = await fetch(path, { method: "POST", headers: { accept: "text/event-stream", "content-type": "application/json", ...getCsrfHeaders() }, body: JSON.stringify(body) });
   if (!response.ok || !response.body) throw new Error(`Không nhận được phản hồi: ${response.status}`);
   const reader = response.body.getReader();
   const decoder = new TextDecoder();

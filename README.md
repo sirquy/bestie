@@ -89,6 +89,7 @@ bestie doctor
 bestie ui
 bestie ui --port 8717
 bestie ui --port 0 --no-open
+bestie ui auth reset
 bestie agents hire --id researcher --name Mika --role "Research Assistant" --description "Research and summarize information"
 bestie agents assign --agent researcher --title "Market brief" --brief "Summarize this week"
 bestie agents list

@@ -18,6 +18,7 @@ process.env.USERPROFILE = homeDir;
 const server = await startUiServer({ port: 0 });
 try {
   await seedUiSmokeRuntime(createUiSmokeRuntimePaths(homeDir));
+  await unlockUi(server.url);
   await assertJson(`${server.url}/api/health`, { ok: true, service: "bestie-ui" });
   await assertJson(`${server.url}/api/status`, { ok: true, provider: "openai-compatible", secretPresent: true });
   await assertJson(`${server.url}/api/config/summary`, { ok: true, provider: "openai-compatible", secretPresent: true });
@@ -72,6 +73,25 @@ async function assertJson(url, expected) {
   if (expected.secretPresent !== undefined && body.llm?.secretPresent !== expected.secretPresent) {
     throw new Error(`Unexpected secret status for ${url}: ${JSON.stringify(body)}`);
   }
+}
+
+async function unlockUi(url) {
+  const nativeFetch = globalThis.fetch;
+  const initial = await nativeFetch(`${url}/api/status`);
+  if (initial.status !== 401) throw new Error(`UI API must require unlock, got ${initial.status}`);
+  const setup = await nativeFetch(`${url}/api/auth/setup`, { method: "POST", headers: { "content-type": "application/json", origin: url }, body: JSON.stringify({ pin: "123456" }) });
+  const body = await setup.json();
+  const cookie = setup.headers.get("set-cookie")?.split(";", 1)[0];
+  if (!setup.ok || !cookie || !body.csrfToken) throw new Error(`UI unlock setup failed: ${setup.status} ${JSON.stringify(body)}`);
+  globalThis.fetch = (input, init = {}) => {
+    const headers = new Headers(init.headers);
+    headers.set("cookie", cookie);
+    if (init.method && init.method !== "GET" && init.method !== "HEAD") {
+      headers.set("origin", url);
+      headers.set("x-bestie-csrf", body.csrfToken);
+    }
+    return nativeFetch(input, { ...init, headers });
+  };
 }
 
 async function assertHome(url) {

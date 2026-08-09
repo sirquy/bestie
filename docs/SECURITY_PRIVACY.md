@@ -25,6 +25,7 @@ All actions should be classified:
 Public/external/destructive actions require explicit confirmation.
 The first code foundation lives in `src/safety/permission-policy.ts`; it classifies actions, routes approval through `reviewActionPermission`, logs final decisions, and does not execute tools by itself.
 The agent tool loop also writes redacted metadata logs for tool calls, including tool name, label, status, duration, and bounded message text, without storing raw tool result bodies such as file contents or command stdout.
+The localhost Web UI requires a 6-8 digit local unlock PIN. It stores only a salted `scrypt` hash, uses process-memory sessions in an `HttpOnly`, `SameSite=Strict` cookie, expires sessions after 12 hours or 30 minutes idle, and requires same-origin plus CSRF validation for state-changing requests. `bestie ui auth reset` is the local-only recovery path.
 The CLI routes classified MCP calls through the same permission gate as internal tools. Read MCP tools may run as trusted reads; `--ask` forces a one-time prompt, and non-read MCP categories require explicit approval or are denied when no approver is available.
 Telegram has a pending approval foundation: when an action requires approval, it stores a short-lived local request, sends redacted action/category/target details to the owner, denies execution, and lets `/approve <id>` or `/deny <id>` record a decision without running the action.
 

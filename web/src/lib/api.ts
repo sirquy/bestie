@@ -1,11 +1,22 @@
 ﻿export type JsonRecord = Record<string, unknown>;
 
+let csrfToken: string | undefined;
+
+export function setCsrfToken(token: string | undefined): void {
+  csrfToken = token;
+}
+
+export function getCsrfHeaders(): HeadersInit {
+  return csrfToken ? { "x-bestie-csrf": csrfToken } : {};
+}
+
 export async function fetchJson<T = JsonRecord>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, {
     ...init,
     headers: {
       accept: "application/json",
       ...(init?.body ? { "content-type": "application/json" } : {}),
+      ...getCsrfHeaders(),
       ...init?.headers,
     },
   });

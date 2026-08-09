@@ -26,6 +26,7 @@ try {
   });
 
   await page.goto(server.url, { waitUntil: "networkidle" });
+  await unlockUiPage(page);
   await page.waitForSelector("#root");
   await page.waitForSelector("[data-chat-summary]");
   await expectPath(page, "/chat");
@@ -68,6 +69,14 @@ try {
     process.env.USERPROFILE = previousUserProfile;
   }
   await rm(homeDir, { recursive: true, force: true });
+}
+
+async function unlockUiPage(page) {
+  await page.getByText("Tạo mã mở khóa", { exact: false }).waitFor();
+  await page.getByLabel("Mã mở khóa").fill("123456");
+  await page.getByLabel("Nhập lại mã").fill("123456");
+  await page.getByRole("button", { name: "Lưu và mở Bestie" }).click();
+  await page.waitForSelector("[data-chat-summary]");
 }
 
 async function assertPanel(page, navName, route, texts) {

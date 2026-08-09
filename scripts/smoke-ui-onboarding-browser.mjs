@@ -43,6 +43,10 @@ try {
   });
 
   await page.goto(server.url, { waitUntil: "domcontentloaded" });
+  await page.getByText("Tạo mã mở khóa", { exact: false }).waitFor();
+  await page.getByLabel("Mã mở khóa").fill("123456");
+  await page.getByLabel("Nhập lại mã").fill("123456");
+  await page.getByRole("button", { name: "Lưu và mở Bestie" }).click();
   await page.getByText("Tạo người bạn đồng hành của bạn", { exact: false }).waitFor().catch(async () => {
     throw new Error(`Onboarding screen did not render. Errors: ${pageErrors.join(" | ")}; body: ${(await page.locator("body").innerText()).slice(0, 500)}`);
   });

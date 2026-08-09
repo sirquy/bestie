@@ -64,6 +64,7 @@ Tùy chọn UI:
   --port N    Chọn port local; dùng 0 để hệ điều hành tự cấp port trống
   --host H    Bind host local, mặc định 127.0.0.1
   --no-open   Không tự mở trình duyệt
+  auth reset  Xóa mã mở khóa UI trên máy này
 
 Tùy chọn cron:
   list           Liệt kê toàn bộ lịch cron
@@ -160,6 +161,9 @@ export const cliCommandSpecs: CliCommandSpec[] = [
     name: "ui",
     description: "Mở web console local của Bestie",
     handler: runUiCommand,
+    children: [
+      { name: "auth reset", description: "Xóa mã mở khóa UI local", handler: runUiCommand },
+    ],
     options: [
       { flags: "--port <port>", description: "Chọn port local; dùng 0 để hệ điều hành tự cấp port trống", name: "port" },
       { flags: "--host <host>", description: "Bind host local, mặc định 127.0.0.1", name: "host" },

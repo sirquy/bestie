@@ -24,6 +24,8 @@ import { getUiToolsSummary, updateUiToolPolicy, updateUiToolsConfig } from "./ap
 import { applyUiUpdate, getUiUpdateSummary } from "./api/update.js";
 import { HOME_PAGE_CLIENT_SCRIPT } from "./home/client-script.js";
 import { renderHomePage } from "./home-page.js";
+import { UiAuthService } from "./auth.js";
+import { getRuntimePaths, type RuntimePaths } from "../runtime/paths.js";
 
 const require = createRequire(import.meta.url);
 const CYTOSCAPE_SCRIPT_PATH = require.resolve("cytoscape/dist/cytoscape.min.js");
@@ -38,6 +40,7 @@ const NO_INDEX_HEADER_VALUE = "noindex, nofollow, noarchive, nosnippet";
 export interface UiServerOptions {
   host?: string;
   port?: number;
+  paths?: RuntimePaths;
 }
 
 export interface RunningUiServer {
@@ -51,7 +54,8 @@ export interface RunningUiServer {
 export async function startUiServer(options: UiServerOptions = {}): Promise<RunningUiServer> {
   const host = options.host ?? "127.0.0.1";
   const requestedPort = options.port ?? 8787;
-  const server = createServer(handleRequest);
+  const auth = new UiAuthService(options.paths ?? getRuntimePaths());
+  const server = createServer((request, response) => handleRequest(request, response, auth));
 
   await new Promise<void>((resolve, reject) => {
     server.once("error", reject);
@@ -76,17 +80,80 @@ export async function startUiServer(options: UiServerOptions = {}): Promise<Runn
   };
 }
 
-function handleRequest(request: IncomingMessage, response: ServerResponse): void {
-  void handleRequestAsync(request, response).catch((error: unknown) => {
+function handleRequest(request: IncomingMessage, response: ServerResponse, auth: UiAuthService): void {
+  void handleRequestAsync(request, response, auth).catch((error: unknown) => {
     const message = error instanceof Error ? error.message : "Unexpected UI server error.";
     sendJson(response, 500, { ok: false, error: message, code: "UiInternalError" });
   });
 }
 
-async function handleRequestAsync(request: IncomingMessage, response: ServerResponse): Promise<void> {
+async function handleRequestAsync(request: IncomingMessage, response: ServerResponse, auth: UiAuthService): Promise<void> {
   response.setHeader("x-robots-tag", NO_INDEX_HEADER_VALUE);
   const method = request.method ?? "GET";
   const url = new URL(request.url ?? "/", "http://127.0.0.1");
+
+  if (method === "GET" && url.pathname === "/api/auth/status") {
+    const session = auth.validateSession(readCookie(request, "bestie_ui_session"));
+    sendJson(response, 200, { ok: true, configured: await auth.isConfigured(), authenticated: Boolean(session), ...(session ? { csrfToken: session.csrfToken } : {}) });
+    return;
+  }
+
+  if (method === "POST" && url.pathname === "/api/auth/setup") {
+    if (!isSameOriginRequest(request)) {
+      sendJson(response, 403, { ok: false, error: "Request origin was rejected.", code: "UiAuthForbidden" });
+      return;
+    }
+    const body = await readJsonBody(request);
+    if (!isRecord(body) || typeof body.pin !== "string") {
+      sendJson(response, 400, { ok: false, error: "Unlock PIN is required.", code: "UiAuthInvalidSetup" });
+      return;
+    }
+    await auth.setup(body.pin);
+    const login = await auth.login(body.pin);
+    setSessionCookie(response, login.sessionId);
+    sendJson(response, 200, { ok: true, csrfToken: login.csrfToken });
+    return;
+  }
+
+  if (method === "POST" && url.pathname === "/api/auth/login") {
+    if (!isSameOriginRequest(request)) {
+      sendJson(response, 403, { ok: false, error: "Request origin was rejected.", code: "UiAuthForbidden" });
+      return;
+    }
+    const body = await readJsonBody(request);
+    if (!isRecord(body) || typeof body.pin !== "string") {
+      sendJson(response, 400, { ok: false, error: "Unlock PIN is required.", code: "UiAuthInvalidLogin" });
+      return;
+    }
+    const login = await auth.login(body.pin);
+    setSessionCookie(response, login.sessionId);
+    sendJson(response, 200, { ok: true, csrfToken: login.csrfToken });
+    return;
+  }
+
+  if (method === "POST" && url.pathname === "/api/auth/logout") {
+    const session = auth.validateSession(readCookie(request, "bestie_ui_session"));
+    if (!session || !isSameOriginRequest(request) || !auth.validateCsrf(session, readHeader(request, "x-bestie-csrf"))) {
+      sendJson(response, 403, { ok: false, error: "Unlock session validation failed.", code: "UiAuthForbidden" });
+      return;
+    }
+    auth.clearSessions();
+    clearSessionCookie(response);
+    sendJson(response, 200, { ok: true });
+    return;
+  }
+
+  if (url.pathname.startsWith("/api/")) {
+    const session = auth.validateSession(readCookie(request, "bestie_ui_session"));
+    if (!session) {
+      sendJson(response, 401, { ok: false, error: "Unlock Bestie UI to continue.", code: "UiAuthRequired" });
+      return;
+    }
+    if (method !== "GET" && method !== "HEAD" && (!isSameOriginRequest(request) || !auth.validateCsrf(session, readHeader(request, "x-bestie-csrf")))) {
+      sendJson(response, 403, { ok: false, error: "Request origin or unlock token was rejected.", code: "UiAuthForbidden" });
+      return;
+    }
+  }
 
   if (method === "GET" && url.pathname === "/robots.txt") {
     response.writeHead(200, {
@@ -988,6 +1055,30 @@ function readJsonBody(request: IncomingMessage): Promise<unknown> {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function readCookie(request: IncomingMessage, name: string): string | undefined {
+  const prefix = `${name}=`;
+  return request.headers.cookie?.split(";").map((item) => item.trim()).find((item) => item.startsWith(prefix))?.slice(prefix.length);
+}
+
+function readHeader(request: IncomingMessage, name: string): string | undefined {
+  const value = request.headers[name];
+  return Array.isArray(value) ? value[0] : value;
+}
+
+function isSameOriginRequest(request: IncomingMessage): boolean {
+  const origin = readHeader(request, "origin");
+  const host = readHeader(request, "host");
+  return Boolean(origin && host && origin === `http://${host}`);
+}
+
+function setSessionCookie(response: ServerResponse, sessionId: string): void {
+  response.setHeader("set-cookie", `bestie_ui_session=${sessionId}; HttpOnly; SameSite=Strict; Path=/; Max-Age=43200`);
+}
+
+function clearSessionCookie(response: ServerResponse): void {
+  response.setHeader("set-cookie", "bestie_ui_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0");
 }
 
 function isUiChatMessage(value: unknown): value is { role: "user" | "assistant"; content: string } {
