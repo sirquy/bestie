@@ -39,7 +39,7 @@ Status: completed for local development and shipped through the npm CLI.
   - add registry signature verification for official or verified skills before treating the online registry as safe for broad use
   - keep the first registry small with 10-20 high-quality workflow skills instead of launching a noisy marketplace too early
 
-Status: local MVP foundation complete. Terminal chat, onboarding, local SQLite memory, Doctor, Telegram/Zalo local polling, cron, daemon management for `telegram|zalo|cron|all`, Linux systemd, macOS launchd, and Windows Startup service management, permission-gated local tools, bounded internal subagents, SDK-backed MCP setup plus classified read calls, installed skills, provider catalog/management CLI, local Vite/React Web UI, npm update checks, Telegram real-bot smoke, and one-command installer smoke exist for local development.
+Status: local MVP foundation complete. Terminal chat, onboarding, local SQLite memory, Doctor, Telegram/Zalo local polling, cron, daemon management for `telegram|zalo|cron|workforce|all`, Linux systemd, macOS launchd, and Windows Startup service management, permission-gated local tools, bounded internal subagents, fixed-role Agent Workforce, SDK-backed MCP setup plus classified read calls, installed skills with verified remote-registry lifecycle, provider catalog/management and local CLI provider middleware, local Vite/React Web UI, npm update checks, Telegram real-bot smoke, and one-command installer smoke exist for local development.
 
 ## Later
 
@@ -54,7 +54,7 @@ Status: local MVP foundation complete. Terminal chat, onboarding, local SQLite m
 ## Future
 
 - broader MCP execution categories after permission layer, local tool logging, and real-channel readiness
-- named ACP/multi-agent orchestration beyond the bounded internal subagent helper
+- ACP and general multi-agent collaboration/orchestration beyond the fixed-role Agent Workforce and bounded internal subagent helper
 - plugin system
 - persona templates and skill marketplace
 - avatar/voice/body layer
@@ -62,7 +62,7 @@ Status: local MVP foundation complete. Terminal chat, onboarding, local SQLite m
 
 ## Hard Rules
 
-- The original Phase Now excluded Telegram, memory, Zep, MCP/ACP, plugins, installer, UI, avatar, voice, hosted/SaaS, analytics, and telemetry. The current local MVP has since implemented Telegram, Zalo, cron, local memory, Doctor, permission-gated tools, bounded internal subagents, MCP setup/read foundations, installer, skills, update checks, local Vite/React Web UI, daemon management, and cross-platform user service integration.
+- The original Phase Now excluded Telegram, memory, Zep, MCP/ACP, plugins, installer, UI, avatar, voice, hosted/SaaS, analytics, and telemetry. The current local MVP has since implemented Telegram, Zalo, cron, local memory, Doctor, permission-gated tools, bounded internal subagents, fixed-role Agent Workforce, MCP setup/read foundations, installer, skills with a verified remote registry lifecycle, update checks, local Vite/React Web UI, daemon management, cross-platform user service integration, and channel-neutral voice helpers.
 - Zep after SQLite
 - MCP/ACP after Doctor + permissions
 - product/hosted UI after the shipped local console proves useful

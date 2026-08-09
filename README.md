@@ -32,7 +32,7 @@ The local MVP foundation is implemented and includes:
 - Provider model refs, fallback order, diagnostics, and default LLM timeout of `300000ms`.
 - Local SQLite memory, pending approvals, pause/resume, hygiene/governance helpers, and knowledge graph UI.
 - Telegram and Zalo polling runtimes, shared attachment pipeline, channel-neutral voice helpers, and cron schedules.
-- Daemon management for `telegram`, `zalo`, `cron`, `ui`, or `all`, with duplicate-process cleanup safeguards.
+- Daemon management for `telegram`, `zalo`, `cron`, `workforce`, `ui`, or `all`, with duplicate-process cleanup safeguards.
 - User service support for Linux systemd, macOS launchd, and Windows Startup folder.
 - Permission-gated local read/write/action tools, external workspace path allowlist, configurable exec timeout, image/video generation tools, and bounded internal subagents.
 - MVP Agent Workforce registry and task inbox for fixed role agents with profile, prompt file, memory scope, approval policy, and `bestie agents` management commands.
@@ -41,7 +41,7 @@ The local MVP foundation is implemented and includes:
 - `bestie update` and throttled update notices for new npm versions.
 - Doctor diagnostics, safe local fixes, redacted logs, smoke tests, and character regression evals.
 
-Still intentionally later: hosted/SaaS mode, public marketplace, avatar/body layer, optional Zep, broad autonomous external actions, unrestricted MCP execution, Bestie manager routing, and multi-agent collaboration.
+Still intentionally later: hosted/SaaS mode, public marketplace, avatar/body layer, optional Zep, broad autonomous external actions, unrestricted MCP execution, Bestie manager routing, and general multi-agent collaboration beyond the fixed-role Agent Workforce.
 
 ## Requirements
 

@@ -27,15 +27,15 @@ Goal: prove the character feels alive.
 
 ## Next
 
-Status: completed for local development. Local SQLite memory, basic memory policy, status, Doctor MVP, Telegram/Zalo channel runtimes, cron, daemon/service management, permission-gated local tools, image/video generation tools, bounded internal subagents, SDK-backed MCP setup plus classified read calls, installed skills, npm update checks, native Gemini API-key setup, provider catalog/CLI management, local Vite/React Web UI, and opt-in Telegram real-bot smoke are implemented and validated for local development.
+Status: completed for local development. Local SQLite memory, basic memory policy, status, Doctor MVP, Telegram/Zalo channel runtimes, cron, daemon/service management, permission-gated local tools, image/video generation tools, bounded internal subagents, fixed-role Agent Workforce, SDK-backed MCP setup plus classified read calls, installed skills and verified remote registry lifecycle, npm update checks, native Gemini API-key and local CLI provider setup, provider catalog/CLI management, local Vite/React Web UI, and opt-in Telegram real-bot smoke are implemented and validated for local development.
 
 Build:
 
 - Telegram channel (`docs/TELEGRAM_MVP_SPEC.md`)
 - Zalo channel runtime
 - cron schedule CRUD and scheduler runtime
-- daemon management for `telegram`, `zalo`, `cron`, or `all`
-- user service management across Linux systemd, macOS launchd, and Windows Startup for configured Telegram, Zalo, cron, and Web UI targets
+- daemon management for `telegram`, `zalo`, `cron`, `workforce`, or `all`
+- user service management across Linux systemd, macOS launchd, and Windows Startup for configured Telegram, Zalo, cron, Agent Workforce, and Web UI targets
 - local SQLite memory
 - basic memory policy
 - status command
@@ -43,16 +43,17 @@ Build:
 - first permission layer and read-only local tool foundation
 - permission-gated `internal.image_generate` and `internal.video_generate` tools for configured media generation providers
 - bounded `internal.spawn_subagent` helper investigations inside the existing tool loop
+- fixed-role Agent Workforce profiles, task inbox, queued executor, watcher daemon, and manager tools
 - MCP add/list/show/test/tools/classify/login/call commands, remote HTTP OAuth setup, and classified read calls for trusted local workflows
 - installed skills from `~/.bestie/skills`
 - `bestie update` for npm version checks and updates
-- local Vite/React Web UI through `bestie ui` for chat, Doctor, providers, character, memory, knowledge graph, channels, approvals, MCP, tools, skills, settings, PWA install support, update notices, and responsive mobile layout
+- local Vite/React Web UI through `bestie ui` for chat, Doctor, providers, character, memory, knowledge graph, channels, approvals, MCP, tools, skills, Agent Workforce, settings, PWA install support, update notices, and responsive mobile layout
 
 Maintenance guardrails:
 
 - keep Doctor useful for local config, secrets, logs, SQLite, and Telegram
 - rerun Telegram real-bot smoke after risky channel/tool changes
-- avoid broadening into Zep, hosted/product UI, public tools, hosted mode, or named multi-agent orchestration without a scoped milestone decision
+- avoid broadening into Zep, hosted/product UI, public tools, hosted mode, or general multi-agent orchestration/collaboration without a scoped milestone decision
 
 Goal: make it usable in a real chat channel.
 
@@ -74,7 +75,7 @@ Goal: make it usable by non-technical users.
 Build:
 
 - broader MCP execution categories after Doctor, permissions, local read tools, and real-channel behavior are stable
-- ACP/multi-agent
+- ACP and general multi-agent orchestration beyond the fixed-role Agent Workforce and bounded subagent helper
 - plugin system
 - persona templates
 - hosted/SaaS mode

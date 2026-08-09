@@ -1,10 +1,10 @@
 # Architecture
 
-This document describes the current long-term architecture and the local-development runtime that now exists. Phase Now terminal chat/onboarding is complete; the codebase is in local MVP hardening with Telegram, Zalo, cron, daemon/service management, local SQLite memory, Doctor, permission-gated tools, image/video generation tools, bounded internal subagents, installed skills, npm update checks, the localhost web console, and SDK-backed MCP setup plus classified read calls implemented for local development.
+This document describes the current long-term architecture and the local-development runtime that now exists. Phase Now terminal chat/onboarding is complete; the codebase is in local MVP hardening with Telegram, Zalo, cron, daemon/service management, local SQLite memory, Doctor, permission-gated tools, image/video generation tools, bounded internal subagents, fixed-role Agent Workforce, installed skills with a verified remote registry lifecycle, npm update checks, the localhost web console, local CLI provider middleware, and SDK-backed MCP setup plus classified read calls implemented for local development.
 
 ## Overview
 
-Bestie is a local-first, self-hostable agent runtime. The core runtime is shared by the CLI, Telegram, Zalo, cron, the local Vite/React Web UI, MCP read foundations, installed skills, and future hosted UI/multi-agent features.
+Bestie is a local-first, self-hostable agent runtime. The core runtime is shared by the CLI, Telegram, Zalo, cron, Agent Workforce, the local Vite/React Web UI, MCP read foundations, installed skills, and future hosted UI/general multi-agent features.
 
 ```text
 User / Channel
@@ -40,10 +40,12 @@ Owns user-facing commands:
 - `mcp`
 - `ui`
 - `skills`
+- `agents`
+- `voice`
 - `update`
 - future backup/restore commands
 
-Current local development includes `onboard`, `chat`, `status`, `logs`, `doctor`, `memory`, `channels`, `cron`, `daemon`, `service`, `ui`, `skills`, `tools`, `mcp`, and `update` commands. Backup/restore remain later milestones.
+Current local development includes `onboard`, `chat`, `status`, `logs`, `doctor`, `memory`, `channels`, `cron`, `daemon`, `service`, `ui`, `skills`, `tools`, `mcp`, `agents`, `voice`, and `update` commands. Backup/restore remain later milestones.
 
 CLI should call runtime services, not duplicate business logic.
 
@@ -78,6 +80,7 @@ Current adapters:
 - OpenAI/ChatGPT and generic OpenAI-compatible Chat Completions.
 - Anthropic Claude Messages API.
 - Native Gemini API-key mode through `@google/genai`.
+- Local Gemini CLI, Claude CLI, and Codex CLI middleware adapters that reuse the user's local CLI login/config.
 - Built-in OpenAI-compatible provider presets include Groq, OpenRouter, QuotaCheap, Ollama, and custom OpenAI-compatible endpoints.
 
 Current config uses version 2 model refs and profiles:
@@ -154,7 +157,7 @@ Current local foundation allows trusted read-only actions, asks or denies riskie
 
 Media generation tools use `llm.image.primary`/`llm.image.fallbacks` for image model selection when configured, with endpoint/auth details resolved through `llm.modelCatalog` and `llm.profiles`; legacy `generation.image` remains supported. Video generation still uses `generation.video`. Generated assets are saved under the agent workspace. `internal.image_generate` and `internal.video_generate` are classified as external-write actions by default, so they require an explicit per-tool allow policy or channel/terminal approval.
 
-### MCP / Plugins / Multi-Agent
+### MCP / Agent Workforce / Plugins
 
 Current foundation and future extension points:
 
@@ -162,11 +165,12 @@ Current foundation and future extension points:
 - streamable HTTP MCP setup with metadata discovery, OAuth login URLs, token exchange into `.env`, and classified read calls through local config and permission review
 - agent tool-loop helpers that can prepare/apply MCP server config from docs or links, then reload config without requiring a Bestie restart
 - `internal.spawn_subagent` for one-level, bounded helper investigations inside the existing tool loop
+- fixed-role Agent Workforce with persistent profiles, role prompts, task inbox, queued executor, watch mode, managed daemon target, per-agent model override, memory scope, approval policy, and optional tool allowlist
 - future broader MCP execution categories beyond classified reads
 - plugin runtime for native modules
-- future agent registry for named specialist subagents
+- future ACP and multi-agent collaboration/orchestration beyond the fixed workforce and bounded helper model
 
-Broader MCP execution categories, plugins, and named multi-agent features must wait until Doctor, logging, permissions, and real-channel behavior are mature.
+Broader MCP execution categories, plugins, and general multi-agent orchestration must wait until Doctor, logging, permissions, and real-channel behavior are mature.
 
 ## Data Paths
 
