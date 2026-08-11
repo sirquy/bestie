@@ -30,6 +30,7 @@ import { getRuntimePaths, type RuntimePaths } from "../runtime/paths.js";
 import { loadEnvFile } from "../runtime/env.js";
 import { createCloudflareAccessVerifier, type TunnelAccessVerifier } from "./tunnel/access.js";
 import { createUiOriginPolicy, isAllowedSameOrigin, isRemoteTunnelRequest, type UiOriginPolicy } from "./tunnel/origin-policy.js";
+import { restoreTunnelConnector } from "./tunnel/lifecycle.js";
 import { loadTunnelState } from "./tunnel/state.js";
 
 const require = createRequire(import.meta.url);
@@ -82,6 +83,7 @@ export async function startUiServer(options: UiServerOptions = {}): Promise<Runn
 
   const port = (address as AddressInfo).port;
   originPolicy = createUiOriginPolicy({ localHost: host, localPort: port, tunnel });
+  await restoreTunnelConnector({ paths, clientVersion: "0.1.41", localUiPort: port }).catch(() => undefined);
   return {
     close: () => closeServer(server),
     host,

@@ -13,6 +13,7 @@ export interface TunnelLifecycleOptions {
   paths: RuntimePaths;
   clientVersion: string;
   fetcher?: typeof fetch;
+  localUiPort?: number;
 }
 
 export async function setupTunnel(options: TunnelLifecycleOptions): Promise<LocalTunnelState> {
@@ -65,7 +66,7 @@ export async function revokeTunnel(options: TunnelLifecycleOptions): Promise<str
 export async function startTunnelConnector(options: TunnelLifecycleOptions): Promise<LocalTunnelState> {
   const state = await requireTunnelState(options.paths);
   if (state.connector && isCloudflaredRunning(state.connector.pid)) return state;
-  await requireLocalUi();
+  await requireLocalUi(options.localUiPort);
   const env = await loadEnvFile(options.paths);
   const client = createClient(state, env, options.fetcher);
   const credential = await client.getLaunchCredential(state.tunnel.id);
@@ -78,6 +79,12 @@ export async function startTunnelConnector(options: TunnelLifecycleOptions): Pro
   } finally {
     credential.cloudflaredRunToken = "";
   }
+}
+
+export async function restoreTunnelConnector(options: TunnelLifecycleOptions): Promise<LocalTunnelState | undefined> {
+  const state = await loadTunnelState(options.paths);
+  if (!state?.connector) return undefined;
+  return startTunnelConnector(options);
 }
 
 export async function stopTunnelConnector(options: TunnelLifecycleOptions): Promise<LocalTunnelState> {
@@ -119,15 +126,15 @@ async function rollbackTunnelSetup(client: TunnelControlPlaneClient, tunnelId: s
   await removeTunnelState(paths).catch(() => undefined);
 }
 
-async function requireLocalUi(): Promise<void> {
+async function requireLocalUi(port = 8787): Promise<void> {
   try {
-    const response = await fetch("http://127.0.0.1:8787/api/health", { signal: AbortSignal.timeout(2_000) });
+    const response = await fetch(`http://127.0.0.1:${port}/api/health`, { signal: AbortSignal.timeout(2_000) });
     if (response.ok || response.status === 401) return;
   } catch {
     // Use the same actionable failure for network errors and unexpected responses.
   }
 
-  throw new Error("Bestie UI must be running at http://127.0.0.1:8787 before starting the tunnel. Run 'bestie ui --port 8787 --no-open' first.");
+  throw new Error(`Bestie UI must be running at http://127.0.0.1:${port} before starting the tunnel. Run 'bestie ui --port ${port} --no-open' first.`);
 }
 
 function registerTunnelInstance(controlPlaneUrl: string, deviceId: string, clientVersion: string, fetcher?: typeof fetch): Promise<{ instanceId: string; instanceToken: string }> {
