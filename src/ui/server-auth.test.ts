@@ -72,15 +72,19 @@ test("UI server requires an exact assigned remote origin and sets Secure cookies
     const setup = await postJson(server, hostname, remoteOrigin, { pin: "123456" }, "verified-access-jwt");
     assert.equal(setup.statusCode, 200);
     assert.match(setup.headers["set-cookie"]?.[0] ?? "", /HttpOnly; SameSite=Strict; Path=\/; Max-Age=43200; Secure/);
+
+    const loopbackSetup = await postJson(server, `127.0.0.1:${server.port}`, remoteOrigin, { pin: "123456" }, "verified-access-jwt", "/api/auth/login");
+    assert.equal(loopbackSetup.statusCode, 200);
+    assert.match(loopbackSetup.headers["set-cookie"]?.[0] ?? "", /HttpOnly; SameSite=Strict; Path=\/; Max-Age=43200; Secure/);
   } finally {
     await server.close();
     await rm(root, { recursive: true, force: true });
   }
 });
 
-function postJson(server: Awaited<ReturnType<typeof startUiServer>>, host: string, origin: string, body: unknown, accessAssertion?: string): Promise<{ statusCode: number; headers: import("node:http").IncomingHttpHeaders }> {
+function postJson(server: Awaited<ReturnType<typeof startUiServer>>, host: string, origin: string, body: unknown, accessAssertion?: string, path = "/api/auth/setup"): Promise<{ statusCode: number; headers: import("node:http").IncomingHttpHeaders }> {
   return new Promise((resolvePromise, reject) => {
-    const request = httpRequest({ host: "127.0.0.1", port: server.port, path: "/api/auth/setup", method: "POST", headers: { host, origin, "content-type": "application/json", ...(accessAssertion ? { "cf-access-jwt-assertion": accessAssertion } : {}) } }, (response) => {
+    const request = httpRequest({ host: "127.0.0.1", port: server.port, path, method: "POST", headers: { host, origin, "content-type": "application/json", ...(accessAssertion ? { "cf-access-jwt-assertion": accessAssertion } : {}) } }, (response) => {
       response.resume();
       response.once("end", () => resolvePromise({ statusCode: response.statusCode ?? 0, headers: response.headers }));
     });
