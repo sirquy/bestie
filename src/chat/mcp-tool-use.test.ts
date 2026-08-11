@@ -178,6 +178,10 @@ test("buildToolResultMessage keeps path recovery and grounded answer guidance", 
 });
 
 test("parseMcpToolRequest accepts internal read tool requests", () => {
+  assert.deepEqual(parseMcpToolRequest('{"tool":"internal.tunnel_status","arguments":{}}'), { tool: "internal.tunnel_status", arguments: {} });
+  assert.deepEqual(parseMcpToolRequest('{"tool":"internal.tunnel_start","arguments":{}}'), { tool: "internal.tunnel_start", arguments: {} });
+  assert.deepEqual(parseMcpToolRequest('{"tool":"internal.tunnel_stop","arguments":{}}'), { tool: "internal.tunnel_stop", arguments: {} });
+  assert.deepEqual(parseMcpToolRequest('{"tool":"internal.tunnel_revoke","arguments":{}}'), { tool: "internal.tunnel_revoke", arguments: {} });
   assert.deepEqual(parseMcpToolRequest('{"tool":"internal.read_file","arguments":{"path":".bestie/logs/app.log"}}'), {
     tool: "internal.read_file",
     arguments: { path: ".bestie/logs/app.log" },

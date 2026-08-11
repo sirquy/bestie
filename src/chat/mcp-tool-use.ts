@@ -21,6 +21,7 @@ import { sendFileTool, sendPhotoTool, type AgentOutboundFileSender } from "../to
 import { hireWorkforceAgent, listWorkforceAgents } from "../agents/registry.js";
 import { assignWorkforceTask, listWorkforceTasks, updateWorkforceTaskStatus, type WorkforceTaskStatus } from "../agents/inbox.js";
 import { getUiSkillLibrary, getUiSkillLibraryItem, installUiSkillFromLibrary } from "../ui/api/skills.js";
+import { runTunnelTool } from "../tools/tunnel-tools.js";
 
 const CRON_SCHEDULE_PROMPT_GUIDANCE = '- When creating or updating a cron schedule, the cron prompt must be the future task itself, written as a standalone instruction the isolated cron runner can execute later. Never store your current reply, a success message, the schedule ID, next_run_at, or text like "I created the schedule" in the prompt. For example, if the user asks "check YouTube and summarize every day at 17:00", store a prompt like "Check the configured YouTube channel for new content and summarize the findings for the user." Then, after the tool succeeds, answer the user with the schedule confirmation separately. Use update_cron_schedule for changing an existing schedule, remove_cron_schedule/toggle_cron_schedule for changing schedule state, and trigger_cron_schedule only when the user wants to run an existing cron job now. Do not trigger a newly created schedule just to prove it exists unless the user explicitly asks for an immediate run.';
 
@@ -130,6 +131,10 @@ export const INTERNAL_TOOL_NAMES = [
   "internal.remove_cron_schedule",
   "internal.toggle_cron_schedule",
   "internal.trigger_cron_schedule",
+  "internal.tunnel_status",
+  "internal.tunnel_start",
+  "internal.tunnel_stop",
+  "internal.tunnel_revoke",
 ] as const;
 
 export type InternalToolName = (typeof INTERNAL_TOOL_NAMES)[number];
@@ -437,6 +442,10 @@ export function buildMcpToolInstructions(config: AppConfig, runtimeContext?: str
     'internal.apply_patch {"patch":"git apply compatible patch"}',
     'internal.exec {"command":"npm","args":["test"],"cwd":".","timeoutMs":30000}',
     'internal.list_processes {"limit":20}',
+    'internal.tunnel_status {}',
+    'internal.tunnel_start {}',
+    'internal.tunnel_stop {}',
+    'internal.tunnel_revoke {}',
     'internal.search_skill_library {"query":"optional words to match name, title, description, category, permissions, or risk","limit":20}',
     'internal.preview_skill_library_skill {"name":"exact-skill-name","sourceId":"optional-source-id"}',
     'internal.install_skill_from_library {"name":"exact-skill-name","sourceId":"optional-source-id"}',
@@ -918,6 +927,11 @@ export async function runAgentToolRequest(options: RunAgentToolRequestOptions): 
   }
 
   const args = options.request.arguments;
+  if (options.request.tool.startsWith("internal.tunnel_")) {
+    const action = options.request.tool.slice("internal.tunnel_".length) as "status" | "start" | "stop" | "revoke";
+    const result = await runTunnelTool({ action, config: options.config, paths: options.paths, clientVersion: "0.1.39", approver: options.approver, policy: options.policy });
+    return { ok: result.ok, status: result.ok ? "pass" : "fail", message: result.message, ...("result" in result ? { result: result.result } : {}) };
+  }
   if (options.request.tool === "internal.read_file") {
     const path = typeof args.path === "string" ? args.path : undefined;
     if (!path) return { ok: false, status: "fail", message: "internal.read_file requires arguments.path." };

@@ -5,7 +5,7 @@ import { join } from "node:path";
 import test from "node:test";
 
 import { getRuntimePaths } from "../../runtime/paths.js";
-import { startCloudflared } from "./cloudflared.js";
+import { ensureCloudflared, getCloudflaredStatus, startCloudflared } from "./cloudflared.js";
 
 test("cloudflared connector starts without a shell using only the enrollment token", async () => {
   const root = await mkdtemp(join(tmpdir(), "bestie-cloudflared-"));
@@ -42,4 +42,24 @@ test("cloudflared connector surfaces executable verification failures", async ()
   } finally {
     await rm(root, { recursive: true, force: true });
   }
+});
+
+test("cloudflared installer runs only after an unavailable binary check", async () => {
+  const calls: string[] = [];
+  await ensureCloudflared({
+    verifyExecutable: async () => {
+      calls.push("verify");
+      if (calls.length === 1) throw new Error("missing");
+    },
+    runInstaller: async (command, args) => { calls.push(`${command} ${args.join(" ")}`); },
+  });
+
+  assert.equal(calls.filter((call) => call === "verify").length, 2);
+  assert.equal(calls.length, 3);
+});
+
+test("cloudflared status reports an unavailable executable without installing it", async () => {
+  const status = await getCloudflaredStatus({ executable: "missing-cloudflared", verifyExecutable: async () => { throw new Error("missing"); } });
+  assert.equal(status.available, false);
+  assert.equal(status.executable, "missing-cloudflared");
 });
