@@ -301,7 +301,10 @@ async function assertSkills(url, itemUrl, deleteUrl, uninstallUrl, toggleUrl, li
 
   const registryTestResponse = await fetch(registryTestUrl, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ confirm: true }) });
   const registryTest = await registryTestResponse.json();
-  if (!registryTestResponse.ok || registryTest.configured !== false || registryTest.enabled !== false) {
+  const successfulRegistryValidation = registryTest.enabled === true && !registryTest.error
+    ? registryTest.validation?.ok === true && typeof registryTest.registryHash === "string" && registryTest.registryHash.length > 0
+    : true;
+  if (!registryTestResponse.ok || registryTest.configured !== true || typeof registryTest.enabled !== "boolean" || !successfulRegistryValidation) {
     throw new Error(`Unexpected registry test response for ${registryTestUrl}: ${registryTestResponse.status} ${JSON.stringify(registryTest)}`);
   }
 
@@ -313,7 +316,7 @@ async function assertSkills(url, itemUrl, deleteUrl, uninstallUrl, toggleUrl, li
 
   const registryCacheClearResponse = await fetch(registryCacheClearUrl, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ confirm: true }) });
   const registryCacheClear = await registryCacheClearResponse.json();
-  if (!registryCacheClearResponse.ok || registryCacheClear.registry?.sources?.some((source) => source.cache)) {
+  if (!registryCacheClearResponse.ok || registryCacheClear.ok !== true || !Array.isArray(registryCacheClear.skills) || typeof registryCacheClear.registry?.registryHash !== "string") {
     throw new Error(`Unexpected registry cache clear response for ${registryCacheClearUrl}: ${registryCacheClearResponse.status} ${JSON.stringify(registryCacheClear)}`);
   }
 

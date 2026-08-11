@@ -44,10 +44,15 @@ try {
   await assertPanel(page, "Tiện ích mở rộng", "/mcp", ["Tiện ích đã kết nối", "Công cụ"]);
   await assertPanel(page, "Công cụ", "/tools", ["Thao tác được phép", "Thư mục"]);
   await assertSkillsPanel(page);
-  await assertPanel(page, "Cài đặt", "/settings", ["Tuỳ chọn an toàn", "Chế độ duyệt bộ nhớ"]);
+  await assertPanel(page, "Cài đặt", "/settings", ["Tổng quan cài đặt", "Tóm tắt thiết lập AI"]);
+  await page.getByRole("button", { name: "Bộ nhớ", exact: true }).click();
+  await expectPath(page, "/settings/memory");
+  await page.getByText("Chế độ duyệt bộ nhớ", { exact: true }).waitFor();
+  await assertDirectRoute(page, `${server.url}/settings/remote-access`, "/settings/remote-access");
+  await page.getByText("Truy cập từ xa", { exact: true }).first().waitFor();
   await assertDirectRoute(page, `${server.url}/knowledge`, "/knowledge");
   await page.goBack({ waitUntil: "networkidle" });
-  await expectPath(page, "/settings");
+  await expectPath(page, "/settings/remote-access");
   await page.goForward({ waitUntil: "networkidle" });
   await expectPath(page, "/knowledge");
 
@@ -73,8 +78,8 @@ try {
 
 async function unlockUiPage(page) {
   await page.getByText("Tạo mã mở khóa", { exact: false }).waitFor();
-  await page.getByLabel("Mã mở khóa").fill("123456");
-  await page.getByLabel("Nhập lại mã").fill("123456");
+  await page.locator("#unlock-pin").pressSequentially("123456");
+  await page.locator("#unlock-confirmation").pressSequentially("123456");
   await page.getByRole("button", { name: "Lưu và mở Bestie" }).click();
   await page.waitForSelector("[data-chat-summary]");
 }
@@ -222,10 +227,12 @@ async function assertSkillsPanel(page) {
   await page.getByRole("link", { name: /Kỹ năng/ }).click();
   await expectPath(page, "/skills");
   await page.waitForSelector("[data-skills-summary]");
-  await page.waitForSelector("[data-skill-editor]");
   await page.waitForSelector('[data-skill-row="smoke-skill"]');
   await page.locator('[data-skill-row="smoke-skill"] [data-skill-action="open"]').click();
+  await page.waitForSelector("[data-skill-editor]");
   await page.waitForFunction(() => document.querySelector("[data-skill-content]")?.value?.includes("Smoke Skill"));
+  await page.getByRole("button", { name: "Đóng trình sửa" }).click();
+  await page.waitForSelector("[data-skill-editor]", { state: "hidden" });
   await page.getByRole("button", { name: /^Thư viện$/ }).click();
   await page.getByRole("button", { name: /Tải thư viện/ }).click();
   await page.waitForSelector("[data-skill-library-row]");

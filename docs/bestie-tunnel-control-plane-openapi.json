@@ -1,0 +1,170 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Bestie Tunnel Control Plane API",
+    "version": "1.0.0",
+    "description": "API for registering local Bestie instances and managing one Cloudflare Named Tunnel per instance. Production base URL: https://tunnel.bestieagent.com"
+  },
+  "servers": [
+    { "url": "https://tunnel.bestieagent.com", "description": "Production" }
+  ],
+  "tags": [
+    { "name": "Health" },
+    { "name": "Instances" },
+    { "name": "Tunnels" }
+  ],
+  "paths": {
+    "/health/live": {
+      "get": {
+        "tags": ["Health"],
+        "summary": "Liveness check",
+        "responses": {
+          "200": { "description": "Worker process is live", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/HealthResponse" } } } }
+        }
+      }
+    },
+    "/health/ready": {
+      "get": {
+        "tags": ["Health"],
+        "summary": "Readiness check for D1 and KV bindings",
+        "responses": {
+          "200": { "description": "Dependencies are ready", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/HealthResponse" } } } },
+          "503": { "description": "A required dependency is unavailable", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/HealthResponse" } } } }
+        }
+      }
+    },
+    "/v1/instances/register": {
+      "post": {
+        "tags": ["Instances"],
+        "summary": "Register a local Bestie instance",
+        "description": "Called once during local connector setup. Store the returned instance token securely; it is used as the Bearer credential for tunnel APIs.",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RegisterInstanceRequest" } } }
+        },
+        "responses": {
+          "201": { "description": "Instance registered", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RegisterInstanceResponse" } } } },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "409": { "$ref": "#/components/responses/Conflict" }
+        }
+      }
+    },
+    "/v1/tunnels": {
+      "post": {
+        "tags": ["Tunnels"],
+        "summary": "Provision a managed tunnel and random subdomain",
+        "description": "Creates a Cloudflare Named Tunnel and a random hostname under bestieagent.cloud. MVP origin is fixed by the control plane to http://127.0.0.1:8787. Exactly one active tunnel is allowed per instance.",
+        "security": [{ "instanceBearer": [] }],
+        "parameters": [{ "$ref": "#/components/parameters/IdempotencyKey" }],
+        "requestBody": {
+          "required": false,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreateTunnelRequest" } } }
+        },
+        "responses": {
+          "201": { "description": "Tunnel provisioned or reserved", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Tunnel" } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "429": { "$ref": "#/components/responses/RateLimited" }
+        }
+      }
+    },
+    "/v1/tunnels/{tunnelId}": {
+      "get": {
+        "tags": ["Tunnels"],
+        "summary": "Get tunnel status",
+        "security": [{ "instanceBearer": [] }],
+        "parameters": [{ "$ref": "#/components/parameters/TunnelId" }],
+        "responses": {
+          "200": { "description": "Tunnel status", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Tunnel" } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/v1/tunnels/{tunnelId}/launch-credential": {
+      "post": {
+        "tags": ["Tunnels"],
+        "summary": "Get an on-demand cloudflared run token",
+        "description": "The token is sensitive. The Bestie local connector must keep it in memory only, spawn cloudflared with it, and never write it to chat, logs, memory, config, or UI. This endpoint is restricted to the owning instance.",
+        "security": [{ "instanceBearer": [] }],
+        "parameters": [{ "$ref": "#/components/parameters/TunnelId" }],
+        "responses": {
+          "200": { "description": "Sensitive launch credential", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/LaunchCredential" } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" }
+        }
+      }
+    },
+    "/v1/tunnels/{tunnelId}/heartbeat": {
+      "post": {
+        "tags": ["Tunnels"],
+        "summary": "Report local connector heartbeat",
+        "description": "Send every 30-60 seconds after cloudflared starts. A successful connected heartbeat transitions the tunnel to ONLINE.",
+        "security": [{ "instanceBearer": [] }],
+        "parameters": [{ "$ref": "#/components/parameters/TunnelId" }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/HeartbeatRequest" } } } },
+        "responses": {
+          "200": { "description": "Heartbeat recorded", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Tunnel" } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/v1/tunnels/{tunnelId}/disable": {
+      "post": {
+        "tags": ["Tunnels"],
+        "summary": "Disable and revoke a tunnel",
+        "description": "Revokes the managed route/credential. The local connector must stop cloudflared after a successful response. This action is idempotent.",
+        "security": [{ "instanceBearer": [] }],
+        "parameters": [{ "$ref": "#/components/parameters/TunnelId" }, { "$ref": "#/components/parameters/IdempotencyKey" }],
+        "responses": {
+          "200": { "description": "Tunnel disabled", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Tunnel" } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/v1/tunnels/{tunnelId}/events": {
+      "get": {
+        "tags": ["Tunnels"],
+        "summary": "List tunnel audit events",
+        "security": [{ "instanceBearer": [] }],
+        "parameters": [{ "$ref": "#/components/parameters/TunnelId" }, { "name": "limit", "in": "query", "schema": { "type": "integer", "minimum": 1, "maximum": 100, "default": 50 } }],
+        "responses": {
+          "200": { "description": "Audit events", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/TunnelEventsResponse" } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "instanceBearer": { "type": "http", "scheme": "bearer", "bearerFormat": "Bestie instance token" }
+    },
+    "parameters": {
+      "TunnelId": { "name": "tunnelId", "in": "path", "required": true, "schema": { "type": "string", "example": "tun_2b6138a5f32c4a768cae116b73393d94" } },
+      "IdempotencyKey": { "name": "Idempotency-Key", "in": "header", "required": true, "schema": { "type": "string", "minLength": 8, "maxLength": 255 }, "description": "A unique stable key per user-intended write operation. Reuse the same key only when retrying the same operation." }
+    },
+    "schemas": {
+      "HealthResponse": { "type": "object", "required": ["ok"], "properties": { "ok": { "type": "boolean" } } },
+      "RegisterInstanceRequest": { "type": "object", "required": ["userId", "publicId"], "properties": { "userId": { "type": "string", "example": "user_quy" }, "publicId": { "type": "string", "example": "bestie-local-001" }, "name": { "type": "string", "example": "Quy local Bestie" }, "platform": { "type": "string", "example": "linux" }, "appVersion": { "type": "string", "example": "0.1.0" } } },
+      "RegisterInstanceResponse": { "type": "object", "required": ["instanceId", "instanceToken"], "properties": { "instanceId": { "type": "string" }, "instanceToken": { "type": "string", "description": "Sensitive. Store securely in local OS credential storage; it is only returned at registration time." } } },
+      "CreateTunnelRequest": { "type": "object", "additionalProperties": false, "properties": {} },
+      "Tunnel": { "type": "object", "required": ["id", "instanceId", "hostname", "url", "originUrl", "status", "credentialVersion", "createdAt", "updatedAt"], "properties": { "id": { "type": "string" }, "instanceId": { "type": "string" }, "subdomain": { "type": "string", "example": "swift-otter-3a3s" }, "hostname": { "type": "string", "example": "swift-otter-3a3s.bestieagent.cloud" }, "url": { "type": "string", "format": "uri", "example": "https://swift-otter-3a3s.bestieagent.cloud" }, "originUrl": { "type": "string", "const": "http://127.0.0.1:8787" }, "status": { "type": "string", "enum": ["REQUESTED", "PROVISIONING", "ONLINE", "OFFLINE", "DISABLING", "DISABLED", "ROTATING", "REVOKED", "FAILED"] }, "credentialVersion": { "type": "integer", "minimum": 1 }, "lastSeenAt": { "type": ["string", "null"], "format": "date-time" }, "failureCode": { "type": ["string", "null"] }, "failureMessage": { "type": ["string", "null"] }, "createdAt": { "type": "string", "format": "date-time" }, "updatedAt": { "type": "string", "format": "date-time" } } },
+      "LaunchCredential": { "type": "object", "required": ["tunnelId", "credentialVersion", "cloudflaredRunToken", "command"], "properties": { "tunnelId": { "type": "string" }, "credentialVersion": { "type": "integer" }, "cloudflaredRunToken": { "type": "string", "writeOnly": true, "description": "Sensitive token. Never persist or display." }, "command": { "type": "array", "items": { "type": "string" }, "example": ["cloudflared", "tunnel", "run", "--token", "<redacted>"] } } },
+      "HeartbeatRequest": { "type": "object", "required": ["status"], "properties": { "status": { "type": "string", "enum": ["connected", "disconnected"] }, "cloudflaredVersion": { "type": "string", "example": "2026.7.3" }, "runtimeVersion": { "type": "string", "example": "bestie-0.1.0" } } },
+      "TunnelEvent": { "type": "object", "required": ["id", "type", "actorType", "createdAt"], "properties": { "id": { "type": "string" }, "type": { "type": "string", "example": "CONNECTED" }, "actorType": { "type": "string", "enum": ["instance", "worker", "system", "user"] }, "createdAt": { "type": "string", "format": "date-time" }, "metadata": { "type": "object", "additionalProperties": true, "description": "Redacted metadata only; never contains credentials." } } },
+      "TunnelEventsResponse": { "type": "object", "required": ["events"], "properties": { "events": { "type": "array", "items": { "$ref": "#/components/schemas/TunnelEvent" } } } },
+      "Error": { "type": "object", "required": ["error"], "properties": { "error": { "type": "string" }, "code": { "type": "string" }, "requestId": { "type": "string" } } }
+    },
+    "responses": {
+      "BadRequest": { "description": "Invalid request", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+      "Unauthorized": { "description": "Missing, invalid, or unauthorized instance token", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+      "NotFound": { "description": "Resource not found", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+      "Conflict": { "description": "Conflicting state, such as an existing active tunnel for the instance", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+      "RateLimited": { "description": "Too many requests", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+    }
+  }
+}

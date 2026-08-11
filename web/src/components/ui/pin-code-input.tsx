@@ -60,13 +60,13 @@ export function PinCodeInput({ id, label, value, onChange, autoFocus = false, au
   }
 
   return (
-    <div aria-label={label} className="flex gap-2" data-pin-code={id} role="group">
+    <div aria-label={label} className="flex w-fit max-w-full gap-2" data-pin-code={id} role="group">
       {digits.map((digit, index) => (
         <input
           aria-label={`${label}, số ${index + 1}`}
           autoComplete={index === 0 ? autoComplete : "off"}
           autoFocus={autoFocus && index === 0}
-          className={cn("h-12 min-w-0 flex-1 rounded-md border border-input bg-background text-center text-lg font-semibold shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring", digit ? "text-foreground" : "text-muted-foreground")}
+          className={cn("size-10 shrink-0 rounded-md border border-input bg-background text-center text-lg font-semibold shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:size-12", digit ? "text-foreground" : "text-muted-foreground")}
           id={index === 0 ? id : undefined}
           inputMode="numeric"
           key={index}

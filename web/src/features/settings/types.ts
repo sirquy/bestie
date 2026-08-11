@@ -24,3 +24,17 @@ export interface SettingsSummary {
     modelCount: number;
   };
 }
+
+export interface TunnelSummary {
+  ok: true;
+  tunnel?: {
+    hostname: string;
+    url: string;
+    status: string;
+    updatedAt: string;
+    lastSeenAt: string | null;
+    connectorRunning: boolean;
+    failureCode?: string;
+    failureMessage?: string;
+  };
+}

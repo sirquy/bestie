@@ -65,6 +65,7 @@ Tùy chọn UI:
   --host H    Bind host local, mặc định 127.0.0.1
   --no-open   Không tự mở trình duyệt
   auth reset  Xóa mã mở khóa UI trên máy này
+  tunnel setup|start|stop|status|revoke  Quản lý URL remote Cloudflare
 
 Tùy chọn cron:
   list           Liệt kê toàn bộ lịch cron
@@ -162,7 +163,16 @@ export const cliCommandSpecs: CliCommandSpec[] = [
     description: "Mở web console local của Bestie",
     handler: runUiCommand,
     children: [
-      { name: "auth reset", description: "Xóa mã mở khóa UI local", handler: runUiCommand },
+      { name: "auth", description: "Quản lý bảo mật UI local", handler: runUiCommand, children: [
+        { name: "reset", description: "Xóa mã mở khóa UI local", handler: runUiCommand },
+      ] },
+      { name: "tunnel", description: "Quản lý URL remote Cloudflare", handler: runUiCommand, children: [
+        { name: "setup", description: "Cấp URL remote Cloudflare cho Bestie UI", handler: runUiCommand },
+        { name: "start", description: "Khởi động connector Cloudflare local", handler: runUiCommand },
+        { name: "stop", description: "Dừng connector Cloudflare local", handler: runUiCommand },
+        { name: "status", description: "Xem URL và trạng thái remote tunnel", handler: runUiCommand },
+        { name: "revoke", description: "Revoke URL remote hiện tại", handler: runUiCommand },
+      ] },
     ],
     options: [
       { flags: "--port <port>", description: "Chọn port local; dùng 0 để hệ điều hành tự cấp port trống", name: "port" },

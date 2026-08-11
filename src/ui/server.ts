@@ -18,6 +18,7 @@ import { getUiMcpSummary } from "./api/mcp.js";
 import { runUiOnboarding } from "./api/onboarding.js";
 import { getUiProviderSummary, runUiProviderTest, setUiProviderPrimary, setupUiProvider, updateUiProviderFallback } from "./api/providers.js";
 import { getUiSettingsSummary, updateUiSettings } from "./api/settings.js";
+import { getUiTunnelSummary, runUiTunnelAction, type UiTunnelAction } from "./api/tunnel.js";
 import { clearUiSkillRemoteRegistryCache, deleteUiSkill, getUiSkill, getUiSkillLibrary, getUiSkillLibraryDiff, getUiSkillLibraryItem, getUiSkillsSummary, installUiSkillFromLibrary, rollbackUiSkill, testUiSkillRemoteRegistry, toggleUiSkillEnabled, writeUiSkill } from "./api/skills.js";
 import { getUiStatusSummary } from "./api/status.js";
 import { getUiToolsSummary, updateUiToolPolicy, updateUiToolsConfig } from "./api/tools.js";
@@ -26,6 +27,10 @@ import { HOME_PAGE_CLIENT_SCRIPT } from "./home/client-script.js";
 import { renderHomePage } from "./home-page.js";
 import { UiAuthService } from "./auth.js";
 import { getRuntimePaths, type RuntimePaths } from "../runtime/paths.js";
+import { loadEnvFile } from "../runtime/env.js";
+import { createCloudflareAccessVerifier, type TunnelAccessVerifier } from "./tunnel/access.js";
+import { createUiOriginPolicy, isAllowedSameOrigin, isRemoteTunnelRequest, type UiOriginPolicy } from "./tunnel/origin-policy.js";
+import { loadTunnelState } from "./tunnel/state.js";
 
 const require = createRequire(import.meta.url);
 const CYTOSCAPE_SCRIPT_PATH = require.resolve("cytoscape/dist/cytoscape.min.js");
@@ -33,7 +38,7 @@ const BESTIE_ICON_PNG_PATH = fileURLToPath(new URL("../../assets/bestie-app-icon
 const BESTIE_ICON_ICO_PATH = fileURLToPath(new URL("../../assets/bestie-app-icon.ico", import.meta.url));
 const UI_WEB_INDEX_PATH = fileURLToPath(new URL("./web/index.html", import.meta.url));
 const UI_WEB_SERVICE_WORKER_PATH = fileURLToPath(new URL("./web/sw.js", import.meta.url));
-const UI_WEB_ROUTE_PATHS = new Set(["/chat", "/doctor", "/providers", "/character", "/memory", "/knowledge", "/channels", "/agents", "/agents/tasks", "/approvals", "/mcp", "/tools", "/skills", "/skills/library", "/settings"]);
+const UI_WEB_ROUTE_PATHS = new Set(["/chat", "/doctor", "/providers", "/character", "/memory", "/knowledge", "/channels", "/agents", "/agents/tasks", "/approvals", "/mcp", "/tools", "/skills", "/skills/library", "/settings", "/settings/general", "/settings/memory", "/settings/security", "/settings/remote-access"]);
 const ROBOTS_TXT = "User-agent: *\nDisallow: /\n";
 const NO_INDEX_HEADER_VALUE = "noindex, nofollow, noarchive, nosnippet";
 
@@ -41,6 +46,7 @@ export interface UiServerOptions {
   host?: string;
   port?: number;
   paths?: RuntimePaths;
+  tunnelAccessVerifier?: TunnelAccessVerifier;
 }
 
 export interface RunningUiServer {
@@ -54,8 +60,12 @@ export interface RunningUiServer {
 export async function startUiServer(options: UiServerOptions = {}): Promise<RunningUiServer> {
   const host = options.host ?? "127.0.0.1";
   const requestedPort = options.port ?? 8787;
-  const auth = new UiAuthService(options.paths ?? getRuntimePaths());
-  const server = createServer((request, response) => handleRequest(request, response, auth));
+  const paths = options.paths ?? getRuntimePaths();
+  const auth = new UiAuthService(paths);
+  const tunnel = await loadTunnelState(paths);
+  const tunnelAccessVerifier = options.tunnelAccessVerifier ?? await loadTunnelAccessVerifier(paths);
+  let originPolicy = createUiOriginPolicy({ localHost: host, localPort: requestedPort, tunnel });
+  const server = createServer((request, response) => handleRequest(request, response, auth, originPolicy, tunnelAccessVerifier));
 
   await new Promise<void>((resolve, reject) => {
     server.once("error", reject);
@@ -71,6 +81,7 @@ export async function startUiServer(options: UiServerOptions = {}): Promise<Runn
   }
 
   const port = (address as AddressInfo).port;
+  originPolicy = createUiOriginPolicy({ localHost: host, localPort: port, tunnel });
   return {
     close: () => closeServer(server),
     host,
@@ -80,17 +91,25 @@ export async function startUiServer(options: UiServerOptions = {}): Promise<Runn
   };
 }
 
-function handleRequest(request: IncomingMessage, response: ServerResponse, auth: UiAuthService): void {
-  void handleRequestAsync(request, response, auth).catch((error: unknown) => {
+function handleRequest(request: IncomingMessage, response: ServerResponse, auth: UiAuthService, originPolicy: UiOriginPolicy, tunnelAccessVerifier?: TunnelAccessVerifier): void {
+  void handleRequestAsync(request, response, auth, originPolicy, tunnelAccessVerifier).catch((error: unknown) => {
     const message = error instanceof Error ? error.message : "Unexpected UI server error.";
     sendJson(response, 500, { ok: false, error: message, code: "UiInternalError" });
   });
 }
 
-async function handleRequestAsync(request: IncomingMessage, response: ServerResponse, auth: UiAuthService): Promise<void> {
+async function handleRequestAsync(request: IncomingMessage, response: ServerResponse, auth: UiAuthService, originPolicy: UiOriginPolicy, tunnelAccessVerifier?: TunnelAccessVerifier): Promise<void> {
   response.setHeader("x-robots-tag", NO_INDEX_HEADER_VALUE);
   const method = request.method ?? "GET";
   const url = new URL(request.url ?? "/", "http://127.0.0.1");
+
+  if (isRemoteTunnelRequest(request.headers, originPolicy)) {
+    const assertion = readHeader(request, "cf-access-jwt-assertion");
+    if (!tunnelAccessVerifier || !assertion || !await tunnelAccessVerifier.verifyAssertion(assertion)) {
+      sendJson(response, 403, { ok: false, error: "Cloudflare Access verification failed.", code: "UiTunnelAccessForbidden" });
+      return;
+    }
+  }
 
   if (method === "GET" && url.pathname === "/api/auth/status") {
     const session = auth.validateSession(readCookie(request, "bestie_ui_session"), { touch: url.searchParams.get("touch") === "1" });
@@ -99,7 +118,7 @@ async function handleRequestAsync(request: IncomingMessage, response: ServerResp
   }
 
   if (method === "POST" && url.pathname === "/api/auth/setup") {
-    if (!isSameOriginRequest(request)) {
+    if (!isSameOriginRequest(request, originPolicy)) {
       sendJson(response, 403, { ok: false, error: "Request origin was rejected.", code: "UiAuthForbidden" });
       return;
     }
@@ -110,13 +129,13 @@ async function handleRequestAsync(request: IncomingMessage, response: ServerResp
     }
     await auth.setup(body.pin);
     const login = await auth.login(body.pin);
-    setSessionCookie(response, login.sessionId);
+    setSessionCookie(response, login.sessionId, isRemoteTunnelRequest(request.headers, originPolicy));
     sendJson(response, 200, { ok: true, csrfToken: login.csrfToken });
     return;
   }
 
   if (method === "POST" && url.pathname === "/api/auth/login") {
-    if (!isSameOriginRequest(request)) {
+    if (!isSameOriginRequest(request, originPolicy)) {
       sendJson(response, 403, { ok: false, error: "Request origin was rejected.", code: "UiAuthForbidden" });
       return;
     }
@@ -126,14 +145,14 @@ async function handleRequestAsync(request: IncomingMessage, response: ServerResp
       return;
     }
     const login = await auth.login(body.pin);
-    setSessionCookie(response, login.sessionId);
+    setSessionCookie(response, login.sessionId, isRemoteTunnelRequest(request.headers, originPolicy));
     sendJson(response, 200, { ok: true, csrfToken: login.csrfToken });
     return;
   }
 
   if (method === "POST" && url.pathname === "/api/auth/logout") {
     const session = auth.validateSession(readCookie(request, "bestie_ui_session"));
-    if (!session || !isSameOriginRequest(request) || !auth.validateCsrf(session, readHeader(request, "x-bestie-csrf"))) {
+    if (!session || !isSameOriginRequest(request, originPolicy) || !auth.validateCsrf(session, readHeader(request, "x-bestie-csrf"))) {
       sendJson(response, 403, { ok: false, error: "Unlock session validation failed.", code: "UiAuthForbidden" });
       return;
     }
@@ -145,7 +164,7 @@ async function handleRequestAsync(request: IncomingMessage, response: ServerResp
 
   if (method === "POST" && url.pathname === "/api/auth/change-pin") {
     const session = auth.validateSession(readCookie(request, "bestie_ui_session"));
-    if (!session || !isSameOriginRequest(request) || !auth.validateCsrf(session, readHeader(request, "x-bestie-csrf"))) {
+    if (!session || !isSameOriginRequest(request, originPolicy) || !auth.validateCsrf(session, readHeader(request, "x-bestie-csrf"))) {
       sendJson(response, 403, { ok: false, error: "Unlock session validation failed.", code: "UiAuthForbidden" });
       return;
     }
@@ -171,7 +190,7 @@ async function handleRequestAsync(request: IncomingMessage, response: ServerResp
       sendJson(response, 401, { ok: false, error: "Unlock Bestie UI to continue.", code: "UiAuthRequired" });
       return;
     }
-    if (method !== "GET" && method !== "HEAD" && (!isSameOriginRequest(request) || !auth.validateCsrf(session, readHeader(request, "x-bestie-csrf")))) {
+    if (method !== "GET" && method !== "HEAD" && (!isSameOriginRequest(request, originPolicy) || !auth.validateCsrf(session, readHeader(request, "x-bestie-csrf")))) {
       sendJson(response, 403, { ok: false, error: "Request origin or unlock token was rejected.", code: "UiAuthForbidden" });
       return;
     }
@@ -442,6 +461,21 @@ async function handleRequestAsync(request: IncomingMessage, response: ServerResp
         ...(isMemoryWritePolicy(body.memory.writePolicy) ? { writePolicy: body.memory.writePolicy } : {}),
       } } : {}),
     }));
+    return;
+  }
+
+  if (method === "GET" && url.pathname === "/api/settings/tunnel") {
+    sendJson(response, 200, await getUiTunnelSummary());
+    return;
+  }
+
+  if (method === "POST" && url.pathname === "/api/settings/tunnel/action") {
+    const body = await readJsonBody(request);
+    if (!isRecord(body) || !isUiTunnelAction(body.action) || body.confirm !== true) {
+      sendJson(response, 400, { ok: false, error: "Tunnel actions require action and confirm=true.", code: "UiTunnelInvalidAction" });
+      return;
+    }
+    sendJson(response, 200, await runUiTunnelAction({ action: body.action, confirm: true }));
     return;
   }
 
@@ -1089,18 +1123,23 @@ function readHeader(request: IncomingMessage, name: string): string | undefined 
   return Array.isArray(value) ? value[0] : value;
 }
 
-function isSameOriginRequest(request: IncomingMessage): boolean {
-  const origin = readHeader(request, "origin");
-  const host = readHeader(request, "host");
-  return Boolean(origin && host && origin === `http://${host}`);
+function isSameOriginRequest(request: IncomingMessage, originPolicy: UiOriginPolicy): boolean {
+  return isAllowedSameOrigin(request.headers, originPolicy);
 }
 
-function setSessionCookie(response: ServerResponse, sessionId: string): void {
-  response.setHeader("set-cookie", `bestie_ui_session=${sessionId}; HttpOnly; SameSite=Strict; Path=/; Max-Age=43200`);
+function setSessionCookie(response: ServerResponse, sessionId: string, secure: boolean): void {
+  response.setHeader("set-cookie", `bestie_ui_session=${sessionId}; HttpOnly; SameSite=Strict; Path=/; Max-Age=43200${secure ? "; Secure" : ""}`);
 }
 
 function clearSessionCookie(response: ServerResponse): void {
   response.setHeader("set-cookie", "bestie_ui_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0");
+}
+
+async function loadTunnelAccessVerifier(paths: RuntimePaths): Promise<TunnelAccessVerifier | undefined> {
+  const env = await loadEnvFile(paths);
+  const teamDomain = env.BESTIE_TUNNEL_ACCESS_TEAM_DOMAIN ?? process.env.BESTIE_TUNNEL_ACCESS_TEAM_DOMAIN;
+  const audience = env.BESTIE_TUNNEL_ACCESS_AUD ?? process.env.BESTIE_TUNNEL_ACCESS_AUD;
+  return teamDomain && audience ? createCloudflareAccessVerifier({ teamDomain, audience }) : undefined;
 }
 
 function isUiChatMessage(value: unknown): value is { role: "user" | "assistant"; content: string } {
@@ -1137,6 +1176,10 @@ function isWorkforceTaskStatus(value: unknown): value is "queued" | "in_progress
 
 function isWorkforceApprovalPolicy(value: unknown): value is "ask-for-external-actions" | "ask-for-all-actions" | "deny-external-actions" {
   return value === "ask-for-external-actions" || value === "ask-for-all-actions" || value === "deny-external-actions";
+}
+
+function isUiTunnelAction(value: unknown): value is UiTunnelAction {
+  return value === "setup" || value === "start" || value === "stop" || value === "revoke";
 }
 
 function isMemoryWritePolicy(value: unknown): value is "allow" | "ask" | "deny" {

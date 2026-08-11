@@ -134,6 +134,7 @@ function panelFromLocation(location: Location): PanelDefinition {
   if (legacyHash) return panelsById.get(legacyHash) ?? defaultPanel;
   const route = normalizeRoute(location.pathname);
   if (route === "/providers") return panelsById.get("modelProviders") ?? defaultPanel;
+  if (route.startsWith("/settings/")) return panelsById.get("settings") ?? defaultPanel;
   if (route.startsWith("/agents/")) return panelsById.get("agents") ?? defaultPanel;
   if (route.startsWith("/skills/")) return panelsById.get("skills") ?? defaultPanel;
   return panelsByRoute.get(route) ?? defaultPanel;
@@ -142,6 +143,13 @@ function panelFromLocation(location: Location): PanelDefinition {
 function normalizeRoute(pathname: string): string {
   if (pathname === "/") return defaultPanel.route;
   return pathname.length > 1 ? pathname.replace(/\/+$/, "") : pathname;
+}
+
+function isCanonicalPanelRoute(route: string, panel: PanelDefinition): boolean {
+  return route === panel.route
+    || (panel.id === "settings" && route.startsWith("/settings/"))
+    || (panel.id === "skills" && route.startsWith("/skills/"))
+    || (panel.id === "agents" && route.startsWith("/agents/"));
 }
 
 function readSidebarCollapsed(): boolean {
@@ -155,6 +163,7 @@ function readSidebarCollapsed(): boolean {
 function App({ onLocked }: { onLocked: () => void }): ReactElement {
   const [runtimeStatus, setRuntimeStatus] = useState<RuntimeStatus>();
   const [activePanel, setActivePanel] = useState<PanelId>(() => panelFromLocation(window.location).id);
+  const [activeRoute, setActiveRoute] = useState(() => normalizeRoute(window.location.pathname));
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(readSidebarCollapsed);
   const [updateSummary, setUpdateSummary] = useState<UpdateSummary | null>(null);
   const [updateDismissedVersion, setUpdateDismissedVersion] = useState(() => readUpdateDismissedVersion());
@@ -173,6 +182,7 @@ function App({ onLocked }: { onLocked: () => void }): ReactElement {
 
   function navigateToPanel(panel: PanelDefinition, mode: "push" | "replace" = "push"): void {
     if (activePanel !== panel.id) setActivePanel(panel.id);
+    setActiveRoute(panel.route);
     const nextUrl = `${panel.route}${window.location.search}`;
     if (normalizeRoute(window.location.pathname) === panel.route && !window.location.hash) return;
     window.history[mode === "replace" ? "replaceState" : "pushState"]({ panelId: panel.id }, "", nextUrl);
@@ -184,13 +194,17 @@ function App({ onLocked }: { onLocked: () => void }): ReactElement {
 
   useEffect(() => {
     const panel = panelFromLocation(window.location);
+    const route = normalizeRoute(window.location.pathname);
     setActivePanel(panel.id);
-    if (window.location.hash || window.location.pathname === "/" || normalizeRoute(window.location.pathname) !== panel.route) {
+    setActiveRoute(route);
+    if (window.location.hash || window.location.pathname === "/" || !isCanonicalPanelRoute(route, panel)) {
       window.history.replaceState({ panelId: panel.id }, "", `${panel.route}${window.location.search}`);
+      setActiveRoute(panel.route);
     }
 
     function handlePopState(): void {
       setActivePanel(panelFromLocation(window.location).id);
+      setActiveRoute(normalizeRoute(window.location.pathname));
     }
 
     window.addEventListener("popstate", handlePopState);
@@ -508,6 +522,12 @@ function App({ onLocked }: { onLocked: () => void }): ReactElement {
                   <SettingsPanel
                     data={activeData as unknown as SettingsSummary | undefined}
                     loading={Boolean(loadingPanels[selectedPanel.id])}
+                    page={activeRoute}
+                    onNavigate={(route) => {
+                      window.history.pushState({ panelId: "settings" }, "", route);
+                      setActivePanel("settings");
+                      setActiveRoute(route);
+                    }}
                     onData={(data) => {
                       setPanelData((current) => ({ ...current, settings: data as unknown as JsonRecord }));
                       setPanelErrors((current) => ({ ...current, settings: undefined }));
