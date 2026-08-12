@@ -1,5 +1,5 @@
 import { copyFile, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
-import { basename, dirname, resolve } from "node:path";
+import { basename, dirname, relative, resolve } from "node:path";
 
 import { buildSkillDiff, createEmptySkillRegistrySnapshot, fetchRemoteSkillRegistrySnapshot, getDefaultRemoteSkillRegistryConfig, hashContent, hashSkillContent, hashSkillRegistry, listSkillRegistrySources, validateCuratedSkillRegistry, type CuratedSkillTemplate, type RemoteSkillRegistryConfig, type SkillDiffLine, type SkillRegistryCacheMetadata, type SkillRegistrySnapshot, type SkillRegistrySource, type SkillRegistryValidationResult, type SkillRegistryVerificationStatus } from "../../skills/library.js";
 import { loadInstalledSkills } from "../../skills/loader.js";
@@ -283,7 +283,10 @@ async function writeSkillBundle(paths: RuntimePaths, skillName: string, bundle: 
   const skillDir = resolve(paths.appDir, "skills", normalizeSkillName(skillName));
   for (const [path, content] of bundle) {
     const target = resolve(skillDir, path);
-    if (!target.startsWith(`${skillDir}/`)) throw new Error(`Skill file path escaped its bundle: ${path}.`);
+    const targetRelativePath = relative(skillDir, target);
+    if (!targetRelativePath || /^\.\.(?:[\\/]|$)/.test(targetRelativePath)) {
+      throw new Error(`Skill file path escaped its bundle: ${path}.`);
+    }
     await mkdir(dirname(target), { recursive: true, mode: 0o700 });
     await writeFile(target, content, { mode: 0o600 });
   }
