@@ -1,12 +1,14 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, extname, resolve } from "node:path";
+import { GoogleGenAI } from "@google/genai";
 
 import type { AppConfig, InternalToolPolicy, MediaGenerationProviderConfig } from "../runtime/config.js";
 import type { RuntimePaths } from "../runtime/paths.js";
 import { getAgentWorkspacePath, resolveSandboxPath } from "../runtime/workspace.js";
 import { reviewActionPermission, type PermissionApprover } from "../safety/permission-policy.js";
-import { resolveLlmCandidate } from "../llm/resolve-config.js";
+import { resolveLlmCandidate, type ResolvedLlmCandidate } from "../llm/resolve-config.js";
+import type { GoogleGenAIConstructor } from "../llm/adapters/types.js";
 
 export interface MediaGenerationToolOptions {
   config: AppConfig;
@@ -14,6 +16,7 @@ export interface MediaGenerationToolOptions {
   env?: Record<string, string>;
   approver?: PermissionApprover;
   fetchImpl?: typeof fetch;
+  googleGenAIClass?: GoogleGenAIConstructor;
 }
 
 export interface GeneratedMediaAsset {
@@ -40,6 +43,8 @@ const MAX_GENERATION_PROMPT_BYTES = 16 * 1024;
 const MAX_GENERATED_ASSET_BYTES = 100 * 1024 * 1024;
 
 export async function imageGenerateTool(options: MediaGenerationToolOptions & { prompt: string; size?: string; quality?: string; style?: string; count?: number; outputPath?: string }): Promise<MediaGenerationResult> {
+  const geminiCandidate = resolveGeminiImageCandidate(options.config);
+  if (geminiCandidate) return generateGeminiImage(geminiCandidate, options);
   const providers = resolveImageGenerationProvidersSafe(options.config);
   if (typeof providers === "string") {
     return { allowed: false, reason: providers, assets: [] };
@@ -62,6 +67,41 @@ export async function imageGenerateTool(options: MediaGenerationToolOptions & { 
     },
     outputPath: options.outputPath,
   });
+}
+
+function resolveGeminiImageCandidate(config: AppConfig): ResolvedLlmCandidate | undefined {
+  if (!config.llm.image) return undefined;
+  const candidate = resolveLlmCandidate(config, config.llm.image.primary);
+  return candidate.provider === "gemini" ? candidate : undefined;
+}
+
+async function generateGeminiImage(candidate: ResolvedLlmCandidate, options: MediaGenerationToolOptions & { prompt: string; outputPath?: string }): Promise<MediaGenerationResult> {
+  const prompt = options.prompt.trim();
+  if (!prompt) return { allowed: false, reason: "internal.image_generate requires arguments.prompt.", assets: [] };
+  if (Buffer.byteLength(prompt, "utf8") > MAX_GENERATION_PROMPT_BYTES) return { allowed: false, reason: `Generation prompt exceeds ${MAX_GENERATION_PROMPT_BYTES} bytes.`, assets: [] };
+  const permission = await reviewGenerationPermission("image", options, prompt, { prompt });
+  if (!permission.allowed) return { ...permission, assets: [] };
+  if (!candidate.apiKeyEnv) return { allowed: false, reason: `llm.image model ${candidate.modelRef} profile requires apiKeyEnv.`, assets: [] };
+  const apiKey = process.env[candidate.apiKeyEnv] ?? options.env?.[candidate.apiKeyEnv];
+  if (!apiKey) return { allowed: false, reason: `image generation API key env ${candidate.apiKeyEnv} is missing.`, provider: "gemini", model: candidate.model, prompt, assets: [] };
+
+  try {
+    const client = new (options.googleGenAIClass ?? GoogleGenAI)({ apiKey, httpOptions: { timeout: candidate.timeoutMs } });
+    const response = await client.models.generateContent({ model: candidate.model, contents: [{ role: "user", parts: [{ text: prompt }] }], config: { responseModalities: ["IMAGE"] } } as never);
+    const images = extractGeminiImages(response);
+    if (images.length === 0) return { allowed: false, reason: "Gemini image model returned no inline image data.", provider: "gemini", model: candidate.model, prompt, assets: [] };
+    const assets = await Promise.all(images.map((image, index) => materializeGeneratedMediaItem({ item: { b64Json: image.data, mimeType: image.mimeType }, index, total: images.length, kind: "image", outputPath: options.outputPath, options, fetchImpl: options.fetchImpl ?? fetch })));
+    return { allowed: true, reason: "image generation completed.", provider: "gemini", model: candidate.model, prompt, assets };
+  } catch (error) {
+    return { allowed: false, reason: `Gemini image generation failed: ${formatUnknownError(error)}`, provider: "gemini", model: candidate.model, prompt, assets: [] };
+  }
+}
+
+function extractGeminiImages(response: unknown): Array<{ mimeType: string; data: string }> {
+  if (!isRecord(response) || !Array.isArray(response.candidates)) return [];
+  return response.candidates.flatMap((candidate) => isRecord(candidate) && isRecord(candidate.content) && Array.isArray(candidate.content.parts)
+    ? candidate.content.parts.flatMap((part) => isRecord(part) && isRecord(part.inlineData) && typeof part.inlineData.mimeType === "string" && typeof part.inlineData.data === "string" ? [{ mimeType: part.inlineData.mimeType, data: part.inlineData.data }] : [])
+    : []);
 }
 
 export async function videoGenerateTool(options: MediaGenerationToolOptions & { prompt: string; durationSeconds?: number; aspectRatio?: string; size?: string; count?: number; outputPath?: string }): Promise<MediaGenerationResult> {

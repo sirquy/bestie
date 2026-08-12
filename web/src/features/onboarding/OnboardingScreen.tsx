@@ -14,7 +14,7 @@ interface OnboardingScreenProps { onComplete: () => Promise<void>; }
 interface OnboardingResult { ok: true; modelRef: string; }
 interface ProviderTestResult { ok: boolean; message?: string; latencyMs?: number; }
 
-const presets = providerPresets.filter((preset) => ["openai", "anthropic", "groq", "openrouter", "gemini", "ollama"].includes(preset.id));
+const presets = providerPresets.filter((preset) => preset.mode !== "oauth");
 
 export function OnboardingScreen({ onComplete }: OnboardingScreenProps): ReactElement {
   const [step, setStep] = useState(1);

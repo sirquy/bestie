@@ -284,7 +284,7 @@ function App({ onLocked }: { onLocked: () => void }): ReactElement {
   }
 
   return (
-    <div className="relative min-h-screen overflow-x-hidden p-3 md:p-5 lg:p-8">
+    <div className="relative min-h-screen overflow-x-hidden p-3 md:p-5 lg:p-0">
       <div className="pointer-events-none fixed inset-0 -z-10 bg-[radial-gradient(circle_at_20%_0%,rgba(166,244,172,0.12),transparent_24rem),radial-gradient(circle_at_100%_20%,rgba(255,181,91,0.12),transparent_26rem)]" />
       <div className="pointer-events-none fixed inset-x-8 top-0 -z-10 h-px bg-gradient-to-r from-transparent via-primary/50 to-transparent" />
       <div className="mx-auto max-w-[92rem]">
@@ -303,7 +303,7 @@ function App({ onLocked }: { onLocked: () => void }): ReactElement {
           </Button>
         ) : <button className="fixed inset-0 z-30 bg-black/35 backdrop-blur-[1px] lg:hidden" aria-label="Đóng thanh bên" type="button" onClick={() => setSidebarCollapsed(true)} />}
 
-        <aside className={cn("no-scrollbar fixed bottom-3 left-3 top-3 z-40 mb-0 overflow-y-auto rounded-[1.25rem] border border-white/10 bg-card/85 shadow-glow ring-1 ring-white/5 backdrop-blur-xl transition-all duration-300 sm:rounded-[1.5rem] lg:bottom-8 lg:left-[max(2rem,calc((100vw-92rem)/2+2rem))] lg:top-8 lg:z-30", sidebarCollapsed ? "pointer-events-none w-[min(18rem,calc(100vw-1.5rem))] -translate-x-[calc(100%+1rem)] p-3 lg:pointer-events-auto lg:w-[4.75rem] lg:translate-x-0 lg:p-2.5" : "w-[min(18rem,calc(100vw-1.5rem))] translate-x-0 p-3 lg:w-[16rem]")} data-sidebar-state={sidebarCollapsed ? "collapsed" : "expanded"}>
+        <aside className={cn("no-scrollbar fixed bottom-3 left-3 top-3 z-40 mb-0 overflow-y-auto rounded-[1.25rem] border border-white/10 bg-card/85 shadow-glow ring-1 ring-white/5 backdrop-blur-xl transition-all duration-300 sm:rounded-[1.5rem] lg:bottom-0 lg:left-[max(0px,calc((100vw-92rem)/2))] lg:top-0 lg:z-30 lg:rounded-none lg:border-y-0 lg:border-l-0 lg:shadow-none lg:ring-0", sidebarCollapsed ? "pointer-events-none w-[min(18rem,calc(100vw-1.5rem))] -translate-x-[calc(100%+1rem)] p-3 lg:pointer-events-auto lg:w-[4.75rem] lg:translate-x-0 lg:p-2.5" : "w-[min(18rem,calc(100vw-1.5rem))] translate-x-0 p-3 lg:w-[16rem] lg:p-4")} data-sidebar-state={sidebarCollapsed ? "collapsed" : "expanded"}>
           <div className={cn("flex items-center gap-2.5", sidebarCollapsed ? "mb-0 justify-between lg:mb-4 lg:flex-col lg:justify-center" : "mb-4 justify-between sm:mb-5")}>
             <div className={cn("flex min-w-0 items-center gap-2.5", sidebarCollapsed ? "lg:justify-center" : "")}>
               <div className="flex size-10 items-center justify-center overflow-hidden rounded-2xl bg-white shadow-lg shadow-primary/20 ring-1 ring-white/20">
@@ -370,7 +370,7 @@ function App({ onLocked }: { onLocked: () => void }): ReactElement {
           </div>
         </aside>
 
-        <main className={cn("grid min-w-0 gap-4 transition-[margin] duration-300", sidebarCollapsed ? "lg:ml-[5.75rem]" : "lg:ml-[17rem]")}>
+        <main className={cn("grid min-w-0 gap-4 transition-[margin] duration-300 lg:py-8 lg:pr-8", sidebarCollapsed ? "lg:ml-[4.75rem]" : "lg:ml-[16rem]")}>
           {updateAvailable && updateSummary ? <UpdateBanner summary={updateSummary} busy={updateBusy} onApply={() => void applyLatestUpdate()} onDismiss={() => void dismissUpdateBanner()} /> : null}
           {selectedPanel.id === "chat" ? (
                 activeError ? <ChatPanelError error={activeError} /> : (

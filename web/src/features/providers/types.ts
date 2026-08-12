@@ -1,4 +1,6 @@
-﻿export interface ProviderCandidate {
+﻿import { BUILTIN_LLM_PROVIDERS } from "../../../../src/llm/model-catalog";
+
+export interface ProviderCandidate {
   modelRef: string;
   provider: string;
   model: string;
@@ -45,7 +47,7 @@ export interface ProviderTestResult {
   statusCode?: number;
 }
 
-export type ProviderPresetId = "gemini-cli" | "claude-cli" | "codex-cli" | "openai" | "anthropic" | "groq" | "openrouter" | "quotacheap" | "gemini" | "ollama";
+export type ProviderPresetId = (typeof BUILTIN_LLM_PROVIDERS)[number]["id"];
 
 export interface ProviderPreset {
   id: ProviderPresetId;
@@ -58,15 +60,17 @@ export interface ProviderPreset {
   note: string;
 }
 
-export const providerPresets: ProviderPreset[] = [
-  { id: "gemini-cli", label: "Gemini CLI", provider: "gemini-cli", mode: "local", model: "default", note: "Runs through the logged-in Gemini CLI on this machine; Bestie does not need a URL or API key." },
-  { id: "claude-cli", label: "Claude CLI", provider: "claude-cli", mode: "local", model: "default", note: "Runs through the logged-in Claude CLI on this machine; Bestie does not need a URL or API key." },
-  { id: "codex-cli", label: "Codex CLI", provider: "codex-cli", mode: "local", model: "default", note: "Runs through the logged-in Codex CLI on this machine; Bestie does not need a URL or API key." },
-  { id: "openai", label: "ChatGPT", provider: "openai", mode: "api-key", model: "gpt-4.1-mini", baseUrl: "https://api.openai.com/v1", apiKeyEnv: "OPENAI_API_KEY", note: "Dịch vụ tương thích OpenAI, dùng API key." },
-  { id: "anthropic", label: "Claude", provider: "anthropic", mode: "api-key", model: "claude-3-5-haiku-latest", baseUrl: "https://api.anthropic.com", apiKeyEnv: "ANTHROPIC_API_KEY", note: "Dịch vụ Claude chính thức từ Anthropic." },
-  { id: "groq", label: "Groq", provider: "groq", mode: "api-key", model: "llama-3.3-70b-versatile", baseUrl: "https://api.groq.com/openai/v1", apiKeyEnv: "GROQ_API_KEY", note: "Dịch vụ suy luận nhanh, tương thích OpenAI." },
-  { id: "openrouter", label: "OpenRouter", provider: "openrouter", mode: "api-key", model: "anthropic/claude-3.5-sonnet", baseUrl: "https://openrouter.ai/api/v1", apiKeyEnv: "OPENROUTER_API_KEY", note: "Bộ định tuyến model tương thích OpenAI; hỗ trợ ID model dạng phân cấp." },
-  { id: "quotacheap", label: "QuotaCheap", provider: "quotacheap", mode: "api-key", model: "gpt-4o-mini", baseUrl: "https://api.quota.cheap/v1", apiKeyEnv: "QUOTACHEAP_API_KEY", note: "Dịch vụ OpenAI-Compatible chi phí thấp; có thể đổi model theo tài khoản của bạn." },
-  { id: "gemini", label: "Gemini", provider: "gemini", mode: "api-key", model: "gemini-2.5-flash", apiKeyEnv: "GEMINI_API_KEY", note: "Kết nối Gemini chính thức; URL gốc được ẩn có chủ đích." },
-  { id: "ollama", label: "Ollama", provider: "ollama", mode: "local", model: "llama3.2", baseUrl: "http://127.0.0.1:11434/v1", note: "Dịch vụ chạy cục bộ; không cần khoá bí mật." },
-];
+export const providerPresets: ProviderPreset[] = BUILTIN_LLM_PROVIDERS.map((provider) => ({
+  id: provider.id,
+  label: provider.label,
+  provider: provider.id,
+  mode: provider.authModes[0] ?? "api-key",
+  model: provider.defaultModel,
+  ...(provider.defaultBaseUrl ? { baseUrl: provider.defaultBaseUrl } : {}),
+  ...(provider.defaultApiKeyEnv ? { apiKeyEnv: provider.defaultApiKeyEnv } : {}),
+  note: provider.authModes.includes("local")
+    ? "Dùng runtime cục bộ đã đăng nhập trên máy này; Bestie không lưu API key."
+    : provider.authModes.includes("oauth")
+      ? "Provider này cần OAuth; thiết lập OAuth chưa được hỗ trợ trong Web UI."
+      : "Kết nối bằng API key được lưu cục bộ trong ~/.bestie/.env.",
+}));

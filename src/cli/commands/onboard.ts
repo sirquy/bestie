@@ -6,6 +6,7 @@ import { getDefaultAgentsMarkdown } from "../../character/agents-template.js";
 import { generateCharacterConfig, generateSystemPrompt } from "../../character/prompt-generator.js";
 import { writeCharacterFiles } from "../../character/writer.js";
 import { buildModelRef } from "../../llm/model-ref.js";
+import { getBuiltinLlmProvider } from "../../llm/model-catalog.js";
 import { testLlmProvider } from "../../llm/provider-test.js";
 import { DEFAULT_LLM_MAX_RETRIES, DEFAULT_LLM_RETRY_DELAY_MS, DEFAULT_LLM_TIMEOUT_MS, configExists, loadConfig, type AppConfig, writeConfig } from "../../runtime/config.js";
 import { loadEnvFile, writeEnvFile } from "../../runtime/env.js";
@@ -14,8 +15,6 @@ import { getRuntimePaths, type RuntimePaths } from "../../runtime/paths.js";
 import { createCliQuestioner } from "../prompt.js";
 import { badge, bold, color, dim, title, withColorMode } from "../ui.js";
 
-const DEFAULT_API_KEY_ENV = "OPENAI_API_KEY";
-const ANTHROPIC_API_KEY_ENV = "ANTHROPIC_API_KEY";
 const DEFAULT_LANGUAGE: LanguageMode = "vi";
 const DEFAULT_TIME_ZONE = "Asia/Bangkok";
 const DEFAULT_TONE_INTENSITY = 7;
@@ -173,24 +172,26 @@ async function collectAnswers(questioner: Pick<Questioner, "ask" | "askHidden">)
 }
 
 function getLlmProviderDefaults(provider: string): { catalogProvider: string; runtimeProvider: string; baseUrl: string; model: string; apiKeyEnv: string } {
-  const normalizedProvider = provider.trim().toLowerCase();
-  if (normalizedProvider === "claude" || normalizedProvider === "anthropic") {
-    return { catalogProvider: "anthropic", runtimeProvider: "anthropic", baseUrl: "https://api.anthropic.com/v1", model: "claude-sonnet-4-5", apiKeyEnv: ANTHROPIC_API_KEY_ENV };
+  const aliases: Record<string, string> = {
+    claude: "anthropic",
+    chatgpt: "openai",
+    "openai-compatible": "openai",
+    "groq-cloud": "groq",
+    groqcloud: "groq",
+    "open-router": "openrouter",
+  };
+  const providerId = aliases[provider.trim().toLowerCase()] ?? provider.trim().toLowerCase();
+  const catalog = getBuiltinLlmProvider(providerId);
+  if (!catalog || !catalog.defaultBaseUrl || !catalog.defaultApiKeyEnv || !catalog.authModes.includes("api-key")) {
+    throw new Error(`Unsupported API-key provider: ${provider}. Run 'bestie llm providers' to see supported providers.`);
   }
-
-  if (normalizedProvider === "chatgpt" || normalizedProvider === "openai") {
-    return { catalogProvider: "openai", runtimeProvider: "openai", baseUrl: "https://api.openai.com/v1", model: "gpt-4o-mini", apiKeyEnv: DEFAULT_API_KEY_ENV };
-  }
-
-  if (normalizedProvider === "groq" || normalizedProvider === "groqcloud" || normalizedProvider === "groq-cloud") {
-    return { catalogProvider: "groq", runtimeProvider: "openai-compatible", baseUrl: "https://api.groq.com/openai/v1", model: "llama-3.1-8b-instant", apiKeyEnv: "GROQ_API_KEY" };
-  }
-
-  if (normalizedProvider === "openrouter" || normalizedProvider === "open-router") {
-    return { catalogProvider: "openrouter", runtimeProvider: "openai-compatible", baseUrl: "https://openrouter.ai/api/v1", model: "openai/gpt-4o-mini", apiKeyEnv: "OPENROUTER_API_KEY" };
-  }
-
-  return { catalogProvider: "openai", runtimeProvider: "openai-compatible", baseUrl: "https://api.openai.com/v1", model: "gpt-4o-mini", apiKeyEnv: DEFAULT_API_KEY_ENV };
+  return {
+    catalogProvider: catalog.id,
+    runtimeProvider: catalog.runtimeProvider,
+    baseUrl: catalog.defaultBaseUrl,
+    model: catalog.defaultModel,
+    apiKeyEnv: catalog.defaultApiKeyEnv,
+  };
 }
 
 async function askNonEmpty(

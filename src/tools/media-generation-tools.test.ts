@@ -87,6 +87,35 @@ test("imageGenerateTool uses llm.image primary and fallbacks", async () => {
     await rm(paths.rootDir, { recursive: true, force: true });
   }
 });
+
+test("imageGenerateTool uses a native Gemini image model from llm.image", async () => {
+  const paths = await createTempPaths();
+  const config: AppConfig = {
+    ...createConfig({ "internal.image_generate": "allow" }),
+    llm: {
+      primary: "gemini/gemini-3.1-flash-image-preview",
+      authProfile: "gemini:api-key",
+      image: { primary: "gemini/gemini-3.1-flash-image-preview" },
+      profiles: { "gemini:api-key": { provider: "gemini", mode: "api-key", apiKeyEnv: "GEMINI_API_KEY" } },
+      modelCatalog: { "gemini/gemini-3.1-flash-image-preview": { profile: "gemini:api-key" } },
+    },
+  };
+
+  class FakeGoogleGenAI {
+    constructor(_options: unknown) {}
+    models = { generateContent: async () => ({ candidates: [{ content: { parts: [{ inlineData: { mimeType: "image/png", data: Buffer.from("gemini-image").toString("base64") } }] } }] }), generateContentStream: async () => { throw new Error("unused"); } };
+  }
+
+  try {
+    const result = await imageGenerateTool({ config, paths, env: { GEMINI_API_KEY: "gemini-secret" }, prompt: "A bright moon", outputPath: "generated/gemini", googleGenAIClass: FakeGoogleGenAI as never });
+    assert.equal(result.allowed, true);
+    assert.equal(result.provider, "gemini");
+    assert.equal(result.model, "gemini-3.1-flash-image-preview");
+    assert.equal(await readFile(resolve(paths.workspaceDir, "generated/gemini.png"), "utf8"), "gemini-image");
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
 test("videoGenerateTool downloads URL output and saves it", async () => {
   const paths = await createTempPaths();
   const urls: string[] = [];
