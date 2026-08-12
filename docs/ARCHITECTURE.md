@@ -155,7 +155,7 @@ Every action beyond text reply should pass through a permission classifier:
 
 Current local foundation allows trusted read-only actions, asks or denies riskier categories by default, logs decisions with secret redaction, and exposes internal read, write/action, and media generation tools for terminal and channels.
 
-Media generation tools use `llm.image.primary`/`llm.image.fallbacks` for image model selection when configured, with endpoint/auth details resolved through `llm.modelCatalog` and `llm.profiles`; legacy `generation.image` remains supported. Video generation still uses `generation.video`. Generated assets are saved under the agent workspace. `internal.image_generate` and `internal.video_generate` are classified as external-write actions by default, so they require an explicit per-tool allow policy or channel/terminal approval.
+Media generation tools use `llm.image.primary`/`llm.image.fallbacks` for image model selection when configured, with endpoint/auth details resolved through `llm.modelCatalog` and `llm.profiles`; legacy `generation.image` remains supported. Video generation still uses `generation.video`. Generated assets are saved under the agent workspace. `internal.image_generate` defaults to allow; an explicit `internalTools.policies` value of `ask` or `deny` still requires review or disables image generation. `internal.video_generate` remains an external-write action that requires explicit allow or approval.
 
 ### MCP / Agent Workforce / Plugins
 

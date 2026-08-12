@@ -148,7 +148,7 @@ test("videoGenerateTool downloads URL output and saves it", async () => {
   }
 });
 
-test("media generation tools require config secrets and permission", async () => {
+test("image generation allows by default and respects explicit policy configuration", async () => {
   const paths = await createTempPaths();
 
   try {
@@ -156,9 +156,17 @@ test("media generation tools require config secrets and permission", async () =>
     assert.equal(unconfigured.allowed, false);
     assert.match(unconfigured.reason, /llm\.image or generation\.image is not configured/);
 
-    const missingSecret = await imageGenerateTool({ config: createConfig({ "internal.image_generate": "allow" }), paths, prompt: "hello", env: {} });
+    const missingSecret = await imageGenerateTool({ config: createConfig(), paths, prompt: "hello", env: {} });
     assert.equal(missingSecret.allowed, false);
     assert.match(missingSecret.reason, /BESTIE_IMAGE_API_KEY is missing/);
+
+    const asked = await imageGenerateTool({ config: createConfig({ "internal.image_generate": "ask" }), paths, prompt: "hello", env: { BESTIE_IMAGE_API_KEY: "secret" } });
+    assert.equal(asked.allowed, false);
+    assert.match(asked.reason, /Approval required/);
+
+    const deniedImage = await imageGenerateTool({ config: createConfig({ "internal.image_generate": "deny" }), paths, prompt: "hello", env: { BESTIE_IMAGE_API_KEY: "secret" } });
+    assert.equal(deniedImage.allowed, false);
+    assert.match(deniedImage.reason, /internal\.image_generate is denied by config/);
 
     const denied = await videoGenerateTool({ config: createConfig(), paths, prompt: "hello", env: { BESTIE_VIDEO_API_KEY: "secret" } });
     assert.equal(denied.allowed, false);

@@ -305,7 +305,10 @@ function payloadWithBoundedPrompt(payload: Record<string, unknown>, prompt: stri
 }
 
 function getInternalToolPolicy(config: AppConfig, toolName: string): InternalToolPolicy {
-  return config.internalTools?.policies?.[toolName] ?? "ask";
+  const configured = config.internalTools?.policies?.[toolName];
+  if (configured) return configured;
+
+  return toolName === "internal.image_generate" ? "allow" : "ask";
 }
 
 function resolveApiKey(provider: MediaGenerationProviderConfig, env: Record<string, string>): string | undefined {
