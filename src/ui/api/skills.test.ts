@@ -6,7 +6,7 @@ import { resolve } from "node:path";
 import test from "node:test";
 
 import type { RuntimePaths } from "../../runtime/paths.js";
-import { hashSkillRegistry, type CuratedSkillTemplate } from "../../skills/library.js";
+import { hashContent, hashSkillRegistry, type CuratedSkillTemplate } from "../../skills/library.js";
 import { clearUiSkillRemoteRegistryCache, deleteUiSkill, getUiSkill, getUiSkillLibrary, getUiSkillLibraryDiff, getUiSkillLibraryItem, getUiSkillsSummary, installUiSkillFromLibrary, rollbackUiSkill, testUiSkillRemoteRegistry, toggleUiSkillEnabled, writeUiSkill } from "./skills.js";
 
 test("getUiSkillLibrary exposes curated metadata and installed state", async () => {
@@ -233,6 +233,33 @@ test("installUiSkillFromLibrary requires confirmation and writes SKILL.md", asyn
     assert.match(installedSummary?.currentHash ?? "", /^[a-f0-9]{64}$/);
     assert.equal(installedSummary?.localChanges, false);
     assert.equal(installedSummary?.rollbackAvailable, false);
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("installUiSkillFromLibrary installs every verified remote bundle file", async () => {
+  const paths = await createTempPaths();
+  const skillContent = "# Bundle Skill\n\nUse the helper.\n";
+  const helperContent = "#!/usr/bin/env bash\necho helper\n";
+  const files = [
+    { path: "SKILL.md", hash: `sha256:${hashContent(skillContent)}`, contentUrl: "https://skills.example.test/bundle/SKILL.md" },
+    { path: "scripts/helper.sh", hash: `sha256:${hashContent(helperContent)}`, contentUrl: "https://skills.example.test/bundle/scripts/helper.sh" },
+  ];
+  const registry = createRemoteRegistryDocument({ files });
+  const payload = JSON.stringify(registry);
+  const keys = createTestKeys();
+  const signature = signPayload(payload, keys.privateKey);
+
+  try {
+    await writeConfigWithRemoteRegistry(paths, { enabled: true, url: "https://skills.example.test/registry.json", publicKey: keys.publicKey, signatureHeader: "x-bestie-signature", installPolicy: "ask" });
+    await testUiSkillRemoteRegistry({ confirm: true, paths, fetchImpl: async () => new Response(payload, { headers: { "x-bestie-signature": signature } }) });
+    await installUiSkillFromLibrary({ name: "remote-test-skill", sourceId: "remote-official-test", confirm: true, paths, fetchImpl: async (url) => new Response(String(url).endsWith("helper.sh") ? helperContent : skillContent) });
+
+    assert.equal(await readFile(resolve(paths.appDir, "skills", "remote-test-skill", "SKILL.md"), "utf8"), skillContent);
+    assert.equal(await readFile(resolve(paths.appDir, "skills", "remote-test-skill", "scripts", "helper.sh"), "utf8"), helperContent);
+
+    await assert.rejects(() => installUiSkillFromLibrary({ name: "remote-test-skill", sourceId: "remote-official-test", confirm: true, paths, fetchImpl: async () => new Response("tampered") }), /hash verification failed/);
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
   }
@@ -467,11 +494,11 @@ async function writeConfigWithRemoteRegistry(paths: RuntimePaths, remoteOfficial
   }, null, 2)}\n`);
 }
 
-function createRemoteRegistryDocument() {
+function createRemoteRegistryDocument(overrides: Partial<CuratedSkillTemplate> = {}) {
   return {
     schemaVersion: 1,
     source: { id: "remote-official-test", name: "Remote Official Test", trust: "official" },
-    skills: [{ name: "remote-test-skill", title: "Remote Test Skill", description: "Signed test skill.", category: "testing", version: "1.0.0", author: "Bestie", trust: "official", risk: "low", permissions: [], changelog: "Initial signed test.", content: "# Remote Test Skill\n\nUse only in tests.\n" }],
+    skills: [{ name: "remote-test-skill", title: "Remote Test Skill", description: "Signed test skill.", category: "testing", version: "1.0.0", author: "Bestie", trust: "official", risk: "low", permissions: [], changelog: "Initial signed test.", content: "# Remote Test Skill\n\nUse only in tests.\n", ...overrides }],
   };
 }
 

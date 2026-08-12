@@ -93,6 +93,14 @@ export interface CuratedSkillTemplate {
   permissions: string[];
   changelog: string;
   content: string;
+  files?: RemoteSkillFile[];
+  bundleHash?: string;
+}
+
+export interface RemoteSkillFile {
+  path: string;
+  hash: string;
+  contentUrl: string;
 }
 
 export const DEFAULT_REMOTE_SKILL_REGISTRY_CONFIG: RemoteSkillRegistryConfig = {
@@ -228,6 +236,7 @@ export function validateCuratedSkillRegistry(skills: CuratedSkillTemplate[] = []
     if (!skill.changelog.trim()) issues.push({ name: skill.name, field: "changelog", message: "Changelog is required." });
     if (!startsWithMarkdownTitle(skill.content)) issues.push({ name: skill.name, field: "content", message: "Content must start with a Markdown title." });
     if (hashSkillContent(skill.content).length !== 64) issues.push({ name: skill.name, field: "contentHash", message: "Content hash must be sha256." });
+    if (skill.files && !hasValidRemoteSkillFiles(skill.files)) issues.push({ name: skill.name, field: "files", message: "Skill files must use unique safe relative paths, sha256 hashes, and HTTPS content URLs." });
   }
   return { ok: issues.length === 0, count: skills.length, issues };
 }
@@ -245,6 +254,8 @@ export function hashSkillRegistry(skills: CuratedSkillTemplate[] = []): string {
     permissions: [...skill.permissions].sort(),
     changelog: skill.changelog,
     contentHash: hashSkillContent(skill.content),
+    files: skill.files?.map((file) => ({ path: file.path, hash: file.hash, contentUrl: file.contentUrl })),
+    bundleHash: skill.bundleHash,
   }))));
 }
 
@@ -279,7 +290,51 @@ function parseRemoteSkillTemplate(value: unknown, fieldName: string): CuratedSki
     permissions: requireStringArray(skill.permissions, `${fieldName}.permissions`),
     changelog: requireString(skill.changelog, `${fieldName}.changelog`),
     content: requireString(skill.content, `${fieldName}.content`),
+    ...(skill.files === undefined ? {} : { files: parseRemoteSkillFiles(skill.files, `${fieldName}.files`) }),
+    ...(skill.bundleHash === undefined ? {} : { bundleHash: requireSha256(skill.bundleHash, `${fieldName}.bundleHash`) }),
   };
+}
+
+function parseRemoteSkillFiles(value: unknown, fieldName: string): RemoteSkillFile[] {
+  if (!Array.isArray(value) || value.length === 0) throw new Error(`${fieldName} must be a non-empty array.`);
+  const files = value.map((item, index) => {
+    const file = requireRecord(item, `${fieldName}[${index}]`);
+    return {
+      path: requireSafeRelativePath(file.path, `${fieldName}[${index}].path`),
+      hash: requireSha256(file.hash, `${fieldName}[${index}].hash`),
+      contentUrl: requireHttpsUrl(file.contentUrl, `${fieldName}[${index}].contentUrl`),
+    };
+  });
+  if (new Set(files.map((file) => file.path)).size !== files.length) throw new Error(`${fieldName} paths must be unique.`);
+  if (!files.some((file) => file.path === "SKILL.md")) throw new Error(`${fieldName} must include SKILL.md.`);
+  return files;
+}
+
+function hasValidRemoteSkillFiles(files: RemoteSkillFile[]): boolean {
+  try {
+    parseRemoteSkillFiles(files, "files");
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function requireSafeRelativePath(value: unknown, fieldName: string): string {
+  const path = requireString(value, fieldName);
+  if (path.startsWith("/") || path.includes("\\") || path.split("/").some((part) => !part || part === "." || part === "..")) throw new Error(`${fieldName} must be a safe relative path.`);
+  return path;
+}
+
+function requireSha256(value: unknown, fieldName: string): string {
+  const hash = requireString(value, fieldName);
+  if (!/^sha256:[a-f0-9]{64}$/.test(hash)) throw new Error(`${fieldName} must be a sha256 hash.`);
+  return hash;
+}
+
+function requireHttpsUrl(value: unknown, fieldName: string): string {
+  const url = requireString(value, fieldName);
+  if (!url.startsWith("https://")) throw new Error(`${fieldName} must use https://.`);
+  return url;
 }
 
 function verifyRemoteRegistryPayload(payload: string, config: RemoteSkillRegistryConfig, signature: string | undefined, checksum: string | undefined, registryHash: string, validationOk: boolean): SkillRegistryVerification {

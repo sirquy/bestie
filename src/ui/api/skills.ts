@@ -1,7 +1,7 @@
 import { copyFile, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
-import { basename, resolve } from "node:path";
+import { basename, dirname, resolve } from "node:path";
 
-import { buildSkillDiff, createEmptySkillRegistrySnapshot, fetchRemoteSkillRegistrySnapshot, getDefaultRemoteSkillRegistryConfig, hashSkillContent, hashSkillRegistry, listSkillRegistrySources, validateCuratedSkillRegistry, type CuratedSkillTemplate, type RemoteSkillRegistryConfig, type SkillDiffLine, type SkillRegistryCacheMetadata, type SkillRegistrySnapshot, type SkillRegistrySource, type SkillRegistryValidationResult, type SkillRegistryVerificationStatus } from "../../skills/library.js";
+import { buildSkillDiff, createEmptySkillRegistrySnapshot, fetchRemoteSkillRegistrySnapshot, getDefaultRemoteSkillRegistryConfig, hashContent, hashSkillContent, hashSkillRegistry, listSkillRegistrySources, validateCuratedSkillRegistry, type CuratedSkillTemplate, type RemoteSkillRegistryConfig, type SkillDiffLine, type SkillRegistryCacheMetadata, type SkillRegistrySnapshot, type SkillRegistrySource, type SkillRegistryValidationResult, type SkillRegistryVerificationStatus } from "../../skills/library.js";
 import { loadInstalledSkills } from "../../skills/loader.js";
 import { configExists, loadConfig } from "../../runtime/config.js";
 import { getRuntimePaths, type RuntimePaths } from "../../runtime/paths.js";
@@ -126,6 +126,7 @@ export interface UiSkillInstallOptions {
   confirm: boolean;
   sourceId?: string;
   paths?: RuntimePaths;
+  fetchImpl?: typeof fetch;
 }
 
 export interface UiSkillRollbackOptions {
@@ -244,10 +245,11 @@ export async function installUiSkillFromLibrary(options: UiSkillInstallOptions):
   const remoteOfficial = await getConfiguredRemoteRegistry(paths);
   if (remoteOfficial.enabled !== true || remoteOfficial.installPolicy !== "ask") throw new Error("Chưa thể cài kỹ năng từ thư viện từ xa vì cài đặt hiện tại chưa cho phép. Hãy bật thư viện kỹ năng từ xa và chọn chế độ hỏi trước khi cài.");
   if (source.verification.status !== "verified") throw new Error("Chưa thể cài kỹ năng vì thư viện từ xa chưa được xác minh. Hãy kiểm tra lại thư viện kỹ năng từ xa rồi thử lại.");
+  const bundle = await downloadSkillBundle(skill, options.fetchImpl);
   const previousContent = await readSkillContentIfExists(paths, skill.name);
   if (previousContent !== undefined) await backupSkill(paths, skill.name);
   const previousManifest = await readSkillManifest(paths, skill.name);
-  await writeUiSkill({ name: skill.name, content: skill.content, paths });
+  await writeSkillBundle(paths, skill.name, bundle);
   await writeSkillManifest(paths, skill.name, {
     schemaVersion: 1,
     name: skill.name,
@@ -257,12 +259,34 @@ export async function installUiSkillFromLibrary(options: UiSkillInstallOptions):
     libraryVersion: skill.version,
     installedAt: previousManifest?.installedAt ?? new Date().toISOString(),
     updatedAt: new Date().toISOString(),
-    contentHash: hashSkillContent(skill.content),
+    contentHash: hashSkillContent(bundle.get("SKILL.md") ?? skill.content),
     previousContentHash: previousContent === undefined ? previousManifest?.previousContentHash : hashSkillContent(previousContent),
     enabled: previousManifest?.enabled ?? true,
     permissions: skill.permissions,
   });
   return getUiSkillsSummary(paths);
+}
+
+async function downloadSkillBundle(skill: CuratedSkillTemplate, fetchImpl: typeof fetch = fetch): Promise<Map<string, string>> {
+  if (!skill.files?.length) return new Map([["SKILL.md", skill.content.endsWith("\n") ? skill.content : `${skill.content}\n`]]);
+  const files = await Promise.all(skill.files.map(async (file) => {
+    const response = await fetchImpl(file.contentUrl, { headers: { accept: "text/plain" } });
+    if (!response.ok) throw new Error(`Skill file ${file.path} returned HTTP ${response.status}.`);
+    const content = await response.text();
+    if (`sha256:${hashContent(content)}` !== file.hash) throw new Error(`Skill file hash verification failed: ${file.path}.`);
+    return [file.path, content] as const;
+  }));
+  return new Map(files);
+}
+
+async function writeSkillBundle(paths: RuntimePaths, skillName: string, bundle: Map<string, string>): Promise<void> {
+  const skillDir = resolve(paths.appDir, "skills", normalizeSkillName(skillName));
+  for (const [path, content] of bundle) {
+    const target = resolve(skillDir, path);
+    if (!target.startsWith(`${skillDir}/`)) throw new Error(`Skill file path escaped its bundle: ${path}.`);
+    await mkdir(dirname(target), { recursive: true, mode: 0o700 });
+    await writeFile(target, content, { mode: 0o600 });
+  }
 }
 
 export async function testUiSkillRemoteRegistry(options: UiSkillRemoteRegistryTestOptions): Promise<UiSkillRemoteRegistryTestResult> {
