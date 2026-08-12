@@ -105,9 +105,9 @@ async function handleRequestAsync(request: IncomingMessage, response: ServerResp
   const method = request.method ?? "GET";
   const url = new URL(request.url ?? "/", "http://127.0.0.1");
 
-  if (isRemoteTunnelRequest(request.headers, originPolicy)) {
+  if (isRemoteTunnelRequest(request.headers, originPolicy) && tunnelAccessVerifier) {
     const assertion = readHeader(request, "cf-access-jwt-assertion");
-    if (!tunnelAccessVerifier || !assertion || !await tunnelAccessVerifier.verifyAssertion(assertion)) {
+    if (!assertion || !await tunnelAccessVerifier.verifyAssertion(assertion)) {
       sendJson(response, 403, { ok: false, error: "Cloudflare Access verification failed.", code: "UiTunnelAccessForbidden" });
       return;
     }
