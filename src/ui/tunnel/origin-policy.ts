@@ -16,7 +16,7 @@ export function createUiOriginPolicy(options: { localHost: string; localPort: nu
   if (normalizedHost === "localhost") localOrigins.add(`http://127.0.0.1:${options.localPort}`);
   const localHosts = new Set([...localOrigins].map((origin) => new URL(origin).host));
 
-  const remoteOrigin = options.tunnel?.tunnel.status === "ONLINE" && isValidTunnelHostname(options.tunnel.tunnel.hostname)
+  const remoteOrigin = options.tunnel && isValidTunnelHostname(options.tunnel.tunnel.hostname)
     ? `https://${options.tunnel.tunnel.hostname}`
     : undefined;
   return { localOrigins, localHosts, ...(remoteOrigin ? { remoteOrigin } : {}) };

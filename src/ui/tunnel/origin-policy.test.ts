@@ -29,3 +29,14 @@ test("UI origin policy ignores forwarded headers and recognizes only assigned re
   assert.equal(isRemoteTunnelRequest({ host: "attacker.bestieagent.cloud", "x-forwarded-host": "a1b2c3d4e5f6g7h8.bestieagent.cloud", "x-forwarded-proto": "https" }, policy), false);
   assert.equal(isRemoteTunnelRequest({ host: "127.0.0.1:8787", origin: "https://a1b2c3d4e5f6g7h8.bestieagent.cloud" }, policy), true);
 });
+
+test("UI origin policy accepts the assigned hostname while tunnel status is stale", () => {
+  const policy = createUiOriginPolicy({
+    localHost: "127.0.0.1",
+    localPort: 8787,
+    tunnel: { ...tunnelState, tunnel: { ...tunnelState.tunnel, status: "OFFLINE" } },
+  });
+
+  assert.equal(isAllowedSameOrigin({ origin: "https://a1b2c3d4e5f6g7h8.bestieagent.cloud", host: "127.0.0.1:8787" }, policy), true);
+  assert.equal(isAllowedSameOrigin({ origin: "https://other.bestieagent.cloud", host: "127.0.0.1:8787" }, policy), false);
+});
