@@ -48,6 +48,7 @@ Tùy chọn daemon:
 Tùy chọn service:
   install                                    Cài và khởi động service nền
   uninstall                                  Dừng và gỡ service nền
+  stop                                       Dừng service nền nhưng vẫn giữ cài đặt
   status                                     Gợi ý lệnh xem trạng thái service nền
   restart                                    Restart service nền
 
@@ -125,6 +126,7 @@ export const cliCommandSpecs: CliCommandSpec[] = [
     children: [
       { name: "install", description: "Cài và khởi động service nền", handler: runServiceCommand },
       { name: "uninstall", description: "Dừng và gỡ service nền", handler: runServiceCommand },
+      { name: "stop", description: "Dừng service nền nhưng vẫn giữ cài đặt", handler: runServiceCommand },
       { name: "status", description: "Gợi ý lệnh xem trạng thái service nền", handler: runServiceCommand },
       { name: "restart", description: "Restart service nền", handler: runServiceCommand },
       { name: "run", description: "Chạy runtime service foreground", handler: runServiceCommand, hidden: true },

@@ -138,6 +138,11 @@ export async function runServiceCommand(optionsOrArgv: string[] | ServiceCommand
     return;
   }
 
+  if (subcommand === "stop") {
+    await stopService({ ...options, paths, writeLine });
+    return;
+  }
+
   if (subcommand === "status") {
     await showServiceStatus({ ...options, paths, writeLine });
     return;
@@ -153,7 +158,7 @@ export async function runServiceCommand(optionsOrArgv: string[] | ServiceCommand
     return;
   }
 
-  throw new UserFacingError("Cách dùng: bestie service install|uninstall|status|restart", "ServiceUsageError");
+  throw new UserFacingError("Cách dùng: bestie service install|uninstall|stop|status|restart", "ServiceUsageError");
 }
 
 async function installSystemdUserService(options: Required<Pick<DaemonCommandOptions, "paths" | "writeLine">> & DaemonCommandOptions): Promise<void> {
@@ -286,6 +291,29 @@ async function restartService(options: Required<Pick<DaemonCommandOptions, "path
   const run = options.execFile ?? runExecFile;
   await run("systemctl", ["--user", "restart", getSystemdServiceName()]);
   options.writeLine(`${badge("RUN", "green")} Restarted Bestie systemd user service.`);
+}
+
+async function stopService(options: Required<Pick<DaemonCommandOptions, "paths" | "writeLine">> & DaemonCommandOptions): Promise<void> {
+  const platform = options.platform ?? process.platform;
+  if (platform === "win32") {
+    await runWindowsDaemonCommand(options, "stop");
+    options.writeLine(`${badge("STOP", "gray")} Stopped Bestie Windows startup runtime.`);
+    return;
+  }
+  if (platform === "darwin") {
+    const run = options.execFile ?? runExecFile;
+    const domain = getMacLaunchdDomain();
+    for (const service of MACOS_LAUNCHD_SERVICES) {
+      await bootoutMacLaunchdService(run, domain, service.label);
+    }
+    options.writeLine(`${badge("STOP", "gray")} Stopped Bestie macOS launchd services.`);
+    return;
+  }
+
+  assertLinuxSystemdUserServiceSupported(options.platform);
+  const run = options.execFile ?? runExecFile;
+  await run("systemctl", ["--user", "stop", getSystemdServiceName()]);
+  options.writeLine(`${badge("STOP", "gray")} Stopped Bestie systemd user service.`);
 }
 
 async function installWindowsStartupCommand(options: Required<Pick<DaemonCommandOptions, "paths" | "writeLine">> & DaemonCommandOptions): Promise<void> {

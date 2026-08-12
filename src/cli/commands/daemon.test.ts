@@ -631,6 +631,19 @@ test("runServiceCommand installs and starts macOS launchd services", async () =>
   }
 });
 
+test("runServiceCommand stops but does not uninstall the systemd user service", async () => {
+  const paths = await createTempPaths();
+  const calls: string[][] = [];
+  const output: string[] = [];
+  try {
+    await runServiceCommand({ argv: ["node", "bestie", "service", "stop"], paths, platform: "linux", writeLine: (message) => output.push(message), execFile: async (_file, args) => { calls.push(args); } });
+    assert.deepEqual(calls, [["--user", "stop", "bestie.service"]]);
+    assert.match(output.join("\n"), /Stopped Bestie systemd user service/);
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
 test("runServiceCommand manages macOS launchd service lifecycle", async () => {
   const paths = await createTempPaths();
   const output: string[] = [];

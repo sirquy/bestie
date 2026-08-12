@@ -182,6 +182,10 @@ test("parseMcpToolRequest accepts internal read tool requests", () => {
   assert.deepEqual(parseMcpToolRequest('{"tool":"internal.tunnel_start","arguments":{}}'), { tool: "internal.tunnel_start", arguments: {} });
   assert.deepEqual(parseMcpToolRequest('{"tool":"internal.tunnel_stop","arguments":{}}'), { tool: "internal.tunnel_stop", arguments: {} });
   assert.deepEqual(parseMcpToolRequest('{"tool":"internal.tunnel_revoke","arguments":{}}'), { tool: "internal.tunnel_revoke", arguments: {} });
+  assert.deepEqual(parseMcpToolRequest('{"tool":"internal.service_install","arguments":{}}'), { tool: "internal.service_install", arguments: {} });
+  assert.deepEqual(parseMcpToolRequest('{"tool":"internal.service_uninstall","arguments":{}}'), { tool: "internal.service_uninstall", arguments: {} });
+  assert.deepEqual(parseMcpToolRequest('{"tool":"internal.service_stop","arguments":{}}'), { tool: "internal.service_stop", arguments: {} });
+  assert.deepEqual(parseMcpToolRequest('{"tool":"internal.service_restart","arguments":{}}'), { tool: "internal.service_restart", arguments: {} });
   assert.deepEqual(parseMcpToolRequest('{"tool":"internal.read_file","arguments":{"path":".bestie/logs/app.log"}}'), {
     tool: "internal.read_file",
     arguments: { path: ".bestie/logs/app.log" },
