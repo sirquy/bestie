@@ -21,6 +21,7 @@ import { fallbackLogDetail, formatProviderFallbackDiagnostics, formatProviderFal
 import { runKnowledgeReasoningPass, type KnowledgeReasoningResult } from "../memory/knowledge-reasoning.js";
 import { loadConversationSummaryContext, refreshConversationSummary } from "../memory/conversation-summary.js";
 import { loadRelevantMemories } from "../memory/context.js";
+import { loadRelevantKnowledgeGraph } from "../memory/knowledge-context.js";
 import { runMemoryReasoningPass, type MemoryReasoningResult } from "../memory/reasoning.js";
 import { isMemoryRetrievalPolicy, setMemoryRetrievalPolicy } from "../memory/governance.js";
 import { getMemoryMaintenanceReportStatus, installMemoryMaintenanceReport, removeMemoryMaintenanceReport, runMemoryMaintenanceDigest } from "../memory/maintenance.js";
@@ -2089,21 +2090,6 @@ async function persistTelegramConversationTurn(paths: RuntimePaths, userId: stri
 
     store.addMessage({ channel: "telegram", userId, role: "user", content: userInput });
     store.addMessage({ channel: "telegram", userId, role: "assistant", content: assistantText });
-  } finally {
-    store.close();
-  }
-}
-
-async function loadRelevantKnowledgeGraph(paths: RuntimePaths, query: string): Promise<import("../memory/sqlite-store.js").KnowledgeGraphSearchResult | undefined> {
-  const store = await SqliteMemoryStore.open(paths);
-
-  try {
-    if (store.getMemoryState().paused) {
-      return undefined;
-    }
-
-    const graph = store.searchKnowledgeGraph(query, 12);
-    return graph.entities.length === 0 && graph.relations.length === 0 ? undefined : graph;
   } finally {
     store.close();
   }

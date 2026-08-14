@@ -14,6 +14,7 @@ import { getMemoryMaintenanceReportStatus, installMemoryMaintenanceReport, remov
 import { runKnowledgeReasoningPass, type KnowledgeReasoningResult } from "../memory/knowledge-reasoning.js";
 import { loadConversationSummaryContext, refreshConversationSummary } from "../memory/conversation-summary.js";
 import { loadRelevantMemories } from "../memory/context.js";
+import { loadRelevantKnowledgeGraph } from "../memory/knowledge-context.js";
 import { runMemoryReasoningPass, type MemoryReasoningResult } from "../memory/reasoning.js";
 import { isMemoryScope, SqliteMemoryStore } from "../memory/sqlite-store.js";
 import { applyMemoryRebalancePlan, formatMemoryRebalanceApplyResult, formatMemoryRebalancePlan, planMemoryRebalance } from "../memory/rebalance.js";
@@ -1443,19 +1444,6 @@ async function persistZaloConversationTurn(paths: RuntimePaths, userId: string, 
     }
     store.addMessage({ channel: "zalo", userId, role: "user", content: userInput });
     store.addMessage({ channel: "zalo", userId, role: "assistant", content: assistantText });
-  } finally {
-    store.close();
-  }
-}
-
-async function loadRelevantKnowledgeGraph(paths: RuntimePaths, query: string): Promise<import("../memory/sqlite-store.js").KnowledgeGraphSearchResult | undefined> {
-  const store = await SqliteMemoryStore.open(paths);
-  try {
-    if (store.getMemoryState().paused) {
-      return undefined;
-    }
-    const graph = store.searchKnowledgeGraph(query, 12);
-    return graph.entities.length === 0 && graph.relations.length === 0 ? undefined : graph;
   } finally {
     store.close();
   }

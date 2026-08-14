@@ -72,7 +72,7 @@ Owner undo is supported through soft-delete graph actions. Relations can be forg
 
 ## Retrieval
 
-Before a chat completion, Bestie searches the graph with the current user input. If relevant entities or relations are found, a compact system context block is injected:
+Before a chat completion, Bestie searches the graph with compact token queries derived from the current user input. It uses one shared retrieval service for terminal, Telegram, Zalo, cron, and UI chat; memory pause disables retrieval everywhere. Candidate facts are ranked by trust, while secret-marked defensive legacy data, low-trust facts, and conflicting relations are excluded from the prompt context. If relevant entities or relations are found, a compact system context block is injected:
 
 ```text
 Relevant approved local knowledge graph facts. Use them when relevant; do not claim perfect memory.

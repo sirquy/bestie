@@ -3,6 +3,7 @@ import { stdout as output } from "node:process";
 import { runKnowledgeReasoningPass } from "../memory/knowledge-reasoning.js";
 import { loadConversationSummaryContext, refreshConversationSummary } from "../memory/conversation-summary.js";
 import { loadRelevantMemories } from "../memory/context.js";
+import { loadRelevantKnowledgeGraph } from "../memory/knowledge-context.js";
 import { runMemoryReasoningPass } from "../memory/reasoning.js";
 import { SqliteMemoryStore } from "../memory/sqlite-store.js";
 import { createCliPermissionApprover } from "../cli/permission-approver.js";
@@ -376,20 +377,6 @@ function createQuestioner(): Questioner {
   return createCliQuestioner({ echoAnswer: true, returnUndefinedOnInputEnd: true });
 }
 
-async function loadRelevantKnowledgeGraph(paths: RuntimePaths, query: string): Promise<import("../memory/sqlite-store.js").KnowledgeGraphSearchResult | undefined> {
-  const store = await SqliteMemoryStore.open(paths);
-
-  try {
-    if (store.getMemoryState().paused) {
-      return undefined;
-    }
-
-    const graph = store.searchKnowledgeGraph(query, 12);
-    return graph.entities.length === 0 && graph.relations.length === 0 ? undefined : graph;
-  } finally {
-    store.close();
-  }
-}
 
 async function isMemoryPaused(paths: RuntimePaths): Promise<boolean> {
   const store = await SqliteMemoryStore.open(paths);

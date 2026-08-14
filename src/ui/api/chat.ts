@@ -7,6 +7,7 @@ import { loadLlmCandidateSecret, resolvePrimaryLlmCandidate } from "../../llm/re
 import type { ChatCompletionOptions, ChatMessage } from "../../llm/types.js";
 import { loadUiConversationSummaryContext, refreshUiConversationSummary } from "../../memory/conversation-summary.js";
 import { loadRelevantMemories } from "../../memory/context.js";
+import { loadRelevantKnowledgeGraph } from "../../memory/knowledge-context.js";
 import { runKnowledgeReasoningPass, type KnowledgeReasoningResult } from "../../memory/knowledge-reasoning.js";
 import { SqliteMemoryStore, type UiChatSession } from "../../memory/sqlite-store.js";
 import { loadConfig } from "../../runtime/config.js";
@@ -895,16 +896,5 @@ async function refreshUiConversationSummaryBestEffort(options: {
     await refreshUiConversationSummary(options);
   } catch (error) {
     await appendLog({ event: "conversation_summary_failure", detail: { channel: "ui", sessionId: options.sessionId, error: error instanceof Error ? error.message : String(error) } }, { paths: options.paths, knownSecrets: [options.apiKey] });
-  }
-}
-
-async function loadRelevantKnowledgeGraph(paths: RuntimePaths, query: string): Promise<import("../../memory/sqlite-store.js").KnowledgeGraphSearchResult | undefined> {
-  const store = await SqliteMemoryStore.open(paths);
-  try {
-    if (store.getMemoryState().paused) return undefined;
-    const graph = store.searchKnowledgeGraph(query, 12);
-    return graph.entities.length === 0 && graph.relations.length === 0 ? undefined : graph;
-  } finally {
-    store.close();
   }
 }
