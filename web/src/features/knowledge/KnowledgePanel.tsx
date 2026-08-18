@@ -34,11 +34,11 @@ interface RelationEditDraft {
   sensitivity: "" | "normal" | "sensitive";
 }
 
-const KNOWLEDGE_GRAPH_DISPLAY_LIMITS = [100, 250, 500] as const;
+const KNOWLEDGE_GRAPH_DISPLAY_LIMITS = [100, 250, 500, 1000] as const;
 
 export function KnowledgePanel({ data, loading, onData, onLoading }: KnowledgePanelProps): ReactElement {
   const [query, setQuery] = useState("");
-  const [displayLimit, setDisplayLimit] = useState(250);
+  const [displayLimit, setDisplayLimit] = useState(1000);
   const [inventoryView, setInventoryView] = useState<"entities" | "relations">("entities");
   const [mergePrimaryId, setMergePrimaryId] = useState("");
   const [mergeDuplicateId, setMergeDuplicateId] = useState("");
