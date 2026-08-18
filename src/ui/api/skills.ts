@@ -273,10 +273,17 @@ async function downloadSkillBundle(skill: CuratedSkillTemplate, fetchImpl: typeo
     const response = await fetchImpl(file.contentUrl, { headers: { accept: "text/plain" } });
     if (!response.ok) throw new Error(`Skill file ${file.path} returned HTTP ${response.status}.`);
     const content = await response.text();
-    if (`sha256:${hashContent(content)}` !== file.hash) throw new Error(`Skill file hash verification failed: ${file.path}.`);
+    if (!matchesSkillFileHash(content, file.hash)) throw new Error(`Skill file hash verification failed: ${file.path}.`);
     return [file.path, content] as const;
   }));
   return new Map(files);
+}
+
+function matchesSkillFileHash(content: string, expectedHash: string): boolean {
+  const rawHash = `sha256:${hashContent(content)}`;
+  if (rawHash === expectedHash) return true;
+  const crlfHash = `sha256:${hashContent(content.replace(/\r?\n/g, "\r\n"))}`;
+  return crlfHash === expectedHash;
 }
 
 async function writeSkillBundle(paths: RuntimePaths, skillName: string, bundle: Map<string, string>): Promise<void> {

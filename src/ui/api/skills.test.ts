@@ -243,7 +243,7 @@ test("installUiSkillFromLibrary installs every verified remote bundle file", asy
   const skillContent = "# Bundle Skill\n\nUse the helper.\n";
   const helperContent = "#!/usr/bin/env bash\necho helper\n";
   const files = [
-    { path: "SKILL.md", hash: `sha256:${hashContent(skillContent)}`, contentUrl: "https://skills.example.test/bundle/SKILL.md" },
+    { path: "SKILL.md", hash: `sha256:${hashContent(skillContent.replace(/\n/g, "\r\n"))}`, contentUrl: "https://skills.example.test/bundle/SKILL.md" },
     { path: "scripts/helper.sh", hash: `sha256:${hashContent(helperContent)}`, contentUrl: "https://skills.example.test/bundle/scripts/helper.sh" },
   ];
   const registry = createRemoteRegistryDocument({ files });
