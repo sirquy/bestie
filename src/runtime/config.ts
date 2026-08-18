@@ -231,6 +231,9 @@ export interface AppConfig {
     exec?: {
       timeoutMs?: number;
     };
+    browser?: {
+      cdpEndpoint?: string;
+    };
   };
   agents?: Record<string, {
     enabled: boolean;
@@ -704,9 +707,10 @@ function optionalInternalTools(value: unknown): AppConfig["internalTools"] | und
   const internalTools = requireRecord(value, "internalTools");
   const policies = internalTools.policies;
   const exec = optionalInternalExec(internalTools.exec);
+  const browser = optionalInternalBrowser(internalTools.browser);
 
   if (policies === undefined) {
-    return exec === undefined ? {} : { exec };
+    return { ...(exec === undefined ? {} : { exec }), ...(browser === undefined ? {} : { browser }) };
   }
 
   if (!isRecord(policies)) {
@@ -721,7 +725,7 @@ function optionalInternalTools(value: unknown): AppConfig["internalTools"] | und
     validated[toolName] = policy;
   }
 
-  return { policies: validated, ...(exec === undefined ? {} : { exec }) };
+  return { policies: validated, ...(exec === undefined ? {} : { exec }), ...(browser === undefined ? {} : { browser }) };
 }
 
 function optionalInternalExec(value: unknown): NonNullable<AppConfig["internalTools"]>["exec"] | undefined {
@@ -733,6 +737,32 @@ function optionalInternalExec(value: unknown): NonNullable<AppConfig["internalTo
   const timeoutMs = optionalPositiveInteger(exec.timeoutMs, "internalTools.exec.timeoutMs");
 
   return timeoutMs === undefined ? {} : { timeoutMs };
+}
+
+function optionalInternalBrowser(value: unknown): NonNullable<AppConfig["internalTools"]>["browser"] | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  const browser = requireRecord(value, "internalTools.browser");
+  const cdpEndpoint = browser.cdpEndpoint === undefined ? undefined : requireString(browser.cdpEndpoint, "internalTools.browser.cdpEndpoint");
+  if (cdpEndpoint !== undefined && !isLocalCdpEndpoint(cdpEndpoint)) {
+    throw new InvalidConfigError("internalTools.browser.cdpEndpoint must be an http(s) or ws(s) loopback URL without credentials.");
+  }
+
+  return cdpEndpoint === undefined ? {} : { cdpEndpoint };
+}
+
+function isLocalCdpEndpoint(value: string): boolean {
+  try {
+    const url = new URL(value);
+    if (!/^https?:$|^wss?:$/.test(url.protocol) || url.username || url.password) {
+      return false;
+    }
+    return url.hostname === "localhost" || url.hostname === "127.0.0.1" || url.hostname === "::1" || url.hostname === "[::1]";
+  } catch {
+    return false;
+  }
 }
 
 function optionalMemory(value: unknown): AppConfig["memory"] | undefined {

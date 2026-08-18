@@ -17,7 +17,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { fetchJson, formatError } from "@/lib/api";
 import { confirmDialog } from "@/lib/dialogs";
 import { ToastEffect } from "@/lib/toasts";
-import type { KnowledgeEntity, KnowledgeGraphAction, KnowledgeGraphSummary, KnowledgeRelation, PendingKnowledgeItem } from "./types";
+import type { KnowledgeEntity, KnowledgeGraphAction, KnowledgeGraphDisplayCount, KnowledgeGraphSummary, KnowledgeRelation, PendingKnowledgeItem } from "./types";
 
 interface KnowledgePanelProps {
   data?: KnowledgeGraphSummary;
@@ -34,8 +34,11 @@ interface RelationEditDraft {
   sensitivity: "" | "normal" | "sensitive";
 }
 
+const KNOWLEDGE_GRAPH_DISPLAY_LIMITS = [100, 250, 500] as const;
+
 export function KnowledgePanel({ data, loading, onData, onLoading }: KnowledgePanelProps): ReactElement {
   const [query, setQuery] = useState("");
+  const [displayLimit, setDisplayLimit] = useState(250);
   const [inventoryView, setInventoryView] = useState<"entities" | "relations">("entities");
   const [mergePrimaryId, setMergePrimaryId] = useState("");
   const [mergeDuplicateId, setMergeDuplicateId] = useState("");
@@ -54,6 +57,7 @@ export function KnowledgePanel({ data, loading, onData, onLoading }: KnowledgePa
     try {
       const nextData = await request();
       onData(nextData);
+      setDisplayLimit(nextData.display.limit);
       setActionMessage(nextData.message ?? success ?? null);
     } catch (error: unknown) {
       setActionError(formatError(error));
@@ -64,18 +68,23 @@ export function KnowledgePanel({ data, loading, onData, onLoading }: KnowledgePa
 
   async function reload(): Promise<void> {
     setQuery("");
-    await runRequest(() => fetchJson<KnowledgeGraphSummary>("/api/knowledge-graph"));
+    await runRequest(() => fetchJson<KnowledgeGraphSummary>(knowledgeGraphPath(undefined, displayLimit)));
   }
 
   async function search(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
     const trimmed = query.trim();
-    await runRequest(() => fetchJson<KnowledgeGraphSummary>(trimmed ? `/api/knowledge-graph/search?q=${encodeURIComponent(trimmed)}` : "/api/knowledge-graph"));
+    await runRequest(() => fetchJson<KnowledgeGraphSummary>(knowledgeGraphPath(trimmed || undefined, displayLimit)));
+  }
+
+  async function changeDisplayLimit(nextLimit: number): Promise<void> {
+    setDisplayLimit(nextLimit);
+    await runRequest(() => fetchJson<KnowledgeGraphSummary>(knowledgeGraphPath(query.trim() || undefined, nextLimit)));
   }
 
   async function postAction(body: Record<string, unknown>, confirmText: string): Promise<void> {
     if (!await confirmDialog(confirmText)) return;
-    await runRequest(() => fetchJson<KnowledgeGraphSummary>("/api/knowledge-graph/action", { method: "POST", body: JSON.stringify({ ...body, confirm: true }) }));
+    await runRequest(() => fetchJson<KnowledgeGraphSummary>("/api/knowledge-graph/action", { method: "POST", body: JSON.stringify({ ...body, confirm: true, limit: displayLimit }) }));
   }
 
   async function runPendingAction(action: KnowledgeGraphAction, item: PendingKnowledgeItem): Promise<void> {
@@ -143,9 +152,13 @@ export function KnowledgePanel({ data, loading, onData, onLoading }: KnowledgePa
               <CardTitle className="flex items-center gap-2 text-xl"><GitBranch className="size-5" /> 3D Tri thức Map</CardTitle>
               <CardDescription className="mt-2 max-w-3xl">Không gian 3D cho thực thể, liên kết quan hệ, độ tin cậy, phạm vi, độ nhạy và mức tin tưởng.</CardDescription>
             </div>
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <Badge variant={data.database.exists ? "secondary" : "destructive"}>{data.database.exists ? "tri thức sẵn sàng" : "chưa có tri thức"}</Badge>
               <Badge variant={data.state.paused ? "destructive" : "outline"}>{data.state.paused ? "đang tạm dừng" : "đang hoạt động"}</Badge>
+              <Label className="sr-only" htmlFor="knowledge-display-limit">Số mục hiển thị</Label>
+              <Select id="knowledge-display-limit" className="w-28" value={displayLimit} disabled={loading} onChange={(event) => void changeDisplayLimit(Number(event.target.value))} data-knowledge-display-limit>
+                {KNOWLEDGE_GRAPH_DISPLAY_LIMITS.map((limit) => <option key={limit} value={limit}>{limit} mục</option>)}
+              </Select>
               <Button variant="outline" onClick={() => void reload()} disabled={loading}><RefreshCw className={loading ? "animate-spin" : ""} /> Tải lại</Button>
             </div>
           </div>
@@ -154,9 +167,10 @@ export function KnowledgePanel({ data, loading, onData, onLoading }: KnowledgePa
             <Button type="submit" disabled={loading}><Search /> Tìm trên bản đồ</Button>
           </form>
           {data.query ? <p className="text-sm text-muted-foreground">Từ khoá tìm kiếm: <span className="text-foreground">{data.query}</span></p> : null}
+          <KnowledgeGraphDisplayNotice display={data.display} search={Boolean(data.query)} />
         </CardHeader>
         <CardContent className="grid gap-4 p-3 md:p-4">
-          <KnowledgeMap3D entities={data.entities} relations={data.relations} />
+          <KnowledgeMap3D entities={data.entities} relations={data.relations} display={data.display} />
         </CardContent>
       </Card>
 
@@ -168,14 +182,14 @@ export function KnowledgePanel({ data, loading, onData, onLoading }: KnowledgePa
               <CardDescription>Xem từng loại một để dễ tập trung kiểm tra.</CardDescription>
             </div>
             <div className="flex rounded-2xl border border-white/10 bg-background/40 p-1 text-sm">
-              <button type="button" className={`rounded-xl px-3 py-1.5 transition ${inventoryView === "entities" ? "bg-secondary text-foreground" : "text-muted-foreground hover:text-foreground"}`} onClick={() => setInventoryView("entities")}>Thực thể <span className="ml-1 text-xs opacity-70">{data.entities.length}</span></button>
-              <button type="button" className={`rounded-xl px-3 py-1.5 transition ${inventoryView === "relations" ? "bg-secondary text-foreground" : "text-muted-foreground hover:text-foreground"}`} onClick={() => setInventoryView("relations")}>Quan hệ <span className="ml-1 text-xs opacity-70">{data.relations.length}</span></button>
+              <button type="button" className={`rounded-xl px-3 py-1.5 transition ${inventoryView === "entities" ? "bg-secondary text-foreground" : "text-muted-foreground hover:text-foreground"}`} onClick={() => setInventoryView("entities")}>Thực thể <span className="ml-1 text-xs opacity-70">{formatDisplayCount(data.display.entities)}</span></button>
+              <button type="button" className={`rounded-xl px-3 py-1.5 transition ${inventoryView === "relations" ? "bg-secondary text-foreground" : "text-muted-foreground hover:text-foreground"}`} onClick={() => setInventoryView("relations")}>Quan hệ <span className="ml-1 text-xs opacity-70">{formatDisplayCount(data.display.relations)}</span></button>
             </div>
           </CardHeader>
           <CardContent className="grid gap-3">
             <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-white/10 bg-card/40 px-3 py-2 text-xs text-muted-foreground">
               <span>{inventoryView === "entities" ? "Tên thực thể, loại, phạm vi, độ tin cậy và mức tin tưởng." : "Đường liên kết, loại quan hệ, bằng chứng, độ tin cậy và mức tin tưởng."}</span>
-              <Badge variant="outline">{inventoryView === "entities" ? data.entities.length : data.relations.length} shown</Badge>
+              <Badge variant="outline">{formatDisplayCount(inventoryView === "entities" ? data.display.entities : data.display.relations)} đang hiển thị</Badge>
             </div>
             <div className="no-scrollbar grid max-h-[38rem] gap-2 overflow-auto pr-1">
               {inventoryView === "entities"
@@ -256,6 +270,22 @@ function KnowledgeError({ message }: { message: string }): ReactElement {
   );
 }
 
+function KnowledgeGraphDisplayNotice({ display, search }: { display: KnowledgeGraphSummary["display"]; search: boolean }): ReactElement {
+  const counts = [
+    `thực thể ${formatDisplayCount(display.entities)}`,
+    `quan hệ ${formatDisplayCount(display.relations)}`,
+    `đang chờ ${formatDisplayCount(display.pending)}`,
+  ];
+  const truncated = [display.entities, display.relations, display.pending].some((item) => item.truncated);
+  return (
+    <div className={`flex flex-wrap items-center justify-between gap-2 rounded-2xl border px-3 py-2 text-xs ${truncated ? "border-accent/40 bg-accent/10 text-accent-foreground" : "border-white/10 bg-card/40 text-muted-foreground"}`} data-knowledge-display-summary>
+      <span>{search ? "Kết quả đang hiển thị: " : "Đang render: "}{counts.join(" · ")}</span>
+      <Badge variant="outline">tối đa {display.limit} mỗi nhóm</Badge>
+      {truncated ? <span>Đã cắt bớt để giữ bản đồ 3D ổn định; tăng giới hạn nếu cần.</span> : null}
+    </div>
+  );
+}
+
 function KnowledgeMetric({ label, value, tone = "neutral" }: { label: string; value: string; tone?: "good" | "warn" | "neutral" }): ReactElement {
   return (
     <Card className="border-white/10 bg-background/35">
@@ -297,7 +327,7 @@ interface KnowledgeGraphData {
   links: KnowledgeGraphLink[];
 }
 
-function KnowledgeMap3D({ entities, relations }: { entities: KnowledgeEntity[]; relations: KnowledgeRelation[] }): ReactElement {
+function KnowledgeMap3D({ entities, relations, display }: { entities: KnowledgeEntity[]; relations: KnowledgeRelation[]; display: KnowledgeGraphSummary["display"] }): ReactElement {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const graphRef = useRef<ForceGraph3DInstance<KnowledgeGraphNode, KnowledgeGraphLink> | null>(null);
   const graphData = useMemo(() => buildKnowledgeGraphData(entities, relations), [entities, relations]);
@@ -368,7 +398,7 @@ function KnowledgeMap3D({ entities, relations }: { entities: KnowledgeEntity[]; 
 
   return (
     <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-[radial-gradient(circle_at_50%_20%,rgba(166,244,172,0.15),transparent_18rem),radial-gradient(circle_at_80%_65%,rgba(255,181,91,0.10),transparent_18rem),linear-gradient(135deg,rgba(255,255,255,0.06),rgba(255,255,255,0.01))]" data-knowledge-map-3d>
-      <div className="absolute left-4 top-4 z-10 flex flex-wrap gap-2 text-xs"><Badge variant="secondary">{graphData.nodes.length} node</Badge><Badge variant="outline">{graphData.links.length} liên kết</Badge><Badge variant="outline">Bản đồ 3D tương tác</Badge></div>
+      <div className="absolute left-4 top-4 z-10 flex flex-wrap gap-2 text-xs"><Badge variant="secondary">{formatDisplayCount(display.entities)} node</Badge><Badge variant="outline">{graphData.links.length} liên kết</Badge><Badge variant="outline">Bản đồ 3D tương tác</Badge></div>
       <div ref={containerRef} className="h-[28rem] w-full sm:h-[34rem] xl:h-[42rem]" data-knowledge-map-canvas />
       <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 bg-gradient-to-t from-background/90 via-background/45 to-transparent p-4 pt-16">
         <div className="grid gap-2 text-xs text-muted-foreground md:grid-cols-3">
@@ -380,6 +410,17 @@ function KnowledgeMap3D({ entities, relations }: { entities: KnowledgeEntity[]; 
       <div className="hidden" data-knowledge-map-edge={graphData.links[0]?.id ?? "none"} />
     </div>
   );
+}
+
+function knowledgeGraphPath(query: string | undefined, limit: number): string {
+  const params = new URLSearchParams({ limit: String(limit) });
+  if (query) params.set("q", query);
+  return `/api/knowledge-graph${query ? "/search" : ""}?${params.toString()}`;
+}
+
+function formatDisplayCount(display: KnowledgeGraphDisplayCount): string {
+  if (display.total !== undefined) return `${display.shown}/${display.total}`;
+  return display.truncated ? `${display.shown}+` : String(display.shown);
 }
 
 function buildKnowledgeGraphData(entities: KnowledgeEntity[], relations: KnowledgeRelation[]): KnowledgeGraphData {

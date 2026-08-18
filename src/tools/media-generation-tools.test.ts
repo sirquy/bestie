@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import test from "node:test";
@@ -112,6 +112,41 @@ test("imageGenerateTool uses a native Gemini image model from llm.image", async 
     assert.equal(result.provider, "gemini");
     assert.equal(result.model, "gemini-3.1-flash-image-preview");
     assert.equal(await readFile(resolve(paths.workspaceDir, "generated/gemini.png"), "utf8"), "gemini-image");
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("imageGenerateTool sends sandboxed reference files to a native Gemini image model", async () => {
+  const paths = await createTempPaths();
+  const config: AppConfig = {
+    ...createConfig({ "internal.image_generate": "allow" }),
+    llm: {
+      primary: "gemini/gemini-3.1-flash-image-preview",
+      authProfile: "gemini:api-key",
+      image: { primary: "gemini/gemini-3.1-flash-image-preview" },
+      profiles: { "gemini:api-key": { provider: "gemini", mode: "api-key", apiKeyEnv: "GEMINI_API_KEY" } },
+      modelCatalog: { "gemini/gemini-3.1-flash-image-preview": { profile: "gemini:api-key" } },
+    },
+  };
+  const requests: unknown[] = [];
+
+  class FakeGoogleGenAI {
+    constructor(_options: unknown) {}
+    models = { generateContent: async (request: unknown) => {
+      requests.push(request);
+      return { candidates: [{ content: { parts: [{ inlineData: { mimeType: "image/png", data: Buffer.from("gemini-image").toString("base64") } }] } }] };
+    }, generateContentStream: async () => { throw new Error("unused"); } };
+  }
+
+  try {
+    await mkdir(paths.workspaceDir, { recursive: true });
+    await writeFile(resolve(paths.workspaceDir, "reference.png"), "reference-image");
+    const result = await imageGenerateTool({ config, paths, env: { GEMINI_API_KEY: "gemini-secret" }, prompt: "Use this as a reference", referencePaths: ["reference.png"], googleGenAIClass: FakeGoogleGenAI as never });
+    assert.equal(result.allowed, true);
+    const parts = (requests[0] as { contents: Array<{ parts: Array<{ text?: string; inlineData?: { mimeType: string; data: string } }> }> }).contents[0]?.parts ?? [];
+    assert.equal(parts[0]?.text, "Use this as a reference");
+    assert.deepEqual(parts[1]?.inlineData, { mimeType: "image/png", data: Buffer.from("reference-image").toString("base64") });
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
   }

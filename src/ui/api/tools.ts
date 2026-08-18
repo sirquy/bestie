@@ -18,6 +18,9 @@ export interface UiToolsSummary {
   exec: {
     timeoutMs?: number;
   };
+  browser: {
+    cdpEndpoint?: string;
+  };
 }
 
 interface UiToolPolicyEntry {
@@ -37,6 +40,9 @@ export async function getUiToolsSummary(paths: RuntimePaths = getRuntimePaths())
     },
     exec: {
       ...(config.internalTools?.exec?.timeoutMs !== undefined ? { timeoutMs: config.internalTools.exec.timeoutMs } : {}),
+    },
+    browser: {
+      ...(config.internalTools?.browser?.cdpEndpoint !== undefined ? { cdpEndpoint: config.internalTools.browser.cdpEndpoint } : {}),
     },
   };
 }
@@ -63,13 +69,14 @@ export async function updateUiToolPolicy(options: { tool: string; policy: Intern
   return getUiToolsSummary(paths);
 }
 
-export async function updateUiToolsConfig(options: { externalPaths?: string[]; execTimeoutMs?: number; paths?: RuntimePaths }): Promise<UiToolsSummary> {
+export async function updateUiToolsConfig(options: { externalPaths?: string[]; execTimeoutMs?: number; browserCdpEndpoint?: string; paths?: RuntimePaths }): Promise<UiToolsSummary> {
   const paths = options.paths ?? getRuntimePaths();
   const config = await loadConfig(paths);
   const externalPaths = options.externalPaths?.map((path) => path.trim()).filter(Boolean);
   if (options.execTimeoutMs !== undefined && (!Number.isInteger(options.execTimeoutMs) || options.execTimeoutMs <= 0)) {
     throw new Error("Exec timeout must be a positive integer.");
   }
+  const browserCdpEndpoint = options.browserCdpEndpoint?.trim();
 
   await writeConfig({
     ...config,
@@ -82,6 +89,9 @@ export async function updateUiToolsConfig(options: { externalPaths?: string[]; e
       exec: {
         ...(config.internalTools?.exec ?? {}),
         ...(options.execTimeoutMs === undefined ? {} : { timeoutMs: options.execTimeoutMs }),
+      },
+      browser: {
+        ...(browserCdpEndpoint === undefined ? config.internalTools?.browser ?? {} : browserCdpEndpoint ? { cdpEndpoint: browserCdpEndpoint } : {}),
       },
     },
   }, paths);

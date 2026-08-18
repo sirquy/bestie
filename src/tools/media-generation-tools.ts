@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { dirname, extname, resolve } from "node:path";
 import { GoogleGenAI } from "@google/genai";
 
@@ -41,10 +41,16 @@ type MediaKind = "image" | "video";
 const DEFAULT_MEDIA_GENERATION_TIMEOUT_MS = 120_000;
 const MAX_GENERATION_PROMPT_BYTES = 16 * 1024;
 const MAX_GENERATED_ASSET_BYTES = 100 * 1024 * 1024;
+const MAX_GEMINI_REFERENCE_FILES = 8;
+const MAX_GEMINI_REFERENCE_FILE_BYTES = 20 * 1024 * 1024;
+const MAX_GEMINI_REFERENCE_TOTAL_BYTES = 40 * 1024 * 1024;
 
-export async function imageGenerateTool(options: MediaGenerationToolOptions & { prompt: string; size?: string; quality?: string; style?: string; count?: number; outputPath?: string }): Promise<MediaGenerationResult> {
+export async function imageGenerateTool(options: MediaGenerationToolOptions & { prompt: string; size?: string; quality?: string; style?: string; count?: number; outputPath?: string; referencePaths?: string[] }): Promise<MediaGenerationResult> {
   const geminiCandidate = resolveGeminiImageCandidate(options.config);
   if (geminiCandidate) return generateGeminiImage(geminiCandidate, options);
+  if (options.referencePaths?.length) {
+    return { allowed: false, reason: "Reference files are supported only when llm.image.primary uses the native Gemini provider.", assets: [] };
+  }
   const providers = resolveImageGenerationProvidersSafe(options.config);
   if (typeof providers === "string") {
     return { allowed: false, reason: providers, assets: [] };
@@ -75,11 +81,17 @@ function resolveGeminiImageCandidate(config: AppConfig): ResolvedLlmCandidate | 
   return candidate.provider === "gemini" ? candidate : undefined;
 }
 
-async function generateGeminiImage(candidate: ResolvedLlmCandidate, options: MediaGenerationToolOptions & { prompt: string; outputPath?: string }): Promise<MediaGenerationResult> {
+async function generateGeminiImage(candidate: ResolvedLlmCandidate, options: MediaGenerationToolOptions & { prompt: string; outputPath?: string; referencePaths?: string[] }): Promise<MediaGenerationResult> {
   const prompt = options.prompt.trim();
   if (!prompt) return { allowed: false, reason: "internal.image_generate requires arguments.prompt.", assets: [] };
   if (Buffer.byteLength(prompt, "utf8") > MAX_GENERATION_PROMPT_BYTES) return { allowed: false, reason: `Generation prompt exceeds ${MAX_GENERATION_PROMPT_BYTES} bytes.`, assets: [] };
-  const permission = await reviewGenerationPermission("image", options, prompt, { prompt });
+  let referenceFiles: GeminiReferenceFile[];
+  try {
+    referenceFiles = await loadGeminiReferenceFiles(options, options.referencePaths);
+  } catch (error) {
+    return { allowed: false, reason: `Gemini reference files are invalid: ${formatUnknownError(error)}`, assets: [] };
+  }
+  const permission = await reviewGenerationPermission("image", options, prompt, { prompt, referencePaths: referenceFiles.map((file) => file.path) });
   if (!permission.allowed) return { ...permission, assets: [] };
   if (!candidate.apiKeyEnv) return { allowed: false, reason: `llm.image model ${candidate.modelRef} profile requires apiKeyEnv.`, assets: [] };
   const apiKey = process.env[candidate.apiKeyEnv] ?? options.env?.[candidate.apiKeyEnv];
@@ -87,7 +99,7 @@ async function generateGeminiImage(candidate: ResolvedLlmCandidate, options: Med
 
   try {
     const client = new (options.googleGenAIClass ?? GoogleGenAI)({ apiKey, httpOptions: { timeout: candidate.timeoutMs } });
-    const response = await client.models.generateContent({ model: candidate.model, contents: [{ role: "user", parts: [{ text: prompt }] }], config: { responseModalities: ["IMAGE"] } } as never);
+    const response = await client.models.generateContent({ model: candidate.model, contents: [{ role: "user", parts: [{ text: prompt }, ...referenceFiles.map((file) => ({ inlineData: { mimeType: file.mimeType, data: file.data } }))] }], config: { responseModalities: ["IMAGE"] } } as never);
     const images = extractGeminiImages(response);
     if (images.length === 0) return { allowed: false, reason: "Gemini image model returned no inline image data.", provider: "gemini", model: candidate.model, prompt, assets: [] };
     const assets = await Promise.all(images.map((image, index) => materializeGeneratedMediaItem({ item: { b64Json: image.data, mimeType: image.mimeType }, index, total: images.length, kind: "image", outputPath: options.outputPath, options, fetchImpl: options.fetchImpl ?? fetch })));
@@ -309,6 +321,44 @@ function getInternalToolPolicy(config: AppConfig, toolName: string): InternalToo
   if (configured) return configured;
 
   return toolName === "internal.image_generate" ? "allow" : "ask";
+}
+
+interface GeminiReferenceFile {
+  path: string;
+  mimeType: string;
+  data: string;
+  bytes: number;
+}
+
+async function loadGeminiReferenceFiles(options: MediaGenerationToolOptions, referencePaths: string[] | undefined): Promise<GeminiReferenceFile[]> {
+  if (!referencePaths?.length) return [];
+  if (referencePaths.length > MAX_GEMINI_REFERENCE_FILES) throw new Error(`At most ${MAX_GEMINI_REFERENCE_FILES} reference files are allowed.`);
+
+  const files: GeminiReferenceFile[] = [];
+  let totalBytes = 0;
+  for (const inputPath of referencePaths) {
+    if (!inputPath.trim()) throw new Error("Reference file paths must be non-empty strings.");
+    const path = await resolveSandboxPath({ config: options.config, paths: options.paths, inputPath, defaultBase: "workspace", access: "read" });
+    const fileStat = await stat(path);
+    if (!fileStat.isFile()) throw new Error(`${path} is not a file.`);
+    if (fileStat.size > MAX_GEMINI_REFERENCE_FILE_BYTES) throw new Error(`${path} exceeds ${MAX_GEMINI_REFERENCE_FILE_BYTES} bytes.`);
+    totalBytes += fileStat.size;
+    if (totalBytes > MAX_GEMINI_REFERENCE_TOTAL_BYTES) throw new Error(`Reference files exceed ${MAX_GEMINI_REFERENCE_TOTAL_BYTES} bytes in total.`);
+    const mimeType = geminiReferenceMimeType(path);
+    if (!mimeType) throw new Error(`${path} must be a PNG, JPEG, WEBP, or GIF image.`);
+    files.push({ path, mimeType, data: (await readFile(path)).toString("base64"), bytes: fileStat.size });
+  }
+
+  return files;
+}
+
+function geminiReferenceMimeType(path: string): string | undefined {
+  const extension = extname(path).toLowerCase();
+  if (extension === ".png") return "image/png";
+  if (extension === ".jpg" || extension === ".jpeg") return "image/jpeg";
+  if (extension === ".webp") return "image/webp";
+  if (extension === ".gif") return "image/gif";
+  return undefined;
 }
 
 function resolveApiKey(provider: MediaGenerationProviderConfig, env: Record<string, string>): string | undefined {

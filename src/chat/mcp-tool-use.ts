@@ -16,7 +16,7 @@ import { analyzeKnowledgeGraphTool, analyzeMemoriesTool, inspectKnowledgeEntityT
 import { readUrlTool } from "../tools/web-read-tools.js";
 import { addCronScheduleTool, listCronSchedulesTool, removeCronScheduleTool, toggleCronScheduleTool, triggerCronScheduleTool, updateCronScheduleTool } from "../tools/cron-tools.js";
 import { imageGenerateTool, videoGenerateTool } from "../tools/media-generation-tools.js";
-import { clickBrowserPageTool, openBrowserPageTool, resetBrowserSessionTool, screenshotBrowserPageTool, snapshotBrowserPageTool, typeBrowserPageTool, type BrowserActionRisk } from "../tools/browser-tools.js";
+import { clickBrowserPageTool, listBrowserPagesTool, openBrowserPageTool, resetBrowserSessionTool, screenshotBrowserPageTool, snapshotBrowserPageTool, typeBrowserPageTool, type BrowserActionRisk } from "../tools/browser-tools.js";
 import { sendFileTool, sendPhotoTool, type AgentOutboundFileSender } from "../tools/channel-send-tools.js";
 import { hireWorkforceAgent, listWorkforceAgents } from "../agents/registry.js";
 import { assignWorkforceTask, listWorkforceTasks, updateWorkforceTaskStatus, type WorkforceTaskStatus } from "../agents/inbox.js";
@@ -75,6 +75,7 @@ export const INTERNAL_TOOL_NAMES = [
   "internal.read_logs",
   "internal.read_url",
   "internal.browser_open",
+  "internal.browser_list_pages",
   "internal.browser_snapshot",
   "internal.browser_click",
   "internal.browser_type",
@@ -426,11 +427,12 @@ export function buildMcpToolInstructions(config: AppConfig, runtimeContext?: str
     'internal.search_files {"query":"*.log","path":"optional/path","limit":20}',
     'internal.read_logs {"lines":40}',
     'internal.read_url {"url":"https://example.com/mcp-docs","maxBytes":0,"timeoutMs":10000}',
-    'internal.browser_open {"url":"https://example.com/page","width":1280,"height":900,"timeoutMs":15000}',
-    'internal.browser_snapshot {"timeoutMs":15000}',
-    'internal.browser_click {"selector":"button[type=submit]","text":"optional accessible text","role":"button|link|textbox|checkbox|menuitem","index":0}',
-    'internal.browser_type {"selector":"input[name=q]","text":"text to type","clear":true,"submit":false,"sensitive":false}',
-    'internal.browser_screenshot {}',
+    'internal.browser_open {"url":"https://example.com/page","width":1280,"height":900,"pageIndex":0,"timeoutMs":15000}',
+    'internal.browser_list_pages {}',
+    'internal.browser_snapshot {"pageIndex":0,"timeoutMs":15000}',
+    'internal.browser_click {"selector":"button[type=submit]","text":"optional accessible text","role":"button|link|textbox|checkbox|menuitem","index":0,"pageIndex":0}',
+    'internal.browser_type {"selector":"input[name=q]","text":"text to type","clear":true,"submit":false,"sensitive":false,"pageIndex":0}',
+    'internal.browser_screenshot {"pageIndex":0}',
     'internal.browser_reset {}',
     'internal.send_photo {"path":"workspace/or/allowed/image.png","caption":"optional caption","channel":"optional telegram:<chatId>|zalo:<chatId>","fileName":"optional.png","mimeType":"image/png"}',
     'internal.send_file {"path":"workspace/or/allowed/file.pdf","caption":"optional caption","channel":"optional telegram:<chatId>|zalo:<chatId>","fileName":"optional.pdf","mimeType":"application/pdf"}',
@@ -464,7 +466,7 @@ export function buildMcpToolInstructions(config: AppConfig, runtimeContext?: str
     'internal.assign_workforce_task {"agentId":"researcher","title":"Market brief","brief":"Summarize weekly market signals"}',
     'internal.list_workforce_tasks {"agentId":"optional-agent-id","status":"queued|in_progress|done|blocked|canceled"}',
     'internal.update_workforce_task {"id":"task-id","status":"done","result":"optional result or blocker note"}',
-    'internal.image_generate {"prompt":"image prompt","size":"1024x1024","quality":"standard|hd|auto","style":"vivid|natural","count":1,"outputPath":"optional relative workspace path.png"}',
+    'internal.image_generate {"prompt":"image prompt","size":"1024x1024","quality":"standard|hd|auto","style":"vivid|natural","count":1,"referencePaths":["optional/reference.png"],"outputPath":"optional relative workspace path.png"}',
     'internal.video_generate {"prompt":"video prompt","durationSeconds":5,"aspectRatio":"16:9","size":"optional provider size","count":1,"outputPath":"optional relative workspace path.mp4"}',
     'internal.list_memories {}',
     'internal.search_memories {"query":"memory search text"}',
@@ -762,6 +764,10 @@ export function formatToolActivityLabel(request: AgentToolRequest): string {
     return "processes";
   }
 
+  if (request.tool === "internal.browser_list_pages") {
+    return "browser pages";
+  }
+
   if (request.tool === "internal.search_skill_library") {
     return stringArg(args.query) ?? "skill library";
   }
@@ -1008,29 +1014,34 @@ export async function runAgentToolRequest(options: RunAgentToolRequestOptions): 
   if (options.request.tool === "internal.browser_open") {
     const url = stringArg(args.url);
     if (!url) return { ok: false, status: "fail", message: "internal.browser_open requires arguments.url." };
-    const result = await openBrowserPageTool({ config: options.config, paths: options.paths, approver: options.approver, url, width: numberArg(args.width), height: numberArg(args.height), timeoutMs: numberArg(args.timeoutMs) });
+    const result = await openBrowserPageTool({ config: options.config, paths: options.paths, approver: options.approver, url, width: numberArg(args.width), height: numberArg(args.height), pageIndex: zeroBasedNumberArg(args.pageIndex), timeoutMs: numberArg(args.timeoutMs) });
+    return { ok: result.allowed, status: result.allowed ? "pass" : "fail", message: result.reason, result };
+  }
+
+  if (options.request.tool === "internal.browser_list_pages") {
+    const result = await listBrowserPagesTool({ config: options.config, paths: options.paths, approver: options.approver });
     return { ok: result.allowed, status: result.allowed ? "pass" : "fail", message: result.reason, result };
   }
 
   if (options.request.tool === "internal.browser_snapshot") {
-    const result = await snapshotBrowserPageTool({ config: options.config, paths: options.paths, approver: options.approver, timeoutMs: numberArg(args.timeoutMs) });
+    const result = await snapshotBrowserPageTool({ config: options.config, paths: options.paths, approver: options.approver, pageIndex: zeroBasedNumberArg(args.pageIndex), timeoutMs: numberArg(args.timeoutMs) });
     return { ok: result.allowed, status: result.allowed ? "pass" : "fail", message: result.reason, result };
   }
 
   if (options.request.tool === "internal.browser_click") {
-    const result = await clickBrowserPageTool({ config: options.config, paths: options.paths, approver: options.approver, selector: stringArg(args.selector), text: stringArg(args.text), role: browserRoleArg(args.role), index: zeroBasedNumberArg(args.index), risk: browserActionRiskArg(args.risk), reason: stringArg(args.reason), timeoutMs: numberArg(args.timeoutMs) });
+    const result = await clickBrowserPageTool({ config: options.config, paths: options.paths, approver: options.approver, selector: stringArg(args.selector), text: stringArg(args.text), role: browserRoleArg(args.role), index: zeroBasedNumberArg(args.index), pageIndex: zeroBasedNumberArg(args.pageIndex), risk: browserActionRiskArg(args.risk), reason: stringArg(args.reason), timeoutMs: numberArg(args.timeoutMs) });
     return { ok: result.allowed, status: result.allowed ? "pass" : "fail", message: result.reason, result };
   }
 
   if (options.request.tool === "internal.browser_type") {
     const text = stringArg(args.text);
     if (text === undefined) return { ok: false, status: "fail", message: "internal.browser_type requires arguments.text." };
-    const result = await typeBrowserPageTool({ config: options.config, paths: options.paths, approver: options.approver, selector: stringArg(args.selector), text, clear: booleanArg(args.clear), submit: booleanArg(args.submit), sensitive: booleanArg(args.sensitive), reason: stringArg(args.reason), timeoutMs: numberArg(args.timeoutMs) });
+    const result = await typeBrowserPageTool({ config: options.config, paths: options.paths, approver: options.approver, selector: stringArg(args.selector), text, clear: booleanArg(args.clear), submit: booleanArg(args.submit), sensitive: booleanArg(args.sensitive), reason: stringArg(args.reason), pageIndex: zeroBasedNumberArg(args.pageIndex), timeoutMs: numberArg(args.timeoutMs) });
     return { ok: result.allowed, status: result.allowed ? "pass" : "fail", message: result.reason, result: { ...result, ...(booleanArg(args.sensitive) ? { text: "[redacted]" } : {}) } };
   }
 
   if (options.request.tool === "internal.browser_screenshot") {
-    const result = await screenshotBrowserPageTool({ config: options.config, paths: options.paths, approver: options.approver, timeoutMs: numberArg(args.timeoutMs) });
+    const result = await screenshotBrowserPageTool({ config: options.config, paths: options.paths, approver: options.approver, pageIndex: zeroBasedNumberArg(args.pageIndex), timeoutMs: numberArg(args.timeoutMs) });
     return { ok: result.allowed, status: result.allowed ? "pass" : "fail", message: result.reason, result };
   }
 
@@ -1187,7 +1198,9 @@ export async function runAgentToolRequest(options: RunAgentToolRequestOptions): 
   if (options.request.tool === "internal.image_generate") {
     const prompt = stringArg(args.prompt);
     if (!prompt) return { ok: false, status: "fail", message: "internal.image_generate requires arguments.prompt." };
-    const result = await imageGenerateTool({ config: options.config, paths: options.paths, env: await loadEnvFile(options.paths), approver: options.approver, prompt, size: stringArg(args.size), quality: stringArg(args.quality), style: stringArg(args.style), count: numberArg(args.count), outputPath: stringArg(args.outputPath) });
+    const referencePaths = arrayOfStringsArg(args.referencePaths);
+    if (args.referencePaths !== undefined && !referencePaths) return { ok: false, status: "fail", message: "internal.image_generate arguments.referencePaths must be an array of strings." };
+    const result = await imageGenerateTool({ config: options.config, paths: options.paths, env: await loadEnvFile(options.paths), approver: options.approver, prompt, size: stringArg(args.size), quality: stringArg(args.quality), style: stringArg(args.style), count: numberArg(args.count), outputPath: stringArg(args.outputPath), referencePaths });
     return { ok: result.allowed, status: result.allowed ? "pass" : "fail", message: result.reason, result };
   }
 

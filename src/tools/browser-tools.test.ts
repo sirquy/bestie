@@ -5,9 +5,11 @@ import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import test from "node:test";
 
+import type { BrowserContext } from "playwright";
+
 import type { AppConfig } from "../runtime/config.js";
 import type { RuntimePaths } from "../runtime/paths.js";
-import { openBrowserPageTool } from "./browser-tools.js";
+import { listBrowserPagesTool, openBrowserPageTool } from "./browser-tools.js";
 
 test("browser tools reject non-http URLs before launching", async () => {
   const paths = await createTempPaths();
@@ -38,6 +40,41 @@ test("browser open captures localhost screenshot evidence", async (t) => {
     assert.ok(result.screenshotPath?.endsWith(".png"));
     assert.ok(result.elements?.some((element) => element.kind === "button" && element.text === "Continue"));
   } finally {
+    await server.close();
+    await rm(paths.rootDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+  }
+});
+
+test("browser tools attach to a configured loopback CDP browser", async (t) => {
+  const paths = await createTempPaths();
+  let context: BrowserContext | undefined;
+  const server = await createTestServer("<title>Configured browser</title><h1>Attached over CDP</h1>");
+
+  try {
+    const playwright = await import("playwright").catch(() => undefined);
+    if (!playwright) {
+      t.diagnostic("Playwright is not installed.");
+      return;
+    }
+    try {
+      context = await playwright.chromium.launchPersistentContext(resolve(paths.rootDir, "cdp-profile"), {
+        headless: true,
+        args: ["--remote-debugging-port=9223"],
+      });
+    } catch (error) {
+      t.diagnostic(error instanceof Error ? error.message : String(error));
+      return;
+    }
+    const page = context ? await context.newPage() : undefined;
+    if (!page) throw new Error("Expected a browser context for CDP test.");
+    await page.goto(server.url);
+    const config = createConfig();
+    config.internalTools = { browser: { cdpEndpoint: "http://127.0.0.1:9223" } };
+    const result = await listBrowserPagesTool({ config, paths });
+    assert.equal(result.allowed, true);
+    assert.ok(result.pages?.some((entry) => entry.title === "Configured browser"));
+  } finally {
+    await context?.close().catch(() => undefined);
     await server.close();
     await rm(paths.rootDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
   }

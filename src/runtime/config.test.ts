@@ -619,9 +619,9 @@ test("validateConfig accepts optional workspace config", () => {
 });
 
 test("validateConfig accepts optional internal tool policies", () => {
-  const config = validateConfig({ ...validConfig, internalTools: { policies: { "internal.exec": "ask", "internal.write_file": "deny" }, exec: { timeoutMs: 120_000 } } });
+  const config = validateConfig({ ...validConfig, internalTools: { policies: { "internal.exec": "ask", "internal.write_file": "deny" }, exec: { timeoutMs: 120_000 }, browser: { cdpEndpoint: "http://127.0.0.1:9222" } } });
 
-  assert.deepEqual(config.internalTools, { policies: { "internal.exec": "ask", "internal.write_file": "deny" }, exec: { timeoutMs: 120_000 } });
+  assert.deepEqual(config.internalTools, { policies: { "internal.exec": "ask", "internal.write_file": "deny" }, exec: { timeoutMs: 120_000 }, browser: { cdpEndpoint: "http://127.0.0.1:9222" } });
 });
 
 test("validateConfig accepts optional MCP server config", () => {
@@ -871,6 +871,8 @@ test("validateConfig rejects invalid internal tool policies", () => {
   assert.throws(() => validateConfig({ ...validConfig, internalTools: { policies: [] } }), /internalTools.policies must be an object/);
   assert.throws(() => validateConfig({ ...validConfig, internalTools: { policies: { "internal.exec": "sometimes" } } }), /internalTools.policies.internal.exec must be allow, ask, or deny/);
   assert.throws(() => validateConfig({ ...validConfig, internalTools: { exec: { timeoutMs: 0 } } }), /internalTools.exec.timeoutMs must be a positive integer/);
+  assert.throws(() => validateConfig({ ...validConfig, internalTools: { browser: { cdpEndpoint: "http://example.com:9222" } } }), /browser.cdpEndpoint must be an http\(s\) or ws\(s\) loopback URL/);
+  assert.throws(() => validateConfig({ ...validConfig, internalTools: { browser: { cdpEndpoint: "http://token@127.0.0.1:9222" } } }), /browser.cdpEndpoint must be an http\(s\) or ws\(s\) loopback URL/);
 });
 
 test("validateConfig rejects invalid MCP server config", () => {

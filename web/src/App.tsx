@@ -178,6 +178,11 @@ function App({ onLocked }: { onLocked: () => void }): ReactElement {
       .catch(() => setRuntimeStatus({ ok: false, config: { exists: false } }));
   }, []);
 
+  useEffect(() => {
+    if (!runtimeStatus?.ok || !runtimeStatus.config.exists) return;
+    void fetchJson<UpdateSummary>("/api/update").then(setUpdateSummary).catch(() => undefined);
+  }, [runtimeStatus]);
+
   const selectedPanel = useMemo(() => panels.find((panel) => panel.id === activePanel) ?? panels[0], [activePanel]);
 
   function navigateToPanel(panel: PanelDefinition, mode: "push" | "replace" = "push"): void {
@@ -303,7 +308,7 @@ function App({ onLocked }: { onLocked: () => void }): ReactElement {
           </Button>
         ) : <button className="fixed inset-0 z-30 bg-black/35 backdrop-blur-[1px] lg:hidden" aria-label="Đóng thanh bên" type="button" onClick={() => setSidebarCollapsed(true)} />}
 
-        <aside className={cn("no-scrollbar fixed bottom-3 left-3 top-3 z-40 mb-0 overflow-y-auto rounded-[1.25rem] border border-white/10 bg-card/85 shadow-glow ring-1 ring-white/5 backdrop-blur-xl transition-all duration-300 sm:rounded-[1.5rem] lg:bottom-0 lg:left-[max(0px,calc((100vw-92rem)/2))] lg:top-0 lg:z-30 lg:rounded-none lg:border-y-0 lg:border-l-0 lg:shadow-none lg:ring-0", sidebarCollapsed ? "pointer-events-none w-[min(18rem,calc(100vw-1.5rem))] -translate-x-[calc(100%+1rem)] p-3 lg:pointer-events-auto lg:w-[4.75rem] lg:translate-x-0 lg:p-2.5" : "w-[min(18rem,calc(100vw-1.5rem))] translate-x-0 p-3 lg:w-[16rem] lg:p-4")} data-sidebar-state={sidebarCollapsed ? "collapsed" : "expanded"}>
+        <aside className={cn("no-scrollbar fixed bottom-3 left-3 top-3 z-40 mb-0 flex overflow-y-auto rounded-[1.25rem] border border-white/10 bg-card/85 shadow-glow ring-1 ring-white/5 backdrop-blur-xl transition-all duration-300 sm:rounded-[1.5rem] lg:bottom-0 lg:left-[max(0px,calc((100vw-92rem)/2))] lg:top-0 lg:z-30 lg:rounded-none lg:border-y-0 lg:border-l-0 lg:shadow-none lg:ring-0", sidebarCollapsed ? "pointer-events-none w-[min(18rem,calc(100vw-1.5rem))] -translate-x-[calc(100%+1rem)] flex-col p-3 lg:pointer-events-auto lg:w-[4.75rem] lg:translate-x-0 lg:p-2.5" : "w-[min(18rem,calc(100vw-1.5rem))] translate-x-0 flex-col p-3 lg:w-[16rem] lg:p-4")} data-sidebar-state={sidebarCollapsed ? "collapsed" : "expanded"}>
           <div className={cn("flex items-center gap-2.5", sidebarCollapsed ? "mb-0 justify-between lg:mb-4 lg:flex-col lg:justify-center" : "mb-4 justify-between sm:mb-5")}>
             <div className={cn("flex min-w-0 items-center gap-2.5", sidebarCollapsed ? "lg:justify-center" : "")}>
               <div className="flex size-10 items-center justify-center overflow-hidden rounded-2xl bg-white shadow-lg shadow-primary/20 ring-1 ring-white/20">
@@ -355,7 +360,7 @@ function App({ onLocked }: { onLocked: () => void }): ReactElement {
               );
             })}
           </nav>
-          <div className={cn("mt-4 border-t border-white/10 pt-3", sidebarCollapsed ? "hidden lg:block" : "block")}>
+          <div className={cn("mt-auto border-t border-white/10 pt-3", sidebarCollapsed ? "hidden lg:block" : "block")}>
             <Button
               aria-label="Khóa Bestie"
               className={cn("h-9 w-full justify-start rounded-xl text-muted-foreground hover:bg-secondary/70 hover:text-foreground", sidebarCollapsed ? "lg:justify-center lg:px-0" : "")}
@@ -367,6 +372,7 @@ function App({ onLocked }: { onLocked: () => void }): ReactElement {
               <LockKeyhole />
               <span className={cn(sidebarCollapsed ? "lg:sr-only" : "")}>Khóa Bestie</span>
             </Button>
+            <p className={cn("mt-3 px-2 text-xs text-muted-foreground", sidebarCollapsed ? "hidden lg:block lg:px-0 lg:text-center" : "block")} title={updateSummary?.currentVersion ? `Bestie Agent v${updateSummary.currentVersion}` : "Bestie Agent"}>v{updateSummary?.currentVersion ?? "…"}</p>
           </div>
         </aside>
 

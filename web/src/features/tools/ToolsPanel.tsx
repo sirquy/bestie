@@ -26,11 +26,13 @@ export function ToolsPanel({ data, loading, onData, onLoading }: ToolsPanelProps
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [externalPathsDraft, setExternalPathsDraft] = useState("");
   const [execTimeoutDraft, setExecTimeoutDraft] = useState("");
+  const [browserCdpEndpointDraft, setBrowserCdpEndpointDraft] = useState("");
 
   useEffect(() => {
     if (!data) return;
     setExternalPathsDraft(data.workspace.externalPaths.join("\n"));
     setExecTimeoutDraft(data.exec.timeoutMs === undefined ? "" : String(data.exec.timeoutMs));
+    setBrowserCdpEndpointDraft(data.browser.cdpEndpoint ?? "");
   }, [data]);
 
   async function runAction(action: () => Promise<ToolsSummary>, success?: string): Promise<void> {
@@ -63,6 +65,7 @@ export function ToolsPanel({ data, loading, onData, onLoading }: ToolsPanelProps
       body: JSON.stringify({
         externalPaths: externalPathsDraft.split("\n").map((path) => path.trim()).filter(Boolean),
         ...(execTimeoutMs === undefined ? {} : { execTimeoutMs }),
+        browserCdpEndpoint: browserCdpEndpointDraft.trim(),
       }),
     }), "Đã lưu cấu hình công cụ.");
   }
@@ -120,11 +123,13 @@ export function ToolsPanel({ data, loading, onData, onLoading }: ToolsPanelProps
           </Card>
 
           <Card className="border-white/10 bg-background/35">
-            <CardHeader><CardTitle>Cấu hình truy cập</CardTitle><CardDescription>Cho phép thêm thư mục ngoài workspace và chỉnh thời gian chờ chạy lệnh.</CardDescription></CardHeader>
+            <CardHeader><CardTitle>Cấu hình truy cập</CardTitle><CardDescription>Cho phép thêm thư mục ngoài workspace, chỉnh thời gian chờ chạy lệnh hoặc kết nối browser qua CDP.</CardDescription></CardHeader>
             <CardContent>
               <form className="grid gap-3" onSubmit={(event) => void saveToolsConfig(event)}>
                 <Textarea value={externalPathsDraft} onChange={(event) => setExternalPathsDraft(event.target.value)} rows={5} placeholder="C:\\Users\\you\\Projects\nD:\\Data" />
                 <Input value={execTimeoutDraft} onChange={(event) => setExecTimeoutDraft(event.target.value)} inputMode="numeric" placeholder="300000" />
+                <Input value={browserCdpEndpointDraft} onChange={(event) => setBrowserCdpEndpointDraft(event.target.value)} placeholder="http://127.0.0.1:9222" />
+                <p className="text-xs text-muted-foreground">CDP chỉ chấp nhận `localhost`, `127.0.0.1` hoặc `::1`. Để trống để Bestie dùng browser cô lập thay vì tab đang mở.</p>
                 <Button className="w-fit" type="submit" disabled={loading}><TerminalSquare /> Lưu cấu hình</Button>
               </form>
             </CardContent>

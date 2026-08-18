@@ -17,6 +17,9 @@ export interface ToolsSummary {
   exec: {
     timeoutMs?: number;
   };
+  browser: {
+    cdpEndpoint?: string;
+  };
 }
 
 export interface ToolPolicyEntry {

@@ -366,6 +366,7 @@ async function handleRequestAsync(request: IncomingMessage, response: ServerResp
     sendJson(response, 200, await updateUiToolsConfig({
       ...(Array.isArray(body.externalPaths) && body.externalPaths.every((path) => typeof path === "string") ? { externalPaths: body.externalPaths } : {}),
       ...(typeof body.execTimeoutMs === "number" ? { execTimeoutMs: body.execTimeoutMs } : {}),
+      ...(typeof body.browserCdpEndpoint === "string" ? { browserCdpEndpoint: body.browserCdpEndpoint } : {}),
     }));
     return;
   }
@@ -942,12 +943,12 @@ async function handleRequestAsync(request: IncomingMessage, response: ServerResp
   }
 
   if (method === "GET" && url.pathname === "/api/knowledge-graph") {
-    sendJson(response, 200, await getUiKnowledgeGraphSummary());
+    sendJson(response, 200, await getUiKnowledgeGraphSummary(undefined, optionalPositiveQueryInteger(url.searchParams.get("limit"))));
     return;
   }
 
   if (method === "GET" && url.pathname === "/api/knowledge-graph/search") {
-    sendJson(response, 200, await searchUiKnowledgeGraph(url.searchParams.get("q") ?? ""));
+    sendJson(response, 200, await searchUiKnowledgeGraph(url.searchParams.get("q") ?? "", undefined, optionalPositiveQueryInteger(url.searchParams.get("limit"))));
     return;
   }
 
@@ -973,6 +974,7 @@ async function handleRequestAsync(request: IncomingMessage, response: ServerResp
       ...(body.scope === "core" || body.scope === "project" || body.scope === "session" ? { scope: body.scope } : {}),
       ...(body.sensitivity === "normal" || body.sensitivity === "sensitive" ? { sensitivity: body.sensitivity } : {}),
       ...(typeof body.reason === "string" ? { reason: body.reason } : {}),
+      ...(typeof body.limit === "number" ? { limit: body.limit } : {}),
     }));
     return;
   }
@@ -1111,6 +1113,12 @@ function readJsonBody(request: IncomingMessage): Promise<unknown> {
   });
 }
 
+function optionalPositiveQueryInteger(value: string | null): number | undefined {
+  if (!value) return undefined;
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : undefined;
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -1188,8 +1196,8 @@ function isMemoryWritePolicy(value: unknown): value is "allow" | "ask" | "deny" 
   return value === "allow" || value === "ask" || value === "deny";
 }
 
-function isUiKnowledgeGraphAction(value: unknown): value is "merge_entity" | "forget_entity" | "forget_relation" | "update_relation" | "approve_pending" | "reject_pending" {
-  return value === "merge_entity" || value === "forget_entity" || value === "forget_relation" || value === "update_relation" || value === "approve_pending" || value === "reject_pending";
+function isUiKnowledgeGraphAction(value: unknown): value is "merge_entity" | "forget_entity" | "forget_relation" | "update_relation" | "approve_pending" | "reject_pending" | "sanitize_pending" {
+  return value === "merge_entity" || value === "forget_entity" || value === "forget_relation" || value === "update_relation" || value === "approve_pending" || value === "reject_pending" || value === "sanitize_pending";
 }
 
 function sendJson(response: ServerResponse, statusCode: number, body: unknown): void {

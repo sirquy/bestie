@@ -12,6 +12,12 @@ export interface KnowledgeGraphSummary {
     relations: number;
     pending: number;
   };
+  display: {
+    limit: number;
+    entities: KnowledgeGraphDisplayCount;
+    relations: KnowledgeGraphDisplayCount;
+    pending: KnowledgeGraphDisplayCount;
+  };
   entities: KnowledgeEntity[];
   relations: KnowledgeRelation[];
   pending: PendingKnowledgeItem[];
@@ -23,6 +29,12 @@ export interface KnowledgeGraphSummary {
   actionStatus?: "executed" | "queued";
   message?: string;
   approvalId?: number;
+}
+
+export interface KnowledgeGraphDisplayCount {
+  shown: number;
+  total?: number;
+  truncated: boolean;
 }
 
 export interface KnowledgeEntity {
