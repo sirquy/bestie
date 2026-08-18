@@ -8,7 +8,7 @@ import { loadConfig } from "../../runtime/config.js";
 import { getRuntimePaths, type RuntimePaths } from "../../runtime/paths.js";
 import type { ActionPermissionRequest, ActionPermissionResult } from "../../safety/permission-policy.js";
 
-export const DEFAULT_UI_KNOWLEDGE_GRAPH_LIMIT = 250;
+export const DEFAULT_UI_KNOWLEDGE_GRAPH_LIMIT = 1000;
 export const MAX_UI_KNOWLEDGE_GRAPH_LIMIT = 500;
 
 const KNOWLEDGE_GRAPH_ANALYSIS_LIMIT = 10_000;
