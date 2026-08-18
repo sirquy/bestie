@@ -1,5 +1,6 @@
 import { access, readFile, writeFile } from "node:fs/promises";
 
+import { hasConfiguredOwner, type OwnerUserIdConfig } from "../channels/owner-policy.js";
 import { InvalidConfigError, MissingConfigError } from "./errors.js";
 import { getLocalTimeZone, isValidTimeZone } from "./locale.js";
 import { getRuntimePaths, type RuntimePaths } from "./paths.js";
@@ -148,7 +149,7 @@ export interface AppConfig {
     telegram?: {
       enabled: boolean;
       botTokenEnv: string;
-      ownerUserId: string;
+      ownerUserId: OwnerUserIdConfig;
       voiceReplyPolicy?: "deny" | "voice-input-only";
       voiceReplyMaxChars?: number;
       voiceReplyCooldownMs?: number;
@@ -168,7 +169,7 @@ export interface AppConfig {
     zalo?: {
       enabled: boolean;
       botTokenEnv: string;
-      ownerUserId: string;
+      ownerUserId: OwnerUserIdConfig;
       pollingTimeoutSeconds?: number;
       attachments?: {
         downloadPolicy?: "allow" | "deny";
@@ -186,7 +187,7 @@ export interface AppConfig {
     zaloPersonal?: {
       enabled: boolean;
       sessionEnv: string;
-      ownerUserId: string;
+      ownerUserId: OwnerUserIdConfig;
       reconnect?: {
         initialDelayMs?: number;
         maxDelayMs?: number;
@@ -1082,8 +1083,8 @@ function optionalZaloPersonalChannel(value: unknown): NonNullable<NonNullable<Ap
   }
 
   const enabled = zaloPersonal.enabled;
-  const ownerUserId = requireOptionalString(zaloPersonal.ownerUserId, "channels.zaloPersonal.ownerUserId");
-  if (enabled && !ownerUserId.trim()) {
+  const ownerUserId = requireOwnerUserId(zaloPersonal.ownerUserId, "channels.zaloPersonal.ownerUserId");
+  if (enabled && !hasConfiguredOwner(ownerUserId)) {
     throw new InvalidConfigError("channels.zaloPersonal.ownerUserId must be set when Zalo Personal is enabled.");
   }
 
@@ -1111,7 +1112,7 @@ function optionalZaloChannel(value: unknown): NonNullable<NonNullable<AppConfig[
   return {
     enabled,
     botTokenEnv: requireString(zalo.botTokenEnv, "channels.zalo.botTokenEnv"),
-    ownerUserId: requireOptionalString(zalo.ownerUserId, "channels.zalo.ownerUserId"),
+    ownerUserId: requireOwnerUserId(zalo.ownerUserId, "channels.zalo.ownerUserId"),
     ...(zalo.pollingTimeoutSeconds === undefined ? {} : { pollingTimeoutSeconds: optionalPositiveInteger(zalo.pollingTimeoutSeconds, "channels.zalo.pollingTimeoutSeconds") }),
     ...(zalo.attachments === undefined ? {} : { attachments: optionalChannelAttachments(zalo.attachments, "channels.zalo.attachments") }),
   };
@@ -1137,7 +1138,7 @@ function optionalTelegramChannel(value: unknown): NonNullable<NonNullable<AppCon
   return {
     enabled,
     botTokenEnv: requireString(telegram.botTokenEnv, "channels.telegram.botTokenEnv"),
-    ownerUserId: requireOptionalString(telegram.ownerUserId, "channels.telegram.ownerUserId"),
+    ownerUserId: requireOwnerUserId(telegram.ownerUserId, "channels.telegram.ownerUserId"),
     ...(voiceReplyPolicy === undefined ? {} : { voiceReplyPolicy }),
     ...(telegram.voiceReplyMaxChars === undefined ? {} : { voiceReplyMaxChars: optionalPositiveInteger(telegram.voiceReplyMaxChars, "channels.telegram.voiceReplyMaxChars") }),
     ...(telegram.voiceReplyCooldownMs === undefined ? {} : { voiceReplyCooldownMs: optionalNonNegativeInteger(telegram.voiceReplyCooldownMs, "channels.telegram.voiceReplyCooldownMs") }),
@@ -1263,6 +1264,27 @@ function requireOptionalString(value: unknown, fieldName: string): string {
   }
 
   return value;
+}
+
+function requireOwnerUserId(value: unknown, fieldName: string): OwnerUserIdConfig {
+  if (typeof value === "string") {
+    const ownerUserId = value.trim();
+    if (ownerUserId === "*") {
+      throw new InvalidConfigError(`${fieldName} may use "*" only as the single array value ["*"].`);
+    }
+    return ownerUserId;
+  }
+
+  if (!Array.isArray(value) || value.length === 0 || value.some((ownerUserId) => typeof ownerUserId !== "string" || ownerUserId.trim().length === 0)) {
+    throw new InvalidConfigError(`${fieldName} must be a string or a non-empty array of non-empty strings.`);
+  }
+
+  const ownerUserIds = value.map((ownerUserId) => ownerUserId.trim());
+  if (ownerUserIds.includes("*") && (ownerUserIds.length !== 1 || ownerUserIds[0] !== "*")) {
+    throw new InvalidConfigError(`${fieldName} may use "*" only as the single array value ["*"].`);
+  }
+
+  return ownerUserIds;
 }
 
 function requireBoolean(value: unknown, fieldName: string): boolean {

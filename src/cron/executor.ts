@@ -3,6 +3,7 @@ import type { RuntimePaths } from "../runtime/paths.js";
 import { SqliteMemoryStore, type CronSchedule } from "../memory/sqlite-store.js";
 import { splitTelegramMessageText, TelegramHttpClient } from "../channels/telegram.js";
 import { splitZaloMessageText, ZaloHttpClient } from "../channels/zalo.js";
+import { configuredOwnerIds } from "../channels/owner-policy.js";
 import { parseCronReportDestination } from "./channel-commands.js";
 import { loadEnvFile } from "../runtime/env.js";
 import { appendLog } from "../runtime/logger.js";
@@ -223,19 +224,23 @@ async function notifyConfiguredAlertChannels(config: AppConfig, paths: RuntimePa
   const sends: Promise<void>[] = [];
 
   const telegram = config.channels?.telegram;
-  if (telegram?.enabled && telegram.ownerUserId.trim()) {
+  if (telegram?.enabled) {
     const token = process.env[telegram.botTokenEnv] ?? envValues[telegram.botTokenEnv];
-    const chatId = Number(telegram.ownerUserId);
-    if (token && Number.isSafeInteger(chatId)) {
-      sends.push(new TelegramHttpClient(token).sendMessage(chatId, notification.message).then(() => undefined));
+    for (const ownerUserId of configuredOwnerIds(telegram.ownerUserId)) {
+      const chatId = Number(ownerUserId);
+      if (token && Number.isSafeInteger(chatId)) {
+        sends.push(new TelegramHttpClient(token).sendMessage(chatId, notification.message).then(() => undefined));
+      }
     }
   }
 
   const zalo = config.channels?.zalo;
-  if (zalo?.enabled && zalo.ownerUserId.trim()) {
+  if (zalo?.enabled) {
     const token = process.env[zalo.botTokenEnv] ?? envValues[zalo.botTokenEnv];
     if (token) {
-      sends.push(new ZaloHttpClient(token).sendMessage(zalo.ownerUserId, notification.message).then(() => undefined));
+      for (const ownerUserId of configuredOwnerIds(zalo.ownerUserId)) {
+        sends.push(new ZaloHttpClient(token).sendMessage(ownerUserId, notification.message).then(() => undefined));
+      }
     }
   }
 
@@ -280,24 +285,28 @@ async function notifyConfiguredChannels(config: AppConfig, paths: RuntimePaths, 
   }
 
   const telegram = config.channels?.telegram;
-  if (telegram?.enabled && telegram.ownerUserId.trim()) {
+  if (telegram?.enabled) {
     const token = process.env[telegram.botTokenEnv] ?? envValues[telegram.botTokenEnv];
-    const chatId = Number(telegram.ownerUserId);
-    if (token && Number.isSafeInteger(chatId)) {
-      sends.push(sendTelegramCronReport(new TelegramHttpClient(token), chatId, message));
-    } else if (token) {
-      await appendLog(
-        { event: "cron_notification_skipped", detail: { channel: "telegram", reason: "numeric_chat_id_required", scheduleId: notification.job.id, ownerUserId: telegram.ownerUserId } },
-        { paths },
-      );
+    for (const ownerUserId of configuredOwnerIds(telegram.ownerUserId)) {
+      const chatId = Number(ownerUserId);
+      if (token && Number.isSafeInteger(chatId)) {
+        sends.push(sendTelegramCronReport(new TelegramHttpClient(token), chatId, message));
+      } else if (token) {
+        await appendLog(
+          { event: "cron_notification_skipped", detail: { channel: "telegram", reason: "numeric_chat_id_required", scheduleId: notification.job.id, ownerUserId } },
+          { paths },
+        );
+      }
     }
   }
 
   const zalo = config.channels?.zalo;
-  if (zalo?.enabled && zalo.ownerUserId.trim()) {
+  if (zalo?.enabled) {
     const token = process.env[zalo.botTokenEnv] ?? envValues[zalo.botTokenEnv];
     if (token) {
-      sends.push(sendZaloCronReport(new ZaloHttpClient(token), zalo.ownerUserId, message));
+      for (const ownerUserId of configuredOwnerIds(zalo.ownerUserId)) {
+        sends.push(sendZaloCronReport(new ZaloHttpClient(token), ownerUserId, message));
+      }
     }
   }
 

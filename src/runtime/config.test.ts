@@ -779,7 +779,7 @@ test("validateConfig rejects invalid transcription provider config", () => {
 test("validateConfig rejects invalid speech provider config", () => {
   assert.throws(
     () => validateConfig({ ...validConfig, speech: { provider: "local", baseUrl: "http://localhost:20128/v1", model: "google-tts/vi", apiKeyEnv: "BESTIE_TTS_API_KEY" } }),
-    /speech.provider must be openai-compatible, elevenlabs, or voicebox/,
+    /speech.provider must be openai-compatible, elevenlabs, voicebox, or local-command/,
   );
   assert.throws(
     () => validateConfig({ ...validConfig, speech: { provider: "elevenlabs", apiKeyEnv: "ELEVENLABS_API_KEY", voiceId: "" } }),
@@ -925,6 +925,23 @@ test("validateConfig accepts Zalo Personal media settings and requires a control
     () => validateConfig({ ...validConfig, channels: { zaloPersonal: { enabled: true, sessionEnv: "BESTIE_ZALO_PERSONAL_SESSION", ownerUserId: "" } } }),
     /ownerUserId must be set/,
   );
+});
+
+test("validateConfig accepts multiple channel owners and a wildcard", () => {
+  const config = validateConfig({
+    ...validConfig,
+    channels: {
+      telegram: { enabled: true, botTokenEnv: "BESTIE_TELEGRAM_BOT_TOKEN", ownerUserId: [" owner-1 ", "owner-2"] },
+      zalo: { enabled: true, botTokenEnv: "BESTIE_ZALO_BOT_TOKEN", ownerUserId: ["*"] },
+      zaloPersonal: { enabled: true, sessionEnv: "BESTIE_ZALO_PERSONAL_SESSION", ownerUserId: ["controller-1", "controller-2"] },
+    },
+  });
+
+  assert.deepEqual(config.channels?.telegram?.ownerUserId, ["owner-1", "owner-2"]);
+  assert.deepEqual(config.channels?.zalo?.ownerUserId, ["*"]);
+  assert.deepEqual(config.channels?.zaloPersonal?.ownerUserId, ["controller-1", "controller-2"]);
+  assert.throws(() => validateConfig({ ...validConfig, channels: { telegram: { enabled: true, botTokenEnv: "TOKEN", ownerUserId: [] } } }), /non-empty array/);
+  assert.throws(() => validateConfig({ ...validConfig, channels: { telegram: { enabled: true, botTokenEnv: "TOKEN", ownerUserId: ["*", "owner-1"] } } }), /single array value/);
 });
 
 test("validateConfig rejects invalid MCP server config", () => {

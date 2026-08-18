@@ -253,6 +253,30 @@ Phase Now config started with non-secret `agent` and `llm` fields. The current l
 }
 ```
 
+### Channel owners
+
+Every channel `ownerUserId` accepts one ID (the existing format) or an array
+of IDs. Authorization uses exact matches only. For example:
+
+```json
+{
+  "channels": {
+    "telegram": {
+      "enabled": true,
+      "botTokenEnv": "BESTIE_TELEGRAM_BOT_TOKEN",
+      "ownerUserId": ["userid1", "userid2"]
+    }
+  }
+}
+```
+
+Use `ownerUserId: ["*"]` only when intentionally allowing every sender on
+that channel. It is deliberately the only wildcard form; mixing `"*"` with
+specific IDs is invalid. Wildcard access can expose local tools and memories
+to anyone who can message the channel, so use it only with conservative tool
+permissions. Each sender still has separate conversation history, summaries,
+memory approvals, and pending actions.
+
 For offline Piper text-to-speech, use the `local-command` speech provider. Bestie invokes the command directly without a shell, writes a temporary WAV file through `{outputPath}`, then deletes it after reading the generated audio. `{modelPath}` resolves relative to the Bestie root when it is not absolute.
 
 ```json

@@ -6,6 +6,7 @@ import type { BotCommand, InlineKeyboardMarkup, MaybeInaccessibleMessage, UserFr
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { basename, extname, join, resolve } from "node:path";
 
+import { matchesOwnerId, type OwnerUserIdConfig } from "./owner-policy.js";
 import { loadSystemPrompt } from "../character/prompt-loader.js";
 import { buildChatMessages, getRecentMessageLimit } from "../chat/message-builder.js";
 import {
@@ -96,7 +97,7 @@ type TelegramMessageDecision =
   | { kind: "ignored" }
   | { kind: "callback" }
   | { kind: "unsupported-attachment"; chatId: number; message: NonNullable<TelegramUpdate["message"]> }
-  | { kind: "process"; chatId: number; ownerUserId: string; incoming: ChannelIncomingMessage<number, number, NonNullable<TelegramUpdate["message"]>>; attachment: TelegramAttachmentSummary | undefined; text: string };
+  | { kind: "process"; chatId: number; userId: string; incoming: ChannelIncomingMessage<number, number, NonNullable<TelegramUpdate["message"]>>; attachment: TelegramAttachmentSummary | undefined; text: string };
 
 type TelegramAttachmentPipelineInput = { localPath: string; bytes: Uint8Array };
 
@@ -463,7 +464,7 @@ export async function handleTelegramUpdate(update: TelegramUpdate, options: Tele
     return "replied";
   }
 
-  const { chatId, ownerUserId } = decision;
+  const { chatId, userId } = decision;
 
   await sendTelegramChatActionBestEffort(options.client, chatId, "typing");
 
@@ -477,7 +478,7 @@ export async function handleTelegramUpdate(update: TelegramUpdate, options: Tele
     return "replied";
   }
 
-  if (!attachment && await handleTelegramSlashCommand(text, chatId, options)) {
+  if (!attachment && await handleTelegramSlashCommand(text, chatId, userId, options)) {
     return "replied";
   }
 
@@ -501,9 +502,9 @@ export async function handleTelegramUpdate(update: TelegramUpdate, options: Tele
     const systemPrompt = await loadSystemPrompt(options.paths);
     const memories = await loadRelevantMemories(options.paths, { query: userInput });
     const recentMessageLimit = getRecentMessageLimit(options.config);
-    const recentTurns = await loadRecentTelegramTurns(options.paths, ownerUserId, recentMessageLimit);
+    const recentTurns = await loadRecentTelegramTurns(options.paths, userId, recentMessageLimit);
     const knowledgeGraph = await loadRelevantKnowledgeGraph(options.paths, userInput);
-    const conversationSummary = await loadConversationSummaryContext(options.paths, "telegram", ownerUserId);
+    const conversationSummary = await loadConversationSummaryContext(options.paths, "telegram", userId);
     const messages = buildChatMessages(buildMcpToolSystemPrompt(systemPrompt, options.config, buildTelegramRuntimeToolContext(decision.incoming)), recentTurns, userInput, memories, { memoryRetrievalPolicy: options.config.memory?.retrievalPolicy ?? "full", knowledgeGraph, conversationSummary, recentMessageLimit });
     if (savedAttachment?.visionImage) {
       attachTelegramVisionImage(messages, userInput, savedAttachment.visionImage.dataUrl);
@@ -528,11 +529,11 @@ export async function handleTelegramUpdate(update: TelegramUpdate, options: Tele
       chatCompletion,
       toolRunner: async (toolOptions) => {
         const result = await mcpToolRunner(toolOptions);
-        await sendTelegramMemoryApprovalIfNeeded(options.client, chatId, options.paths, ownerUserId, toolOptions.request.tool, result);
-        await sendTelegramKnowledgeApprovalIfNeeded(options.client, chatId, options.paths, ownerUserId, toolOptions.request.tool, result);
+        await sendTelegramMemoryApprovalIfNeeded(options.client, chatId, options.paths, userId, toolOptions.request.tool, result);
+        await sendTelegramKnowledgeApprovalIfNeeded(options.client, chatId, options.paths, userId, toolOptions.request.tool, result);
         return result;
       },
-      approver: createTelegramPermissionApprover(options.client, chatId, options.paths),
+      approver: createTelegramPermissionApprover(options.client, chatId, userId, options.paths),
       policy: TELEGRAM_PERMISSION_POLICY,
       streamFinalResponse: true,
       onToolActivity: handleToolActivity,
@@ -551,24 +552,24 @@ export async function handleTelegramUpdate(update: TelegramUpdate, options: Tele
       speechSynthesizer: options.speechSynthesizer,
       speechVoiceConverter: options.speechVoiceConverter,
     });
-    await persistTelegramConversationTurn(options.paths, ownerUserId, userInput, assistantText);
-    await runTelegramConversationSummaryPass({ config: options.config, paths: options.paths, apiKey, channel: "telegram", userId: ownerUserId, chatCompletion });
+    await persistTelegramConversationTurn(options.paths, userId, userInput, assistantText);
+    await runTelegramConversationSummaryPass({ config: options.config, paths: options.paths, apiKey, channel: "telegram", userId, chatCompletion });
     const memoryReasoning = await runTelegramMemoryReasoningPass({
       config: options.config,
       paths: options.paths,
       apiKey,
-      turn: { channel: "telegram", userId: ownerUserId, userInput, assistantText },
+      turn: { channel: "telegram", userId, userInput, assistantText },
       chatCompletion,
     });
     const knowledgeReasoning = await runTelegramKnowledgeReasoningPass({
       config: options.config,
       paths: options.paths,
       apiKey,
-      turn: { channel: "telegram", userId: ownerUserId, userInput, assistantText },
+      turn: { channel: "telegram", userId, userInput, assistantText },
       chatCompletion,
     });
-    await sendTelegramMemoryReasoningApprovalsIfNeeded(options.client, chatId, options.paths, ownerUserId, memoryReasoning);
-    await sendTelegramKnowledgeReasoningApprovalsIfNeeded(options.client, chatId, options.paths, ownerUserId, knowledgeReasoning);
+    await sendTelegramMemoryReasoningApprovalsIfNeeded(options.client, chatId, options.paths, userId, memoryReasoning);
+    await sendTelegramKnowledgeReasoningApprovalsIfNeeded(options.client, chatId, options.paths, userId, knowledgeReasoning);
     await appendLog({ event: "telegram_chat_success", detail: { model: options.config.llm.primary } }, { paths: options.paths });
     return "replied";
   } catch (error) {
@@ -588,7 +589,7 @@ export async function handleTelegramUpdate(update: TelegramUpdate, options: Tele
 
 function getTelegramMessageDecision(options: {
   enabled: boolean | undefined;
-  ownerUserId: string | undefined;
+  ownerUserId: OwnerUserIdConfig | undefined;
   callbackQuery: TelegramUpdate["callback_query"];
   message: TelegramUpdate["message"];
   incoming: ChannelIncomingMessage<number, number, NonNullable<TelegramUpdate["message"]>> | undefined;
@@ -607,8 +608,7 @@ function getTelegramMessageDecision(options: {
     return { kind: "ignored" };
   }
 
-  const ownerUserId = normalizeTelegramOwner(options.ownerUserId);
-  if (!matchesTelegramOwner(ownerUserId, options.incoming.senderId, options.incoming.senderUsername)) {
+  if (!matchesTelegramOwner(options.ownerUserId, options.incoming.senderId, options.incoming.senderUsername)) {
     return { kind: "ignored" };
   }
 
@@ -620,7 +620,7 @@ function getTelegramMessageDecision(options: {
     return { kind: "ignored" };
   }
 
-  return { kind: "process", chatId: options.incoming.chatId, ownerUserId, incoming: options.incoming, attachment: options.attachment, text: options.text };
+  return { kind: "process", chatId: options.incoming.chatId, userId: options.incoming.senderId, incoming: options.incoming, attachment: options.attachment, text: options.text };
 }
 
 export function mapTelegramIncomingMessage(message: NonNullable<TelegramUpdate["message"]>): ChannelIncomingMessage<number, number, NonNullable<TelegramUpdate["message"]>> {
@@ -635,19 +635,12 @@ export function mapTelegramIncomingMessage(message: NonNullable<TelegramUpdate["
   };
 }
 
-function matchesTelegramOwner(owner: string, senderId: string, senderUsername: string | undefined): boolean {
-  if (!owner) {
-    return false;
-  }
-
-  if (senderId === owner) {
-    return true;
-  }
-
-  return Boolean(senderUsername && normalizeTelegramOwner(senderUsername) === owner);
+function matchesTelegramOwner(ownerUserId: OwnerUserIdConfig | undefined, senderId: string, senderUsername: string | undefined): boolean {
+  const owners = typeof ownerUserId === "string" ? normalizeTelegramOwner(ownerUserId) : ownerUserId?.map(normalizeTelegramOwner);
+  return matchesOwnerId(owners, [senderId, ...(senderUsername ? [normalizeTelegramOwner(senderUsername)] : [])]);
 }
 
-function normalizeTelegramOwner(value: string | undefined): string {
+function normalizeTelegramOwner(value: string): string {
   return value?.trim().replace(/^@/, "").toLowerCase() ?? "";
 }
 
@@ -893,7 +886,7 @@ async function handleTelegramCallbackQuery(update: TelegramUpdate, options: Tele
     return "ignored";
   }
 
-  if (!matchesTelegramOwner(normalizeTelegramOwner(telegramConfig.ownerUserId), String(callbackQuery.from.id), callbackQuery.from.username)) {
+  if (!matchesTelegramOwner(telegramConfig.ownerUserId, String(callbackQuery.from.id), callbackQuery.from.username)) {
     await appendLog({ event: "telegram_approval_callback_ignored", detail: { reason: "non_owner", fromId: callbackQuery.from.id, fromUsername: callbackQuery.from.username } }, { paths: options.paths });
     await options.client.answerCallbackQuery?.(callbackQuery.id, "Only the configured owner can approve this action.");
     return "ignored";
@@ -907,6 +900,11 @@ async function handleTelegramCallbackQuery(update: TelegramUpdate, options: Tele
 
   const store = await SqliteMemoryStore.open(options.paths);
   try {
+    const pendingApproval = store.getPendingActionApprovalById(decision.id);
+    if (pendingApproval?.userId && pendingApproval.userId !== String(callbackQuery.from.id)) {
+      await options.client.answerCallbackQuery?.(callbackQuery.id, "Only the owner who requested this action can decide it.");
+      return "ignored";
+    }
     const approval = decision.decision === "approve" ? store.approvePendingActionApproval(decision.id) : store.denyPendingActionApproval(decision.id);
 
     if (!approval) {
@@ -963,7 +961,7 @@ function getCallbackMessageLocation(message: MaybeInaccessibleMessage | undefine
   return { chatId: message.chat.id, messageId: message.message_id };
 }
 
-function createTelegramPermissionApprover(client: TelegramClient, chatId: number, paths: RuntimePaths): PermissionApprover {
+function createTelegramPermissionApprover(client: TelegramClient, chatId: number, userId: string, paths: RuntimePaths): PermissionApprover {
   return async (request: ActionPermissionRequest, proposed: ActionPermissionResult) => {
     const store = await SqliteMemoryStore.open(paths);
     let approvalId: number;
@@ -971,6 +969,7 @@ function createTelegramPermissionApprover(client: TelegramClient, chatId: number
     try {
       approvalId = store.addPendingActionApproval({
         channel: "telegram",
+        userId,
         category: request.category,
         action: request.action,
         target: request.target,
@@ -1486,7 +1485,7 @@ function summarizeTelegramAttachmentParse(attachment: SavedTelegramAttachment): 
   };
 }
 
-async function handleTelegramSlashCommand(text: string, chatId: number, options: TelegramUpdateHandlerOptions): Promise<boolean> {
+async function handleTelegramSlashCommand(text: string, chatId: number, userId: string, options: TelegramUpdateHandlerOptions): Promise<boolean> {
   if (await handleCronChannelCommand({ text, paths: options.paths, channel: "telegram", userId: String(chatId), sendMessage: (message) => options.client.sendMessage(chatId, message).then(() => undefined) })) {
     return true;
   }
@@ -1495,7 +1494,7 @@ async function handleTelegramSlashCommand(text: string, chatId: number, options:
     const store = await SqliteMemoryStore.open(options.paths);
 
     try {
-      const approvals = store.listPendingActionApprovals("telegram", undefined, 5);
+      const approvals = store.listPendingActionApprovals("telegram", userId, 5);
 
       if (approvals.length === 0) {
         await options.client.sendMessage(chatId, "No pending action approvals.");
@@ -1514,6 +1513,11 @@ async function handleTelegramSlashCommand(text: string, chatId: number, options:
     const store = await SqliteMemoryStore.open(options.paths);
 
     try {
+      const pendingApproval = store.getPendingActionApprovalById(approvalDecision.id);
+      if (pendingApproval?.userId && pendingApproval.userId !== userId) {
+        await options.client.sendMessage(chatId, `Approval request ${approvalDecision.id} belongs to another owner.`);
+        return true;
+      }
       const approval = approvalDecision.decision === "approve" ? store.approvePendingActionApproval(approvalDecision.id) : store.denyPendingActionApproval(approvalDecision.id);
 
       if (!approval) {

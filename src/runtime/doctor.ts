@@ -14,6 +14,7 @@ import { getRuntimePaths, type RuntimePaths } from "./paths.js";
 import { TelegramHttpClient, convertSpeechToTelegramVoice } from "../channels/telegram.js";
 import { ZaloHttpClient, type ZaloUser } from "../channels/zalo.js";
 import { ZaloPersonalClient } from "../channels/zalo-personal/client.js";
+import { hasConfiguredOwner, type OwnerUserIdConfig } from "../channels/owner-policy.js";
 import { decodeZaloPersonalSession } from "../channels/zalo-personal/session.js";
 import { createSpeech } from "../llm/openai-speech.js";
 import { formatProviderFallbackHealth } from "../llm/fallbacks.js";
@@ -90,9 +91,9 @@ export async function runDoctor(paths: RuntimePaths = getRuntimePaths(), options
   });
 
   let apiKeyEnv: string | undefined;
-  let telegramConfig: { enabled: boolean; botTokenEnv: string; ownerUserId: string } | undefined;
-  let zaloConfig: { enabled: boolean; botTokenEnv: string; ownerUserId: string } | undefined;
-  let zaloPersonalConfig: { enabled: boolean; sessionEnv: string; ownerUserId: string } | undefined;
+  let telegramConfig: { enabled: boolean; botTokenEnv: string; ownerUserId: OwnerUserIdConfig } | undefined;
+  let zaloConfig: { enabled: boolean; botTokenEnv: string; ownerUserId: OwnerUserIdConfig } | undefined;
+  let zaloPersonalConfig: { enabled: boolean; sessionEnv: string; ownerUserId: OwnerUserIdConfig } | undefined;
   let configForChecks: AppConfig | undefined;
   let mcpServers: McpServerSummary[] | undefined;
   if (hasConfig) {
@@ -705,8 +706,8 @@ function checkMcpServers(servers: McpServerSummary[]): DoctorCheck {
   };
 }
 
-function checkTelegramConfig(telegramConfig: { enabled: boolean; botTokenEnv: string; ownerUserId: string }, envValues: Record<string, string>): DoctorCheck {
-  if (!telegramConfig.ownerUserId.trim()) {
+function checkTelegramConfig(telegramConfig: { enabled: boolean; botTokenEnv: string; ownerUserId: OwnerUserIdConfig }, envValues: Record<string, string>): DoctorCheck {
+  if (!hasConfiguredOwner(telegramConfig.ownerUserId)) {
     return {
       name: "Telegram channel",
       status: "fail",
@@ -724,8 +725,8 @@ function checkTelegramConfig(telegramConfig: { enabled: boolean; botTokenEnv: st
   };
 }
 
-function checkZaloConfig(zaloConfig: { enabled: boolean; botTokenEnv: string; ownerUserId: string }, envValues: Record<string, string>): DoctorCheck {
-  if (!zaloConfig.ownerUserId.trim()) {
+function checkZaloConfig(zaloConfig: { enabled: boolean; botTokenEnv: string; ownerUserId: OwnerUserIdConfig }, envValues: Record<string, string>): DoctorCheck {
+  if (!hasConfiguredOwner(zaloConfig.ownerUserId)) {
     return {
       name: "Zalo channel",
       status: "fail",
@@ -743,8 +744,8 @@ function checkZaloConfig(zaloConfig: { enabled: boolean; botTokenEnv: string; ow
   };
 }
 
-function checkZaloPersonalConfig(config: { enabled: boolean; sessionEnv: string; ownerUserId: string }, envValues: Record<string, string>): DoctorCheck {
-  if (!config.ownerUserId.trim()) {
+function checkZaloPersonalConfig(config: { enabled: boolean; sessionEnv: string; ownerUserId: OwnerUserIdConfig }, envValues: Record<string, string>): DoctorCheck {
+  if (!hasConfiguredOwner(config.ownerUserId)) {
     return { name: "Zalo Personal channel", status: "fail", message: "Zalo Personal is enabled, but controller user ID is missing.", fix: "Run `bestie channels zalo-personal setup` and configure a separate controller account." };
   }
   const hasSession = Boolean(process.env[config.sessionEnv] ?? envValues[config.sessionEnv]);

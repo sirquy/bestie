@@ -2,6 +2,7 @@ import { mkdir, rm } from "node:fs/promises";
 import { resolve } from "node:path";
 import qrCodeTerminal from "qrcode-terminal";
 
+import { hasConfiguredOwner } from "../../channels/owner-policy.js";
 import { ZaloPersonalClient } from "../../channels/zalo-personal/client.js";
 import { runZaloPersonalMonitor } from "../../channels/zalo-personal/monitor.js";
 import { decodeZaloPersonalSession, encodeZaloPersonalSession } from "../../channels/zalo-personal/session.js";
@@ -59,7 +60,7 @@ export async function runZaloPersonalCommand(optionsOrArgv: string[] | ZaloPerso
   const config = await loadConfig(paths);
   const personal = config.channels?.zaloPersonal;
   if (!personal?.enabled) throw new UserFacingError("Zalo Personal chưa được bật. Hãy chạy `bestie channels zalo-personal setup`.", "ZaloPersonalNotEnabledError");
-  if (!personal.ownerUserId.trim()) throw new UserFacingError("Thiếu controller Zalo Personal. Chạy lại `bestie channels zalo-personal setup`.", "ZaloPersonalMissingOwnerError");
+  if (!hasConfiguredOwner(personal.ownerUserId)) throw new UserFacingError("Thiếu controller Zalo Personal. Chạy lại `bestie channels zalo-personal setup`.", "ZaloPersonalMissingOwnerError");
   const session = await loadZaloPersonalSession(paths, personal.sessionEnv);
   let stopping = false;
   const stop = () => { stopping = true; };

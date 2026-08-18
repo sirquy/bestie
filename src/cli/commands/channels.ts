@@ -1,4 +1,5 @@
 import { CHANNELS, type ChannelDescriptor } from "../../channels/registry.js";
+import { hasConfiguredOwner, type OwnerUserIdConfig } from "../../channels/owner-policy.js";
 import { loadConfig, type AppConfig } from "../../runtime/config.js";
 import { runDoctor, type DoctorCheck, type DoctorReport } from "../../runtime/doctor.js";
 import { getRuntimePaths, type RuntimePaths } from "../../runtime/paths.js";
@@ -143,13 +144,13 @@ async function showChannelsStatus(options: Required<Pick<ChannelsCommandOptions,
   }
 }
 
-function getChannelConfig(config: AppConfig, channel: ChannelDescriptor): { enabled?: boolean; ownerUserId?: string; botTokenEnv?: string; sessionEnv?: string } | undefined {
+function getChannelConfig(config: AppConfig, channel: ChannelDescriptor): { enabled?: boolean; ownerUserId?: OwnerUserIdConfig; botTokenEnv?: string; sessionEnv?: string } | undefined {
   return config.channels?.[channel.configKey as keyof NonNullable<AppConfig["channels"]>];
 }
 
 function formatChannelStatusRow(channel: ChannelDescriptor, channelConfig: ReturnType<typeof getChannelConfig>, daemon: Awaited<ReturnType<typeof getDaemonChannelStatus>>): string[] {
   const enabled = channelConfig?.enabled ? badge("ON", "green") : badge("OFF", "gray");
-  const owner = channelConfig?.ownerUserId?.trim() ? badge("OWNER", "green") : badge("OWNER?", "yellow");
+  const owner = hasConfiguredOwner(channelConfig?.ownerUserId) ? badge("OWNER", "green") : badge("OWNER?", "yellow");
   const tokenEnv = channelConfig?.botTokenEnv ?? channelConfig?.sessionEnv ?? "missing";
   const daemonText = daemon.state === "running" ? `${badge("RUN", "green")} pid ${daemon.pid}` : daemon.state === "stale" ? `${badge("STALE", "yellow")} pid ${daemon.pid}` : badge("STOP", "gray");
 

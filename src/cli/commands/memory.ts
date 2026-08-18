@@ -14,6 +14,7 @@ import { refreshAllConversationSummaries, type ConversationSummaryChannel, type 
 import { sendChatCompletionWithFallbacks } from "../../llm/chat-completion.js";
 import { loadLlmCandidateSecret, resolvePrimaryLlmCandidate } from "../../llm/resolve-config.js";
 import { loadConfig, type MemoryDeletePolicy } from "../../runtime/config.js";
+import { configuredOwnerIds } from "../../channels/owner-policy.js";
 import { MissingConfigError } from "../../runtime/errors.js";
 import { getRuntimePaths } from "../../runtime/paths.js";
 import { analyzeMemoriesTool, planMemoryHygieneTool, readMemoryHygieneTrendTool, type AnalyzeMemoriesResult, type MemoryAnalysisMode, type MemoryHygienePlanResult } from "../../tools/local-read-tools.js";
@@ -2271,12 +2272,12 @@ async function loadAgentTimeZoneIfConfigured(): Promise<string | undefined> {
 async function defaultMaintenanceChannel(): Promise<string | undefined> {
   try {
     const config = await loadConfig();
-    const telegramOwner = config.channels?.telegram?.enabled ? config.channels.telegram.ownerUserId.trim() : "";
+    const telegramOwner = config.channels?.telegram?.enabled ? configuredOwnerIds(config.channels.telegram.ownerUserId)[0] ?? "" : "";
     if (telegramOwner) {
       return `telegram:${telegramOwner}`;
     }
 
-    const zaloOwner = config.channels?.zalo?.enabled ? config.channels.zalo.ownerUserId.trim() : "";
+    const zaloOwner = config.channels?.zalo?.enabled ? configuredOwnerIds(config.channels.zalo.ownerUserId)[0] ?? "" : "";
     return zaloOwner ? `zalo:${zaloOwner}` : undefined;
   } catch {
     return undefined;

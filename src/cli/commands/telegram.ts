@@ -4,6 +4,7 @@ import { appendFile, mkdir, writeFile } from "node:fs/promises";
 import { stdout as output } from "node:process";
 
 import { TelegramHttpClient, runTelegramPollingLoop, type TelegramAttachmentParseTelemetry, type TelegramAttachmentTranscriber, type TelegramChatCompletionRunner, type TelegramClient, type TelegramSpeechSynthesizer, type TelegramSpeechVoiceConverter, type TelegramUpdate } from "../../channels/telegram.js";
+import { hasConfiguredOwner, matchesOwnerId, type OwnerUserIdConfig } from "../../channels/owner-policy.js";
 import { createChannelSpeechSynthesizer, createChannelVoiceTranscriber } from "../../channels/voice.js";
 import type { FetchLike } from "../../llm/chat-completion.js";
 import { loadConfig, type AppConfig, writeConfig } from "../../runtime/config.js";
@@ -84,7 +85,7 @@ export async function runTelegramCommand(optionsOrArgv: string[] | TelegramComma
     return;
   }
 
-  if (!telegram.ownerUserId.trim()) {
+  if (!hasConfiguredOwner(telegram.ownerUserId)) {
     throw new UserFacingError("Thiếu Telegram owner id hoặc username. Đặt channels.telegram.ownerUserId trong .bestie/config.json.", "TelegramMissingOwnerError");
   }
 
@@ -283,7 +284,7 @@ function createTranscriptAppender(transcriptPath: string): TranscriptAppender {
   };
 }
 
-function createTranscriptTelegramClient(client: TelegramClient, appendTranscript: TranscriptAppender, ownerUserId: string): TelegramClient {
+function createTranscriptTelegramClient(client: TelegramClient, appendTranscript: TranscriptAppender, ownerUserId: OwnerUserIdConfig): TelegramClient {
   return {
     getUpdates: async (offset) => {
       await appendTranscript("telegram_get_updates_start", { offset });
@@ -372,7 +373,7 @@ function summarizeTelegramAttachmentParse(attachment: TelegramAttachmentParseTel
   };
 }
 
-function summarizeTelegramUpdate(update: TelegramUpdate, ownerUserId: string): Record<string, unknown> {
+function summarizeTelegramUpdate(update: TelegramUpdate, ownerUserId: OwnerUserIdConfig): Record<string, unknown> {
   const message = update.message;
   const text = message?.text ?? "";
   const caption = message?.caption ?? "";
@@ -381,7 +382,7 @@ function summarizeTelegramUpdate(update: TelegramUpdate, ownerUserId: string): R
   return {
     updateId: update.update_id,
     chat: message ? hashIdentifier(message.chat.id) : undefined,
-    fromOwner: String(message?.from?.id ?? "") === ownerUserId,
+    fromOwner: matchesOwnerId(ownerUserId, [String(message?.from?.id ?? ""), ...(message?.from?.username ? [`@${message.from.username}`, message.from.username] : [])]),
     textLength: text.length,
     captionLength: caption.length,
     hasText: text.length > 0,

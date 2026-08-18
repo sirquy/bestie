@@ -4,6 +4,7 @@ import { dirname, resolve } from "node:path";
 import { stdout as output } from "node:process";
 
 import { ZaloHttpClient, runZaloPollingLoop, type ZaloChatCompletionRunner, type ZaloClient, type ZaloUpdate } from "../../channels/zalo.js";
+import { hasConfiguredOwner, matchesOwnerId, type OwnerUserIdConfig } from "../../channels/owner-policy.js";
 import { loadConfig, type AppConfig, writeConfig } from "../../runtime/config.js";
 import { loadEnvFile, writeEnvFile } from "../../runtime/env.js";
 import { UserFacingError } from "../../runtime/errors.js";
@@ -66,7 +67,7 @@ export async function runZaloCommand(optionsOrArgv: string[] | ZaloCommandOption
     throw new UserFacingError(`Thiếu biến Zalo bot token ${zalo.botTokenEnv}. Hãy thêm biến này vào .bestie/.env.`, "ZaloMissingTokenError");
   }
 
-  if (!zalo.ownerUserId.trim()) {
+  if (!hasConfiguredOwner(zalo.ownerUserId)) {
     throw new UserFacingError("Thiếu Zalo owner user id. Đặt channels.zalo.ownerUserId trong .bestie/config.json.", "ZaloMissingOwnerError");
   }
 
@@ -234,7 +235,7 @@ function createTranscriptAppender(transcriptPath: string): TranscriptAppender {
   };
 }
 
-function createTranscriptZaloClient(client: ZaloClient, appendTranscript: TranscriptAppender, ownerUserId: string): ZaloClient {
+function createTranscriptZaloClient(client: ZaloClient, appendTranscript: TranscriptAppender, ownerUserId: OwnerUserIdConfig): ZaloClient {
   return {
     ...(client.getMe ? { getMe: () => client.getMe!() } : {}),
     getUpdates: async (offset, timeoutSeconds) => {
@@ -257,7 +258,7 @@ function createTranscriptZaloClient(client: ZaloClient, appendTranscript: Transc
   };
 }
 
-function summarizeZaloUpdate(update: ZaloUpdate, ownerUserId: string): Record<string, unknown> {
+function summarizeZaloUpdate(update: ZaloUpdate, ownerUserId: OwnerUserIdConfig): Record<string, unknown> {
   const message = update.message;
   const text = typeof message?.text === "string" ? message.text : message?.text?.text ?? "";
   const caption = message?.caption ?? "";
@@ -267,8 +268,7 @@ function summarizeZaloUpdate(update: ZaloUpdate, ownerUserId: string): Record<st
     updateId: update.update_id,
     chat: message?.chat?.id ? hashIdentifier(message.chat.id) : undefined,
     sender: senderId ? hashIdentifier(senderId) : undefined,
-    owner: hashIdentifier(ownerUserId),
-    fromOwner: senderId === ownerUserId,
+    fromOwner: matchesOwnerId(ownerUserId, [senderId]),
     textLength: text.length,
     captionLength: caption.length,
     hasText: text.length > 0,

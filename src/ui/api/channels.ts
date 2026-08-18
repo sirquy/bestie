@@ -1,6 +1,7 @@
 import { access } from "node:fs/promises";
 
 import { CHANNELS } from "../../channels/registry.js";
+import { hasConfiguredOwner, type OwnerUserIdConfig } from "../../channels/owner-policy.js";
 import { getDaemonChannelStatus, runDaemonCommand, type DaemonChannel } from "../../cli/commands/daemon.js";
 import { CronExecutor } from "../../cron/executor.js";
 import { computeNextRun } from "../../cron/scheduler.js";
@@ -139,7 +140,7 @@ export async function getUiChannelSummary(paths: RuntimePaths = getRuntimePaths(
       id: channel.id,
       displayName: channel.displayName,
       enabled: channelConfig?.enabled === true,
-      ownerConfigured: Boolean(channelConfig?.ownerUserId?.trim()),
+      ownerConfigured: hasConfiguredOwner(channelConfig?.ownerUserId),
       ...(channelConfig?.botTokenEnv ?? channelConfig?.sessionEnv ? { tokenEnv: channelConfig.botTokenEnv ?? channelConfig.sessionEnv } : {}),
       secretPresent: channelConfig?.botTokenEnv ?? channelConfig?.sessionEnv ? Boolean(process.env[channelConfig.botTokenEnv ?? channelConfig.sessionEnv!] ?? envValues[channelConfig.botTokenEnv ?? channelConfig.sessionEnv!]) : false,
       daemon: {
@@ -292,7 +293,7 @@ async function triggerCronSchedule(paths: RuntimePaths, id: number, messages: st
   messages.push(`Cron schedule ${id} triggered.`);
 }
 
-function getChannelConfig(config: AppConfig, configKey: string): { enabled: boolean; ownerUserId: string; botTokenEnv?: string; sessionEnv?: string } | undefined {
+function getChannelConfig(config: AppConfig, configKey: string): { enabled: boolean; ownerUserId: OwnerUserIdConfig; botTokenEnv?: string; sessionEnv?: string } | undefined {
   return config.channels?.[configKey as keyof NonNullable<AppConfig["channels"]>];
 }
 

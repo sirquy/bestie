@@ -1436,7 +1436,7 @@ test("handleTelegramUpdate accepts approval callbacks from configured owner user
     let approvalId: number;
     try {
       const pending = store.addPendingMemory({ type: "preference", content: "User likes concise replies.", source: "reasoning", explicitConsent: true });
-      approvalId = store.addPendingActionApproval({ channel: "telegram", userId: "boss_user", category: "local_write", action: "memory_approve", target: `pending-memory:${pending.id}` }).id;
+      approvalId = store.addPendingActionApproval({ channel: "telegram", userId: "99999", category: "local_write", action: "memory_approve", target: `pending-memory:${pending.id}` }).id;
     } finally {
       store.close();
     }
@@ -2242,7 +2242,7 @@ test("handleTelegramUpdate lists and records approval decisions without executin
     let approvalId: number;
     try {
       const pending = store.addPendingMemory({ type: "user_fact", content: "slash approval memory", source: "agent-tool", explicitConsent: true });
-      approvalId = store.addPendingActionApproval({ channel: "telegram", category: "local_write", action: "memory_approve", target: `pending-memory:${pending.id}` }).id;
+      approvalId = store.addPendingActionApproval({ channel: "telegram", userId: "12345", category: "local_write", action: "memory_approve", target: `pending-memory:${pending.id}` }).id;
     } finally {
       store.close();
     }

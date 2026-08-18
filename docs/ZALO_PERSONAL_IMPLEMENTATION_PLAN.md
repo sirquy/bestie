@@ -123,8 +123,10 @@ Rules:
 - `sessionEnv` is required and names an environment variable; configuration
   never contains the QR credential itself.
 - Default `sessionEnv` is `BESTIE_ZALO_PERSONAL_SESSION` during setup.
-- `ownerUserId` is required when enabled and is an exact stable identifier,
-  never a display name.
+- `ownerUserId` is required when enabled and accepts one stable identifier or
+  an array of stable identifiers, never display names. `ownerUserId: ["*"]`
+  permits every direct-message sender; it still ignores self messages and
+  groups.
 - Keep `reconnect` optional with conservative validated bounds. Do not make
   heartbeat or retry policies user-configurable in the initial setup wizard.
 - Add group fields only in the later group phase: `groupPolicy`, `groups`,
