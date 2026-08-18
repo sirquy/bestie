@@ -253,6 +253,24 @@ Phase Now config started with non-secret `agent` and `llm` fields. The current l
 }
 ```
 
+For offline Piper text-to-speech, use the `local-command` speech provider. Bestie invokes the command directly without a shell, writes a temporary WAV file through `{outputPath}`, then deletes it after reading the generated audio. `{modelPath}` resolves relative to the Bestie root when it is not absolute.
+
+```json
+{
+  "speech": {
+    "provider": "local-command",
+    "command": "C:\\Python314\\python.exe",
+    "args": ["-X", "utf8", "-m", "piper", "--model", "{modelPath}", "--output_file", "{outputPath}"],
+    "modelPath": ".bestie/models/piper/vi_VN-vais1000-medium.onnx",
+    "env": {
+      "PYTHONPATH": "C:\\Users\\you\\.bestie\\tools\\piper"
+    },
+    "outputFormat": "wav",
+    "timeoutMs": 120000
+  }
+}
+```
+
 LLM config rules:
 
 - `llm.primary` and `llm.fallbacks[]` are canonical `provider/model` refs. Bestie splits on the first `/`, so model IDs may contain additional slashes.
@@ -285,7 +303,7 @@ For ElevenLabs audio transcription, use an `elevenlabs` provider. `languageCode`
 }
 ```
 
-Telegram and Zalo inbound attachments are saved together under `.bestie/workspace/media/inbound/...` and kept by default. Image attachments are sent to the LLM automatically when the primary provider adapter supports image input; set `channels.telegram.attachments.visionPolicy` or `channels.zalo.attachments.visionPolicy` to `"deny"` to force this off. Set `channels.telegram.attachments.deleteAfterProcessingKinds` or `channels.zalo.attachments.deleteAfterProcessingKinds` to attachment kinds such as `["voice", "audio"]` to remove downloaded files after parsing/transcription/vision processing completes. This is useful for voice-heavy channel use where transcripts are enough and retaining raw audio would grow disk usage quickly.
+Telegram, Zalo Bot, and experimental Zalo Personal inbound attachments are saved together under `.bestie/workspace/media/inbound/...` and kept by default. Image attachments are sent to the LLM automatically when the primary provider adapter supports image input; set `channels.telegram.attachments.visionPolicy`, `channels.zalo.attachments.visionPolicy`, or `channels.zaloPersonal.attachments.visionPolicy` to `"deny"` to force this off. Set the corresponding `deleteAfterProcessingKinds` policy to attachment kinds such as `["voice", "audio"]` to remove downloaded files after parsing/transcription/vision processing completes. This is useful for voice-heavy channel use where transcripts are enough and retaining raw audio would grow disk usage quickly.
 
 ```json
 {

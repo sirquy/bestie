@@ -673,6 +673,43 @@ test("runDoctor reports Zalo bot identity failures without exposing token", asyn
   }
 });
 
+test("runDoctor checks Zalo Personal session presence and warns about automation risk", async () => {
+  const paths = await createTempPaths();
+
+  try {
+    await writeZaloPersonalConfiguredFiles(paths, { OPENAI_API_KEY: "sk-test" });
+
+    const report = await runDoctor(paths);
+    const channelCheck = report.checks.find((check) => check.name === "Zalo Personal channel");
+    const riskCheck = report.checks.find((check) => check.name === "Zalo Personal risk");
+
+    assert.equal(channelCheck?.status, "fail");
+    assert.match(channelCheck?.message ?? "", /BESTIE_ZALO_PERSONAL_SESSION/);
+    assert.equal(riskCheck?.status, "warn");
+    assert.doesNotMatch(JSON.stringify(report), /sk-test/);
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("runDoctor rejects invalid Zalo Personal sessions without exposing their content", async () => {
+  const paths = await createTempPaths();
+  const invalidSession = "zalo-personal-secret-session";
+
+  try {
+    await writeZaloPersonalConfiguredFiles(paths, { OPENAI_API_KEY: "sk-test", BESTIE_ZALO_PERSONAL_SESSION: invalidSession });
+
+    const report = await runDoctor(paths, { connectZaloPersonal: true });
+    const sessionCheck = report.checks.find((check) => check.name === "Zalo Personal session");
+
+    assert.equal(sessionCheck?.status, "fail");
+    assert.match(sessionCheck?.message ?? "", /could not be restored/);
+    assert.doesNotMatch(JSON.stringify(report), /zalo-personal-secret-session/);
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
 test("runDoctor warns when retained Telegram attachments exceed the storage threshold", async () => {
   const paths = await createTempPaths();
 
@@ -1251,6 +1288,36 @@ async function writeZaloConfiguredFiles(paths: RuntimePaths, envValues: Record<s
       timeoutMs: 60_000
     },
       channels: { zalo: { enabled: true, botTokenEnv: "BESTIE_ZALO_BOT_TOKEN", ownerUserId: "zalo-owner-1" } },
+    },
+    paths,
+  );
+  await writeEnvFile(envValues, paths);
+  await writeFile(paths.systemPromptPath, "You are Miu.\n");
+}
+
+async function writeZaloPersonalConfiguredFiles(paths: RuntimePaths, envValues: Record<string, string>): Promise<void> {
+  await mkdir(paths.appDir, { recursive: true });
+  await writeConfig(
+    {
+      version: 2,
+      agent: { name: "Miu", ownerName: "Sep", language: "vi", toneIntensity: 7 },
+      llm: {
+        primary: "openai/test-model",
+        authProfile: "openai:api-key",
+        profiles: {
+          "openai:api-key": {
+            provider: "openai-compatible",
+            mode: "api-key" as const,
+            baseUrl: "https://example.com/v1",
+            apiKeyEnv: "OPENAI_API_KEY",
+          },
+        },
+        modelCatalog: {
+          "openai/test-model": { profile: "openai:api-key" },
+        },
+        timeoutMs: 60_000,
+      },
+      channels: { zaloPersonal: { enabled: true, sessionEnv: "BESTIE_ZALO_PERSONAL_SESSION", ownerUserId: "controller-1" } },
     },
     paths,
   );

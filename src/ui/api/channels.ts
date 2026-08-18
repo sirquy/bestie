@@ -140,8 +140,8 @@ export async function getUiChannelSummary(paths: RuntimePaths = getRuntimePaths(
       displayName: channel.displayName,
       enabled: channelConfig?.enabled === true,
       ownerConfigured: Boolean(channelConfig?.ownerUserId?.trim()),
-      ...(channelConfig?.botTokenEnv ? { tokenEnv: channelConfig.botTokenEnv } : {}),
-      secretPresent: channelConfig?.botTokenEnv ? Boolean(process.env[channelConfig.botTokenEnv] ?? envValues[channelConfig.botTokenEnv]) : false,
+      ...(channelConfig?.botTokenEnv ?? channelConfig?.sessionEnv ? { tokenEnv: channelConfig.botTokenEnv ?? channelConfig.sessionEnv } : {}),
+      secretPresent: channelConfig?.botTokenEnv ?? channelConfig?.sessionEnv ? Boolean(process.env[channelConfig.botTokenEnv ?? channelConfig.sessionEnv!] ?? envValues[channelConfig.botTokenEnv ?? channelConfig.sessionEnv!]) : false,
       daemon: {
         state: daemon.state,
         ...(daemon.pid !== undefined ? { pid: daemon.pid } : {}),
@@ -292,7 +292,7 @@ async function triggerCronSchedule(paths: RuntimePaths, id: number, messages: st
   messages.push(`Cron schedule ${id} triggered.`);
 }
 
-function getChannelConfig(config: AppConfig, configKey: string): { enabled: boolean; ownerUserId: string; botTokenEnv: string } | undefined {
+function getChannelConfig(config: AppConfig, configKey: string): { enabled: boolean; ownerUserId: string; botTokenEnv?: string; sessionEnv?: string } | undefined {
   return config.channels?.[configKey as keyof NonNullable<AppConfig["channels"]>];
 }
 

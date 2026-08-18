@@ -29,6 +29,7 @@ const TEST_CONFIG: AppConfig = {
   channels: {
     telegram: { enabled: true, botTokenEnv: "BESTIE_TELEGRAM_BOT_TOKEN", ownerUserId: "1" },
     zalo: { enabled: true, botTokenEnv: "BESTIE_ZALO_BOT_TOKEN", ownerUserId: "2" },
+    zaloPersonal: { enabled: true, sessionEnv: "BESTIE_ZALO_PERSONAL_SESSION", ownerUserId: "3" },
   },
 };
 
@@ -125,7 +126,7 @@ test("runDaemonCommand can manage all runtime daemons", async () => {
   const paths = await createTempPaths();
   const output: string[] = [];
   const killed: number[] = [];
-  const spawnedPids = [4242, 4343, 4444, 4545, 4646];
+  const spawnedPids = [4242, 4343, 4444, 4545, 4646, 4747];
   const runningPids = new Set<number>();
 
   try {
@@ -147,22 +148,26 @@ test("runDaemonCommand can manage all runtime daemons", async () => {
 
     const telegram = JSON.parse(await readFile(resolve(paths.appDir, "daemon-telegram.json"), "utf8")) as { pid: number; args: string[]; logPath: string };
     const zalo = JSON.parse(await readFile(resolve(paths.appDir, "daemon-zalo.json"), "utf8")) as { pid: number; args: string[]; logPath: string };
+    const zaloPersonal = JSON.parse(await readFile(resolve(paths.appDir, "daemon-zalo-personal.json"), "utf8")) as { pid: number; args: string[]; logPath: string };
     const cron = JSON.parse(await readFile(resolve(paths.appDir, "daemon-cron.json"), "utf8")) as { pid: number; args: string[]; logPath: string };
     const workforce = JSON.parse(await readFile(resolve(paths.appDir, "daemon-workforce.json"), "utf8")) as { pid: number; args: string[]; logPath: string };
     const ui = JSON.parse(await readFile(resolve(paths.appDir, "daemon-ui.json"), "utf8")) as { pid: number; args: string[]; logPath: string };
 
     assert.equal(telegram.pid, 4242);
     assert.equal(zalo.pid, 4343);
-    assert.equal(cron.pid, 4444);
-    assert.equal(workforce.pid, 4545);
-    assert.equal(ui.pid, 4646);
+    assert.equal(zaloPersonal.pid, 4444);
+    assert.equal(cron.pid, 4545);
+    assert.equal(workforce.pid, 4646);
+    assert.equal(ui.pid, 4747);
     assert.deepEqual(telegram.args.slice(-2), ["channels", "telegram"]);
     assert.deepEqual(zalo.args.slice(-2), ["channels", "zalo"]);
+    assert.deepEqual(zaloPersonal.args.slice(-2), ["channels", "zalo-personal"]);
     assert.deepEqual(cron.args.slice(-2), ["cron", "run"]);
     assert.deepEqual(workforce.args.slice(-3), ["agents", "run", "--watch"]);
     assert.deepEqual(ui.args.slice(-2), ["ui", "--no-open"]);
     assert.equal(telegram.logPath, resolve(paths.logsDir, "daemon-telegram.log"));
     assert.equal(zalo.logPath, resolve(paths.logsDir, "daemon-zalo.log"));
+    assert.equal(zaloPersonal.logPath, resolve(paths.logsDir, "daemon-zalo-personal.log"));
     assert.equal(cron.logPath, resolve(paths.logsDir, "daemon-cron.log"));
     assert.equal(workforce.logPath, resolve(paths.logsDir, "daemon-workforce.log"));
     assert.equal(ui.logPath, resolve(paths.logsDir, "daemon-ui.log"));
@@ -170,15 +175,17 @@ test("runDaemonCommand can manage all runtime daemons", async () => {
     await runDaemonCommand({ argv: ["node", "bestie", "daemon", "status", "--channel", "all"], paths, writeLine: (message) => output.push(message), isProcessRunning: (pid) => runningPids.has(pid) });
     assert.match(output.join("\n"), /Daemon Telegram .* pid 4242/);
     assert.match(output.join("\n"), /Daemon Zalo .* pid 4343/);
-    assert.match(output.join("\n"), /Daemon Cron .* pid 4444/);
-    assert.match(output.join("\n"), /Daemon Workforce .* pid 4545/);
+    assert.match(output.join("\n"), /Daemon Zalo-personal .* pid 4444/);
+    assert.match(output.join("\n"), /Daemon Cron .* pid 4545/);
+    assert.match(output.join("\n"), /Daemon Workforce .* pid 4646/);
 
     await runDaemonCommand({ argv: ["node", "bestie", "daemon", "stop", "--channel", "all"], paths, writeLine: (message) => output.push(message), isProcessRunning: (pid) => runningPids.has(pid) && !killed.includes(pid), killProcess: (pid) => killed.push(pid) });
-    assert.deepEqual(killed, [4242, 4343, 4444, 4545, 4646]);
+    assert.deepEqual(killed, [4242, 4343, 4444, 4545, 4646, 4747]);
     assert.match(output.join("\n"), /Daemon Telegram .* 4242/);
     assert.match(output.join("\n"), /Daemon Zalo .* 4343/);
-    assert.match(output.join("\n"), /Daemon Cron .* 4444/);
-    assert.match(output.join("\n"), /Daemon Workforce .* 4545/);
+    assert.match(output.join("\n"), /Daemon Zalo-personal .* 4444/);
+    assert.match(output.join("\n"), /Daemon Cron .* 4545/);
+    assert.match(output.join("\n"), /Daemon Workforce .* 4646/);
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
   }
@@ -207,6 +214,7 @@ test("runServiceCommand uninstall ignores missing systemd units", async () => {
       ["--user", "disable", "--now", "bestie.service"],
       ["--user", "disable", "--now", "bestie-telegram.service"],
       ["--user", "disable", "--now", "bestie-zalo.service"],
+      ["--user", "disable", "--now", "bestie-zalo-personal.service"],
       ["--user", "disable", "--now", "bestie-cron.service"],
       ["--user", "disable", "--now", "bestie-workforce.service"],
       ["--user", "daemon-reload"],
@@ -479,6 +487,7 @@ test("runServiceCommand uninstalls a user systemd service", async () => {
     await writeFile(resolve(paths.rootDir, "xdg-config/systemd/user/bestie.service"), "service", { mode: 0o600 });
     await writeFile(resolve(paths.rootDir, "xdg-config/systemd/user/bestie-telegram.service"), "service", { mode: 0o600 });
     await writeFile(resolve(paths.rootDir, "xdg-config/systemd/user/bestie-zalo.service"), "service", { mode: 0o600 });
+    await writeFile(resolve(paths.rootDir, "xdg-config/systemd/user/bestie-zalo-personal.service"), "service", { mode: 0o600 });
     await writeFile(resolve(paths.rootDir, "xdg-config/systemd/user/bestie-cron.service"), "service", { mode: 0o600 });
     await writeFile(resolve(paths.rootDir, "xdg-config/systemd/user/bestie-workforce.service"), "service", { mode: 0o600 });
 
@@ -495,12 +504,14 @@ test("runServiceCommand uninstalls a user systemd service", async () => {
     await assert.rejects(() => readFile(resolve(paths.rootDir, "xdg-config/systemd/user/bestie.service"), "utf8"), /ENOENT/);
     await assert.rejects(() => readFile(resolve(paths.rootDir, "xdg-config/systemd/user/bestie-telegram.service"), "utf8"), /ENOENT/);
     await assert.rejects(() => readFile(resolve(paths.rootDir, "xdg-config/systemd/user/bestie-zalo.service"), "utf8"), /ENOENT/);
+    await assert.rejects(() => readFile(resolve(paths.rootDir, "xdg-config/systemd/user/bestie-zalo-personal.service"), "utf8"), /ENOENT/);
     await assert.rejects(() => readFile(resolve(paths.rootDir, "xdg-config/systemd/user/bestie-cron.service"), "utf8"), /ENOENT/);
     await assert.rejects(() => readFile(resolve(paths.rootDir, "xdg-config/systemd/user/bestie-workforce.service"), "utf8"), /ENOENT/);
     assert.deepEqual(calls, [
       { file: "systemctl", args: ["--user", "disable", "--now", "bestie.service"] },
       { file: "systemctl", args: ["--user", "disable", "--now", "bestie-telegram.service"] },
       { file: "systemctl", args: ["--user", "disable", "--now", "bestie-zalo.service"] },
+      { file: "systemctl", args: ["--user", "disable", "--now", "bestie-zalo-personal.service"] },
       { file: "systemctl", args: ["--user", "disable", "--now", "bestie-cron.service"] },
       { file: "systemctl", args: ["--user", "disable", "--now", "bestie-workforce.service"] },
       { file: "systemctl", args: ["--user", "daemon-reload"] },

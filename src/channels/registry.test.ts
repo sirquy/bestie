@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { CHANNELS, TELEGRAM_CHANNEL, ZALO_CHANNEL, formatChannelHelpCommands } from "./registry.js";
+import { CHANNELS, TELEGRAM_CHANNEL, ZALO_CHANNEL, ZALO_PERSONAL_CHANNEL, formatChannelHelpCommands } from "./registry.js";
 
 test("Telegram channel descriptor exposes native commands and capabilities", () => {
   assert.equal(CHANNELS[0], TELEGRAM_CHANNEL);
@@ -31,7 +31,7 @@ test("formatChannelHelpCommands includes aliases without registering them native
 });
 
 test("Zalo channel descriptor exposes polling attachments and tool activity", () => {
-  assert.deepEqual(CHANNELS.map((channel) => channel.id), ["telegram", "zalo"]);
+  assert.deepEqual(CHANNELS.map((channel) => channel.id), ["telegram", "zalo", "zalo-personal"]);
   assert.equal(ZALO_CHANNEL.id, "zalo");
   assert.equal(ZALO_CHANNEL.capabilities.polling, true);
   assert.equal(ZALO_CHANNEL.capabilities.attachments, true);
@@ -42,4 +42,7 @@ test("Zalo channel descriptor exposes polling attachments and tool activity", ()
     ZALO_CHANNEL.commands.filter((command) => command.native).map((command) => command.command),
     ["help", "status", "providers", "memory", "approvals"],
   );
+  assert.equal(ZALO_PERSONAL_CHANNEL.id, "zalo-personal");
+  assert.equal(ZALO_PERSONAL_CHANNEL.configKey, "zaloPersonal");
+  assert.equal(ZALO_PERSONAL_CHANNEL.capabilities.attachments, true);
 });

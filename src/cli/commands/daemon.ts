@@ -16,13 +16,14 @@ import { runAgentsCommand } from "./agents.js";
 import { runCronCommand } from "./cron.js";
 import { runTelegramCommand } from "./telegram.js";
 import { runZaloCommand } from "./zalo.js";
+import { runZaloPersonalCommand } from "./zalo-personal.js";
 
 const DAEMON_STOP_TIMEOUT_MS = 30_000;
 const DAEMON_STOP_POLL_INTERVAL_MS = 1000;
 const DAEMON_START_SETTLE_MS = 750;
 const DAEMON_START_LOCK_TIMEOUT_MS = 15_000;
 const DAEMON_START_LOCK_STALE_MS = 60_000;
-export const DAEMON_CHANNELS = ["telegram", "zalo", "cron", "workforce"] as const;
+export const DAEMON_CHANNELS = ["telegram", "zalo", "zalo-personal", "cron", "workforce"] as const;
 const execFileAsync = promisify(execFile);
 const BESTIE_APP_ICON_ICO_PATH = fileURLToPath(new URL("../../../assets/bestie-app-icon.ico", import.meta.url));
 const MACOS_LAUNCHD_SERVICES = [
@@ -118,7 +119,7 @@ export async function runDaemonCommand(optionsOrArgv: string[] | DaemonCommandOp
     return;
   }
 
-  throw new UserFacingError("Cách dùng: bestie daemon start|stop|restart|status [--channel telegram|zalo|cron|workforce|all]", "DaemonUsageError");
+  throw new UserFacingError("Cách dùng: bestie daemon start|stop|restart|status [--channel telegram|zalo|zalo-personal|cron|workforce|all]", "DaemonUsageError");
 }
 
 export async function runServiceCommand(optionsOrArgv: string[] | ServiceCommandOptions = process.argv): Promise<void> {
@@ -500,6 +501,11 @@ async function runServiceChannel(channel: DaemonChannel, options: { paths: Runti
       return;
     }
 
+    if (channel === "zalo-personal") {
+      await runZaloPersonalCommand({ argv: ["node", "bestie", "channels", "zalo-personal"], paths, writeLine });
+      return;
+    }
+
     await runZaloCommand({ argv: ["node", "bestie", "channels", "zalo"], paths, writeLine });
   } finally {
     await removeDaemonState(paths, channel);
@@ -511,12 +517,13 @@ function isChannelServiceConfigured(channel: DaemonChannel, config: AppConfig, e
     return true;
   }
 
-  const channelConfig = config.channels?.[channel];
+  const channelConfig = channel === "zalo-personal" ? config.channels?.zaloPersonal : config.channels?.[channel];
   if (!channelConfig?.enabled) {
     return false;
   }
 
-  return Boolean(process.env[channelConfig.botTokenEnv] ?? envValues[channelConfig.botTokenEnv]);
+  const secretEnv = "sessionEnv" in channelConfig ? channelConfig.sessionEnv : channelConfig.botTokenEnv;
+  return Boolean(process.env[secretEnv] ?? envValues[secretEnv]);
 }
 
 async function printDaemonUpdateNotice(options: DaemonCommandOptions, paths: RuntimePaths, writeLine: (message: string) => void): Promise<void> {
@@ -896,7 +903,7 @@ function getDaemonChannelSelection(argv: string[]): DaemonChannelSelection {
     return value;
   }
 
-  throw new UserFacingError("Cách dùng: bestie daemon start|stop|restart|status [--channel telegram|zalo|cron|workforce|all]", "DaemonUsageError");
+  throw new UserFacingError("Cách dùng: bestie daemon start|stop|restart|status [--channel telegram|zalo|zalo-personal|cron|workforce|all]", "DaemonUsageError");
 }
 
 function isDaemonChannel(value: string | undefined): value is DaemonChannel {

@@ -13,6 +13,8 @@ import { listMcpServers, type McpServerSummary } from "../mcp/servers.js";
 import { getRuntimePaths, type RuntimePaths } from "./paths.js";
 import { TelegramHttpClient, convertSpeechToTelegramVoice } from "../channels/telegram.js";
 import { ZaloHttpClient, type ZaloUser } from "../channels/zalo.js";
+import { ZaloPersonalClient } from "../channels/zalo-personal/client.js";
+import { decodeZaloPersonalSession } from "../channels/zalo-personal/session.js";
 import { createSpeech } from "../llm/openai-speech.js";
 import { formatProviderFallbackHealth } from "../llm/fallbacks.js";
 
@@ -42,6 +44,7 @@ export interface DoctorOptions {
   platform?: NodeJS.Platform;
   connectTelegram?: boolean;
   connectZalo?: boolean;
+  connectZaloPersonal?: boolean;
   testTelegramSpeech?: boolean;
   telegramIdentityChecker?: TelegramIdentityChecker;
   zaloIdentityChecker?: ZaloIdentityChecker;
@@ -89,6 +92,7 @@ export async function runDoctor(paths: RuntimePaths = getRuntimePaths(), options
   let apiKeyEnv: string | undefined;
   let telegramConfig: { enabled: boolean; botTokenEnv: string; ownerUserId: string } | undefined;
   let zaloConfig: { enabled: boolean; botTokenEnv: string; ownerUserId: string } | undefined;
+  let zaloPersonalConfig: { enabled: boolean; sessionEnv: string; ownerUserId: string } | undefined;
   let configForChecks: AppConfig | undefined;
   let mcpServers: McpServerSummary[] | undefined;
   if (hasConfig) {
@@ -98,6 +102,7 @@ export async function runDoctor(paths: RuntimePaths = getRuntimePaths(), options
       apiKeyEnv = resolvePrimaryLlmCandidate(config).apiKeyEnv;
       telegramConfig = config.channels?.telegram;
       zaloConfig = config.channels?.zalo;
+      zaloPersonalConfig = config.channels?.zaloPersonal;
       mcpServers = listMcpServers(config);
       checks.push({ name: "Config parse", status: "pass", message: "Config parses successfully." });
       checks.push(checkLlmTimeout(config.llm.timeoutMs));
@@ -154,6 +159,22 @@ export async function runDoctor(paths: RuntimePaths = getRuntimePaths(), options
     if (options.connectZalo && zaloCheck.status === "pass") {
       const token = process.env[zaloConfig.botTokenEnv] ?? envValues[zaloConfig.botTokenEnv];
       checks.push(await checkZaloBotIdentity(token, options.zaloIdentityChecker ?? getZaloBotIdentity));
+    }
+  }
+
+  if (zaloPersonalConfig?.enabled) {
+    const envValues = await loadEnvFile(paths);
+    const personalCheck = checkZaloPersonalConfig(zaloPersonalConfig, envValues);
+    checks.push(personalCheck);
+    checks.push({
+      name: "Zalo Personal risk",
+      status: "warn",
+      message: "Zalo Personal uses an unofficial automation client; account restrictions or suspension are possible.",
+      fix: "Use a dedicated automation account and keep the controller ID restricted.",
+    });
+    if (options.connectZaloPersonal && personalCheck.status === "pass") {
+      const session = process.env[zaloPersonalConfig.sessionEnv] ?? envValues[zaloPersonalConfig.sessionEnv];
+      checks.push(await checkZaloPersonalSession(session));
     }
   }
 
@@ -287,17 +308,34 @@ async function checkTelegramSpeechConfig(config: AppConfig, paths: RuntimePaths,
   }
 
   const checks: DoctorCheck[] = [];
-  const envValues = config.speech.provider === "voicebox" ? {} : await loadEnvFile(paths);
-  const hasSecret = config.speech.provider === "voicebox" ? true : Boolean(process.env[config.speech.apiKeyEnv] ?? envValues[config.speech.apiKeyEnv]);
+  const speech = config.speech;
+  if (speech.provider === "local-command") {
+    checks.push({ name: "Telegram speech provider", status: "pass", message: `Local speech command ${speech.command} is configured.` });
+    const commandPath = await resolveCommandPath(speech.command, paths);
+    checks.push(await checkExecutablePath("Local speech command", commandPath, speech.command, "Install the configured local speech command or update speech.command."));
+    if (speech.modelPath) {
+      checks.push(await checkReadableFile("Local speech model", resolveMaybeRelative(paths.rootDir, speech.modelPath), "Download the configured local speech model or update speech.modelPath."));
+    }
+    const ffmpegPath = await resolveCommandPath("ffmpeg", paths);
+    const ffmpegCheck = await checkExecutablePath("Speech ffmpeg", ffmpegPath, "ffmpeg", "Install ffmpeg so speech replies can be converted for supported chat channels.");
+    checks.push(ffmpegCheck);
+    if (options.testTelegramSpeech && ffmpegCheck.status === "pass") {
+      checks.push(await checkTelegramSpeechRoundTrip(config, paths, options.telegramSpeechTester ?? testTelegramSpeechRoundTrip));
+    }
+    return checks;
+  }
+
+  const envValues = speech.provider === "voicebox" ? {} : await loadEnvFile(paths);
+  const hasSecret = speech.provider === "voicebox" || Boolean(process.env[speech.apiKeyEnv] ?? envValues[speech.apiKeyEnv]);
   checks.push({
     name: "Telegram speech provider",
     status: hasSecret ? "pass" : "fail",
-    message: config.speech.provider === "voicebox"
-      ? `Voicebox speech is configured at ${config.speech.baseUrl}.`
+    message: speech.provider === "voicebox"
+      ? `Voicebox speech is configured at ${speech.baseUrl}.`
       : hasSecret
-        ? `${formatSpeechProviderName(config.speech.provider)} speech API key env ${config.speech.apiKeyEnv} is present.`
-        : `${formatSpeechProviderName(config.speech.provider)} speech API key env ${config.speech.apiKeyEnv} is missing.`,
-    fix: hasSecret || config.speech.provider === "voicebox" ? undefined : `Add ${config.speech.apiKeyEnv} to ${paths.envPath} or set channels.telegram.voiceReplyPolicy to deny.`,
+        ? `${formatSpeechProviderName(speech.provider)} speech API key env ${speech.apiKeyEnv} is present.`
+        : `${formatSpeechProviderName(speech.provider)} speech API key env ${speech.apiKeyEnv} is missing.`,
+    fix: hasSecret ? undefined : `Add ${speech.apiKeyEnv} to ${paths.envPath} or set channels.telegram.voiceReplyPolicy to deny.`,
   });
 
   const ffmpegPath = await resolveCommandPath("ffmpeg", paths);
@@ -314,6 +352,7 @@ async function checkTelegramSpeechConfig(config: AppConfig, paths: RuntimePaths,
 function formatSpeechProviderName(provider: NonNullable<AppConfig["speech"]>["provider"]): string {
   if (provider === "elevenlabs") return "ElevenLabs";
   if (provider === "voicebox") return "Voicebox";
+  if (provider === "local-command") return "Local command";
   return "OpenAI-compatible";
 }
 
@@ -702,6 +741,29 @@ function checkZaloConfig(zaloConfig: { enabled: boolean; botTokenEnv: string; ow
     message: hasToken ? "Zalo bot token env is present." : `Zalo bot token env ${zaloConfig.botTokenEnv} is missing.`,
     fix: hasToken ? undefined : `Add ${zaloConfig.botTokenEnv} to .bestie/.env before starting Zalo.`,
   };
+}
+
+function checkZaloPersonalConfig(config: { enabled: boolean; sessionEnv: string; ownerUserId: string }, envValues: Record<string, string>): DoctorCheck {
+  if (!config.ownerUserId.trim()) {
+    return { name: "Zalo Personal channel", status: "fail", message: "Zalo Personal is enabled, but controller user ID is missing.", fix: "Run `bestie channels zalo-personal setup` and configure a separate controller account." };
+  }
+  const hasSession = Boolean(process.env[config.sessionEnv] ?? envValues[config.sessionEnv]);
+  return {
+    name: "Zalo Personal channel",
+    status: hasSession ? "pass" : "fail",
+    message: hasSession ? "Zalo Personal session env is present." : `Zalo Personal session env ${config.sessionEnv} is missing.`,
+    fix: hasSession ? undefined : "Run `bestie channels zalo-personal login` to create a fresh local session.",
+  };
+}
+
+async function checkZaloPersonalSession(session: string | undefined): Promise<DoctorCheck> {
+  try {
+    if (!session) throw new Error("session is missing");
+    await ZaloPersonalClient.restore(decodeZaloPersonalSession(session).credentials);
+    return { name: "Zalo Personal session", status: "pass", message: "Zalo Personal session restores successfully." };
+  } catch {
+    return { name: "Zalo Personal session", status: "fail", message: "Zalo Personal session could not be restored.", fix: "Run `bestie channels zalo-personal login` to refresh the local session." };
+  }
 }
 
 function checkLlmTimeout(timeoutMs: number | undefined): DoctorCheck {

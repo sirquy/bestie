@@ -107,7 +107,16 @@ type VoiceboxSpeechProviderConfig = {
   pollIntervalMs?: number;
   timeoutMs?: number;
 };
-export type SpeechProviderConfig = OpenAiCompatibleSpeechProviderConfig | ElevenLabsSpeechProviderConfig | VoiceboxSpeechProviderConfig;
+type LocalCommandSpeechProviderConfig = {
+  provider: "local-command";
+  command: string;
+  args?: string[];
+  env?: Record<string, string>;
+  modelPath?: string;
+  outputFormat?: "wav";
+  timeoutMs?: number;
+};
+export type SpeechProviderConfig = OpenAiCompatibleSpeechProviderConfig | ElevenLabsSpeechProviderConfig | VoiceboxSpeechProviderConfig | LocalCommandSpeechProviderConfig;
 
 export interface AppConfig {
   version: 2;
@@ -161,6 +170,27 @@ export interface AppConfig {
       botTokenEnv: string;
       ownerUserId: string;
       pollingTimeoutSeconds?: number;
+      attachments?: {
+        downloadPolicy?: "allow" | "deny";
+        maxBytes?: number;
+        previewMaxBytes?: number;
+        parseMaxBytes?: number;
+        visionPolicy?: "allow" | "deny";
+        visionMaxBytes?: number;
+        transcriptionPolicy?: "allow" | "deny";
+        transcriptionMaxBytes?: number;
+        deleteAfterProcessingKinds?: Array<"photo" | "document" | "voice" | "audio" | "video" | "sticker">;
+        allowedMimeTypes?: string[];
+      };
+    };
+    zaloPersonal?: {
+      enabled: boolean;
+      sessionEnv: string;
+      ownerUserId: string;
+      reconnect?: {
+        initialDelayMs?: number;
+        maxDelayMs?: number;
+      };
       attachments?: {
         downloadPolicy?: "allow" | "deny";
         maxBytes?: number;
@@ -483,8 +513,8 @@ function optionalSpeech(value: unknown): AppConfig["speech"] | undefined {
 function parseSpeechProvider(value: unknown, path: string): SpeechProviderConfig {
   const speech = requireRecord(value, path);
   const provider = requireString(speech.provider, `${path}.provider`);
-  if (provider !== "openai-compatible" && provider !== "elevenlabs" && provider !== "voicebox") {
-    throw new InvalidConfigError(`${path}.provider must be openai-compatible, elevenlabs, or voicebox.`);
+  if (provider !== "openai-compatible" && provider !== "elevenlabs" && provider !== "voicebox" && provider !== "local-command") {
+    throw new InvalidConfigError(`${path}.provider must be openai-compatible, elevenlabs, voicebox, or local-command.`);
   }
 
   if (provider === "elevenlabs") {
@@ -513,6 +543,23 @@ function parseSpeechProvider(value: unknown, path: string): SpeechProviderConfig
       ...(speech.clientId === undefined ? {} : { clientId: requireString(speech.clientId, `${path}.clientId`) }),
       ...(speech.personality === undefined ? {} : { personality: requireBoolean(speech.personality, `${path}.personality`) }),
       ...(speech.pollIntervalMs === undefined ? {} : { pollIntervalMs: optionalPositiveInteger(speech.pollIntervalMs, `${path}.pollIntervalMs`) }),
+      ...(speech.timeoutMs === undefined ? {} : { timeoutMs: optionalPositiveInteger(speech.timeoutMs, `${path}.timeoutMs`) }),
+    };
+  }
+
+  if (provider === "local-command") {
+    const outputFormat = speech.outputFormat;
+    if (outputFormat !== undefined && outputFormat !== "wav") {
+      throw new InvalidConfigError(`${path}.outputFormat must be wav for local-command.`);
+    }
+
+    return {
+      provider,
+      command: requireString(speech.command, `${path}.command`),
+      ...(speech.args === undefined ? {} : { args: requireStringArray(speech.args, `${path}.args`) }),
+      ...(speech.env === undefined ? {} : { env: requireStringRecord(speech.env, `${path}.env`) }),
+      ...(speech.modelPath === undefined ? {} : { modelPath: requireString(speech.modelPath, `${path}.modelPath`) }),
+      ...(outputFormat === undefined ? {} : { outputFormat }),
       ...(speech.timeoutMs === undefined ? {} : { timeoutMs: optionalPositiveInteger(speech.timeoutMs, `${path}.timeoutMs`) }),
     };
   }
@@ -1008,10 +1055,44 @@ function optionalChannels(value: unknown): AppConfig["channels"] | undefined {
   const channels = requireRecord(value, "channels");
   const telegram = optionalTelegramChannel(channels.telegram);
   const zalo = optionalZaloChannel(channels.zalo);
+  const zaloPersonal = optionalZaloPersonalChannel(channels.zaloPersonal);
 
   return {
     ...(telegram === undefined ? {} : { telegram }),
     ...(zalo === undefined ? {} : { zalo }),
+    ...(zaloPersonal === undefined ? {} : { zaloPersonal }),
+  };
+}
+
+function optionalZaloPersonalChannel(value: unknown): NonNullable<NonNullable<AppConfig["channels"]>["zaloPersonal"]> | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  const zaloPersonal = requireRecord(value, "channels.zaloPersonal");
+  if (typeof zaloPersonal.enabled !== "boolean") {
+    throw new InvalidConfigError("channels.zaloPersonal.enabled must be a boolean.");
+  }
+
+  const reconnect = zaloPersonal.reconnect === undefined ? undefined : requireRecord(zaloPersonal.reconnect, "channels.zaloPersonal.reconnect");
+  const initialDelayMs = reconnect?.initialDelayMs === undefined ? undefined : optionalPositiveInteger(reconnect.initialDelayMs, "channels.zaloPersonal.reconnect.initialDelayMs");
+  const maxDelayMs = reconnect?.maxDelayMs === undefined ? undefined : optionalPositiveInteger(reconnect.maxDelayMs, "channels.zaloPersonal.reconnect.maxDelayMs");
+  if (initialDelayMs !== undefined && maxDelayMs !== undefined && initialDelayMs > maxDelayMs) {
+    throw new InvalidConfigError("channels.zaloPersonal.reconnect.initialDelayMs must not exceed maxDelayMs.");
+  }
+
+  const enabled = zaloPersonal.enabled;
+  const ownerUserId = requireOptionalString(zaloPersonal.ownerUserId, "channels.zaloPersonal.ownerUserId");
+  if (enabled && !ownerUserId.trim()) {
+    throw new InvalidConfigError("channels.zaloPersonal.ownerUserId must be set when Zalo Personal is enabled.");
+  }
+
+  return {
+    enabled,
+    sessionEnv: requireString(zaloPersonal.sessionEnv, "channels.zaloPersonal.sessionEnv"),
+    ownerUserId,
+    ...(initialDelayMs === undefined && maxDelayMs === undefined ? {} : { reconnect: { ...(initialDelayMs === undefined ? {} : { initialDelayMs }), ...(maxDelayMs === undefined ? {} : { maxDelayMs }) } }),
+    ...(zaloPersonal.attachments === undefined ? {} : { attachments: optionalChannelAttachments(zaloPersonal.attachments, "channels.zaloPersonal.attachments") }),
   };
 }
 
@@ -1158,6 +1239,22 @@ function requireString(value: unknown, fieldName: string): string {
   }
 
   return value;
+}
+
+function requireStringArray(value: unknown, fieldName: string): string[] {
+  if (!Array.isArray(value) || value.some((item) => typeof item !== "string")) {
+    throw new InvalidConfigError(`${fieldName} must be an array of strings.`);
+  }
+
+  return value;
+}
+
+function requireStringRecord(value: unknown, fieldName: string): Record<string, string> {
+  if (!isRecord(value) || Object.values(value).some((item) => typeof item !== "string")) {
+    throw new InvalidConfigError(`${fieldName} must be an object with string values.`);
+  }
+
+  return value as Record<string, string>;
 }
 
 function requireOptionalString(value: unknown, fieldName: string): string {

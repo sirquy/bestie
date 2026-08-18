@@ -68,7 +68,14 @@ export const ZALO_CHANNEL: ChannelDescriptor = {
   ],
 };
 
-export const CHANNELS = [TELEGRAM_CHANNEL, ZALO_CHANNEL] as const;
+export const ZALO_PERSONAL_CHANNEL: ChannelDescriptor = {
+  ...ZALO_CHANNEL,
+  id: "zalo-personal",
+  displayName: "Zalo Personal (experimental)",
+  configKey: "zaloPersonal",
+};
+
+export const CHANNELS = [TELEGRAM_CHANNEL, ZALO_CHANNEL, ZALO_PERSONAL_CHANNEL] as const;
 
 export function formatChannelHelpCommands(channel: ChannelDescriptor): string {
   const commands = channel.commands.flatMap((entry) => [entry.command, ...(entry.aliases ?? [])]);

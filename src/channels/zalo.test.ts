@@ -826,6 +826,54 @@ test("handleZaloUpdate sends outbound files and photos through the Zalo client",
   }
 });
 
+test("handleZaloUpdate sends generated media to an explicit Zalo Personal direct-message target", async () => {
+  const paths = await createTempPaths();
+  const sent: Array<{ chatId: string; text: string }> = [];
+  const sentDocuments: Array<{ chatId: string; bytes: number[]; fileName?: string; mimeType?: string; caption?: string }> = [];
+  let callCount = 0;
+  const client: ZaloClient = {
+    ...createRecordingClient(sent),
+    sendDocument: async (chatId, bytes, options) => {
+      sentDocuments.push({ chatId, bytes: [...bytes], fileName: options?.fileName, mimeType: options?.mimeType, caption: options?.caption });
+      return { messageId: "doc-1" };
+    },
+  };
+  const personalConfig: AppConfig = {
+    ...config,
+    channels: {
+      ...config.channels,
+      zaloPersonal: { enabled: true, sessionEnv: "BESTIE_ZALO_PERSONAL_SESSION", ownerUserId: "controller-1" },
+    },
+  };
+
+  try {
+    await writeRuntimeFiles(paths);
+    await mkdir(paths.workspaceDir, { recursive: true });
+    await writeFile(resolve(paths.workspaceDir, "report.txt"), "hello personal");
+
+    const result = await handleZaloUpdate(
+      { update_id: 1, message: { from: { id: "controller-1" }, chat: { id: "controller-1" }, text: "send the file" } },
+      {
+        config: personalConfig,
+        paths,
+        client,
+        channel: "zalo-personal",
+        chatCompletion: async () => {
+          callCount += 1;
+          return callCount === 1
+            ? '{"tool":"internal.send_file","arguments":{"path":"report.txt","caption":"Personal report","channel":"zalo-personal:target-2"}}'
+            : '{"answer":"sent"}';
+        },
+      },
+    );
+
+    assert.equal(result, "replied");
+    assert.deepEqual(sentDocuments, [{ chatId: "target-2", bytes: [...Buffer.from("hello personal")], fileName: "report.txt", mimeType: "text/plain", caption: "Personal report" }]);
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
 function createRecordingClient(sent: Array<{ chatId: string; text: string }>): ZaloClient {
   return {
     getUpdates: async () => [],

@@ -5,6 +5,7 @@ import { getRuntimePaths, type RuntimePaths } from "../../runtime/paths.js";
 import { getDaemonChannelStatus, type DaemonChannel } from "./daemon.js";
 import { runTelegramCommand } from "./telegram.js";
 import { runZaloCommand } from "./zalo.js";
+import { runZaloPersonalCommand } from "./zalo-personal.js";
 import { badge, keyValue, rule, statusBadge, table, title } from "../ui.js";
 
 type ChannelHandler = (argv?: string[]) => Promise<void> | void;
@@ -30,6 +31,7 @@ interface ChannelsDoctorReport {
 const channelHandlers: Record<string, ChannelHandler> = {
   telegram: runTelegramCommand,
   zalo: runZaloCommand,
+  "zalo-personal": runZaloPersonalCommand,
 };
 
 export async function runChannelsCommand(optionsOrArgv: string[] | ChannelsCommandOptions = process.argv): Promise<void> {
@@ -53,7 +55,7 @@ export async function runChannelsCommand(optionsOrArgv: string[] | ChannelsComma
 
   if (!handler) {
     console.error(`Kênh không xác định: ${channelName}`);
-    console.error("Các kênh hiện có: telegram, zalo");
+    console.error("Các kênh hiện có: telegram, zalo, zalo-personal");
     console.error("Chạy `bestie channels --help` để xem danh sách kênh.");
     process.exitCode = 1;
     return;
@@ -65,7 +67,7 @@ export async function runChannelsCommand(optionsOrArgv: string[] | ChannelsComma
 async function runChannelsDoctor(options: Required<Pick<ChannelsCommandOptions, "argv" | "paths" | "writeLine">>): Promise<void> {
   const selectedChannels = getSelectedChannels(options.argv);
   const connect = options.argv.includes("--connect");
-  const report = await runDoctor(options.paths, { connectTelegram: connect && selectedChannels.includes("telegram"), connectZalo: connect && selectedChannels.includes("zalo") });
+  const report = await runDoctor(options.paths, { connectTelegram: connect && selectedChannels.includes("telegram"), connectZalo: connect && selectedChannels.includes("zalo"), connectZaloPersonal: connect && selectedChannels.includes("zalo-personal") });
   const channelsReport = buildChannelsDoctorReport(report, selectedChannels);
 
   if (options.argv.includes("--json")) {
@@ -112,10 +114,10 @@ function getSelectedChannels(argv: string[]): DaemonChannel[] {
   const channelIndex = argv.indexOf("--channel");
   const value = channelIndex === -1 ? "all" : argv[channelIndex + 1];
 
-  if (value === "all") return ["telegram", "zalo"];
-  if (value === "telegram" || value === "zalo") return [value];
+  if (value === "all") return ["telegram", "zalo", "zalo-personal"];
+  if (value === "telegram" || value === "zalo" || value === "zalo-personal") return [value];
 
-  throw new Error("Cách dùng: bestie channels doctor [--channel telegram|zalo|all] [--connect] [--json]");
+  throw new Error("Cách dùng: bestie channels doctor [--channel telegram|zalo|zalo-personal|all] [--connect] [--json]");
 }
 
 function isChannelDoctorCheck(check: DoctorCheck, selectedChannels: DaemonChannel[]): boolean {
@@ -141,14 +143,14 @@ async function showChannelsStatus(options: Required<Pick<ChannelsCommandOptions,
   }
 }
 
-function getChannelConfig(config: AppConfig, channel: ChannelDescriptor): { enabled?: boolean; ownerUserId?: string; botTokenEnv?: string } | undefined {
+function getChannelConfig(config: AppConfig, channel: ChannelDescriptor): { enabled?: boolean; ownerUserId?: string; botTokenEnv?: string; sessionEnv?: string } | undefined {
   return config.channels?.[channel.configKey as keyof NonNullable<AppConfig["channels"]>];
 }
 
 function formatChannelStatusRow(channel: ChannelDescriptor, channelConfig: ReturnType<typeof getChannelConfig>, daemon: Awaited<ReturnType<typeof getDaemonChannelStatus>>): string[] {
   const enabled = channelConfig?.enabled ? badge("ON", "green") : badge("OFF", "gray");
   const owner = channelConfig?.ownerUserId?.trim() ? badge("OWNER", "green") : badge("OWNER?", "yellow");
-  const tokenEnv = channelConfig?.botTokenEnv ?? "missing";
+  const tokenEnv = channelConfig?.botTokenEnv ?? channelConfig?.sessionEnv ?? "missing";
   const daemonText = daemon.state === "running" ? `${badge("RUN", "green")} pid ${daemon.pid}` : daemon.state === "stale" ? `${badge("STALE", "yellow")} pid ${daemon.pid}` : badge("STOP", "gray");
 
   return [channel.displayName, enabled, owner, tokenEnv, daemonText];

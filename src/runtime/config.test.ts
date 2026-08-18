@@ -875,6 +875,58 @@ test("validateConfig rejects invalid internal tool policies", () => {
   assert.throws(() => validateConfig({ ...validConfig, internalTools: { browser: { cdpEndpoint: "http://token@127.0.0.1:9222" } } }), /browser.cdpEndpoint must be an http\(s\) or ws\(s\) loopback URL/);
 });
 
+test("validateConfig accepts a local command speech provider", () => {
+  const config = validateConfig({
+    ...validConfig,
+    speech: {
+      provider: "local-command",
+      command: "C:\\Python314\\python.exe",
+      args: ["-m", "piper", "--model", "{modelPath}", "--output_file", "{outputPath}"],
+      modelPath: ".bestie/models/piper/vi_VN-vais1000-medium.onnx",
+      env: { PYTHONPATH: "C:\\Users\\example\\.bestie\\tools\\piper" },
+      outputFormat: "wav",
+      timeoutMs: 120_000,
+    },
+  });
+
+  assert.deepEqual(config.speech, {
+    provider: "local-command",
+    command: "C:\\Python314\\python.exe",
+    args: ["-m", "piper", "--model", "{modelPath}", "--output_file", "{outputPath}"],
+    modelPath: ".bestie/models/piper/vi_VN-vais1000-medium.onnx",
+    env: { PYTHONPATH: "C:\\Users\\example\\.bestie\\tools\\piper" },
+    outputFormat: "wav",
+    timeoutMs: 120_000,
+  });
+});
+
+test("validateConfig accepts Zalo Personal media settings and requires a controller when enabled", () => {
+  const config = validateConfig({
+    ...validConfig,
+    channels: {
+      zaloPersonal: {
+        enabled: true,
+        sessionEnv: "BESTIE_ZALO_PERSONAL_SESSION",
+        ownerUserId: "controller-1",
+        reconnect: { initialDelayMs: 1_000, maxDelayMs: 30_000 },
+        attachments: { downloadPolicy: "allow", maxBytes: 4_096, visionPolicy: "allow" },
+      },
+    },
+  });
+
+  assert.deepEqual(config.channels?.zaloPersonal, {
+    enabled: true,
+    sessionEnv: "BESTIE_ZALO_PERSONAL_SESSION",
+    ownerUserId: "controller-1",
+    reconnect: { initialDelayMs: 1_000, maxDelayMs: 30_000 },
+    attachments: { downloadPolicy: "allow", maxBytes: 4_096, visionPolicy: "allow" },
+  });
+  assert.throws(
+    () => validateConfig({ ...validConfig, channels: { zaloPersonal: { enabled: true, sessionEnv: "BESTIE_ZALO_PERSONAL_SESSION", ownerUserId: "" } } }),
+    /ownerUserId must be set/,
+  );
+});
+
 test("validateConfig rejects invalid MCP server config", () => {
   assert.throws(() => validateConfig({ ...validConfig, mcp: { servers: "nope" } }), /mcp.servers must be an array/);
   assert.throws(

@@ -3,7 +3,7 @@ import { SqliteMemoryStore, type CronSchedule } from "../memory/sqlite-store.js"
 import type { RuntimePaths } from "../runtime/paths.js";
 import { computeNextRun, validateSchedule } from "./scheduler.js";
 
-export type CronReportChannel = "telegram" | "zalo";
+export type CronReportChannel = "telegram" | "zalo" | "zalo-personal";
 
 export interface CronReportDestination {
   channel: CronReportChannel;

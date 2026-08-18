@@ -6,7 +6,7 @@ import type { RuntimePaths } from "../runtime/paths.js";
 import { resolveSandboxPath } from "../runtime/workspace.js";
 import type { PermissionApprover } from "../safety/permission-policy.js";
 
-export type OutboundChannelName = "telegram" | "zalo";
+export type OutboundChannelName = "telegram" | "zalo" | "zalo-personal";
 export type OutboundAttachmentKind = "photo" | "file";
 
 export interface OutboundFilePayload {

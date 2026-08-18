@@ -7,6 +7,7 @@ import { ProviderAuthError, ProviderNetworkError, ProviderRateLimitError, Provid
 import { ProviderFallbackRecorder, type ProviderFallbackTarget } from "./fallbacks.js";
 import type { FetchLike } from "./chat-completion.js";
 import { formatProviderHttpError } from "./provider-http.js";
+import { createLocalSpeech } from "./local-speech.js";
 
 type OpenAiCompatibleSpeechConfig = Extract<NonNullable<AppConfig["speech"]>, { provider: "openai-compatible" }>;
 
@@ -59,6 +60,10 @@ async function createSpeechWithProvider(config: AppConfig, input: SpeechInput, o
 
   if (config.speech.provider === "voicebox") {
     return sendVoiceboxSpeech(config, input, options.fetchImpl ?? fetch, options.timeoutMs ?? config.speech.timeoutMs ?? DEFAULT_LLM_TIMEOUT_MS);
+  }
+
+  if (config.speech.provider === "local-command") {
+    return createLocalSpeech(config, input.text, { rootDir: options.paths?.rootDir });
   }
 
   const apiKey = await loadRequiredSecret(config.speech.apiKeyEnv, options.paths);
@@ -295,6 +300,10 @@ function describeSpeechCandidate(config: AppConfig): ProviderFallbackTarget {
 
   if (speech.provider === "voicebox") {
     return { provider: speech.provider, model: speech.profile ?? speech.clientId ?? "default" };
+  }
+
+  if (speech.provider === "local-command") {
+    return { provider: speech.provider, model: speech.modelPath ?? speech.command };
   }
 
   return { provider: speech.provider, model: speech.modelId ?? speech.voiceId };

@@ -7,7 +7,7 @@ import { SqliteMemoryStore, type PendingMemory, type StoredMemory } from "./sqli
 export type MemoryReasoningChatCompletion = (config: AppConfig, apiKey: string, options: ChatCompletionOptions) => Promise<string>;
 
 export interface MemoryReasoningTurn {
-  channel: "terminal" | "telegram" | "zalo";
+  channel: "terminal" | "telegram" | "zalo" | "zalo-personal";
   userId?: string;
   userInput: string;
   assistantText: string;

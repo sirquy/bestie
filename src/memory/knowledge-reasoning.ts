@@ -7,7 +7,7 @@ import { SqliteMemoryStore, type KnowledgeEntity, type KnowledgeEntityKind, type
 export type KnowledgeReasoningChatCompletion = (config: AppConfig, apiKey: string, options: ChatCompletionOptions) => Promise<string>;
 
 export interface KnowledgeReasoningTurn {
-  channel: "terminal" | "telegram" | "zalo" | "ui";
+  channel: "terminal" | "telegram" | "zalo" | "zalo-personal" | "ui";
   userId?: string;
   sourceMessageId?: string;
   userInput: string;

@@ -24,7 +24,7 @@ test("runChannelsCommand rejects unknown channels", async () => {
 
     assert.equal(process.exitCode, 1);
     assert.match(lines.join("\n"), /Kênh không xác định: unknown/);
-    assert.match(lines.join("\n"), /Các kênh hiện có: telegram, zalo/);
+    assert.match(lines.join("\n"), /Các kênh hiện có: telegram, zalo, zalo-personal/);
   } finally {
     console.error = originalError;
     process.exitCode = originalExitCode;
@@ -59,6 +59,7 @@ test("runChannelsCommand lists channel config and daemon state", async () => {
         channels: {
           telegram: { enabled: true, botTokenEnv: "BESTIE_TELEGRAM_BOT_TOKEN", ownerUserId: "12345" },
           zalo: { enabled: false, botTokenEnv: "BESTIE_ZALO_BOT_TOKEN", ownerUserId: "" },
+          zaloPersonal: { enabled: true, sessionEnv: "BESTIE_ZALO_PERSONAL_SESSION", ownerUserId: "controller-1" },
         },
       },
       paths,
@@ -79,6 +80,7 @@ test("runChannelsCommand lists channel config and daemon state", async () => {
     assert.match(lines.join("\n"), /Kênh Bestie/);
     assert.match(lines.join("\n"), /Telegram\s+\[ON\]\s+\[OWNER\]\s+BESTIE_TELEGRAM_BOT_TOKEN\s+\[RUN\] pid 4242/);
     assert.match(lines.join("\n"), /Zalo\s+\[OFF\]\s+\[OWNER\?\]\s+BESTIE_ZALO_BOT_TOKEN\s+\[STALE\] pid 4343/);
+    assert.match(lines.join("\n"), /Zalo Personal \(experimental\)\s+\[ON\]\s+\[OWNER\]\s+BESTIE_ZALO_PERSONAL_SESSION\s+\[STOP\]/);
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
   }

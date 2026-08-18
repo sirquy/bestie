@@ -4,7 +4,7 @@ import type { AppConfig } from "../runtime/config.js";
 import type { RuntimePaths } from "../runtime/paths.js";
 import { SqliteMemoryStore, type StoredMessage, type UiChatMessage } from "./sqlite-store.js";
 
-export type ConversationSummaryChannel = "terminal" | "telegram" | "zalo" | "ui";
+export type ConversationSummaryChannel = "terminal" | "telegram" | "zalo" | "zalo-personal" | "ui";
 export type ConversationSummaryChatCompletion = (config: AppConfig, apiKey: string, options: ChatCompletionOptions) => Promise<string>;
 export type ConversationSummaryRefreshStatus = "refreshed" | "skipped" | "failed";
 
@@ -213,7 +213,7 @@ function buildConversationSummaryRefreshCandidates(store: SqliteMemoryStore, cha
 }
 
 function buildStoredMessageRefreshCandidates(store: SqliteMemoryStore, channel: ConversationSummaryChannel | undefined, userId: string | undefined, recentMessageLimit: number): Array<{ channel: ConversationSummaryChannel; userId?: string; messages: StoredMessage[]; summarizeThrough: number }> {
-  const allowedChannels = new Set<ConversationSummaryChannel>(["terminal", "telegram", "zalo"]);
+  const allowedChannels = new Set<ConversationSummaryChannel>(["terminal", "telegram", "zalo", "zalo-personal"]);
   const groups = new Map<string, { channel: ConversationSummaryChannel; userId?: string; messages: StoredMessage[] }>();
 
   for (const message of store.listAllMessages()) {

@@ -48,7 +48,7 @@ import {
   type ChannelTranscript,
 } from "./attachments.js";
 import { applyMemoryHygienePlanForChannel, formatMemoryAnalysisReport, formatMemoryCleanupDryRunReport, formatMemoryGovernanceStatus, formatMemoryHygieneReport, formatMemoryInspect, formatMemoryMaintenanceInstalled, formatMemoryMaintenanceRemoved, formatMemoryMaintenanceStatus, formatMemoryRetrievalPolicyUpdated, formatPendingKnowledgeSanitizeResult } from "./memory-commands.js";
-import { ZALO_CHANNEL, formatChannelHelpCommands } from "./registry.js";
+import { ZALO_CHANNEL, ZALO_PERSONAL_CHANNEL, formatChannelHelpCommands } from "./registry.js";
 import { createChannelResponseController } from "./response-controller.js";
 import { formatChannelToolProgress, shouldShowToolProgress } from "./tool-progress.js";
 import { createChannelVoiceTranscriber, type ChannelVoiceTranscriber } from "./voice.js";
@@ -206,6 +206,23 @@ export interface ZaloUpdateHandlerOptions {
   paths: RuntimePaths;
   client: ZaloClient;
   chatCompletion?: ZaloChatCompletionRunner;
+  channel?: ZaloRuntimeChannel;
+}
+
+export type ZaloRuntimeChannel = "zalo" | "zalo-personal";
+
+type ZaloRuntimeConfig = {
+  enabled: boolean;
+  ownerUserId: string;
+  attachments?: NonNullable<NonNullable<AppConfig["channels"]>["zalo"]>["attachments"];
+};
+
+function getZaloRuntimeConfig(config: AppConfig, channel: ZaloRuntimeChannel): ZaloRuntimeConfig | undefined {
+  return channel === "zalo" ? config.channels?.zalo : config.channels?.zaloPersonal;
+}
+
+function getZaloRuntimeDescriptor(channel: ZaloRuntimeChannel) {
+  return channel === "zalo" ? ZALO_CHANNEL : ZALO_PERSONAL_CHANNEL;
 }
 
 export class ZaloHttpClient implements ZaloClient {
@@ -360,7 +377,8 @@ export async function runZaloPollingLoop(options: ZaloPollingOptions): Promise<v
 }
 
 export async function handleZaloUpdate(update: ZaloUpdate, options: ZaloUpdateHandlerOptions): Promise<ZaloUpdateResult> {
-  const zaloConfig = options.config.channels?.zalo;
+  const channel = options.channel ?? "zalo";
+  const zaloConfig = getZaloRuntimeConfig(options.config, channel);
   const message = update.message;
   const adapter = createZaloRuntimeAdapter(options.client, update, options);
   const incoming = message ? mapZaloIncomingMessage(message) : undefined;
@@ -379,11 +397,11 @@ export async function handleZaloUpdate(update: ZaloUpdate, options: ZaloUpdateHa
   }
 
   if (!attachment && text === "/help") {
-    await options.client.sendMessage(incoming.chatId, formatChannelHelpCommands(ZALO_CHANNEL));
+    await options.client.sendMessage(incoming.chatId, formatChannelHelpCommands(getZaloRuntimeDescriptor(channel)));
     return "replied";
   }
 
-  if (!attachment && await handleZaloSlashCommand(text, incoming.chatId, options)) {
+  if (!attachment && await handleZaloSlashCommand(text, incoming.chatId, options, channel)) {
     return "replied";
   }
 
@@ -403,10 +421,10 @@ export async function handleZaloUpdate(update: ZaloUpdate, options: ZaloUpdateHa
     const systemPrompt = await loadSystemPrompt(options.paths);
     const memories = await loadRelevantMemories(options.paths, { query: userInput });
     const recentMessageLimit = getRecentMessageLimit(options.config);
-    const recentTurns = await loadRecentZaloTurns(options.paths, zaloConfig.ownerUserId, recentMessageLimit);
+    const recentTurns = await loadRecentZaloTurns(options.paths, zaloConfig.ownerUserId, recentMessageLimit, channel);
     const knowledgeGraph = await loadRelevantKnowledgeGraph(options.paths, userInput);
-    const runtimeContext = buildZaloRuntimeToolContext(incoming, zaloConfig.ownerUserId);
-    const conversationSummary = await loadConversationSummaryContext(options.paths, "zalo", zaloConfig.ownerUserId);
+    const runtimeContext = buildZaloRuntimeToolContext(incoming, zaloConfig.ownerUserId, channel);
+    const conversationSummary = await loadConversationSummaryContext(options.paths, channel, zaloConfig.ownerUserId);
     const messages = buildChatMessages(buildMcpToolSystemPrompt(systemPrompt, options.config, runtimeContext), recentTurns, userInput, memories, { memoryRetrievalPolicy: options.config.memory?.retrievalPolicy ?? "full", knowledgeGraph, conversationSummary, recentMessageLimit });
     if (savedAttachment?.visionImage) {
       attachZaloVisionImage(messages, userInput, savedAttachment.visionImage.dataUrl);
@@ -420,25 +438,25 @@ export async function handleZaloUpdate(update: ZaloUpdate, options: ZaloUpdateHa
       chatCompletion,
       toolRunner: async (toolOptions) => {
         const result = await runAgentToolRequest(toolOptions);
-        await sendZaloMemoryApprovalIfNeeded(options.client, incoming.chatId, options.paths, zaloConfig.ownerUserId, toolOptions.request.tool, result);
-        await sendZaloKnowledgeApprovalIfNeeded(options.client, incoming.chatId, options.paths, zaloConfig.ownerUserId, toolOptions.request.tool, result);
+        await sendZaloMemoryApprovalIfNeeded(options.client, incoming.chatId, options.paths, zaloConfig.ownerUserId, toolOptions.request.tool, result, channel);
+        await sendZaloKnowledgeApprovalIfNeeded(options.client, incoming.chatId, options.paths, zaloConfig.ownerUserId, toolOptions.request.tool, result, channel);
         return result;
       },
-      approver: createZaloPermissionApprover(options.client, incoming.chatId, options.paths),
+      approver: createZaloPermissionApprover(options.client, incoming.chatId, options.paths, channel),
       policy: ZALO_PERMISSION_POLICY,
       streamFinalResponse: true,
       onToolActivity: async (activity) => handleZaloToolActivity(response, activity, options.config.agent.name),
       runtimeContext,
-      outboundFileSender: createZaloOutboundFileSender(options.client, incoming.chatId),
+      outboundFileSender: createZaloOutboundFileSender(options.client, incoming.chatId, channel),
     });
     typing.stop();
     await response.replyFinal(assistantText);
-    await persistZaloConversationTurn(options.paths, zaloConfig.ownerUserId, userInput, assistantText);
-    await runZaloConversationSummaryPass({ config: options.config, paths: options.paths, apiKey, channel: "zalo", userId: zaloConfig.ownerUserId, chatCompletion });
-    const memoryReasoning = await runZaloMemoryReasoningPass({ config: options.config, paths: options.paths, apiKey, turn: { channel: "zalo", userId: zaloConfig.ownerUserId, userInput, assistantText }, chatCompletion });
-    const knowledgeReasoning = await runZaloKnowledgeReasoningPass({ config: options.config, paths: options.paths, apiKey, turn: { channel: "zalo", userId: zaloConfig.ownerUserId, userInput, assistantText }, chatCompletion });
-    await sendZaloMemoryReasoningApprovalsIfNeeded(options.client, incoming.chatId, options.paths, zaloConfig.ownerUserId, memoryReasoning);
-    await sendZaloKnowledgeReasoningApprovalsIfNeeded(options.client, incoming.chatId, options.paths, zaloConfig.ownerUserId, knowledgeReasoning);
+    await persistZaloConversationTurn(options.paths, zaloConfig.ownerUserId, userInput, assistantText, channel);
+    await runZaloConversationSummaryPass({ config: options.config, paths: options.paths, apiKey, channel, userId: zaloConfig.ownerUserId, chatCompletion });
+    const memoryReasoning = await runZaloMemoryReasoningPass({ config: options.config, paths: options.paths, apiKey, turn: { channel, userId: zaloConfig.ownerUserId, userInput, assistantText }, chatCompletion });
+    const knowledgeReasoning = await runZaloKnowledgeReasoningPass({ config: options.config, paths: options.paths, apiKey, turn: { channel, userId: zaloConfig.ownerUserId, userInput, assistantText }, chatCompletion });
+    await sendZaloMemoryReasoningApprovalsIfNeeded(options.client, incoming.chatId, options.paths, zaloConfig.ownerUserId, memoryReasoning, channel);
+    await sendZaloKnowledgeReasoningApprovalsIfNeeded(options.client, incoming.chatId, options.paths, zaloConfig.ownerUserId, knowledgeReasoning, channel);
     await appendLog({ event: "zalo_chat_success", detail: { model: options.config.llm.primary } }, { paths: options.paths });
     return "replied";
   } catch (error) {
@@ -477,9 +495,9 @@ function extractZaloChatId(message: ZaloMessage): string | undefined {
   return chatId === undefined ? undefined : String(chatId);
 }
 
-export function createZaloRuntimeAdapter(client: ZaloClient, update?: ZaloUpdate, options?: Pick<ZaloUpdateHandlerOptions, "config" | "paths" | "client">): ChannelRuntimeAdapter<ZaloAttachmentSummary, string, "typing"> {
+export function createZaloRuntimeAdapter(client: ZaloClient, update?: ZaloUpdate, options?: Pick<ZaloUpdateHandlerOptions, "config" | "paths" | "client" | "channel">): ChannelRuntimeAdapter<ZaloAttachmentSummary, string, "typing"> {
   return {
-    descriptor: ZALO_CHANNEL,
+    descriptor: getZaloRuntimeDescriptor(options?.channel ?? "zalo"),
     ...(update && options ? {
       attachments: {
         getAttachment: (message) => getZaloAttachment(message.raw as ZaloMessage),
@@ -504,32 +522,32 @@ export function createZaloOutboundAdapter(client: ZaloClient): ChannelOutboundAd
   };
 }
 
-function createZaloOutboundFileSender(client: ZaloClient, currentChatId: string): AgentOutboundFileSender {
+function createZaloOutboundFileSender(client: ZaloClient, currentChatId: string, channel: ZaloRuntimeChannel = "zalo"): AgentOutboundFileSender {
   return {
     async sendPhoto(payload) {
       if (!client.sendPhoto) {
         throw new Error("Zalo client does not support sending photos.");
       }
-      const chatId = resolveZaloOutboundChatId(payload.channel, currentChatId);
+      const chatId = resolveZaloOutboundChatId(payload.channel, currentChatId, channel);
       const sent = normalizeZaloSentMessage(await client.sendPhoto(chatId, payload.bytes, { fileName: payload.fileName, mimeType: payload.mimeType, caption: payload.caption }));
-      return { channel: `zalo:${chatId}`, target: chatId, ...(sent?.messageId === undefined ? {} : { messageId: sent.messageId }) };
+      return { channel: `${channel}:${chatId}`, target: chatId, ...(sent?.messageId === undefined ? {} : { messageId: sent.messageId }) };
     },
     async sendFile(payload) {
       if (!client.sendDocument) {
         throw new Error("Zalo client does not support sending files.");
       }
-      const chatId = resolveZaloOutboundChatId(payload.channel, currentChatId);
+      const chatId = resolveZaloOutboundChatId(payload.channel, currentChatId, channel);
       const sent = normalizeZaloSentMessage(await client.sendDocument(chatId, payload.bytes, { fileName: payload.fileName, mimeType: payload.mimeType, caption: payload.caption }));
-      return { channel: `zalo:${chatId}`, target: chatId, ...(sent?.messageId === undefined ? {} : { messageId: sent.messageId }) };
+      return { channel: `${channel}:${chatId}`, target: chatId, ...(sent?.messageId === undefined ? {} : { messageId: sent.messageId }) };
     },
   };
 }
 
-function resolveZaloOutboundChatId(channel: string | undefined, currentChatId: string): string {
+function resolveZaloOutboundChatId(channel: string | undefined, currentChatId: string, runtimeChannel: ZaloRuntimeChannel): string {
   if (channel === undefined || channel.trim() === "" || channel === "current") return currentChatId;
-  const match = /^zalo:(.+)$/.exec(channel.trim());
+  const match = new RegExp(`^${runtimeChannel}:(.+)$`).exec(channel.trim());
   if (!match?.[1]) {
-    throw new Error('Zalo outbound files require channel "zalo:<chatId>" or the current channel.');
+    throw new Error(`Zalo outbound files require channel "${runtimeChannel}:<chatId>" or the current channel.`);
   }
   return match[1];
 }
@@ -588,8 +606,9 @@ function normalizeZaloAttachment(kind: ZaloAttachmentKind, raw: unknown): ZaloAt
   };
 }
 
-async function saveZaloAttachment(attachment: ZaloAttachmentSummary, update: ZaloUpdate, options: Pick<ZaloUpdateHandlerOptions, "config" | "paths" | "client">): Promise<SavedZaloAttachment> {
-  const policy = getZaloAttachmentPolicy(options.config);
+async function saveZaloAttachment(attachment: ZaloAttachmentSummary, update: ZaloUpdate, options: Pick<ZaloUpdateHandlerOptions, "config" | "paths" | "client" | "channel">): Promise<SavedZaloAttachment> {
+  const channel = options.channel ?? "zalo";
+  const policy = getZaloAttachmentPolicy(options.config, channel);
   const transcriber = createChannelVoiceTranscriber({ config: options.config, paths: options.paths, transcriptionPolicy: policy.transcriptionPolicy });
   const processed = await processChannelAttachment({
     validate: () => validateZaloAttachmentPolicy(policy),
@@ -601,7 +620,7 @@ async function saveZaloAttachment(attachment: ZaloAttachmentSummary, update: Zal
       downloadFile: options.client.downloadFile ? (filePath) => options.client.downloadFile!(filePath) : undefined,
       messages: zaloAttachmentDownloadMessages(policy),
     }),
-    buildLocalPath: (downloaded: ChannelDownloadedAttachment) => buildZaloAttachmentPath(options.paths, update, attachment, downloaded.filePath),
+    buildLocalPath: (downloaded: ChannelDownloadedAttachment) => buildZaloAttachmentPath(options.paths, update, attachment, downloaded.filePath, channel),
     persist: persistChannelAttachmentFile,
     preview: (input: ZaloAttachmentPipelineInput) => buildChannelAttachmentPreview({
       bytes: input.bytes,
@@ -656,14 +675,14 @@ function zaloAttachmentDownloadMessages(policy: ZaloAttachmentPolicy): Parameter
   };
 }
 
-function buildZaloAttachmentPath(paths: RuntimePaths, update: ZaloUpdate, attachment: ZaloAttachmentSummary, filePath: string): string {
+function buildZaloAttachmentPath(paths: RuntimePaths, update: ZaloUpdate, attachment: ZaloAttachmentSummary, filePath: string, channel: ZaloRuntimeChannel = "zalo"): string {
   const date = new Date().toISOString().slice(0, 10);
   const messageId = update.message?.message_id ?? update.message?.messageId ?? update.update_id;
   const sourceName = attachment.fileName ?? (basename(filePath) || `${attachment.kind}-${attachment.fileId}`);
   const extension = extname(sourceName) || defaultZaloAttachmentExtension(attachment.kind, attachment.mimeType);
   return buildChannelAttachmentPath({
     workspaceDir: paths.workspaceDir,
-    channelName: "zalo",
+    channelName: channel,
     date,
     updateId: update.update_id,
     messageId,
@@ -687,8 +706,8 @@ function defaultZaloAttachmentExtension(kind: ZaloAttachmentKind, mimeType: stri
   return ".bin";
 }
 
-function getZaloAttachmentPolicy(config: AppConfig): ZaloAttachmentPolicy {
-  const configured = config.channels?.zalo?.attachments;
+function getZaloAttachmentPolicy(config: AppConfig, channel: ZaloRuntimeChannel = "zalo"): ZaloAttachmentPolicy {
+  const configured = getZaloRuntimeConfig(config, channel)?.attachments;
   return {
     downloadPolicy: configured?.downloadPolicy ?? "allow",
     maxBytes: configured?.maxBytes ?? ZALO_ATTACHMENT_MAX_BYTES,
@@ -841,8 +860,8 @@ function optionalNumberProperty<TKey extends string>(key: TKey, value: number | 
   return value === undefined ? {} : { [key]: value } as { [K in TKey]: number };
 }
 
-async function handleZaloSlashCommand(text: string, chatId: string, options: ZaloUpdateHandlerOptions): Promise<boolean> {
-  if (await handleCronChannelCommand({ text, paths: options.paths, channel: "zalo", userId: chatId, sendMessage: (message) => options.client.sendMessage(chatId, message).then(() => undefined) })) {
+async function handleZaloSlashCommand(text: string, chatId: string, options: ZaloUpdateHandlerOptions, channel: ZaloRuntimeChannel = "zalo"): Promise<boolean> {
+  if (await handleCronChannelCommand({ text, paths: options.paths, channel, userId: chatId, sendMessage: (message) => options.client.sendMessage(chatId, message).then(() => undefined) })) {
     return true;
   }
 
@@ -868,7 +887,7 @@ async function handleZaloSlashCommand(text: string, chatId: string, options: Zal
   if (text === "/approvals") {
     const store = await SqliteMemoryStore.open(options.paths);
     try {
-      const approvals = store.listPendingActionApprovals("zalo", undefined, 5);
+      const approvals = store.listPendingActionApprovals(channel, undefined, 5);
       await options.client.sendMessage(chatId, approvals.length === 0 ? "No pending action approvals." : `Pending approvals:\n${approvals.map(formatPendingApprovalSummary).join("\n\n")}`);
       return true;
     } finally {
@@ -885,7 +904,7 @@ async function handleZaloSlashCommand(text: string, chatId: string, options: Zal
         await options.client.sendMessage(chatId, `Approval request ${approvalDecision.id} is no longer pending. It may have already been handled or expired.`);
         return true;
       }
-      const actionResult = await executeApprovedAction(store, approval, approvalDecision.decision, { config: options.config, paths: options.paths, outboundFileSender: createZaloOutboundFileSender(options.client, chatId) });
+      const actionResult = await executeApprovedAction(store, approval, approvalDecision.decision, { config: options.config, paths: options.paths, outboundFileSender: createZaloOutboundFileSender(options.client, chatId, channel) });
       await options.client.sendMessage(chatId, actionResult.message);
       return true;
     } finally {
@@ -1185,11 +1204,11 @@ async function handleZaloSlashCommand(text: string, chatId: string, options: Zal
   return false;
 }
 
-function createZaloPermissionApprover(client: ZaloClient, chatId: string, paths: RuntimePaths): PermissionApprover {
+function createZaloPermissionApprover(client: ZaloClient, chatId: string, paths: RuntimePaths, channel: ZaloRuntimeChannel = "zalo"): PermissionApprover {
   return async (request, proposed) => {
       const store = await SqliteMemoryStore.open(paths);
       try {
-        const approval = store.addPendingActionApproval({ channel: "zalo", category: request.category, action: request.action, target: request.target, reason: request.reason, proposedReason: proposed.reason, payloadJson: request.payloadJson, ttlMs: ZALO_ACTION_APPROVAL_TTL_MS });
+        const approval = store.addPendingActionApproval({ channel, category: request.category, action: request.action, target: request.target, reason: request.reason, proposedReason: proposed.reason, payloadJson: request.payloadJson, ttlMs: ZALO_ACTION_APPROVAL_TTL_MS });
         await client.sendMessage(chatId, [`Approval needed. Request: ${approval.id}`, `Action: ${request.action}`, `Category: ${request.category}`, request.target ? `Target: ${request.target}` : undefined, request.reason ? `Reason: ${request.reason}` : undefined, `Reply /approve ${approval.id} or /deny ${approval.id}.`].filter(Boolean).join("\n"));
         return { approved: false, reason: `Approval request ${approval.id} is pending in Zalo.` };
       } finally {
@@ -1243,6 +1262,7 @@ async function sendZaloMemoryReasoningApprovalsIfNeeded(
   paths: RuntimePaths,
   ownerUserId: string,
   result: MemoryReasoningResult,
+  channel: ZaloRuntimeChannel = "zalo",
 ): Promise<void> {
   for (const pending of result.pending) {
     const store = await SqliteMemoryStore.open(paths);
@@ -1250,7 +1270,7 @@ async function sendZaloMemoryReasoningApprovalsIfNeeded(
 
     try {
       approvalId = store.addPendingActionApproval({
-        channel: "zalo",
+        channel,
         userId: ownerUserId,
         category: "local_write",
         action: "memory_approve",
@@ -1281,6 +1301,7 @@ async function sendZaloKnowledgeReasoningApprovalsIfNeeded(
   paths: RuntimePaths,
   ownerUserId: string,
   result: KnowledgeReasoningResult,
+  channel: ZaloRuntimeChannel = "zalo",
 ): Promise<void> {
   for (const pending of result.pending) {
     const store = await SqliteMemoryStore.open(paths);
@@ -1288,7 +1309,7 @@ async function sendZaloKnowledgeReasoningApprovalsIfNeeded(
 
     try {
       approvalId = store.addPendingActionApproval({
-        channel: "zalo",
+        channel,
         userId: ownerUserId,
         category: "local_write",
         action: "knowledge_approve",
@@ -1319,6 +1340,7 @@ async function sendZaloMemoryApprovalIfNeeded(
   ownerUserId: string,
   toolName: string,
   result: { ok: boolean; result?: unknown },
+  channel: ZaloRuntimeChannel = "zalo",
 ): Promise<void> {
   if (toolName !== "internal.remember_memory" || !result.ok || !isPendingToolResult(result.result)) {
     return;
@@ -1337,7 +1359,7 @@ async function sendZaloMemoryApprovalIfNeeded(
     content = pending.content;
     type = pending.type;
     approvalId = store.addPendingActionApproval({
-      channel: "zalo",
+      channel,
       userId: ownerUserId,
       category: "local_write",
       action: "memory_approve",
@@ -1360,6 +1382,7 @@ async function sendZaloKnowledgeApprovalIfNeeded(
   ownerUserId: string,
   toolName: string,
   result: { ok: boolean; result?: unknown },
+  channel: ZaloRuntimeChannel = "zalo",
 ): Promise<void> {
   if (toolName !== "internal.remember_knowledge" || !result.ok || !isPendingToolResult(result.result)) {
     return;
@@ -1376,7 +1399,7 @@ async function sendZaloKnowledgeApprovalIfNeeded(
     }
     summary = formatPendingKnowledgePayloadSummary(pending.payload);
     approvalId = store.addPendingActionApproval({
-      channel: "zalo",
+      channel,
       userId: ownerUserId,
       category: "local_write",
       action: "knowledge_approve",
@@ -1424,26 +1447,26 @@ function formatMemoryList(memories: Array<{ id: number; type: string; content: s
   return memories.map((memory) => `${memory.id}. [${memory.type}] ${memory.content}`).join("\n");
 }
 
-async function loadRecentZaloTurns(paths: RuntimePaths, userId: string, recentMessageLimit: number): Promise<ChatMessage[]> {
+async function loadRecentZaloTurns(paths: RuntimePaths, userId: string, recentMessageLimit: number, channel: ZaloRuntimeChannel = "zalo"): Promise<ChatMessage[]> {
   const store = await SqliteMemoryStore.open(paths);
   try {
     if (store.getMemoryState().paused) {
       return [];
     }
-    return store.listRecentMessagesForChannel("zalo", userId, recentMessageLimit).map((message) => ({ role: message.role, content: message.content }));
+    return store.listRecentMessagesForChannel(channel, userId, recentMessageLimit).map((message) => ({ role: message.role, content: message.content }));
   } finally {
     store.close();
   }
 }
 
-async function persistZaloConversationTurn(paths: RuntimePaths, userId: string, userInput: string, assistantText: string): Promise<void> {
+async function persistZaloConversationTurn(paths: RuntimePaths, userId: string, userInput: string, assistantText: string, channel: ZaloRuntimeChannel = "zalo"): Promise<void> {
   const store = await SqliteMemoryStore.open(paths);
   try {
     if (store.getMemoryState().paused) {
       return;
     }
-    store.addMessage({ channel: "zalo", userId, role: "user", content: userInput });
-    store.addMessage({ channel: "zalo", userId, role: "assistant", content: assistantText });
+    store.addMessage({ channel, userId, role: "user", content: userInput });
+    store.addMessage({ channel, userId, role: "assistant", content: assistantText });
   } finally {
     store.close();
   }
@@ -1462,8 +1485,8 @@ function zaloChatFailureMessage(config: AppConfig, error: unknown): string {
   return `${config.agent.name} hit an error while handling this Zalo message. Try again or ask a narrower question.`;
 }
 
-function buildZaloRuntimeToolContext(incoming: ChannelIncomingMessage<string, string | number | undefined, ZaloMessage>, ownerUserId: string): string {
-  return `Current channel: zalo. Current Zalo chat id: ${incoming.chatId}. Current owner/user id: ${ownerUserId}. internal.send_photo and internal.send_file can send generated or local workspace files back to this chat; omit arguments.channel for this chat or set it to "zalo:${incoming.chatId}" explicitly. For internal.add_cron_schedule reports back to this chat, set arguments.channel to "zalo:${incoming.chatId}".`;
+function buildZaloRuntimeToolContext(incoming: ChannelIncomingMessage<string, string | number | undefined, ZaloMessage>, ownerUserId: string, channel: ZaloRuntimeChannel = "zalo"): string {
+  return `Current channel: ${channel}. Current Zalo chat id: ${incoming.chatId}. Current owner/user id: ${ownerUserId}. internal.send_photo and internal.send_file can send generated or local workspace files back to this chat; omit arguments.channel for this chat or set it to "${channel}:${incoming.chatId}" explicitly. For internal.add_cron_schedule reports back to this chat, set arguments.channel to "${channel}:${incoming.chatId}".`;
 }
 
 function formatProviderChatFailure(error: unknown): string | undefined {
