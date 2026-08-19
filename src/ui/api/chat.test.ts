@@ -9,7 +9,7 @@ import { writeConfig, type AppConfig } from "../../runtime/config.js";
 import { writeEnvFile } from "../../runtime/env.js";
 import type { RuntimePaths } from "../../runtime/paths.js";
 import { SqliteMemoryStore } from "../../memory/sqlite-store.js";
-import { createUiChatSession, getUiChatSessionMessages, runUiChat } from "./chat.js";
+import { createUiChatSession, forkUiChatSession, getUiChatSessionMessages, runUiChat } from "./chat.js";
 import { getUiKnowledgeGraphSummary } from "./knowledge-graph.js";
 
 test("runUiChat captures knowledge graph memory after completed UI turns", async () => {
@@ -385,6 +385,73 @@ test("runUiChat stores outbound Web UI files on the assistant message", async ()
     assert.match(assistant?.attachments?.[1]?.content ?? "", /^data:image\/png;base64,/);
     const metadata = JSON.parse(result.run?.metadataJson ?? "{}");
     assert.equal(metadata.outboundAttachments?.length, 2);
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("runUiChat applies the selected workforce agent to its Web UI session", async () => {
+  const paths = await createTempPaths();
+  try {
+    await prepareRuntime(paths, { writePolicy: "allow" });
+    const promptPath = resolve(paths.appDir, "agents", "researcher", "system-prompt.md");
+    await mkdir(resolve(paths.appDir, "agents", "researcher"), { recursive: true });
+    await writeFile(promptPath, "You are the dedicated research agent.");
+    const config = createConfig();
+    config.llm.modelCatalog["openai/research-model"] = { profile: "openai:api-key" };
+    config.agents = {
+      researcher: {
+        enabled: true,
+        displayName: "Mika",
+        role: "Research",
+        description: "Research assistant.",
+        promptPath,
+        model: "openai/research-model",
+        tools: ["internal.read_file"],
+        memoryScope: "agent:researcher",
+        approvalPolicy: "ask-for-external-actions",
+      },
+    };
+    await writeConfig({ ...config, memory: { writePolicy: "allow" } }, paths);
+
+    const session = await createUiChatSession("Research chat", "researcher", paths);
+    let model: string | undefined;
+    let systemPrompt: string | undefined;
+    const result = await runUiChat({
+      paths,
+      sessionId: session.session.id,
+      memoryEnabled: false,
+      message: "Research this topic.",
+      chatCompletion: async (currentConfig, _apiKey, request) => {
+        model = currentConfig.llm.primary;
+        systemPrompt = String(request.messages.find((message) => message.role === "system")?.content ?? "");
+        return JSON.stringify({ answer: "Research result." });
+      },
+    });
+
+    assert.equal(result.model, "openai/research-model");
+    assert.equal(model, "openai/research-model");
+    assert.match(systemPrompt ?? "", /dedicated research agent/);
+    assert.equal((await getUiChatSessionMessages(session.session.id, paths)).session.agentId, "researcher");
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("forkUiChatSession keeps the selected workforce agent", async () => {
+  const paths = await createTempPaths();
+  try {
+    await prepareRuntime(paths, { writePolicy: "allow" });
+    const promptPath = resolve(paths.appDir, "agents", "researcher", "system-prompt.md");
+    await mkdir(resolve(paths.appDir, "agents", "researcher"), { recursive: true });
+    await writeFile(promptPath, "Research prompt.");
+    const config = createConfig();
+    config.agents = { researcher: { enabled: true, displayName: "Mika", role: "Research", description: "Research.", promptPath, memoryScope: "agent:researcher", approvalPolicy: "ask-for-external-actions" } };
+    await writeConfig({ ...config, memory: { writePolicy: "allow" } }, paths);
+    const session = await createUiChatSession("Research chat", "researcher", paths);
+    const result = await runUiChat({ paths, sessionId: session.session.id, memoryEnabled: false, message: "Hello", chatCompletion: async () => "Hello." });
+    const fork = await forkUiChatSession({ paths, sessionId: session.session.id, messageId: result.run!.userMessageId! });
+    assert.equal(fork.session.agentId, "researcher");
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
   }

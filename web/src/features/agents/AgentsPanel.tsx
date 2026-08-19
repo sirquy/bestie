@@ -15,7 +15,7 @@ import { fetchJson, formatError } from "@/lib/api";
 import { confirmDialog } from "@/lib/dialogs";
 import { ToastEffect } from "@/lib/toasts";
 import { cn } from "@/lib/utils";
-import type { AgentAvailableTool, AgentsActionResult, AgentsSummary, WorkforceAgent, WorkforceApprovalPolicy, WorkforceTask, WorkforceTaskStatus } from "./types";
+import type { AgentAvailableTool, AgentsActionResult, AgentsSummary, WorkforceAgent, WorkforceAgentChannel, WorkforceApprovalPolicy, WorkforceTask, WorkforceTaskStatus } from "./types";
 
 interface AgentsPanelProps {
   data?: AgentsSummary;
@@ -165,6 +165,15 @@ export function AgentsPanel({ data, loading, onData, onLoading }: AgentsPanelPro
     await runAction(() => postAgentsAction({ action: "remove", id: agent.id, confirm: true }));
   }
 
+  async function setChannelBinding(agent: WorkforceAgent, channel: WorkforceAgentChannel, bind: boolean): Promise<void> {
+    const channelName = formatAgentChannel(channel);
+    const description = bind
+      ? `${channelName} sẽ chuyển mọi tin nhắn mới sang ${agent.displayName}. Binding agent hiện tại của channel này (nếu có) sẽ được thay thế.`
+      : `${channelName} sẽ quay lại dùng Bestie mặc định.`;
+    if (!await confirmDialog({ title: bind ? `Gán ${channelName}?` : `Gỡ ${channelName}?`, description, confirmLabel: bind ? "Gán channel" : "Gỡ binding", cancelLabel: "Huỷ" })) return;
+    await runAction(() => postAgentsAction({ action: bind ? "bind_channel" : "unbind_channel", id: agent.id, channel, confirm: true }));
+  }
+
   async function daemon(action: "daemon_start" | "daemon_stop" | "daemon_restart"): Promise<void> {
     const label = action === "daemon_start" ? "Bật xử lý nền" : action === "daemon_stop" ? "Dừng xử lý nền" : "Khởi động lại xử lý nền";
     if (!await confirmDialog(`${label} cho đội agent?`)) return;
@@ -197,7 +206,7 @@ export function AgentsPanel({ data, loading, onData, onLoading }: AgentsPanelPro
       {childPage === "tasks" ? (
         <TasksPage data={data} visibleTasks={visibleTasks} taskFilter={taskFilter} loading={loading} onFilter={setTaskFilter} onRunQueue={runQueue} onDaemon={daemon} />
       ) : (
-        <TeamPage data={data} loading={loading} onAgentState={setAgentState} onRemoveAgent={removeAgent} onOpenEdit={openEdit} onOpenAssign={(agentId) => { setTaskDraft((current) => ({ ...current, agentId })); setDrawer("assign"); }} />
+        <TeamPage data={data} loading={loading} onAgentState={setAgentState} onRemoveAgent={removeAgent} onChannelBinding={setChannelBinding} onOpenEdit={openEdit} onOpenAssign={(agentId) => { setTaskDraft((current) => ({ ...current, agentId })); setDrawer("assign"); }} />
       )}
 
       <RightDrawer title="Tạo agent mới" description="Tạo một vai trò cố định để Bestie có thể giao việc lâu dài." open={drawer === "hire"} onClose={() => setDrawer(null)}>
@@ -215,7 +224,7 @@ export function AgentsPanel({ data, loading, onData, onLoading }: AgentsPanelPro
   );
 }
 
-function TeamPage({ data, loading, onAgentState, onRemoveAgent, onOpenEdit, onOpenAssign }: { data: AgentsSummary; loading: boolean; onAgentState: (agent: WorkforceAgent, enabled: boolean) => Promise<void>; onRemoveAgent: (agent: WorkforceAgent) => Promise<void>; onOpenEdit: (agent: WorkforceAgent) => void; onOpenAssign: (agentId: string) => void }): ReactElement {
+function TeamPage({ data, loading, onAgentState, onRemoveAgent, onChannelBinding, onOpenEdit, onOpenAssign }: { data: AgentsSummary; loading: boolean; onAgentState: (agent: WorkforceAgent, enabled: boolean) => Promise<void>; onRemoveAgent: (agent: WorkforceAgent) => Promise<void>; onChannelBinding: (agent: WorkforceAgent, channel: WorkforceAgentChannel, bind: boolean) => Promise<void>; onOpenEdit: (agent: WorkforceAgent) => void; onOpenAssign: (agentId: string) => void }): ReactElement {
   return (
     <div className="grid gap-4">
       <div className="grid gap-3 md:grid-cols-4">
@@ -228,10 +237,10 @@ function TeamPage({ data, loading, onAgentState, onRemoveAgent, onOpenEdit, onOp
       <Card className="border-white/10 bg-background/35">
         <CardHeader>
           <CardTitle className="flex items-center gap-2"><Users className="size-5" /> Đội agent</CardTitle>
-          <CardDescription>Agent cố định có vai trò, prompt, model và hàng đợi việc riêng.</CardDescription>
+          <CardDescription>Agent cố định có vai trò, prompt, model, channel chat và hàng đợi việc riêng.</CardDescription>
         </CardHeader>
         <CardContent className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-          {data.agents.length ? data.agents.map((agent) => <AgentCard key={agent.id} agent={agent} loading={loading} onState={onAgentState} onRemove={onRemoveAgent} onEdit={onOpenEdit} onAssign={onOpenAssign} />) : <EmptyBox>Chưa có agent cố định nào. Bấm “Tạo agent mới” để bắt đầu.</EmptyBox>}
+          {data.agents.length ? data.agents.map((agent) => <AgentCard key={agent.id} agent={agent} loading={loading} onState={onAgentState} onRemove={onRemoveAgent} onChannelBinding={onChannelBinding} onEdit={onOpenEdit} onAssign={onOpenAssign} />) : <EmptyBox>Chưa có agent cố định nào. Bấm “Tạo agent mới” để bắt đầu.</EmptyBox>}
         </CardContent>
       </Card>
     </div>
@@ -314,9 +323,15 @@ function TaskForm({ draft, agents, loading, onDraft, onSubmit }: { draft: TaskDr
   return <form className="grid gap-3" onSubmit={(event) => void onSubmit(event)}><FormField label="Agent nhận việc"><Select value={draft.agentId || agents[0]?.id || ""} onChange={(event) => onDraft({ ...draft, agentId: event.target.value })} disabled={!agents.length}>{agents.length ? agents.map((agent) => <option key={agent.id} value={agent.id}>{agent.displayName} · {agent.role}</option>) : <option value="">Chưa có agent đang hoạt động</option>}</Select></FormField><FormField label="Tên việc"><Input value={draft.title} onChange={(event) => onDraft({ ...draft, title: event.target.value })} placeholder="Tóm tắt thị trường tuần này" /></FormField><FormField label="Yêu cầu chi tiết"><Textarea value={draft.brief} onChange={(event) => onDraft({ ...draft, brief: event.target.value })} placeholder="Mô tả rõ đầu ra mong muốn, nguồn tham khảo và deadline nếu có." className="min-h-40" required /></FormField><Button type="submit" disabled={loading}><BriefcaseBusiness /> Giao việc</Button></form>;
 }
 
-function AgentCard({ agent, loading, onState, onRemove, onEdit, onAssign }: { agent: WorkforceAgent; loading: boolean; onState: (agent: WorkforceAgent, enabled: boolean) => Promise<void>; onRemove: (agent: WorkforceAgent) => Promise<void>; onEdit: (agent: WorkforceAgent) => void; onAssign: (agentId: string) => void }): ReactElement {
-  return <article className="rounded-2xl border border-white/10 bg-card/60 p-4 text-sm"><div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-lg font-semibold">{agent.displayName}</p><p className="text-muted-foreground">{agent.id} · {agent.role}</p></div><Badge variant={agent.enabled ? "secondary" : "destructive"}>{agent.enabled ? "đang hoạt động" : "tạm dừng"}</Badge></div><p className="mt-3 text-muted-foreground">{agent.description}</p><Separator className="my-3" /><div className="grid gap-1 text-xs text-muted-foreground"><p>Model: {agent.model || "mặc định"}</p><p>Bộ nhớ: {agent.memoryScope}</p><p>Prompt: {agent.promptPath}</p><p>Công cụ: {agent.tools?.length ? agent.tools.join(", ") : "chưa giới hạn riêng"}</p></div><div className="mt-3 flex flex-wrap gap-2"><Button size="sm" variant="secondary" onClick={() => onAssign(agent.id)} disabled={loading || !agent.enabled}><BriefcaseBusiness /> Giao việc</Button><Button size="sm" variant="outline" onClick={() => onEdit(agent)} disabled={loading}>Sửa</Button><Button size="sm" variant="outline" onClick={() => void onState(agent, !agent.enabled)} disabled={loading}>{agent.enabled ? "Tạm dừng" : "Kích hoạt"}</Button><Button size="sm" variant="outline" onClick={() => void onRemove(agent)} disabled={loading}><Trash2 /> Gỡ</Button></div></article>;
+function AgentCard({ agent, loading, onState, onRemove, onChannelBinding, onEdit, onAssign }: { agent: WorkforceAgent; loading: boolean; onState: (agent: WorkforceAgent, enabled: boolean) => Promise<void>; onRemove: (agent: WorkforceAgent) => Promise<void>; onChannelBinding: (agent: WorkforceAgent, channel: WorkforceAgentChannel, bind: boolean) => Promise<void>; onEdit: (agent: WorkforceAgent) => void; onAssign: (agentId: string) => void }): ReactElement {
+  return <article className="rounded-2xl border border-white/10 bg-card/60 p-4 text-sm"><div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-lg font-semibold">{agent.displayName}</p><p className="text-muted-foreground">{agent.id} · {agent.role}</p></div><Badge variant={agent.enabled ? "secondary" : "destructive"}>{agent.enabled ? "đang hoạt động" : "tạm dừng"}</Badge></div><p className="mt-3 text-muted-foreground">{agent.description}</p><Separator className="my-3" /><div className="grid gap-1 text-xs text-muted-foreground"><p>Model: {agent.model || "mặc định"}</p><p>Bộ nhớ: {agent.memoryScope}</p><p>Prompt: {agent.promptPath}</p><p>Công cụ: {agent.tools?.length ? agent.tools.join(", ") : "chưa giới hạn riêng"}</p></div><div className="mt-3 grid gap-2"><p className="text-xs font-medium text-muted-foreground">Channel trò chuyện</p><div className="flex flex-wrap gap-2">{AGENT_CHANNELS.map((channel) => { const bound = agent.channels?.includes(channel.id) ?? false; return <Button key={channel.id} size="sm" variant={bound ? "secondary" : "outline"} onClick={() => void onChannelBinding(agent, channel.id, !bound)} disabled={loading}>{bound ? `Gỡ ${channel.label}` : `Gán ${channel.label}`}</Button>; })}</div><p className="text-xs text-muted-foreground">{agent.channels?.length ? `Đang nhận: ${agent.channels.map(formatAgentChannel).join(", ")}` : "Chưa gán channel; các channel vẫn dùng Bestie mặc định."}</p></div><div className="mt-3 flex flex-wrap gap-2"><Button size="sm" variant="secondary" onClick={() => onAssign(agent.id)} disabled={loading || !agent.enabled}><BriefcaseBusiness /> Giao việc</Button><Button size="sm" variant="outline" onClick={() => onEdit(agent)} disabled={loading}>Sửa</Button><Button size="sm" variant="outline" onClick={() => void onState(agent, !agent.enabled)} disabled={loading}>{agent.enabled ? "Tạm dừng" : "Kích hoạt"}</Button><Button size="sm" variant="outline" onClick={() => void onRemove(agent)} disabled={loading}><Trash2 /> Gỡ</Button></div></article>;
 }
+
+const AGENT_CHANNELS: Array<{ id: WorkforceAgentChannel; label: string }> = [
+  { id: "telegram", label: "Telegram" },
+  { id: "zalo", label: "Zalo" },
+  { id: "zalo-personal", label: "Zalo Personal" },
+];
 
 function TaskCard({ task }: { task: WorkforceTask }): ReactElement {
   return <article className="rounded-2xl border border-white/10 bg-card/60 p-4 text-sm"><div className="flex flex-wrap items-start justify-between gap-3"><div><p className="font-semibold">{task.title}</p><p className="text-muted-foreground">{task.agentId} · {formatDate(task.createdAt)}</p></div><Badge variant={task.status === "blocked" ? "destructive" : task.status === "done" ? "secondary" : "outline"}>{formatTaskStatus(task.status)}</Badge></div><p className="mt-2 whitespace-pre-wrap text-muted-foreground">{task.brief}</p>{task.result ? <p className="mt-3 whitespace-pre-wrap rounded-xl border border-white/10 bg-background/40 p-3">{task.result}</p> : null}</article>;
@@ -360,6 +375,10 @@ function formatTaskStatus(status: WorkforceTaskStatus): string {
   if (status === "done") return "hoàn tất";
   if (status === "blocked") return "bị chặn";
   return "đã huỷ";
+}
+
+function formatAgentChannel(channel: WorkforceAgentChannel): string {
+  return AGENT_CHANNELS.find((item) => item.id === channel)?.label ?? channel;
 }
 
 function formatRisk(risk: AgentAvailableTool["risk"]): string {

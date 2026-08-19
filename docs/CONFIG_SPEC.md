@@ -254,6 +254,15 @@ Phase Now config started with non-secret `agent` and `llm` fields. The current l
 }
 ```
 
+`agents.<id>.channels` is optional. Each listed channel sends new inbound chats to that workforce agent, using its prompt, model, tools, permissions, and isolated memory scope. A channel can be bound to only one workforce agent; binding it to another agent replaces the old binding. Unbound channels continue to use the default Bestie agent.
+
+Manage bindings from the Web UI’s **Agents** page or from the CLI:
+
+```bash
+bestie agents bind researcher --channel telegram
+bestie agents unbind researcher --channel telegram
+```
+
 ### Channel owners
 
 Every channel `ownerUserId` accepts one ID (the existing format) or an array

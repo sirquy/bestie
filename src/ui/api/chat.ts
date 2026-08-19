@@ -1,4 +1,5 @@
-import { buildAgentToolResultMessage, buildMcpToolSystemPrompt, completeWithAgentTools, formatToolRequestName, parseAgentToolDecisionResult, type AgentToolActivity } from "../../chat/mcp-tool-use.js";
+import { buildAgentToolResultMessage, buildMcpToolSystemPrompt, completeWithAgentTools, formatToolRequestName, parseAgentToolDecisionResult, runAgentToolRequest, type AgentToolActivity } from "../../chat/mcp-tool-use.js";
+import { buildChannelAgentToolRunner, resolveWorkforceAgentRuntime } from "../../agents/channel-binding.js";
 import { buildChatMessages, getRecentMessageLimit } from "../../chat/message-builder.js";
 import { loadSystemPrompt } from "../../character/prompt-loader.js";
 import { getProviderAdapterMetadata } from "../../llm/adapters/registry.js";
@@ -220,10 +221,14 @@ async function sanitizeUiChatSessionById(paths: RuntimePaths, config: Awaited<Re
   }
 }
 
-export async function createUiChatSession(title?: string, paths: RuntimePaths = getRuntimePaths()): Promise<UiChatSessionMessagesSummary> {
+export async function createUiChatSession(title?: string, agentIdOrPaths?: string | RuntimePaths, suppliedPaths?: RuntimePaths): Promise<UiChatSessionMessagesSummary> {
+  const paths = typeof agentIdOrPaths === "object" ? agentIdOrPaths : suppliedPaths ?? getRuntimePaths();
+  const agentId = typeof agentIdOrPaths === "string" ? agentIdOrPaths : undefined;
   const store = await SqliteMemoryStore.open(paths);
   try {
-    const session = store.createUiChatSession(title);
+    const config = await loadConfig(paths);
+    const resolvedAgentId = resolveUiChatAgentId(config, agentId);
+    const session = store.createUiChatSession(title, resolvedAgentId);
     return { ok: true, session, messages: [], events: [], runs: [] };
   } finally {
     store.close();
@@ -432,10 +437,12 @@ function collectChatBranch(store: SqliteMemoryStore, sessionId: number): UiChatB
 
 export async function runUiChatContinue(options: UiChatContinueOptions): Promise<UiChatSessionMessagesSummary> {
   const paths = options.paths ?? getRuntimePaths();
-  const config = await loadConfig(paths);
+  const baseConfig = await loadConfig(paths);
   const store = await SqliteMemoryStore.open(paths);
   try {
     const session = store.getUiChatSession(options.sessionId);
+    const agentRuntime = await resolveWorkforceAgentRuntime(baseConfig, paths, session.agentId, "the Web UI chat", `ui-chat:agent:${session.agentId}:session:${session.id}`);
+    const config = agentRuntime?.config ?? baseConfig;
     const approval = store.getPendingActionApprovalById(options.approvalId);
     if (!approval || approval.channel !== "ui-chat" || approval.userId !== `session:${session.id}`) {
       throw new Error(`Chat approval not found for session ${session.id}: ${options.approvalId}`);
@@ -454,7 +461,7 @@ export async function runUiChatContinue(options: UiChatContinueOptions): Promise
     const execution = await executeApprovedAction(store, approval, "approve", { config, paths, outboundFileSender: createUiOutboundFileSender(session.id, outboundAttachments) });
     await emitTimelineEvent(paths, session.id, options, { type: execution.status === "executed" ? "tool_finish" : "error", label: execution.shortText, payload: { approvalId: approval.id, status: execution.status, message: execution.message } });
 
-    const finalAnswer = await synthesizeContinuedChatAnswer(paths, config, session.id, execution, options).catch((error) => {
+    const finalAnswer = await synthesizeContinuedChatAnswer(paths, config, session.id, execution, options, agentRuntime?.systemPrompt).catch((error) => {
       void emitTimelineEvent(paths, session.id, options, { type: "error", label: error instanceof Error ? error.message : "Unable to synthesize continued response.", payload: { approvalId: approval.id } });
       return execution.message;
     });
@@ -510,13 +517,13 @@ function readReplayAttachments(value: unknown): UiChatAttachment[] | undefined {
   return attachments.length ? attachments : undefined;
 }
 
-async function synthesizeContinuedChatAnswer(paths: RuntimePaths, config: Awaited<ReturnType<typeof loadConfig>>, sessionId: number, execution: Awaited<ReturnType<typeof executeApprovedAction>>, options?: UiChatContinueOptions): Promise<string> {
+async function synthesizeContinuedChatAnswer(paths: RuntimePaths, config: Awaited<ReturnType<typeof loadConfig>>, sessionId: number, execution: Awaited<ReturnType<typeof executeApprovedAction>>, options?: UiChatContinueOptions, agentSystemPrompt?: string): Promise<string> {
   if (!execution.request || !execution.toolResult) {
     return execution.message;
   }
 
   const apiKey = await loadLlmCandidateSecret(resolvePrimaryLlmCandidate(config), paths);
-  const systemPrompt = await loadSystemPrompt(paths);
+  const systemPrompt = agentSystemPrompt ?? await loadSystemPrompt(paths);
   const store = await SqliteMemoryStore.open(paths);
   try {
     const recentMessageLimit = getRecentMessageLimit(config);
@@ -609,9 +616,11 @@ async function runUiChatUnlocked(options: UiChatOptions): Promise<UiChatResult> 
   const baseConfig = await loadConfig(paths);
   const providerModelRef = resolveValidUiProviderModelRef(baseConfig, options.providerModelRef);
   if (options.sessionId !== undefined) await sanitizeUiChatSessionById(paths, baseConfig, options.sessionId);
-  const applyProviderOverride = (config: Awaited<ReturnType<typeof loadConfig>>) => providerModelRef ? { ...config, llm: { ...config.llm, primary: providerModelRef } } : config;
-  const config = applyProviderOverride(baseConfig);
-  const systemPrompt = await loadSystemPrompt(paths);
+  const sessionBeforeRun = options.sessionId === undefined ? undefined : (await getUiChatSessionMessages(options.sessionId, paths)).session;
+  const agentRuntime = await resolveWorkforceAgentRuntime(baseConfig, paths, sessionBeforeRun?.agentId, "the Web UI chat", sessionBeforeRun ? `ui-chat:agent:${sessionBeforeRun.agentId}:session:${sessionBeforeRun.id}` : undefined);
+  const applyProviderOverride = (config: Awaited<ReturnType<typeof loadConfig>>) => !agentRuntime && providerModelRef ? { ...config, llm: { ...config.llm, primary: providerModelRef } } : config;
+  const config = applyProviderOverride(agentRuntime?.config ?? baseConfig);
+  const systemPrompt = agentRuntime?.systemPrompt ?? await loadSystemPrompt(paths);
   const apiKey = await loadLlmCandidateSecret(resolvePrimaryLlmCandidate(config), paths);
   const chatCompletion = options.chatCompletion ?? ((currentConfig: typeof config, _apiKey: string, requestOptions: ChatCompletionOptions) => sendChatCompletionWithFallbacks(currentConfig, requestOptions, { paths }));
   const recentMessageLimit = getRecentMessageLimit(config);
@@ -626,6 +635,7 @@ async function runUiChatUnlocked(options: UiChatOptions): Promise<UiChatResult> 
   const outboundAttachments: UiChatOutboundAttachment[] = [];
   const persistedUser = options.sessionId === undefined ? undefined : await persistUserChatMessage(paths, options.sessionId, userInput);
   const session = persistedUser?.session;
+  const toolRunner = agentRuntime ? buildChannelAgentToolRunner(agentRuntime.agent, runAgentToolRequest) : runAgentToolRequest;
   const run = session ? await createUiChatRun(paths, session.id, {
     model: config.llm.primary,
     providerModelRef,
@@ -643,9 +653,15 @@ async function runUiChatUnlocked(options: UiChatOptions): Promise<UiChatResult> 
       paths,
       apiKey,
       messages,
+      toolRunner,
       approver: session ? createUiChatApprover(paths, session.id, timelineOptions) : undefined,
       chatCompletion,
-      reloadConfig: async () => applyProviderOverride(await loadConfig(paths)),
+      reloadConfig: async () => {
+        const refreshedConfig = await loadConfig(paths);
+        const refreshedAgentRuntime = await resolveWorkforceAgentRuntime(refreshedConfig, paths, session?.agentId, "the Web UI chat", session ? `ui-chat:agent:${session.agentId}:session:${session.id}` : undefined);
+        return applyProviderOverride(refreshedAgentRuntime?.config ?? refreshedConfig);
+      },
+      policy: agentRuntime?.policy,
       maxToolCalls: options.toolsEnabled === false ? 0 : 20,
       streamFinalResponse: options.stream === true,
       onToken: (token) => {
@@ -897,4 +913,13 @@ async function refreshUiConversationSummaryBestEffort(options: {
   } catch (error) {
     await appendLog({ event: "conversation_summary_failure", detail: { channel: "ui", sessionId: options.sessionId, error: error instanceof Error ? error.message : String(error) } }, { paths: options.paths, knownSecrets: [options.apiKey] });
   }
+}
+
+function resolveUiChatAgentId(config: Awaited<ReturnType<typeof loadConfig>>, agentId: string | undefined): string | undefined {
+  const normalized = agentId?.trim();
+  if (!normalized) return undefined;
+  const agent = config.agents?.[normalized];
+  if (!agent) throw new Error(`Agent '${normalized}' does not exist.`);
+  if (!agent.enabled) throw new Error(`Agent '${agent.displayName}' is paused.`);
+  return normalized;
 }

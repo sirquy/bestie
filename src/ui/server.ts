@@ -519,7 +519,8 @@ async function handleRequestAsync(request: IncomingMessage, response: ServerResp
   if (method === "POST" && url.pathname === "/api/chat/sessions") {
     const body = await readJsonBody(request);
     const title = isRecord(body) && typeof body.title === "string" ? body.title : undefined;
-    sendJson(response, 200, await createUiChatSession(title));
+    const agentId = isRecord(body) && typeof body.agentId === "string" ? body.agentId : undefined;
+    sendJson(response, 200, await createUiChatSession(title, agentId));
     return;
   }
 
@@ -889,6 +890,14 @@ async function handleRequestAsync(request: IncomingMessage, response: ServerResp
       sendJson(response, 200, await runUiAgentsAction({ action: body.action, id: body.id, confirm: true }));
       return;
     }
+    if (body.action === "bind_channel" || body.action === "unbind_channel") {
+      if (typeof body.id !== "string" || !isAgentChannelBinding(body.channel)) {
+        sendJson(response, 400, { ok: false, error: "Channel binding requires agent id and channel telegram|zalo|zalo-personal.", code: "UiAgentsInvalidActionRequest" });
+        return;
+      }
+      sendJson(response, 200, await runUiAgentsAction({ action: body.action, id: body.id, channel: body.channel, confirm: true }));
+      return;
+    }
     if (body.action === "assign") {
       if (typeof body.agentId !== "string" || typeof body.brief !== "string") {
         sendJson(response, 400, { ok: false, error: "Assigning work requires agentId and brief.", code: "UiAgentsInvalidActionRequest" });
@@ -1176,8 +1185,12 @@ function isUiDaemonChannel(value: unknown): value is "telegram" | "zalo" | "cron
   return value === "telegram" || value === "zalo" || value === "cron";
 }
 
-function isUiAgentsAction(value: unknown): value is "hire" | "update" | "pause" | "resume" | "remove" | "assign" | "task_status" | "run" | "daemon_start" | "daemon_stop" | "daemon_restart" {
-  return value === "hire" || value === "update" || value === "pause" || value === "resume" || value === "remove" || value === "assign" || value === "task_status" || value === "run" || value === "daemon_start" || value === "daemon_stop" || value === "daemon_restart";
+function isUiAgentsAction(value: unknown): value is "hire" | "update" | "pause" | "resume" | "remove" | "bind_channel" | "unbind_channel" | "assign" | "task_status" | "run" | "daemon_start" | "daemon_stop" | "daemon_restart" {
+  return value === "hire" || value === "update" || value === "pause" || value === "resume" || value === "remove" || value === "bind_channel" || value === "unbind_channel" || value === "assign" || value === "task_status" || value === "run" || value === "daemon_start" || value === "daemon_stop" || value === "daemon_restart";
+}
+
+function isAgentChannelBinding(value: unknown): value is "telegram" | "zalo" | "zalo-personal" {
+  return value === "telegram" || value === "zalo" || value === "zalo-personal";
 }
 
 function isWorkforceTaskStatus(value: unknown): value is "queued" | "in_progress" | "done" | "blocked" | "canceled" {

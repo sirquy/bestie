@@ -18,13 +18,19 @@ export interface ChannelAgentRuntime {
 export async function resolveChannelAgentRuntime(config: AppConfig, paths: RuntimePaths, channel: AgentChannelBinding, senderId: string): Promise<ChannelAgentRuntime | undefined> {
   const found = Object.entries(config.agents ?? {}).find(([, agent]) => agent.channels?.includes(channel));
   if (!found) return undefined;
-  const [id, agentConfig] = found;
-  const agent: WorkforceAgentRecord = { id, ...agentConfig };
-  if (!agent.enabled) throw new Error(`Agent '${agent.displayName}' assigned to ${channel} is paused.`);
+  return resolveWorkforceAgentRuntime(config, paths, found[0], `the ${channel} channel`, `agent:${found[0]}:user:${senderId}`);
+}
+
+export async function resolveWorkforceAgentRuntime(config: AppConfig, paths: RuntimePaths, agentId: string | undefined, context: string, conversationUserId?: string): Promise<ChannelAgentRuntime | undefined> {
+  if (!agentId) return undefined;
+  const agentConfig = config.agents?.[agentId];
+  if (!agentConfig) throw new Error(`Agent '${agentId}' no longer exists.`);
+  const agent: WorkforceAgentRecord = { id: agentId, ...agentConfig };
+  if (!agent.enabled) throw new Error(`Agent '${agent.displayName}' assigned to ${context} is paused.`);
   const prompt = await readFile(agent.promptPath, "utf8");
   const systemPrompt = await prepareSystemPrompt([
     prompt,
-    `You are ${agent.displayName}, a Bestie workforce agent speaking directly with the user on ${channel}.`,
+    `You are ${agent.displayName}, a Bestie workforce agent speaking directly with the user in ${context}.`,
     `Stay within your role: ${agent.role}.`,
     `Agent id: ${agent.id}. Memory scope: ${agent.memoryScope}. Approval policy: ${agent.approvalPolicy}.`,
     agent.tools?.length ? `Permitted tools: ${agent.tools.join(", ")}.` : "No additional tool allowlist is configured.",
@@ -32,7 +38,7 @@ export async function resolveChannelAgentRuntime(config: AppConfig, paths: Runti
   return {
     agent,
     config: agent.model ? { ...config, llm: { ...config.llm, primary: agent.model } } : config,
-    conversationUserId: `agent:${agent.id}:user:${senderId}`,
+    conversationUserId: conversationUserId ?? `agent:${agent.id}`,
     systemPrompt,
     policy: channelAgentPermissionPolicy(agent.approvalPolicy),
   };

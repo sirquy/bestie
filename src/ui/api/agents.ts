@@ -1,9 +1,9 @@
 import { runQueuedWorkforceTasks, type WorkforceTaskRunResult } from "../../agents/executor.js";
 import { assignWorkforceTask, listWorkforceTasks, updateWorkforceTaskStatus, type WorkforceTask, type WorkforceTaskStatus } from "../../agents/inbox.js";
-import { hireWorkforceAgent, listWorkforceAgents, removeWorkforceAgent, setWorkforceAgentEnabled, updateWorkforceAgent, type WorkforceAgentApprovalPolicy, type WorkforceAgentRecord } from "../../agents/registry.js";
+import { bindWorkforceAgentChannel, hireWorkforceAgent, listWorkforceAgents, removeWorkforceAgent, setWorkforceAgentEnabled, unbindWorkforceAgentChannel, updateWorkforceAgent, type WorkforceAgentApprovalPolicy, type WorkforceAgentRecord } from "../../agents/registry.js";
 import { INTERNAL_TOOL_NAMES } from "../../chat/mcp-tool-use.js";
 import { getDaemonChannelStatus, runDaemonCommand } from "../../cli/commands/daemon.js";
-import { loadConfig } from "../../runtime/config.js";
+import { loadConfig, type AgentChannelBinding } from "../../runtime/config.js";
 import { getRuntimePaths, type RuntimePaths } from "../../runtime/paths.js";
 
 export interface UiAgentsSummary {
@@ -38,6 +38,7 @@ export type UiAgentsActionOptions =
   | UiAgentsHireOptions
   | UiAgentsUpdateOptions
   | UiAgentsStateOptions
+  | UiAgentsChannelBindingOptions
   | UiAgentsRemoveOptions
   | UiAgentsAssignOptions
   | UiAgentsTaskStatusOptions
@@ -137,6 +138,14 @@ export async function getUiAgentsSummary(paths: RuntimePaths = getRuntimePaths()
   };
 }
 
+interface UiAgentsChannelBindingOptions {
+  action: "bind_channel" | "unbind_channel";
+  id: string;
+  channel: AgentChannelBinding;
+  confirm: boolean;
+  paths?: RuntimePaths;
+}
+
 interface UiAgentsUpdateOptions {
   action: "update";
   id: string;
@@ -220,6 +229,12 @@ export async function runUiAgentsAction(options: UiAgentsActionOptions): Promise
   } else if (options.action === "pause" || options.action === "resume") {
     const agent = await setWorkforceAgentEnabled(paths, options.id, options.action === "resume");
     messages.push(`${agent.displayName} hiện ${agent.enabled ? "đang hoạt động" : "đã tạm dừng"}.`);
+  } else if (options.action === "bind_channel") {
+    const agent = await bindWorkforceAgentChannel(paths, options.id, options.channel);
+    messages.push(`Đã gán ${formatAgentChannel(options.channel)} cho ${agent.displayName}.`);
+  } else if (options.action === "unbind_channel") {
+    const agent = await unbindWorkforceAgentChannel(paths, options.id, options.channel);
+    messages.push(`Đã gỡ ${formatAgentChannel(options.channel)} khỏi ${agent.displayName}; channel quay về Bestie mặc định.`);
   } else if (options.action === "remove") {
     const agent = await removeWorkforceAgent(paths, options.id);
     messages.push(`Đã gỡ ${agent.displayName} khỏi đội agent.`);
@@ -247,6 +262,11 @@ export async function runUiAgentsAction(options: UiAgentsActionOptions): Promise
     messages,
     ...(runResults ? { runResults } : {}),
   };
+}
+
+function formatAgentChannel(channel: AgentChannelBinding): string {
+  if (channel === "zalo-personal") return "Zalo Personal";
+  return channel === "telegram" ? "Telegram" : "Zalo";
 }
 
 function toDaemonSubcommand(action: "daemon_start" | "daemon_stop" | "daemon_restart"): "start" | "stop" | "restart" {

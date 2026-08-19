@@ -25,6 +25,7 @@ export interface ChatSessionMessagesSummary {
 export interface ChatSession {
   id: number;
   title: string;
+  agentId?: string | null;
   pinnedAt?: string | null;
   archivedAt?: string | null;
   toolsEnabled?: boolean | null;

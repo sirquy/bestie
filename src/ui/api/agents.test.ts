@@ -63,6 +63,13 @@ test("runUiAgentsAction manages profiles and task state", async () => {
     const resumed = await runUiAgentsAction({ action: "resume", id: "ops", confirm: true, paths });
     assert.equal(resumed.counts.activeAgents, 1);
 
+    const bound = await runUiAgentsAction({ action: "bind_channel", id: "ops", channel: "telegram", confirm: true, paths });
+    assert.deepEqual(bound.agents[0]?.channels, ["telegram"]);
+    assert.equal(bound.messages[0], "Đã gán Telegram cho Omi 2.");
+
+    const unbound = await runUiAgentsAction({ action: "unbind_channel", id: "ops", channel: "telegram", confirm: true, paths });
+    assert.equal(unbound.agents[0]?.channels, undefined);
+
     const removed = await runUiAgentsAction({ action: "remove", id: "ops", confirm: true, paths });
     assert.equal(removed.agents.length, 0);
     assert.equal(removed.tasks.length, 1);

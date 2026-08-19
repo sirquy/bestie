@@ -1,5 +1,6 @@
 export type WorkforceTaskStatus = "queued" | "in_progress" | "done" | "blocked" | "canceled";
 export type WorkforceApprovalPolicy = "ask-for-external-actions" | "ask-for-all-actions" | "deny-external-actions";
+export type WorkforceAgentChannel = "telegram" | "zalo" | "zalo-personal";
 
 export interface WorkforceAgent {
   id: string;
@@ -10,6 +11,7 @@ export interface WorkforceAgent {
   promptPath: string;
   model?: string;
   tools?: string[];
+  channels?: WorkforceAgentChannel[];
   memoryScope: string;
   approvalPolicy: WorkforceApprovalPolicy;
 }
@@ -55,6 +57,6 @@ export interface AgentAvailableTool {
 }
 
 export interface AgentsActionResult extends AgentsSummary {
-  action: "hire" | "update" | "pause" | "resume" | "remove" | "assign" | "task_status" | "run" | "daemon_start" | "daemon_stop" | "daemon_restart";
+  action: "hire" | "update" | "pause" | "resume" | "remove" | "bind_channel" | "unbind_channel" | "assign" | "task_status" | "run" | "daemon_start" | "daemon_stop" | "daemon_restart";
   messages: string[];
 }

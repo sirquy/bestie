@@ -99,6 +99,7 @@ export interface NewMessage {
 export interface UiChatSession {
   id: number;
   title: string;
+  agentId?: string;
   createdAt: string;
   updatedAt: string;
   pinnedAt?: string;
@@ -1392,8 +1393,8 @@ export class SqliteMemoryStore {
 
   // --- UI chat sessions ---
 
-  createUiChatSession(title = "New chat"): UiChatSession {
-    const result = this.db.prepare("INSERT INTO ui_chat_sessions (title) VALUES (?)").run(title.trim() || "New chat");
+  createUiChatSession(title = "New chat", agentId?: string): UiChatSession {
+    const result = this.db.prepare("INSERT INTO ui_chat_sessions (title, agent_id) VALUES (?, ?)").run(title.trim() || "New chat", agentId?.trim() || null);
     return this.getUiChatSession(Number(result.lastInsertRowid));
   }
 
@@ -1528,7 +1529,7 @@ export class SqliteMemoryStore {
     }
 
     const transaction = this.db.transaction(() => {
-      const fork = this.createUiChatSession(title ?? `${source.title} fork`);
+      const fork = this.createUiChatSession(title ?? `${source.title} fork`, source.agentId);
       for (const message of messages) {
         this.addUiChatMessage(fork.id, message.role, message.content, undefined, message.metadataJson);
       }
@@ -1868,6 +1869,7 @@ interface ConversationSummaryRow {
 interface UiChatSessionRow {
   id: number;
   title: string;
+  agent_id?: string | null;
   pinned_at?: string | null;
   tools_enabled?: number | null;
   memory_enabled?: number | null;
@@ -2335,6 +2337,7 @@ function mapUiChatSessionRow(row: UiChatSessionRow): UiChatSession {
   return {
     id: row.id,
     title: row.title,
+    agentId: row.agent_id ?? undefined,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     pinnedAt: row.pinned_at ?? undefined,
@@ -2828,6 +2831,7 @@ function applyMemoryMigrations(db: Database.Database): void {
   addColumnIfMissing(db, "ui_chat_sessions", "tools_enabled", "INTEGER DEFAULT 1");
   addColumnIfMissing(db, "ui_chat_sessions", "memory_enabled", "INTEGER DEFAULT 1");
   addColumnIfMissing(db, "ui_chat_sessions", "provider_model_ref", "TEXT");
+  addColumnIfMissing(db, "ui_chat_sessions", "agent_id", "TEXT");
   addColumnIfMissing(db, "ui_chat_messages", "run_id", "INTEGER");
   addColumnIfMissing(db, "ui_chat_messages", "metadata_json", "TEXT");
   addColumnIfMissing(db, "ui_chat_events", "run_id", "INTEGER");

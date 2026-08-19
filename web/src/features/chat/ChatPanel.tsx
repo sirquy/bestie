@@ -33,6 +33,18 @@ interface ChatSettingsSummary {
   agent?: { name?: string };
 }
 
+interface ChatWorkforceAgent {
+  id: string;
+  enabled: boolean;
+  displayName: string;
+  role: string;
+}
+
+interface ChatAgentsSummary {
+  ok: true;
+  agents: ChatWorkforceAgent[];
+}
+
 interface ChatPanelProps {
   data?: ChatSessionsSummary;
   loading: boolean;
@@ -55,6 +67,9 @@ export function ChatPanel({ data, loading, onData, onLoading }: ChatPanelProps):
   const [providerModelRef, setProviderModelRef] = useState("");
   const [providerModels, setProviderModels] = useState<ChatProviderSummary["models"]>([]);
   const [agentName, setAgentName] = useState("Bestie");
+  const [defaultAgentName, setDefaultAgentName] = useState("Bestie");
+  const [workforceAgents, setWorkforceAgents] = useState<ChatWorkforceAgent[]>([]);
+  const [selectedAgentId, setSelectedAgentId] = useState("");
   const [streaming, setStreaming] = useState(false);
   const [streamText, setStreamText] = useState("");
   const [timeline, setTimeline] = useState<ChatTimelineEvent[]>([]);
@@ -77,8 +92,12 @@ export function ChatPanel({ data, loading, onData, onLoading }: ChatPanelProps):
       setProviderModelRef((current) => current || summary.primary?.modelRef || "");
     }).catch(() => undefined);
     void fetchJson<ChatSettingsSummary>("/api/settings").then((summary) => {
-      if (summary.agent?.name) setAgentName(summary.agent.name);
+      if (summary.agent?.name) {
+        setAgentName(summary.agent.name);
+        setDefaultAgentName(summary.agent.name);
+      }
     }).catch(() => undefined);
+    void fetchJson<ChatAgentsSummary>("/api/agents").then((summary) => setWorkforceAgents((summary.agents ?? []).filter((agent) => agent.enabled))).catch(() => undefined);
   }, []);
 
   useEffect(() => {
@@ -139,13 +158,15 @@ export function ChatPanel({ data, loading, onData, onLoading }: ChatPanelProps):
     setToolsEnabled(result.session.toolsEnabled !== false);
     setMemoryEnabled(result.session.memoryEnabled !== false);
     setProviderModelRef(result.session.providerModelRef ?? "");
+    setSelectedAgentId(result.session.agentId ?? "");
+    setAgentName(result.session.agentId ? workforceAgents.find((agent) => agent.id === result.session.agentId)?.displayName ?? result.session.agentId : defaultAgentName);
     setStreamText("");
     setTimeline([]);
   }
 
   async function createSession(): Promise<void> {
     const title = await promptDialog({ title: "Chat mới", description: "Đặt tên cho cuộc trò chuyện này.", defaultValue: "Chat mới", confirmLabel: "Tạo" }) ?? undefined;
-    const result = await runRequest(() => fetchJson<ChatSessionMessagesSummary>("/api/chat/sessions", { method: "POST", body: JSON.stringify({ title }) }), { globalLoading: true, success: "Đã tạo cuộc trò chuyện." });
+    const result = await runRequest(() => fetchJson<ChatSessionMessagesSummary>("/api/chat/sessions", { method: "POST", body: JSON.stringify({ title, agentId: selectedAgentId || undefined }) }), { globalLoading: true, success: "Đã tạo cuộc trò chuyện." });
     if (!result) return;
     setActiveSession(result);
     await refreshSessions();
@@ -153,7 +174,7 @@ export function ChatPanel({ data, loading, onData, onLoading }: ChatPanelProps):
 
   async function createSessionForMessage(content: string): Promise<ChatSessionMessagesSummary | undefined> {
     const title = content.trim().slice(0, 48) || "Chat mới";
-    const result = await runRequest(() => fetchJson<ChatSessionMessagesSummary>("/api/chat/sessions", { method: "POST", body: JSON.stringify({ title }) }), { globalLoading: true });
+    const result = await runRequest(() => fetchJson<ChatSessionMessagesSummary>("/api/chat/sessions", { method: "POST", body: JSON.stringify({ title, agentId: selectedAgentId || undefined }) }), { globalLoading: true });
     if (result) {
       setActiveSession(result);
       await refreshSessions();
@@ -193,7 +214,7 @@ export function ChatPanel({ data, loading, onData, onLoading }: ChatPanelProps):
     event.preventDefault();
     const trimmed = message.trim();
     if (!trimmed || streaming) return;
-    const targetSession = activeSession ?? await createSessionForMessage(trimmed);
+    const targetSession = activeSession?.session.agentId === (selectedAgentId || undefined) ? activeSession : await createSessionForMessage(trimmed);
     const sessionId = targetSession?.session.id;
     setMessage("");
     setAttachments([]);
@@ -370,7 +391,8 @@ export function ChatPanel({ data, loading, onData, onLoading }: ChatPanelProps):
             {controlsCollapsed ? <CardContent className="flex flex-1 flex-col items-center gap-3 p-3 pt-0"><Settings2 className="size-5 text-muted-foreground" /><Badge variant={visibleEvents.length || timeline.length ? "secondary" : "outline"}>{visibleEvents.length + timeline.length}</Badge></CardContent> : <CardContent className="no-scrollbar grid max-h-[18rem] gap-3 overflow-auto p-4 pt-0">
               <label className="flex items-center justify-between gap-2 rounded-xl border border-white/10 bg-card/50 p-3 text-sm"><span>Công cụ</span><input type="checkbox" checked={toolsEnabled} onChange={(event) => setToolsEnabled(event.target.checked)} /></label>
               <label className="flex items-center justify-between gap-2 rounded-xl border border-white/10 bg-card/50 p-3 text-sm"><span>Bộ nhớ</span><input type="checkbox" checked={memoryEnabled} onChange={(event) => setMemoryEnabled(event.target.checked)} /></label>
-              <div className="grid gap-1"><Label htmlFor="chat-provider-model">Model AI</Label><Select id="chat-provider-model" value={providerModelRef} onChange={(event) => setProviderModelRef(event.target.value)}><option value="">Tốt nhất hiện có</option>{providerModels.map((model) => <option key={model.modelRef} value={model.modelRef}>{model.modelRef}{model.primary ? " · chính" : model.fallback ? " · dự phòng" : ""}</option>)}</Select></div>
+              <div className="grid gap-1"><Label htmlFor="chat-workforce-agent">Agent</Label><Select id="chat-workforce-agent" value={selectedAgentId} onChange={(event) => { const nextAgentId = event.target.value; setSelectedAgentId(nextAgentId); setAgentName(nextAgentId ? workforceAgents.find((agent) => agent.id === nextAgentId)?.displayName ?? nextAgentId : defaultAgentName); }}><option value="">{defaultAgentName} · mặc định</option>{workforceAgents.map((agent) => <option key={agent.id} value={agent.id}>{agent.displayName} · {agent.role}</option>)}</Select><p className="text-xs text-muted-foreground">Đổi agent sẽ dùng một phiên chat riêng để không lẫn lịch sử.</p></div>
+              <div className="grid gap-1"><Label htmlFor="chat-provider-model">Model AI</Label><Select id="chat-provider-model" value={selectedAgentId ? "" : providerModelRef} disabled={Boolean(selectedAgentId)} onChange={(event) => setProviderModelRef(event.target.value)}><option value="">{selectedAgentId ? "Theo cấu hình agent" : "Tốt nhất hiện có"}</option>{selectedAgentId ? null : providerModels.map((model) => <option key={model.modelRef} value={model.modelRef}>{model.modelRef}{model.primary ? " · chính" : model.fallback ? " · dự phòng" : ""}</option>)}</Select>{selectedAgentId ? <p className="text-xs text-muted-foreground">Model của agent được ưu tiên cho phiên này.</p> : null}</div>
               <Button variant="outline" disabled={!activeSession} onClick={() => void deleteSession()}><Trash2 /> Xoá cuộc trò chuyện</Button>
             </CardContent>}
           </Card>
@@ -384,7 +406,7 @@ export function ChatPanel({ data, loading, onData, onLoading }: ChatPanelProps):
       {mobileSheet ? <div className="fixed inset-0 z-[60] bg-black/55 backdrop-blur-sm xl:hidden" role="dialog" aria-modal="true" aria-label={mobileSheet === "sessions" ? "Lịch sử trò chuyện" : "Tuỳ chọn trò chuyện"} onClick={() => setMobileSheet(null)}>
         <section className="absolute inset-x-0 bottom-0 max-h-[78dvh] rounded-t-[1.75rem] border border-white/10 bg-card p-4 shadow-2xl" onClick={(event) => event.stopPropagation()} data-chat-mobile-sheet={mobileSheet}>
           <div className="mb-4 flex items-center justify-between"><div><p className="font-semibold">{mobileSheet === "sessions" ? "Lịch sử trò chuyện" : "Tuỳ chọn trò chuyện"}</p><p className="text-xs text-muted-foreground">{mobileSheet === "sessions" ? "Mở hoặc tìm cuộc trò chuyện." : "Điều chỉnh cho phiên hiện tại."}</p></div><Button type="button" size="icon" variant="ghost" aria-label="Đóng bảng" onClick={() => setMobileSheet(null)}><X /></Button></div>
-          {mobileSheet === "sessions" ? <div className="grid max-h-[62dvh] gap-3 overflow-auto"><div className="flex gap-2"><Button size="sm" onClick={() => void createSession()}><Plus /> Chat mới</Button><Button size="sm" variant="outline" onClick={() => void reload()} disabled={loading}><RefreshCw className={loading ? "animate-spin" : ""} /> Tải lại</Button></div><form className="grid grid-cols-[1fr_auto] gap-2" onSubmit={(event) => void searchSessions(event)}><Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Tìm cuộc trò chuyện" /><Button type="submit" size="icon" variant="outline" aria-label="Tìm cuộc trò chuyện"><Search /></Button></form><div className="grid gap-2">{sortedSessions.map((session) => <SessionRow key={session.id} session={session} active={activeSession?.session.id === session.id} onOpen={async (id) => { await openSession(id); setMobileSheet(null); }} />)}</div></div> : <div className="grid gap-3"><label className="flex items-center justify-between rounded-xl border border-white/10 p-3 text-sm"><span>Công cụ</span><input type="checkbox" checked={toolsEnabled} onChange={(event) => setToolsEnabled(event.target.checked)} /></label><label className="flex items-center justify-between rounded-xl border border-white/10 p-3 text-sm"><span>Bộ nhớ</span><input type="checkbox" checked={memoryEnabled} onChange={(event) => setMemoryEnabled(event.target.checked)} /></label><div className="grid gap-2"><Label htmlFor="chat-mobile-provider-model">Model AI</Label><Select id="chat-mobile-provider-model" value={providerModelRef} onChange={(event) => setProviderModelRef(event.target.value)}><option value="">Tốt nhất hiện có</option>{providerModels.map((model) => <option key={model.modelRef} value={model.modelRef}>{model.modelRef}{model.primary ? " · chính" : ""}</option>)}</Select></div>{activeSession ? <Button variant="outline" onClick={() => void deleteSession()}><Trash2 /> Xoá cuộc trò chuyện</Button> : null}</div>}
+          {mobileSheet === "sessions" ? <div className="grid max-h-[62dvh] gap-3 overflow-auto"><div className="flex gap-2"><Button size="sm" onClick={() => void createSession()}><Plus /> Chat mới</Button><Button size="sm" variant="outline" onClick={() => void reload()} disabled={loading}><RefreshCw className={loading ? "animate-spin" : ""} /> Tải lại</Button></div><form className="grid grid-cols-[1fr_auto] gap-2" onSubmit={(event) => void searchSessions(event)}><Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Tìm cuộc trò chuyện" /><Button type="submit" size="icon" variant="outline" aria-label="Tìm cuộc trò chuyện"><Search /></Button></form><div className="grid gap-2">{sortedSessions.map((session) => <SessionRow key={session.id} session={session} active={activeSession?.session.id === session.id} onOpen={async (id) => { await openSession(id); setMobileSheet(null); }} />)}</div></div> : <div className="grid gap-3"><label className="flex items-center justify-between rounded-xl border border-white/10 p-3 text-sm"><span>Công cụ</span><input type="checkbox" checked={toolsEnabled} onChange={(event) => setToolsEnabled(event.target.checked)} /></label><label className="flex items-center justify-between rounded-xl border border-white/10 p-3 text-sm"><span>Bộ nhớ</span><input type="checkbox" checked={memoryEnabled} onChange={(event) => setMemoryEnabled(event.target.checked)} /></label><div className="grid gap-2"><Label htmlFor="chat-mobile-workforce-agent">Agent</Label><Select id="chat-mobile-workforce-agent" value={selectedAgentId} onChange={(event) => { const nextAgentId = event.target.value; setSelectedAgentId(nextAgentId); setAgentName(nextAgentId ? workforceAgents.find((agent) => agent.id === nextAgentId)?.displayName ?? nextAgentId : defaultAgentName); }}><option value="">{defaultAgentName} · mặc định</option>{workforceAgents.map((agent) => <option key={agent.id} value={agent.id}>{agent.displayName} · {agent.role}</option>)}</Select><p className="text-xs text-muted-foreground">Đổi agent sẽ dùng một phiên chat riêng.</p></div><div className="grid gap-2"><Label htmlFor="chat-mobile-provider-model">Model AI</Label><Select id="chat-mobile-provider-model" value={selectedAgentId ? "" : providerModelRef} disabled={Boolean(selectedAgentId)} onChange={(event) => setProviderModelRef(event.target.value)}><option value="">{selectedAgentId ? "Theo cấu hình agent" : "Tốt nhất hiện có"}</option>{selectedAgentId ? null : providerModels.map((model) => <option key={model.modelRef} value={model.modelRef}>{model.modelRef}{model.primary ? " · chính" : ""}</option>)}</Select></div>{activeSession ? <Button variant="outline" onClick={() => void deleteSession()}><Trash2 /> Xoá cuộc trò chuyện</Button> : null}</div>}
         </section>
       </div> : null}
     </div>
@@ -429,7 +451,7 @@ function parseSseEvent(block: string): { event: string; data: Record<string, unk
 }
 
 function SessionRow({ session, active, onOpen }: { session: ChatSession; active: boolean; onOpen: (id: number) => Promise<void> }): ReactElement {
-  return <button type="button" className={`rounded-2xl border p-3 text-left text-sm transition hover:border-primary/50 ${active ? "border-primary/50 bg-primary/10" : "border-white/10 bg-card/60"}`} onClick={() => void onOpen(session.id)} data-chat-session={session.id}><div className="flex items-start justify-between gap-2"><strong>{session.title}</strong>{session.pinnedAt ? <Badge variant="secondary">đã ghim</Badge> : null}</div><p className="mt-1 text-xs text-muted-foreground">#{session.id} / {formatDate(session.updatedAt)}</p></button>;
+  return <button type="button" className={`rounded-2xl border p-3 text-left text-sm transition hover:border-primary/50 ${active ? "border-primary/50 bg-primary/10" : "border-white/10 bg-card/60"}`} onClick={() => void onOpen(session.id)} data-chat-session={session.id}><div className="flex items-start justify-between gap-2"><strong>{session.title}</strong><div className="flex shrink-0 gap-1">{session.agentId ? <Badge variant="outline">{session.agentId}</Badge> : null}{session.pinnedAt ? <Badge variant="secondary">đã ghim</Badge> : null}</div></div><p className="mt-1 text-xs text-muted-foreground">#{session.id} / {formatDate(session.updatedAt)}</p></button>;
 }
 
 function MessageBubble({ message, onCopy, onFork, onRetry }: { message: ChatMessageWithAttachments; onCopy: (content: string) => Promise<void>; onFork: (messageId: number) => Promise<void>; onRetry: (messageId: number) => Promise<void> }): ReactElement {
