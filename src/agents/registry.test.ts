@@ -7,7 +7,7 @@ import test from "node:test";
 import { createTestConfig } from "../test-support/config.js";
 import { loadConfig, writeConfig } from "../runtime/config.js";
 import type { RuntimePaths } from "../runtime/paths.js";
-import { getWorkforceAgent, hireWorkforceAgent, listWorkforceAgents, removeWorkforceAgent, setWorkforceAgentEnabled, updateWorkforceAgent } from "./registry.js";
+import { bindWorkforceAgentChannel, getWorkforceAgent, hireWorkforceAgent, listWorkforceAgents, removeWorkforceAgent, setWorkforceAgentEnabled, unbindWorkforceAgentChannel, updateWorkforceAgent } from "./registry.js";
 
 test("hireWorkforceAgent creates a fixed role agent profile and prompt", async () => {
   const paths = await createTempPaths();
@@ -91,6 +91,23 @@ test("updateWorkforceAgent edits profile without replacing stable runtime fields
     assert.equal(updated.promptPath, hired.promptPath);
     assert.equal(updated.memoryScope, "agent:ops");
     assert.equal((await loadConfig(paths)).agents?.ops?.approvalPolicy, "ask-for-all-actions");
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("channel binding moves a channel to one workforce agent and supports unbinding", async () => {
+  const paths = await createTempPaths();
+  try {
+    await writeConfig(createTestConfig(), paths);
+    await hireWorkforceAgent(paths, { id: "researcher", displayName: "Mika", role: "Research", description: "Research." });
+    await hireWorkforceAgent(paths, { id: "writer", displayName: "Nia", role: "Writer", description: "Write." });
+
+    await bindWorkforceAgentChannel(paths, "researcher", "telegram");
+    const writer = await bindWorkforceAgentChannel(paths, "writer", "telegram");
+    assert.deepEqual(writer.channels, ["telegram"]);
+    assert.equal((await getWorkforceAgent(paths, "researcher"))?.channels, undefined);
+    assert.deepEqual((await unbindWorkforceAgentChannel(paths, "writer", "telegram")).channels, undefined);
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
   }

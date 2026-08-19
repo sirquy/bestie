@@ -1,7 +1,7 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 
-import { loadConfig, writeConfig, type AppConfig } from "../runtime/config.js";
+import { loadConfig, writeConfig, type AgentChannelBinding, type AppConfig } from "../runtime/config.js";
 import type { RuntimePaths } from "../runtime/paths.js";
 
 export type WorkforceAgentApprovalPolicy = "ask-for-external-actions" | "ask-for-all-actions" | "deny-external-actions";
@@ -14,6 +14,7 @@ export interface WorkforceAgentConfig {
   promptPath: string;
   model?: string;
   tools?: string[];
+  channels?: AgentChannelBinding[];
   memoryScope: string;
   approvalPolicy: WorkforceAgentApprovalPolicy;
 }
@@ -103,6 +104,39 @@ export async function setWorkforceAgentEnabled(paths: RuntimePaths, id: string, 
   }
 
   const updated = { ...existing, enabled };
+  await saveAgentsConfig(paths, config, { ...(config.agents ?? {}), [normalizedId]: updated });
+  return { id: normalizedId, ...updated };
+}
+
+export async function bindWorkforceAgentChannel(paths: RuntimePaths, id: string, channel: AgentChannelBinding): Promise<WorkforceAgentRecord> {
+  const normalizedId = normalizeAgentId(id);
+  const config = await loadConfig(paths);
+  const existing = config.agents?.[normalizedId];
+  if (!existing) throw new Error(`Agent '${normalizedId}' does not exist.`);
+
+  const agents = { ...(config.agents ?? {}) };
+  for (const [otherId, agent] of Object.entries(agents)) {
+    if (otherId !== normalizedId && agent.channels?.includes(channel)) {
+      const otherChannels = agent.channels.filter((item) => item !== channel);
+      const updatedAgent = { ...agent, ...(otherChannels.length ? { channels: otherChannels } : {}) };
+      if (otherChannels.length === 0) delete updatedAgent.channels;
+      agents[otherId] = updatedAgent;
+    }
+  }
+  const channels = [...new Set([...(existing.channels ?? []), channel])];
+  agents[normalizedId] = { ...existing, channels };
+  await saveAgentsConfig(paths, config, agents);
+  return { id: normalizedId, ...agents[normalizedId] };
+}
+
+export async function unbindWorkforceAgentChannel(paths: RuntimePaths, id: string, channel: AgentChannelBinding): Promise<WorkforceAgentRecord> {
+  const normalizedId = normalizeAgentId(id);
+  const config = await loadConfig(paths);
+  const existing = config.agents?.[normalizedId];
+  if (!existing) throw new Error(`Agent '${normalizedId}' does not exist.`);
+  const channels = existing.channels?.filter((item) => item !== channel);
+  const updated = { ...existing, ...(channels?.length ? { channels } : {}) };
+  if (!channels?.length) delete updated.channels;
   await saveAgentsConfig(paths, config, { ...(config.agents ?? {}), [normalizedId]: updated });
   return { id: normalizedId, ...updated };
 }

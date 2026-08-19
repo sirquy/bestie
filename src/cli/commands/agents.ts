@@ -1,8 +1,8 @@
 import { getRuntimePaths, type RuntimePaths } from "../../runtime/paths.js";
 import { assignWorkforceTask, listWorkforceTasks, updateWorkforceTaskStatus, type WorkforceTask, type WorkforceTaskStatus } from "../../agents/inbox.js";
 import { runQueuedWorkforceTasks, watchQueuedWorkforceTasks } from "../../agents/executor.js";
-import { getWorkforceAgent, hireWorkforceAgent, listWorkforceAgents, removeWorkforceAgent, setWorkforceAgentEnabled, type WorkforceAgentRecord } from "../../agents/registry.js";
-import { loadConfig } from "../../runtime/config.js";
+import { bindWorkforceAgentChannel, getWorkforceAgent, hireWorkforceAgent, listWorkforceAgents, removeWorkforceAgent, setWorkforceAgentEnabled, unbindWorkforceAgentChannel, type WorkforceAgentRecord } from "../../agents/registry.js";
+import { loadConfig, type AgentChannelBinding } from "../../runtime/config.js";
 import { badge, dim, keyValue, rule, table, title } from "../ui.js";
 
 export interface AgentsCommandOptions {
@@ -29,6 +29,8 @@ export async function runAgentsCommand(options: AgentsCommandOptions | string[] 
     if (subcommand === "run") return await runTasks(paths, argv, writeLine);
     if (subcommand === "pause") return await setAgentState(paths, requireArg(argv[4], "agent id"), false, writeLine);
     if (subcommand === "resume") return await setAgentState(paths, requireArg(argv[4], "agent id"), true, writeLine);
+    if (subcommand === "bind") return await bindAgentChannel(paths, requireArg(argv[4], "agent id"), requireChannelFlag(argv), writeLine);
+    if (subcommand === "unbind") return await unbindAgentChannel(paths, requireArg(argv[4], "agent id"), requireChannelFlag(argv), writeLine);
     if (subcommand === "remove") return await removeAgent(paths, requireArg(argv[4], "agent id"), writeLine);
 
     writeLine(`${badge("ERROR", "red")} Unknown agents command: ${subcommand}`);
@@ -49,7 +51,7 @@ async function listAgents(paths: RuntimePaths, writeLine: (message: string) => v
 
   writeLine(title("Agent Workforce"));
   writeLine(rule());
-  for (const line of table(["ID", "Status", "Name", "Role", "Model"], agents.map((agent) => [agent.id, agent.enabled ? "active" : "paused", agent.displayName, agent.role, agent.model ?? "default"]))) {
+  for (const line of table(["ID", "Status", "Name", "Role", "Model", "Channels"], agents.map((agent) => [agent.id, agent.enabled ? "active" : "paused", agent.displayName, agent.role, agent.model ?? "default", agent.channels?.join(", ") ?? "default"]))) {
     writeLine(line);
   }
 }
@@ -158,6 +160,17 @@ async function removeAgent(paths: RuntimePaths, id: string, writeLine: (message:
   writeLine(dim("Prompt files were kept on disk for audit/history."));
 }
 
+async function bindAgentChannel(paths: RuntimePaths, id: string, channel: AgentChannelBinding, writeLine: (message: string) => void): Promise<void> {
+  const agent = await bindWorkforceAgentChannel(paths, id, channel);
+  writeLine(`${badge("OK", "green")} Bound ${channel} to ${agent.displayName}.`);
+  writeLine(dim("Any existing agent binding for this channel was replaced."));
+}
+
+async function unbindAgentChannel(paths: RuntimePaths, id: string, channel: AgentChannelBinding, writeLine: (message: string) => void): Promise<void> {
+  const agent = await unbindWorkforceAgentChannel(paths, id, channel);
+  writeLine(`${badge("OK", "green")} Unbound ${channel} from ${agent.displayName}.`);
+}
+
 function describeAgent(agent: WorkforceAgentRecord): string[] {
   return [
     keyValue("ID", agent.id),
@@ -166,6 +179,7 @@ function describeAgent(agent: WorkforceAgentRecord): string[] {
     keyValue("Description", agent.description),
     keyValue("Model", agent.model ?? "default"),
     keyValue("Tools", agent.tools?.join(", ") ?? "none"),
+    keyValue("Channels", agent.channels?.join(", ") ?? "default Bestie"),
     keyValue("Memory", agent.memoryScope),
     keyValue("Approvals", agent.approvalPolicy),
     keyValue("Prompt", agent.promptPath),
@@ -192,6 +206,12 @@ function requireArg(value: string | undefined, name: string): string {
 
 function requireFlag(argv: string[], flag: string): string {
   return requireArg(optionalFlag(argv, flag), flag);
+}
+
+function requireChannelFlag(argv: string[]): AgentChannelBinding {
+  const value = requireFlag(argv, "--channel");
+  if (value === "telegram" || value === "zalo" || value === "zalo-personal") return value;
+  throw new Error("--channel must be telegram, zalo, or zalo-personal.");
 }
 
 function optionalFlag(argv: string[], flag: string): string | undefined {
@@ -236,7 +256,9 @@ Usage:
   bestie agents run --watch [--agent researcher] [--interval-ms 30000]
   bestie agents pause <id>
   bestie agents resume <id>
+  bestie agents bind <id> --channel telegram|zalo|zalo-personal
+  bestie agents unbind <id> --channel telegram|zalo|zalo-personal
   bestie agents remove <id>
 
-This MVP creates fixed role agents with their own profile, prompt file, memory scope, approval policy, and task inbox.`);
+Bind a channel to send its incoming chats to that agent. Each channel can be bound to one agent; unbound channels use the default Bestie agent.`);
 }

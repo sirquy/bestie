@@ -189,6 +189,7 @@ Phase Now config started with non-secret `agent` and `llm` fields. The current l
       "promptPath": "~/.bestie/agents/researcher/system-prompt.md",
       "model": "openai/gpt-4o-mini",
       "tools": ["internal.read_file", "internal.read_url"],
+      "channels": ["telegram", "zalo-personal"],
       "memoryScope": "agent:researcher",
       "approvalPolicy": "ask-for-external-actions"
     }

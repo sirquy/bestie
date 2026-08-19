@@ -944,6 +944,23 @@ test("validateConfig accepts multiple channel owners and a wildcard", () => {
   assert.throws(() => validateConfig({ ...validConfig, channels: { telegram: { enabled: true, botTokenEnv: "TOKEN", ownerUserId: ["*", "owner-1"] } } }), /single array value/);
 });
 
+test("validateConfig validates workforce agent channel bindings", () => {
+  const agent = {
+    enabled: true,
+    displayName: "Researcher",
+    role: "Research",
+    description: "Research assistant.",
+    promptPath: "C:/bestie/agents/researcher/system-prompt.md",
+    memoryScope: "agent:researcher",
+    approvalPolicy: "ask-for-external-actions",
+  };
+  const config = validateConfig({ ...validConfig, agents: { researcher: { ...agent, channels: ["telegram", "zalo-personal"] } } });
+  assert.deepEqual(config.agents?.researcher?.channels, ["telegram", "zalo-personal"]);
+  assert.throws(() => validateConfig({ ...validConfig, agents: { researcher: { ...agent, channels: ["discord"] } } }), /telegram, zalo, or zalo-personal/);
+  assert.throws(() => validateConfig({ ...validConfig, agents: { researcher: { ...agent, channels: ["telegram", "telegram"] } } }), /duplicate channels/);
+  assert.throws(() => validateConfig({ ...validConfig, agents: { researcher: { ...agent, channels: ["telegram"] }, writer: { ...agent, channels: ["telegram"] } } }), /assigned to more than one agent/);
+});
+
 test("validateConfig rejects invalid MCP server config", () => {
   assert.throws(() => validateConfig({ ...validConfig, mcp: { servers: "nope" } }), /mcp.servers must be an array/);
   assert.throws(

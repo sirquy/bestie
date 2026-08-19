@@ -18,9 +18,12 @@ export async function loadSystemPrompt(paths: RuntimePaths = getRuntimePaths()):
     throw new EmptyPromptError(paths.systemPromptPath);
   }
 
-  const promptWithWorkspaceInstructions = await appendWorkspaceInstructions(prompt, paths);
+  return prepareSystemPrompt(prompt, paths);
+}
 
-  return appendInstalledSkills(promptWithWorkspaceInstructions, paths);
+export async function prepareSystemPrompt(prompt: string, paths: RuntimePaths): Promise<string> {
+  if (!prompt.trim()) throw new EmptyPromptError("provided system prompt");
+  return appendInstalledSkills(await appendWorkspaceInstructions(prompt, paths), paths);
 }
 
 const MAX_SKILL_PROMPT_BYTES = 96 * 1024;

@@ -1,4 +1,5 @@
 import { loadSystemPrompt } from "../character/prompt-loader.js";
+import { buildChannelAgentToolRunner, resolveChannelAgentRuntime } from "../agents/channel-binding.js";
 import { buildChatMessages, getRecentMessageLimit } from "../chat/message-builder.js";
 import { buildMcpToolSystemPrompt, completeWithAgentTools, runAgentToolRequest, type AgentToolActivity } from "../chat/mcp-tool-use.js";
 import { fallbackLogDetail, formatProviderFallbackDiagnostics, formatProviderFallbackHealth } from "../llm/fallbacks.js";
@@ -412,50 +413,55 @@ export async function handleZaloUpdate(update: ZaloUpdate, options: ZaloUpdateHa
   }
 
   const chatCompletion = options.chatCompletion ?? ((config, _apiKeyValue, requestOptions) => sendChatCompletionWithFallbacks(config, { ...requestOptions, stream: requestOptions.stream ?? true }, { paths: options.paths }));
-  const apiKey = await loadLlmCandidateSecret(resolvePrimaryLlmCandidate(options.config), options.paths);
   const typing = createChannelActivityController(adapter.outbound.createActivityOptions(incoming.chatId, "typing"));
   typing.start();
+  let apiKey = "";
 
   try {
+    const channelAgent = await resolveChannelAgentRuntime(options.config, options.paths, channel, incoming.senderId);
+    const effectiveConfig = channelAgent?.config ?? options.config;
+    const conversationUserId = channelAgent?.conversationUserId ?? incoming.senderId;
+    apiKey = await loadLlmCandidateSecret(resolvePrimaryLlmCandidate(effectiveConfig), options.paths);
+    const effectiveToolRunner = channelAgent ? buildChannelAgentToolRunner(channelAgent.agent, runAgentToolRequest) : runAgentToolRequest;
     const savedAttachment = attachment ? await adapter.attachments?.processAttachment(attachment, incoming) as SavedZaloAttachment | undefined : undefined;
     const userInput = savedAttachment ? buildZaloAttachmentUserInput(text, savedAttachment) : text;
-    const systemPrompt = await loadSystemPrompt(options.paths);
+    const systemPrompt = channelAgent?.systemPrompt ?? await loadSystemPrompt(options.paths);
     const memories = await loadRelevantMemories(options.paths, { query: userInput });
-    const recentMessageLimit = getRecentMessageLimit(options.config);
-    const recentTurns = await loadRecentZaloTurns(options.paths, incoming.senderId, recentMessageLimit, channel);
+    const recentMessageLimit = getRecentMessageLimit(effectiveConfig);
+    const recentTurns = await loadRecentZaloTurns(options.paths, conversationUserId, recentMessageLimit, channel);
     const knowledgeGraph = await loadRelevantKnowledgeGraph(options.paths, userInput);
     const runtimeContext = buildZaloRuntimeToolContext(incoming, incoming.senderId, channel);
-    const conversationSummary = await loadConversationSummaryContext(options.paths, channel, incoming.senderId);
-    const messages = buildChatMessages(buildMcpToolSystemPrompt(systemPrompt, options.config, runtimeContext), recentTurns, userInput, memories, { memoryRetrievalPolicy: options.config.memory?.retrievalPolicy ?? "full", knowledgeGraph, conversationSummary, recentMessageLimit });
+    const conversationSummary = await loadConversationSummaryContext(options.paths, channel, conversationUserId);
+    const messages = buildChatMessages(buildMcpToolSystemPrompt(systemPrompt, effectiveConfig, runtimeContext), recentTurns, userInput, memories, { memoryRetrievalPolicy: effectiveConfig.memory?.retrievalPolicy ?? "full", knowledgeGraph, conversationSummary, recentMessageLimit });
     if (savedAttachment?.visionImage) {
       attachZaloVisionImage(messages, userInput, savedAttachment.visionImage.dataUrl);
     }
     const response = createChannelResponseController(adapter.outbound.createResponseAdapter(incoming.chatId));
     const assistantText = await completeWithAgentTools({
-      config: options.config,
+      config: effectiveConfig,
       paths: options.paths,
       apiKey,
       messages,
       chatCompletion,
       toolRunner: async (toolOptions) => {
-        const result = await runAgentToolRequest(toolOptions);
+        const result = await effectiveToolRunner(toolOptions);
         await sendZaloMemoryApprovalIfNeeded(options.client, incoming.chatId, options.paths, incoming.senderId, toolOptions.request.tool, result, channel);
         await sendZaloKnowledgeApprovalIfNeeded(options.client, incoming.chatId, options.paths, incoming.senderId, toolOptions.request.tool, result, channel);
         return result;
       },
       approver: createZaloPermissionApprover(options.client, incoming.chatId, incoming.senderId, options.paths, channel),
-      policy: ZALO_PERMISSION_POLICY,
+      policy: channelAgent?.policy ?? ZALO_PERMISSION_POLICY,
       streamFinalResponse: true,
-      onToolActivity: async (activity) => handleZaloToolActivity(response, activity, options.config.agent.name),
+      onToolActivity: async (activity) => handleZaloToolActivity(response, activity, channelAgent?.agent.displayName ?? options.config.agent.name),
       runtimeContext,
       outboundFileSender: createZaloOutboundFileSender(options.client, incoming.chatId, channel),
     });
     typing.stop();
     await response.replyFinal(assistantText);
-    await persistZaloConversationTurn(options.paths, incoming.senderId, userInput, assistantText, channel);
-    await runZaloConversationSummaryPass({ config: options.config, paths: options.paths, apiKey, channel, userId: incoming.senderId, chatCompletion });
-    const memoryReasoning = await runZaloMemoryReasoningPass({ config: options.config, paths: options.paths, apiKey, turn: { channel, userId: incoming.senderId, userInput, assistantText }, chatCompletion });
-    const knowledgeReasoning = await runZaloKnowledgeReasoningPass({ config: options.config, paths: options.paths, apiKey, turn: { channel, userId: incoming.senderId, userInput, assistantText }, chatCompletion });
+    await persistZaloConversationTurn(options.paths, conversationUserId, userInput, assistantText, channel);
+    await runZaloConversationSummaryPass({ config: effectiveConfig, paths: options.paths, apiKey, channel, userId: conversationUserId, chatCompletion });
+    const memoryReasoning = await runZaloMemoryReasoningPass({ config: effectiveConfig, paths: options.paths, apiKey, turn: { channel, userId: conversationUserId, userInput, assistantText }, chatCompletion });
+    const knowledgeReasoning = await runZaloKnowledgeReasoningPass({ config: effectiveConfig, paths: options.paths, apiKey, turn: { channel, userId: conversationUserId, userInput, assistantText }, chatCompletion });
     await sendZaloMemoryReasoningApprovalsIfNeeded(options.client, incoming.chatId, options.paths, incoming.senderId, memoryReasoning, channel);
     await sendZaloKnowledgeReasoningApprovalsIfNeeded(options.client, incoming.chatId, options.paths, incoming.senderId, knowledgeReasoning, channel);
     await appendLog({ event: "zalo_chat_success", detail: { model: options.config.llm.primary } }, { paths: options.paths });

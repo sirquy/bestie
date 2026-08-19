@@ -118,6 +118,7 @@ type LocalCommandSpeechProviderConfig = {
   timeoutMs?: number;
 };
 export type SpeechProviderConfig = OpenAiCompatibleSpeechProviderConfig | ElevenLabsSpeechProviderConfig | VoiceboxSpeechProviderConfig | LocalCommandSpeechProviderConfig;
+export type AgentChannelBinding = "telegram" | "zalo" | "zalo-personal";
 
 export interface AppConfig {
   version: 2;
@@ -274,6 +275,7 @@ export interface AppConfig {
     promptPath: string;
     model?: string;
     tools?: string[];
+    channels?: AgentChannelBinding[];
     memoryScope: string;
     approvalPolicy: WorkforceAgentApprovalPolicy;
   }>;
@@ -721,6 +723,7 @@ function optionalAgents(value: unknown): AppConfig["agents"] | undefined {
   }
 
   const agents: NonNullable<AppConfig["agents"]> = {};
+  const assignedChannels = new Set<AgentChannelBinding>();
   for (const [id, agentValue] of Object.entries(value)) {
     if (!/^[a-z0-9][a-z0-9-]{1,62}$/.test(id)) {
       throw new InvalidConfigError("agents keys must use lowercase letters, numbers, or hyphens.");
@@ -731,6 +734,14 @@ function optionalAgents(value: unknown): AppConfig["agents"] | undefined {
       throw new InvalidConfigError(`agents.${id}.approvalPolicy must be ask-for-external-actions, ask-for-all-actions, or deny-external-actions.`);
     }
 
+    const channels = agent.channels === undefined ? undefined : optionalAgentChannels(agent.channels, `agents.${id}.channels`);
+    for (const channel of channels ?? []) {
+      if (assignedChannels.has(channel)) {
+        throw new InvalidConfigError(`agents channel '${channel}' is assigned to more than one agent.`);
+      }
+      assignedChannels.add(channel);
+    }
+
     agents[id] = {
       enabled: requireBoolean(agent.enabled, `agents.${id}.enabled`),
       displayName: requireString(agent.displayName, `agents.${id}.displayName`),
@@ -739,6 +750,7 @@ function optionalAgents(value: unknown): AppConfig["agents"] | undefined {
       promptPath: requireString(agent.promptPath, `agents.${id}.promptPath`),
       ...(agent.model === undefined ? {} : { model: requireModelRefString(agent.model, `agents.${id}.model`) }),
       ...(agent.tools === undefined ? {} : { tools: optionalStringArray(agent.tools, `agents.${id}.tools`) ?? [] }),
+      ...(channels === undefined ? {} : { channels }),
       memoryScope: requireString(agent.memoryScope, `agents.${id}.memoryScope`),
       approvalPolicy,
     };
@@ -774,6 +786,21 @@ function optionalInternalTools(value: unknown): AppConfig["internalTools"] | und
   }
 
   return { policies: validated, ...(exec === undefined ? {} : { exec }), ...(browser === undefined ? {} : { browser }) };
+}
+
+function optionalAgentChannels(value: unknown, path: string): AgentChannelBinding[] {
+  const channels = optionalStringArray(value, path);
+  if (!channels || channels.length === 0) {
+    throw new InvalidConfigError(`${path} must include at least one of telegram, zalo, or zalo-personal.`);
+  }
+  const validChannels: AgentChannelBinding[] = ["telegram", "zalo", "zalo-personal"];
+  if (channels.some((channel) => !validChannels.includes(channel as AgentChannelBinding))) {
+    throw new InvalidConfigError(`${path} must contain only telegram, zalo, or zalo-personal.`);
+  }
+  if (new Set(channels).size !== channels.length) {
+    throw new InvalidConfigError(`${path} must not contain duplicate channels.`);
+  }
+  return channels as AgentChannelBinding[];
 }
 
 function optionalInternalExec(value: unknown): NonNullable<AppConfig["internalTools"]>["exec"] | undefined {

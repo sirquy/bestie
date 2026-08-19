@@ -28,6 +28,7 @@ export type PermissionApprover = (request: ActionPermissionRequest, proposed: Ac
 export interface PermissionPolicy {
   allowTrustedRead?: boolean;
   allowLocalWrite?: boolean;
+  denyExternalActions?: boolean;
 }
 
 const RISKY_CATEGORIES = new Set<ActionCategory>(["external_write", "public_action", "destructive", "money", "unknown"]);
@@ -52,6 +53,9 @@ export function evaluateActionPermission(request: ActionPermissionRequest, polic
   }
 
   if (RISKY_CATEGORIES.has(request.category)) {
+    if (policy.denyExternalActions) {
+      return { decision: "deny", reason: "This agent policy denies external or risky actions." };
+    }
     return { decision: "ask", reason: `${request.category} actions require explicit approval.` };
   }
 

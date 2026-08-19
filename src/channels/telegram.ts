@@ -7,6 +7,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { basename, extname, join, resolve } from "node:path";
 
 import { matchesOwnerId, type OwnerUserIdConfig } from "./owner-policy.js";
+import { buildChannelAgentToolRunner, resolveChannelAgentRuntime } from "../agents/channel-binding.js";
 import { loadSystemPrompt } from "../character/prompt-loader.js";
 import { buildChatMessages, getRecentMessageLimit } from "../chat/message-builder.js";
 import {
@@ -489,23 +490,28 @@ export async function handleTelegramUpdate(update: TelegramUpdate, options: Tele
 
   const chatCompletion = options.chatCompletion ?? ((config, _apiKeyValue, requestOptions) => sendChatCompletionWithFallbacks(config, { ...requestOptions, stream: requestOptions.stream ?? true }, { paths: options.paths }));
   const mcpToolRunner = options.mcpToolRunner ?? runAgentToolRequest;
-  const apiKey = await loadLlmCandidateSecret(resolvePrimaryLlmCandidate(options.config), options.paths);
   const typing = createChannelActivityController(adapter.outbound.createActivityOptions(chatId, "typing"));
   typing.start();
+  let apiKey = "";
 
   try {
+    const channelAgent = await resolveChannelAgentRuntime(options.config, options.paths, "telegram", userId);
+    const effectiveConfig = channelAgent?.config ?? options.config;
+    const conversationUserId = channelAgent?.conversationUserId ?? userId;
+    apiKey = await loadLlmCandidateSecret(resolvePrimaryLlmCandidate(effectiveConfig), options.paths);
+    const effectiveToolRunner = channelAgent ? buildChannelAgentToolRunner(channelAgent.agent, mcpToolRunner) : mcpToolRunner;
     const savedAttachment = decision.attachment ? await adapter.attachments?.processAttachment(decision.attachment, decision.incoming) as SavedTelegramAttachment | undefined : undefined;
     if (savedAttachment) {
       await options.onAttachmentParsed?.(summarizeTelegramAttachmentParse(savedAttachment));
     }
     const userInput = savedAttachment ? buildTelegramAttachmentUserInput(text, savedAttachment) : text;
-    const systemPrompt = await loadSystemPrompt(options.paths);
+    const systemPrompt = channelAgent?.systemPrompt ?? await loadSystemPrompt(options.paths);
     const memories = await loadRelevantMemories(options.paths, { query: userInput });
-    const recentMessageLimit = getRecentMessageLimit(options.config);
-    const recentTurns = await loadRecentTelegramTurns(options.paths, userId, recentMessageLimit);
+    const recentMessageLimit = getRecentMessageLimit(effectiveConfig);
+    const recentTurns = await loadRecentTelegramTurns(options.paths, conversationUserId, recentMessageLimit);
     const knowledgeGraph = await loadRelevantKnowledgeGraph(options.paths, userInput);
-    const conversationSummary = await loadConversationSummaryContext(options.paths, "telegram", userId);
-    const messages = buildChatMessages(buildMcpToolSystemPrompt(systemPrompt, options.config, buildTelegramRuntimeToolContext(decision.incoming)), recentTurns, userInput, memories, { memoryRetrievalPolicy: options.config.memory?.retrievalPolicy ?? "full", knowledgeGraph, conversationSummary, recentMessageLimit });
+    const conversationSummary = await loadConversationSummaryContext(options.paths, "telegram", conversationUserId);
+    const messages = buildChatMessages(buildMcpToolSystemPrompt(systemPrompt, effectiveConfig, buildTelegramRuntimeToolContext(decision.incoming)), recentTurns, userInput, memories, { memoryRetrievalPolicy: effectiveConfig.memory?.retrievalPolicy ?? "full", knowledgeGraph, conversationSummary, recentMessageLimit });
     if (savedAttachment?.visionImage) {
       attachTelegramVisionImage(messages, userInput, savedAttachment.visionImage.dataUrl);
     }
@@ -519,22 +525,22 @@ export async function handleTelegramUpdate(update: TelegramUpdate, options: Tele
         return;
       }
 
-      await response.showProgress(formatChannelToolProgress(activity, options.config.agent.name));
+      await response.showProgress(formatChannelToolProgress(activity, channelAgent?.agent.displayName ?? options.config.agent.name));
     };
     const assistantText = await completeWithAgentTools({
-      config: options.config,
+      config: effectiveConfig,
       paths: options.paths,
       apiKey,
       messages,
       chatCompletion,
       toolRunner: async (toolOptions) => {
-        const result = await mcpToolRunner(toolOptions);
+        const result = await effectiveToolRunner(toolOptions);
         await sendTelegramMemoryApprovalIfNeeded(options.client, chatId, options.paths, userId, toolOptions.request.tool, result);
         await sendTelegramKnowledgeApprovalIfNeeded(options.client, chatId, options.paths, userId, toolOptions.request.tool, result);
         return result;
       },
       approver: createTelegramPermissionApprover(options.client, chatId, userId, options.paths),
-      policy: TELEGRAM_PERMISSION_POLICY,
+      policy: channelAgent?.policy ?? TELEGRAM_PERMISSION_POLICY,
       streamFinalResponse: true,
       onToolActivity: handleToolActivity,
       runtimeContext: buildTelegramRuntimeToolContext(decision.incoming),
@@ -552,20 +558,20 @@ export async function handleTelegramUpdate(update: TelegramUpdate, options: Tele
       speechSynthesizer: options.speechSynthesizer,
       speechVoiceConverter: options.speechVoiceConverter,
     });
-    await persistTelegramConversationTurn(options.paths, userId, userInput, assistantText);
-    await runTelegramConversationSummaryPass({ config: options.config, paths: options.paths, apiKey, channel: "telegram", userId, chatCompletion });
+    await persistTelegramConversationTurn(options.paths, conversationUserId, userInput, assistantText);
+    await runTelegramConversationSummaryPass({ config: effectiveConfig, paths: options.paths, apiKey, channel: "telegram", userId: conversationUserId, chatCompletion });
     const memoryReasoning = await runTelegramMemoryReasoningPass({
-      config: options.config,
+      config: effectiveConfig,
       paths: options.paths,
       apiKey,
-      turn: { channel: "telegram", userId, userInput, assistantText },
+      turn: { channel: "telegram", userId: conversationUserId, userInput, assistantText },
       chatCompletion,
     });
     const knowledgeReasoning = await runTelegramKnowledgeReasoningPass({
-      config: options.config,
+      config: effectiveConfig,
       paths: options.paths,
       apiKey,
-      turn: { channel: "telegram", userId, userInput, assistantText },
+      turn: { channel: "telegram", userId: conversationUserId, userInput, assistantText },
       chatCompletion,
     });
     await sendTelegramMemoryReasoningApprovalsIfNeeded(options.client, chatId, options.paths, userId, memoryReasoning);
