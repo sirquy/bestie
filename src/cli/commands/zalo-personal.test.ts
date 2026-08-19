@@ -3,6 +3,7 @@ import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import test from "node:test";
+import { PNG } from "pngjs";
 
 import type { ZaloPersonalClient } from "../../channels/zalo-personal/client.js";
 import { decodeZaloPersonalSession } from "../../channels/zalo-personal/session.js";
@@ -35,7 +36,7 @@ test("Zalo Personal setup saves a redacted local session and controller configur
         close: () => { closed = true; },
       },
       loginWithQr: async ({ onEvent }) => {
-        onEvent?.({ type: 0, data: { code: "zalo-login-qr" }, actions: null });
+        onEvent?.({ type: 0, data: { code: "not-the-qr-payload", image: createQrPngBase64() }, actions: null });
         const client = {
           getUserDisplayName: async () => "Nguyễn Văn A",
           startListening: ({ onMessage }: { onMessage: (message: { threadId: string; isSelf: boolean; type: number; data: { uidFrom?: string } }) => void }) => {
@@ -62,13 +63,30 @@ test("Zalo Personal setup saves a redacted local session and controller configur
     assert.ok(session);
     assert.deepEqual(decodeZaloPersonalSession(session).credentials, credentials);
     assert.ok(output.some((line) => line.includes("Quét QR này")));
-    assert.ok(output.some((line) => line.includes("▄▄▄▄▄") || line.includes("█████")));
+    assert.ok(output.some((line) => line.includes("█") || line.includes("▀") || line.includes("▄")));
+    assert.doesNotMatch(output.join("\n"), /not-the-qr-payload/);
     assert.ok(confirmationQuestions.some((question) => question.includes("Nguyễn Văn A") && question.includes("controller-1")));
     assert.doesNotMatch(output.join("\n"), /secret-cookie|imei-1|test-agent/);
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
   }
 });
+
+function createQrPngBase64(): string {
+  const png = new PNG({ width: 8, height: 8 });
+  for (let y = 0; y < png.height; y += 1) {
+    for (let x = 0; x < png.width; x += 1) {
+      const offset = (y * png.width + x) * 4;
+      const black = (x + y) % 2 === 0;
+      const value = black ? 0 : 255;
+      png.data[offset] = value;
+      png.data[offset + 1] = value;
+      png.data[offset + 2] = value;
+      png.data[offset + 3] = 255;
+    }
+  }
+  return PNG.sync.write(png).toString("base64");
+}
 
 test("Zalo Personal logout removes its session and disables the channel", async () => {
   const paths = await createTempPaths();

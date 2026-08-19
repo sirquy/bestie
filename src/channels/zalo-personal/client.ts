@@ -32,7 +32,7 @@ export interface ZaloPersonalZcaModule {
 
 export interface ZaloPersonalQrEvent {
   type: number;
-  data: { code?: string; cookie?: unknown; imei?: string; userAgent?: string } | null;
+  data: { code?: string; image?: string; cookie?: unknown; imei?: string; userAgent?: string } | null;
   actions?: {
     saveToFile?: (qrPath?: string) => Promise<unknown>;
     retry?: () => unknown;

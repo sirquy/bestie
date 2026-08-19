@@ -1,6 +1,5 @@
 import { mkdir, rm } from "node:fs/promises";
 import { resolve } from "node:path";
-import qrCodeTerminal from "qrcode-terminal";
 
 import { hasConfiguredOwner } from "../../channels/owner-policy.js";
 import { ZaloPersonalClient } from "../../channels/zalo-personal/client.js";
@@ -12,6 +11,7 @@ import { UserFacingError } from "../../runtime/errors.js";
 import { getRuntimePaths, type RuntimePaths } from "../../runtime/paths.js";
 import { createCliQuestioner } from "../prompt.js";
 import { badge, dim, title } from "../ui.js";
+import { renderQrPngInTerminal } from "../qr-image-terminal.js";
 
 const DEFAULT_ZALO_PERSONAL_SESSION_ENV = "BESTIE_ZALO_PERSONAL_SESSION";
 
@@ -126,7 +126,8 @@ async function loginAndSaveSession(options: { paths: RuntimePaths; sessionEnv?: 
         onEvent: (event) => {
           if (event.type === 0) {
             options.writeLine("Quét QR này bằng tài khoản automation:");
-            if (event.data?.code) qrCodeTerminal.generate(event.data.code, { small: true }, options.writeLine);
+            if (event.data?.image) options.writeLine(renderQrPngInTerminal(event.data.image));
+            else options.writeLine("Không thể hiển thị ảnh QR trong terminal; hãy mở file QR tạm bên dưới để quét.");
             options.writeLine(`QR cũng được lưu tạm tại ${qrPath}.`);
           }
           if (event.type === 2) options.writeLine("QR đã được quét; đang hoàn tất đăng nhập.");
