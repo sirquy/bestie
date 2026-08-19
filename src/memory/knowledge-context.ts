@@ -11,6 +11,7 @@ const KNOWLEDGE_QUERY_STOP_WORDS = new Set([
 
 export interface LoadRelevantKnowledgeGraphOptions {
   limit?: number;
+  namespace?: string;
 }
 
 export async function loadRelevantKnowledgeGraph(paths: RuntimePaths, query: string, options: LoadRelevantKnowledgeGraphOptions = {}): Promise<KnowledgeGraphSearchResult | undefined> {
@@ -39,7 +40,7 @@ export function selectRelevantKnowledgeGraph(
   const relations = new Map<number, KnowledgeRelationWithEntities>();
 
   for (const candidateQuery of buildKnowledgeContextSearchQueries(query)) {
-    const graph = store.searchKnowledgeGraph(candidateQuery, candidateLimit);
+    const graph = store.searchKnowledgeGraph(candidateQuery, candidateLimit, options.namespace ?? "primary");
     for (const entity of graph.entities) entities.set(entity.id, entity);
     for (const relation of graph.relations) relations.set(relation.id, relation);
   }

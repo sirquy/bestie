@@ -875,6 +875,33 @@ test("validateConfig rejects invalid internal tool policies", () => {
   assert.throws(() => validateConfig({ ...validConfig, internalTools: { browser: { cdpEndpoint: "http://token@127.0.0.1:9222" } } }), /browser.cdpEndpoint must be an http\(s\) or ws\(s\) loopback URL/);
 });
 
+test("validateConfig requires explicit public agent policy for wildcard channels", () => {
+  const agent = {
+    enabled: true,
+    displayName: "Support",
+    role: "Support",
+    description: "Customer support.",
+    promptPath: ".bestie/agents/support/system-prompt.md",
+    channels: ["telegram"],
+    memoryScope: "agent:support",
+    approvalPolicy: "deny-external-actions",
+  };
+  assert.throws(
+    () => validateConfig({ ...validConfig, channels: { telegram: { enabled: true, botTokenEnv: "TOKEN", ownerUserId: ["*"] } }, agents: { support: agent } }),
+    /agents\.support\.public must be explicitly configured/,
+  );
+  const config = validateConfig({ ...validConfig, channels: { telegram: { enabled: true, botTokenEnv: "TOKEN", ownerUserId: ["*"], adminUserIds: ["operator"] } }, agents: { support: { ...agent, public: { enabled: true } } } });
+  assert.equal(config.agents?.support?.public?.enabled, true);
+  assert.throws(
+    () => validateConfig({ ...validConfig, channels: { telegram: { enabled: true, botTokenEnv: "TOKEN", ownerUserId: ["*"] } }, agents: { support: { ...agent, enabled: false, public: { enabled: true } } } }),
+    /agents\.support\.enabled must be true while bound to public telegram/,
+  );
+  assert.throws(
+    () => validateConfig({ ...validConfig, agents: { support: { ...agent, public: { enabled: true, toolPolicy: "allowlist" } } } }),
+    /allowUnsafeSharedData=true/,
+  );
+});
+
 test("validateConfig accepts a local command speech provider", () => {
   const config = validateConfig({
     ...validConfig,
@@ -928,6 +955,17 @@ test("validateConfig accepts Zalo Personal media settings and requires a control
 });
 
 test("validateConfig accepts multiple channel owners and a wildcard", () => {
+  const publicZaloAgent = {
+    enabled: true,
+    displayName: "Support",
+    role: "Support",
+    description: "Customer support.",
+    promptPath: "C:/bestie/agents/support/system-prompt.md",
+    channels: ["zalo"],
+    memoryScope: "agent:support",
+    approvalPolicy: "deny-external-actions",
+    public: { enabled: true },
+  };
   const config = validateConfig({
     ...validConfig,
     channels: {
@@ -935,6 +973,7 @@ test("validateConfig accepts multiple channel owners and a wildcard", () => {
       zalo: { enabled: true, botTokenEnv: "BESTIE_ZALO_BOT_TOKEN", ownerUserId: ["*"] },
       zaloPersonal: { enabled: true, sessionEnv: "BESTIE_ZALO_PERSONAL_SESSION", ownerUserId: ["controller-1", "controller-2"] },
     },
+    agents: { support: publicZaloAgent },
   });
 
   assert.deepEqual(config.channels?.telegram?.ownerUserId, ["owner-1", "owner-2"]);

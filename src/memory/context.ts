@@ -13,6 +13,7 @@ export interface LoadRelevantMemoriesOptions {
   query?: string;
   limit?: number;
   anchorLimit?: number;
+  namespace?: string;
 }
 
 export async function loadRelevantMemories(paths: RuntimePaths, options: LoadRelevantMemoriesOptions = {}): Promise<StoredMemory[]> {
@@ -35,8 +36,9 @@ export function selectRelevantMemories(store: Pick<SqliteMemoryStore, "searchMem
   const limit = normalizePositiveInteger(options.limit, DEFAULT_RELEVANT_MEMORY_LIMIT);
   const anchorLimit = normalizePositiveInteger(options.anchorLimit, DEFAULT_ANCHOR_MEMORY_LIMIT);
   const query = options.query?.trim() ?? "";
-  const searched = query ? searchRelevantMemoryCandidates(store, query, limit) : [];
-  const anchors = store.listActiveMemories(Math.max(anchorLimit, anchorLimit * 4)).sort(compareMemoryAnchorPriority).slice(0, anchorLimit);
+  const searched = query ? searchRelevantMemoryCandidates(store, query, limit, options.namespace ?? "primary") : [];
+  const namespace = options.namespace ?? "primary";
+  const anchors = store.listActiveMemories(Math.max(anchorLimit, anchorLimit * 4), namespace).sort(compareMemoryAnchorPriority).slice(0, anchorLimit);
   const byId = new Map<number, StoredMemory>();
 
   for (const memory of [...searched, ...anchors]) {
@@ -49,10 +51,10 @@ export function selectRelevantMemories(store: Pick<SqliteMemoryStore, "searchMem
   return [...byId.values()];
 }
 
-function searchRelevantMemoryCandidates(store: Pick<SqliteMemoryStore, "searchMemories">, query: string, limit: number): StoredMemory[] {
+function searchRelevantMemoryCandidates(store: Pick<SqliteMemoryStore, "searchMemories">, query: string, limit: number, namespace: string): StoredMemory[] {
   const byId = new Map<number, StoredMemory>();
   for (const candidateQuery of buildMemoryContextSearchQueries(query)) {
-    for (const memory of store.searchMemories(candidateQuery, limit)) {
+    for (const memory of store.searchMemories(candidateQuery, limit, namespace)) {
       byId.set(memory.id, memory);
       if (byId.size >= limit) {
         return [...byId.values()];

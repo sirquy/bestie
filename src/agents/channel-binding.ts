@@ -5,6 +5,7 @@ import type { AgentToolRequest, AgentToolRunner, RunAgentToolRequestOptions } fr
 import type { AgentChannelBinding, AppConfig } from "../runtime/config.js";
 import type { RuntimePaths } from "../runtime/paths.js";
 import type { PermissionPolicy } from "../safety/permission-policy.js";
+import { matchesOwnerId } from "../channels/owner-policy.js";
 import type { WorkforceAgentRecord } from "./registry.js";
 
 export interface ChannelAgentRuntime {
@@ -13,12 +14,54 @@ export interface ChannelAgentRuntime {
   conversationUserId: string;
   systemPrompt: string;
   policy: PermissionPolicy;
+  publicAccess?: PublicAgentAccessPolicy;
 }
 
-export async function resolveChannelAgentRuntime(config: AppConfig, paths: RuntimePaths, channel: AgentChannelBinding, senderId: string): Promise<ChannelAgentRuntime | undefined> {
+export interface PublicAgentAccessPolicy {
+  isPublic: true;
+  isAdmin: boolean;
+  memoryNamespace: string;
+  knowledgeNamespace?: string;
+  memoryWritePolicy: "deny" | "pending" | "allow";
+  toolsAllowed: boolean;
+}
+
+export async function resolveChannelAgentRuntime(config: AppConfig, paths: RuntimePaths, channel: AgentChannelBinding, senderId: string, adminCandidateIds: readonly string[] = [senderId]): Promise<ChannelAgentRuntime | undefined> {
+  const channelConfig = channel === "telegram" ? config.channels?.telegram : channel === "zalo" ? config.channels?.zalo : config.channels?.zaloPersonal;
+  const isPublicChannel = channelConfig?.ownerUserId instanceof Array && channelConfig.ownerUserId.length === 1 && channelConfig.ownerUserId[0] === "*";
   const found = Object.entries(config.agents ?? {}).find(([, agent]) => agent.channels?.includes(channel));
-  if (!found) return undefined;
-  return resolveWorkforceAgentRuntime(config, paths, found[0], `the ${channel} channel`, `agent:${found[0]}:user:${senderId}`);
+  if (!found) {
+    if (isPublicChannel) {
+      throw new Error(`Public ${channel} messages require a bound workforce agent with an explicit public policy.`);
+    }
+    return undefined;
+  }
+  const runtime = await resolveWorkforceAgentRuntime(config, paths, found[0], `the ${channel} channel`, `agent:${found[0]}:user:${senderId}`);
+  if (!runtime) return runtime;
+  if (!isPublicChannel) return runtime;
+  const publicConfig = runtime.agent.public;
+  if (!publicConfig?.enabled) {
+    throw new Error(`Agent '${runtime.agent.id}' cannot receive public ${channel} messages without an explicit public policy.`);
+  }
+  const isAdmin = matchesOwnerId(channelConfig?.adminUserIds, adminCandidateIds);
+  const memoryNamespace = publicConfig.customerMemory === "primary" && publicConfig.allowUnsafeSharedData === true ? "primary" : `agent:${runtime.agent.id}:customer:${senderId}`;
+  const knowledgeNamespace = publicConfig.knowledgeAccess === "none"
+    ? undefined
+    : publicConfig.knowledgeAccess === "primary" && publicConfig.allowUnsafeSharedData === true
+      ? "primary"
+      : `agent:${runtime.agent.id}:knowledge`;
+  return {
+    ...runtime,
+    policy: { allowTrustedRead: false, allowLocalWrite: false, denyExternalActions: true },
+    publicAccess: {
+      isPublic: true,
+      isAdmin,
+      memoryNamespace,
+      ...(knowledgeNamespace ? { knowledgeNamespace } : {}),
+      memoryWritePolicy: publicConfig.customerMemoryWrite ?? "pending",
+      toolsAllowed: publicConfig.toolPolicy === "allowlist" && publicConfig.allowUnsafeSharedData === true && Boolean(runtime.agent.tools?.length),
+    },
+  };
 }
 
 export async function resolveWorkforceAgentRuntime(config: AppConfig, paths: RuntimePaths, agentId: string | undefined, context: string, conversationUserId?: string): Promise<ChannelAgentRuntime | undefined> {
@@ -52,6 +95,13 @@ export function buildChannelAgentToolRunner(agent: WorkforceAgentRecord, fallbac
     if (!allowedTools.has(toolName)) return { ok: false, status: "fail", message: `${toolName} is not enabled for workforce agent ${agent.id}.` };
     return fallbackRunner(options);
   };
+}
+
+export function buildPublicChannelAgentToolRunner(runtime: ChannelAgentRuntime, fallbackRunner: AgentToolRunner): AgentToolRunner {
+  if (runtime.publicAccess && !runtime.publicAccess.toolsAllowed) {
+    return async (options: RunAgentToolRequestOptions) => ({ ok: false, status: "fail", message: `${formatAgentToolName(options.request)} is disabled for public workforce agent ${runtime.agent.id}.` });
+  }
+  return buildChannelAgentToolRunner(runtime.agent, fallbackRunner);
 }
 
 function channelAgentPermissionPolicy(policy: WorkforceAgentRecord["approvalPolicy"]): PermissionPolicy {

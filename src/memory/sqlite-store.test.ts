@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import test from "node:test";
+import Database from "better-sqlite3";
 
 import { SqliteMemoryStore } from "./sqlite-store.js";
 import type { RuntimePaths } from "../runtime/paths.js";
@@ -680,6 +681,84 @@ test("SqliteMemoryStore stores memory pause state", async () => {
     assert.equal(store.getMemoryStateValue("custom"), "value-1");
     store.setMemoryStateValue("custom", "value-2");
     assert.equal(store.getMemoryStateValue("custom"), "value-2");
+  } finally {
+    store.close();
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("SqliteMemoryStore isolates memory and knowledge namespaces", async () => {
+  const paths = await createTempPaths();
+  const store = await SqliteMemoryStore.open(paths);
+  try {
+    store.addMemory({ type: "user_fact", content: "Customer A plan", namespace: "agent:support:customer:a" });
+    store.addMemory({ type: "user_fact", content: "Customer B plan", namespace: "agent:support:customer:b" });
+    store.addMemory({ type: "project_context", content: "Internal primary roadmap", namespace: "primary" });
+    assert.deepEqual(store.listActiveMemories(undefined, "agent:support:customer:a").map((memory) => memory.content), ["Customer A plan"]);
+    assert.deepEqual(store.searchMemories("plan", undefined, "agent:support:customer:b").map((memory) => memory.content), ["Customer B plan"]);
+
+    store.upsertKnowledgeEntity({ canonicalName: "Support FAQ", kind: "topic", namespace: "agent:support:knowledge" });
+    store.upsertKnowledgeEntity({ canonicalName: "Support FAQ", kind: "topic", namespace: "agent:other:knowledge" });
+    assert.equal(store.searchKnowledgeGraph("FAQ", 10, "agent:support:knowledge").entities.length, 1);
+    assert.equal(store.searchKnowledgeGraph("FAQ", 10, "agent:other:knowledge").entities.length, 1);
+    assert.equal(store.searchKnowledgeGraph("FAQ", 10, "primary").entities.length, 0);
+  } finally {
+    store.close();
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("SqliteMemoryStore migrates legacy knowledge entities to namespace-aware uniqueness", async () => {
+  const paths = await createTempPaths();
+  await mkdir(paths.dataDir, { recursive: true });
+  const legacyDb = new Database(paths.memoryDbPath);
+  legacyDb.exec(`
+    CREATE TABLE knowledge_entities (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      canonical_name TEXT NOT NULL,
+      kind TEXT NOT NULL,
+      aliases_json TEXT DEFAULT '[]',
+      sensitivity TEXT DEFAULT 'normal',
+      scope TEXT DEFAULT 'global',
+      confidence REAL DEFAULT 1.0,
+      source_memory_id INTEGER,
+      source_message_id TEXT,
+      status TEXT DEFAULT 'active',
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(canonical_name, kind)
+    );
+    CREATE TABLE knowledge_relations (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      source_entity_id INTEGER NOT NULL,
+      relation_type TEXT NOT NULL,
+      target_entity_id INTEGER NOT NULL,
+      evidence TEXT,
+      sensitivity TEXT DEFAULT 'normal',
+      scope TEXT DEFAULT 'global',
+      confidence REAL DEFAULT 1.0,
+      source_memory_id INTEGER,
+      source_message_id TEXT,
+      status TEXT DEFAULT 'active',
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(source_entity_id, relation_type, target_entity_id)
+    );
+    INSERT INTO knowledge_entities (canonical_name, kind) VALUES ('Support FAQ', 'topic');
+  `);
+  legacyDb.close();
+
+  const store = await SqliteMemoryStore.open(paths);
+  try {
+    assert.equal(store.searchKnowledgeGraph("FAQ", 10, "primary").entities.length, 1);
+    const agentEntity = store.upsertKnowledgeEntity({
+      canonicalName: "Support FAQ",
+      kind: "topic",
+      namespace: "agent:support:knowledge",
+    });
+    assert.equal(agentEntity.namespace, "agent:support:knowledge");
+    assert.equal(store.searchKnowledgeGraph("FAQ", 10, "primary").entities.length, 1);
+    assert.equal(store.searchKnowledgeGraph("FAQ", 10, "agent:support:knowledge").entities.length, 1);
   } finally {
     store.close();
     await rm(paths.rootDir, { recursive: true, force: true });

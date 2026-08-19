@@ -34,6 +34,8 @@ export async function runMemoryReasoningPass(options: {
   apiKey: string;
   turn: MemoryReasoningTurn;
   chatCompletion: MemoryReasoningChatCompletion;
+  namespace?: string;
+  writePolicyOverride?: "allow" | "ask" | "deny";
 }): Promise<MemoryReasoningResult> {
   const store = await SqliteMemoryStore.open(options.paths);
 
@@ -42,7 +44,7 @@ export async function runMemoryReasoningPass(options: {
       return emptyReasoningResult();
     }
 
-    const writePolicy = options.config.memory?.writePolicy;
+    const writePolicy = options.writePolicyOverride ?? options.config.memory?.writePolicy;
     if (!writePolicy) {
       return emptyReasoningResult();
     }
@@ -54,7 +56,7 @@ export async function runMemoryReasoningPass(options: {
     const response = await options.chatCompletion(options.config, options.apiKey, { messages: buildMemoryReasoningMessages(options.turn) });
     const candidates = parseMemoryReasoningCandidates(response).slice(0, MAX_REASONED_CANDIDATES);
     const existingContents = new Set([
-      ...store.listActiveMemories(100).map((memory) => normalizeMemoryContent(memory.content)),
+      ...store.listActiveMemories(100, options.namespace ?? "primary").map((memory) => normalizeMemoryContent(memory.content)),
       ...store.listPendingMemories(100).map((memory) => normalizeMemoryContent(memory.content)),
     ]);
     const result = emptyReasoningResult();
@@ -78,9 +80,9 @@ export async function runMemoryReasoningPass(options: {
 
       const reason = candidate.reason ? `${policy.reason} Reasoned from conversation: ${candidate.reason}` : policy.reason;
       if (writePolicy === "allow" && policy.decision === "store") {
-        result.stored.push(store.addMemory({ type: candidate.type, content: candidate.content, sensitivity: policy.sensitivity, source: `reasoning:${options.turn.channel}`, explicitConsent: false, policyReason: reason }));
+        result.stored.push(store.addMemory({ type: candidate.type, content: candidate.content, sensitivity: policy.sensitivity, source: `reasoning:${options.turn.channel}`, explicitConsent: false, policyReason: reason, namespace: options.namespace }));
       } else {
-        result.pending.push(store.addPendingMemory({ type: candidate.type, content: candidate.content, reason, source: `reasoning:${options.turn.channel}`, explicitConsent: false }));
+        result.pending.push(store.addPendingMemory({ type: candidate.type, content: candidate.content, reason, source: `reasoning:${options.turn.channel}`, explicitConsent: false, namespace: options.namespace }));
       }
 
       existingContents.add(normalizedContent);

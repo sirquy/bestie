@@ -18,6 +18,7 @@ export interface StoredMemory {
   policyReason?: string;
   pinned: boolean;
   scope: MemoryScope;
+  namespace?: string;
   confidence: number;
   expiresAt?: string;
   supersededBy?: number;
@@ -35,6 +36,7 @@ export interface PendingMemory {
   source?: string;
   explicitConsent: boolean;
   createdAt: string;
+  namespace?: string;
 }
 
 export interface PendingActionApproval {
@@ -119,6 +121,7 @@ export interface UiChatMessage {
   metadataJson?: string;
   attachments?: UiChatMessageAttachment[];
   createdAt: string;
+  namespace?: string;
 }
 
 export interface UiChatMessageAttachment {
@@ -232,6 +235,7 @@ export interface KnowledgeEntity {
   aliases: string[];
   sensitivity: KnowledgeSensitivity;
   scope: MemoryScope;
+  namespace?: string;
   confidence: number;
   sourceMemoryId?: number;
   sourceMessageId?: string;
@@ -248,6 +252,7 @@ export interface KnowledgeRelation {
   evidence?: string;
   sensitivity: KnowledgeSensitivity;
   scope: MemoryScope;
+  namespace?: string;
   confidence: number;
   sourceMemoryId?: number;
   sourceMessageId?: string;
@@ -292,6 +297,7 @@ export interface PendingKnowledgeItem {
   source?: string;
   explicitConsent: boolean;
   createdAt: string;
+  namespace?: string;
 }
 
 export interface ApprovedKnowledgeItem {
@@ -336,6 +342,7 @@ export interface NewKnowledgeEntity {
   aliases?: string[];
   sensitivity?: KnowledgeSensitivity;
   scope?: MemoryScope;
+  namespace?: string;
   confidence?: number;
   sourceMemoryId?: number;
   sourceMessageId?: string;
@@ -348,6 +355,7 @@ export interface NewKnowledgeRelation {
   evidence?: string;
   sensitivity?: KnowledgeSensitivity;
   scope?: MemoryScope;
+  namespace?: string;
   confidence?: number;
   sourceMemoryId?: number;
   sourceMessageId?: string;
@@ -381,6 +389,7 @@ export interface NewMemory {
   policyReason?: string;
   pinned?: boolean;
   scope?: MemoryScope;
+  namespace?: string;
   confidence?: number;
   expiresAt?: string;
   supersededBy?: number;
@@ -541,8 +550,8 @@ export class SqliteMemoryStore {
   addMemory(memory: NewMemory): StoredMemory {
     const scope = memory.scope ?? defaultMemoryScope(memory.type);
     const statement = this.db.prepare(`
-      INSERT INTO memories (type, content, sensitivity, importance, source_message_id, source, explicit_consent, policy_reason, pinned, scope, confidence, expires_at, superseded_by)
-      VALUES (@type, @content, @sensitivity, @importance, @sourceMessageId, @source, @explicitConsent, @policyReason, @pinned, @scope, @confidence, @expiresAt, @supersededBy)
+      INSERT INTO memories (type, content, sensitivity, importance, source_message_id, source, explicit_consent, policy_reason, pinned, scope, namespace, confidence, expires_at, superseded_by)
+      VALUES (@type, @content, @sensitivity, @importance, @sourceMessageId, @source, @explicitConsent, @policyReason, @pinned, @scope, @namespace, @confidence, @expiresAt, @supersededBy)
     `);
     const result = statement.run({
       type: memory.type,
@@ -555,6 +564,7 @@ export class SqliteMemoryStore {
       policyReason: memory.policyReason ?? null,
       pinned: memory.pinned ? 1 : 0,
       scope,
+      namespace: memory.namespace ?? "primary",
       confidence: memory.confidence ?? 1,
       expiresAt: memory.expiresAt ?? defaultExpiresAtForScope(scope),
       supersededBy: memory.supersededBy ?? null,
@@ -565,15 +575,16 @@ export class SqliteMemoryStore {
     return inserted;
   }
 
-  addPendingMemory(memory: { type: string; content: string; reason?: string; source?: string; explicitConsent?: boolean }): PendingMemory {
+  addPendingMemory(memory: { type: string; content: string; reason?: string; source?: string; explicitConsent?: boolean; namespace?: string }): PendingMemory {
     const result = this.db
-      .prepare("INSERT INTO pending_memories (type, content, reason, source, explicit_consent) VALUES (@type, @content, @reason, @source, @explicitConsent)")
+      .prepare("INSERT INTO pending_memories (type, content, reason, source, explicit_consent, namespace) VALUES (@type, @content, @reason, @source, @explicitConsent, @namespace)")
       .run({
         type: memory.type,
         content: memory.content,
         reason: memory.reason ?? null,
         source: memory.source ?? "manual",
         explicitConsent: memory.explicitConsent ? 1 : 0,
+        namespace: memory.namespace ?? "primary",
       });
 
     const pending = this.getPendingMemory(Number(result.lastInsertRowid));
@@ -631,6 +642,7 @@ export class SqliteMemoryStore {
         source: pending.source,
         explicitConsent: true,
         policyReason: pending.reason,
+        namespace: pending.namespace,
       });
       this.db.prepare("DELETE FROM pending_memories WHERE id = ?").run(id);
       return memory;
@@ -791,10 +803,10 @@ export class SqliteMemoryStore {
     return row ? mapMemoryRow(row) : undefined;
   }
 
-  listActiveMemories(limit?: number): StoredMemory[] {
+  listActiveMemories(limit?: number, namespace = "primary"): StoredMemory[] {
     const rows = limit === undefined
-      ? (this.db.prepare("SELECT * FROM memories WHERE status = 'active' ORDER BY importance DESC, updated_at DESC").all() as MemoryRow[])
-      : (this.db.prepare("SELECT * FROM memories WHERE status = 'active' ORDER BY importance DESC, updated_at DESC LIMIT ?").all(limit) as MemoryRow[]);
+      ? (this.db.prepare("SELECT * FROM memories WHERE status = 'active' AND namespace = ? ORDER BY importance DESC, updated_at DESC").all(namespace) as MemoryRow[])
+      : (this.db.prepare("SELECT * FROM memories WHERE status = 'active' AND namespace = ? ORDER BY importance DESC, updated_at DESC LIMIT ?").all(namespace, limit) as MemoryRow[]);
 
     return rows.map(mapMemoryRow);
   }
@@ -824,7 +836,7 @@ export class SqliteMemoryStore {
     return rows.map(mapMemoryHygieneSnapshotRow);
   }
 
-  searchMemories(query: string, limit?: number): StoredMemory[] {
+  searchMemories(query: string, limit?: number, namespace = "primary"): StoredMemory[] {
     const normalizedQuery = query.trim();
 
     if (normalizedQuery.length === 0) {
@@ -842,9 +854,10 @@ export class SqliteMemoryStore {
             JOIN memories ON memories.id = memory_search.memory_id
             WHERE memory_search MATCH @query
               AND memories.status = 'active'
+              AND memories.namespace = @namespace
             ORDER BY bm25(memory_search), memories.importance DESC, memories.updated_at DESC
           `)
-              .all({ query: ftsQuery }) as MemoryRow[])
+              .all({ query: ftsQuery, namespace }) as MemoryRow[])
           : (this.db
               .prepare(`
             SELECT memories.*
@@ -852,10 +865,11 @@ export class SqliteMemoryStore {
             JOIN memories ON memories.id = memory_search.memory_id
             WHERE memory_search MATCH @query
               AND memories.status = 'active'
+              AND memories.namespace = @namespace
             ORDER BY bm25(memory_search), memories.importance DESC, memories.updated_at DESC
             LIMIT @limit
           `)
-              .all({ query: ftsQuery, limit }) as MemoryRow[]);
+              .all({ query: ftsQuery, limit, namespace }) as MemoryRow[]);
 
         return rows.map(mapMemoryRow);
       } catch {
@@ -868,19 +882,21 @@ export class SqliteMemoryStore {
           .prepare(`
         SELECT * FROM memories
         WHERE status = 'active'
+          AND namespace = @namespace
           AND (content LIKE @query ESCAPE '\' OR type LIKE @query ESCAPE '\')
         ORDER BY importance DESC, updated_at DESC
       `)
-          .all({ query: `%${escapeLike(normalizedQuery)}%` }) as MemoryRow[])
+          .all({ query: `%${escapeLike(normalizedQuery)}%`, namespace }) as MemoryRow[])
       : (this.db
           .prepare(`
         SELECT * FROM memories
         WHERE status = 'active'
+          AND namespace = @namespace
           AND (content LIKE @query ESCAPE '\\' OR type LIKE @query ESCAPE '\\')
         ORDER BY importance DESC, updated_at DESC
         LIMIT @limit
       `)
-          .all({ query: `%${escapeLike(normalizedQuery)}%`, limit }) as MemoryRow[]);
+          .all({ query: `%${escapeLike(normalizedQuery)}%`, limit, namespace }) as MemoryRow[]);
 
     return rows.map(mapMemoryRow);
   }
@@ -902,7 +918,8 @@ export class SqliteMemoryStore {
     }
 
     const aliases = normalizeKnowledgeAliases(entity.aliases ?? []);
-    const existing = this.getKnowledgeEntityByName(canonicalName, entity.kind);
+    const namespace = entity.namespace ?? "primary";
+    const existing = this.getKnowledgeEntityByName(canonicalName, entity.kind, namespace);
     if (existing) {
       const mergedAliases = normalizeKnowledgeAliases([...existing.aliases, ...aliases]);
       this.db
@@ -934,8 +951,8 @@ export class SqliteMemoryStore {
 
     const result = this.db
       .prepare(`
-        INSERT INTO knowledge_entities (canonical_name, kind, aliases_json, sensitivity, scope, confidence, source_memory_id, source_message_id)
-        VALUES (@canonicalName, @kind, @aliasesJson, @sensitivity, @scope, @confidence, @sourceMemoryId, @sourceMessageId)
+        INSERT INTO knowledge_entities (canonical_name, kind, aliases_json, sensitivity, scope, namespace, confidence, source_memory_id, source_message_id)
+        VALUES (@canonicalName, @kind, @aliasesJson, @sensitivity, @scope, @namespace, @confidence, @sourceMemoryId, @sourceMessageId)
       `)
       .run({
         canonicalName,
@@ -943,6 +960,7 @@ export class SqliteMemoryStore {
         aliasesJson: JSON.stringify(aliases),
         sensitivity: entity.sensitivity ?? "normal",
         scope: entity.scope ?? "core",
+        namespace,
         confidence: clampKnowledgeConfidence(entity.confidence),
         sourceMemoryId: entity.sourceMemoryId ?? null,
         sourceMessageId: entity.sourceMessageId ?? null,
@@ -954,7 +972,10 @@ export class SqliteMemoryStore {
   }
 
   upsertKnowledgeRelation(relation: NewKnowledgeRelation): KnowledgeRelation | undefined {
-    if (!this.getKnowledgeEntity(relation.sourceEntityId) || !this.getKnowledgeEntity(relation.targetEntityId)) {
+    const source = this.getKnowledgeEntity(relation.sourceEntityId);
+    const target = this.getKnowledgeEntity(relation.targetEntityId);
+    const namespace = relation.namespace ?? source?.namespace ?? "primary";
+    if (!source || !target || source.namespace !== namespace || target.namespace !== namespace) {
       return undefined;
     }
 
@@ -971,6 +992,7 @@ export class SqliteMemoryStore {
           SET evidence = COALESCE(@evidence, evidence),
               sensitivity = @sensitivity,
               scope = @scope,
+              namespace = @namespace,
               confidence = MAX(confidence, @confidence),
               source_memory_id = COALESCE(source_memory_id, @sourceMemoryId),
               source_message_id = COALESCE(source_message_id, @sourceMessageId),
@@ -983,6 +1005,7 @@ export class SqliteMemoryStore {
           evidence: relation.evidence?.trim() || null,
           sensitivity: maxKnowledgeSensitivity(existing.sensitivity, relation.sensitivity ?? "normal"),
           scope: relation.scope ?? existing.scope,
+          namespace,
           confidence: clampKnowledgeConfidence(relation.confidence),
           sourceMemoryId: relation.sourceMemoryId ?? null,
           sourceMessageId: relation.sourceMessageId ?? null,
@@ -996,8 +1019,8 @@ export class SqliteMemoryStore {
 
     const result = this.db
       .prepare(`
-        INSERT INTO knowledge_relations (source_entity_id, relation_type, target_entity_id, evidence, sensitivity, scope, confidence, source_memory_id, source_message_id)
-        VALUES (@sourceEntityId, @relationType, @targetEntityId, @evidence, @sensitivity, @scope, @confidence, @sourceMemoryId, @sourceMessageId)
+        INSERT INTO knowledge_relations (source_entity_id, relation_type, target_entity_id, evidence, sensitivity, scope, namespace, confidence, source_memory_id, source_message_id)
+        VALUES (@sourceEntityId, @relationType, @targetEntityId, @evidence, @sensitivity, @scope, @namespace, @confidence, @sourceMemoryId, @sourceMessageId)
       `)
       .run({
         sourceEntityId: relation.sourceEntityId,
@@ -1006,6 +1029,7 @@ export class SqliteMemoryStore {
         evidence: relation.evidence?.trim() || null,
         sensitivity: relation.sensitivity ?? "normal",
         scope: relation.scope ?? "core",
+        namespace,
         confidence: clampKnowledgeConfidence(relation.confidence),
         sourceMemoryId: relation.sourceMemoryId ?? null,
         sourceMessageId: relation.sourceMessageId ?? null,
@@ -1018,10 +1042,10 @@ export class SqliteMemoryStore {
     return created;
   }
 
-  addPendingKnowledgeItem(item: { payload: unknown; reason?: string; source?: string; explicitConsent?: boolean }): PendingKnowledgeItem {
+  addPendingKnowledgeItem(item: { payload: unknown; reason?: string; source?: string; explicitConsent?: boolean; namespace?: string }): PendingKnowledgeItem {
     const result = this.db
-      .prepare("INSERT INTO pending_knowledge_items (payload_json, reason, source, explicit_consent) VALUES (@payloadJson, @reason, @source, @explicitConsent)")
-      .run({ payloadJson: JSON.stringify(item.payload), reason: item.reason ?? null, source: item.source ?? "manual", explicitConsent: item.explicitConsent ? 1 : 0 });
+      .prepare("INSERT INTO pending_knowledge_items (payload_json, reason, source, explicit_consent, namespace) VALUES (@payloadJson, @reason, @source, @explicitConsent, @namespace)")
+      .run({ payloadJson: JSON.stringify(item.payload), reason: item.reason ?? null, source: item.source ?? "manual", explicitConsent: item.explicitConsent ? 1 : 0, namespace: item.namespace ?? "primary" });
 
     const pending = this.getPendingKnowledgeItem(Number(result.lastInsertRowid))!;
     this.addKnowledgeAuditEvent({ subjectType: "pending", subjectId: pending.id, eventType: "queued", actor: "system", channel: pending.source, reason: pending.reason, payloadSummary: summarizePendingKnowledgeAudit(pending) });
@@ -1145,31 +1169,36 @@ export class SqliteMemoryStore {
     return row ? mapKnowledgeRelationRow(row) : undefined;
   }
 
-  listKnowledgeEntities(options: { kind?: KnowledgeEntityKind; limit?: number } = {}): KnowledgeEntity[] {
-    const rows = options.kind
-      ? (this.db.prepare("SELECT * FROM knowledge_entities WHERE status = 'active' AND kind = ? ORDER BY updated_at DESC, id DESC LIMIT ?").all(options.kind, options.limit ?? 100) as KnowledgeEntityRow[])
-      : (this.db.prepare("SELECT * FROM knowledge_entities WHERE status = 'active' ORDER BY updated_at DESC, id DESC LIMIT ?").all(options.limit ?? 100) as KnowledgeEntityRow[]);
+  listKnowledgeEntities(options: { kind?: KnowledgeEntityKind; limit?: number; namespace?: string } = {}): KnowledgeEntity[] {
+    const rows = options.kind && options.namespace
+      ? (this.db.prepare("SELECT * FROM knowledge_entities WHERE status = 'active' AND kind = @kind AND namespace = @namespace ORDER BY updated_at DESC, id DESC LIMIT @limit").all({ kind: options.kind, namespace: options.namespace, limit: options.limit ?? 100 }) as KnowledgeEntityRow[])
+      : options.kind
+        ? (this.db.prepare("SELECT * FROM knowledge_entities WHERE status = 'active' AND kind = ? ORDER BY updated_at DESC, id DESC LIMIT ?").all(options.kind, options.limit ?? 100) as KnowledgeEntityRow[])
+        : options.namespace
+          ? (this.db.prepare("SELECT * FROM knowledge_entities WHERE status = 'active' AND namespace = @namespace ORDER BY updated_at DESC, id DESC LIMIT @limit").all({ namespace: options.namespace, limit: options.limit ?? 100 }) as KnowledgeEntityRow[])
+          : (this.db.prepare("SELECT * FROM knowledge_entities WHERE status = 'active' ORDER BY updated_at DESC, id DESC LIMIT ?").all(options.limit ?? 100) as KnowledgeEntityRow[]);
     return rows.map(mapKnowledgeEntityRow);
   }
 
-  listKnowledgeRelations(limit = 100): KnowledgeRelationWithEntities[] {
+  listKnowledgeRelations(limit = 100, namespace?: string): KnowledgeRelationWithEntities[] {
     const rows = this.db
       .prepare(`
         SELECT relations.*,
                source.id AS source_id, source.canonical_name AS source_canonical_name, source.kind AS source_kind, source.aliases_json AS source_aliases_json,
-               source.sensitivity AS source_sensitivity, source.scope AS source_scope, source.confidence AS source_confidence, source.source_memory_id AS source_source_memory_id,
+               source.sensitivity AS source_sensitivity, source.scope AS source_scope, source.namespace AS source_namespace, source.confidence AS source_confidence, source.source_memory_id AS source_source_memory_id,
                source.source_message_id AS source_source_message_id, source.status AS source_status, source.created_at AS source_created_at, source.updated_at AS source_updated_at,
                target.id AS target_id, target.canonical_name AS target_canonical_name, target.kind AS target_kind, target.aliases_json AS target_aliases_json,
-               target.sensitivity AS target_sensitivity, target.scope AS target_scope, target.confidence AS target_confidence, target.source_memory_id AS target_source_memory_id,
+               target.sensitivity AS target_sensitivity, target.scope AS target_scope, target.namespace AS target_namespace, target.confidence AS target_confidence, target.source_memory_id AS target_source_memory_id,
                target.source_message_id AS target_source_message_id, target.status AS target_status, target.created_at AS target_created_at, target.updated_at AS target_updated_at
         FROM knowledge_relations relations
         JOIN knowledge_entities source ON source.id = relations.source_entity_id
         JOIN knowledge_entities target ON target.id = relations.target_entity_id
         WHERE relations.status = 'active' AND source.status = 'active' AND target.status = 'active'
+          AND (@namespace IS NULL OR (source.namespace = @namespace AND target.namespace = @namespace))
         ORDER BY relations.updated_at DESC, relations.id DESC
-        LIMIT ?
+        LIMIT @limit
       `)
-      .all(limit) as KnowledgeRelationJoinRow[];
+      .all({ limit, namespace: namespace ?? null }) as KnowledgeRelationJoinRow[];
     return rows.map(mapKnowledgeRelationJoinRow);
   }
 
@@ -1178,10 +1207,10 @@ export class SqliteMemoryStore {
       .prepare(`
         SELECT relations.*,
                source.id AS source_id, source.canonical_name AS source_canonical_name, source.kind AS source_kind, source.aliases_json AS source_aliases_json,
-               source.sensitivity AS source_sensitivity, source.scope AS source_scope, source.confidence AS source_confidence, source.source_memory_id AS source_source_memory_id,
+               source.sensitivity AS source_sensitivity, source.scope AS source_scope, source.namespace AS source_namespace, source.confidence AS source_confidence, source.source_memory_id AS source_source_memory_id,
                source.source_message_id AS source_source_message_id, source.status AS source_status, source.created_at AS source_created_at, source.updated_at AS source_updated_at,
                target.id AS target_id, target.canonical_name AS target_canonical_name, target.kind AS target_kind, target.aliases_json AS target_aliases_json,
-               target.sensitivity AS target_sensitivity, target.scope AS target_scope, target.confidence AS target_confidence, target.source_memory_id AS target_source_memory_id,
+               target.sensitivity AS target_sensitivity, target.scope AS target_scope, target.namespace AS target_namespace, target.confidence AS target_confidence, target.source_memory_id AS target_source_memory_id,
                target.source_message_id AS target_source_message_id, target.status AS target_status, target.created_at AS target_created_at, target.updated_at AS target_updated_at
         FROM knowledge_relations relations
         JOIN knowledge_entities source ON source.id = relations.source_entity_id
@@ -1195,7 +1224,7 @@ export class SqliteMemoryStore {
     return rows.map(mapKnowledgeRelationJoinRow);
   }
 
-  searchKnowledgeGraph(query: string, limit = 20): KnowledgeGraphSearchResult {
+  searchKnowledgeGraph(query: string, limit = 20, namespace = "primary"): KnowledgeGraphSearchResult {
     const normalizedQuery = query.trim();
     if (!normalizedQuery) {
       return { query, entities: [], relations: [] };
@@ -1206,30 +1235,32 @@ export class SqliteMemoryStore {
       .prepare(`
         SELECT * FROM knowledge_entities
         WHERE status = 'active'
+          AND namespace = @namespace
           AND (canonical_name LIKE @query ESCAPE '\\' OR kind LIKE @query ESCAPE '\\' OR aliases_json LIKE @query ESCAPE '\\')
         ORDER BY confidence DESC, updated_at DESC
         LIMIT @limit
       `)
-      .all({ query: like, limit }) as KnowledgeEntityRow[]).map(mapKnowledgeEntityRow);
+      .all({ query: like, limit, namespace }) as KnowledgeEntityRow[]).map(mapKnowledgeEntityRow);
 
     const relations = (this.db
       .prepare(`
         SELECT relations.*,
                source.id AS source_id, source.canonical_name AS source_canonical_name, source.kind AS source_kind, source.aliases_json AS source_aliases_json,
-               source.sensitivity AS source_sensitivity, source.scope AS source_scope, source.confidence AS source_confidence, source.source_memory_id AS source_source_memory_id,
+               source.sensitivity AS source_sensitivity, source.scope AS source_scope, source.namespace AS source_namespace, source.confidence AS source_confidence, source.source_memory_id AS source_source_memory_id,
                source.source_message_id AS source_source_message_id, source.status AS source_status, source.created_at AS source_created_at, source.updated_at AS source_updated_at,
                target.id AS target_id, target.canonical_name AS target_canonical_name, target.kind AS target_kind, target.aliases_json AS target_aliases_json,
-               target.sensitivity AS target_sensitivity, target.scope AS target_scope, target.confidence AS target_confidence, target.source_memory_id AS target_source_memory_id,
+               target.sensitivity AS target_sensitivity, target.scope AS target_scope, target.namespace AS target_namespace, target.confidence AS target_confidence, target.source_memory_id AS target_source_memory_id,
                target.source_message_id AS target_source_message_id, target.status AS target_status, target.created_at AS target_created_at, target.updated_at AS target_updated_at
         FROM knowledge_relations relations
         JOIN knowledge_entities source ON source.id = relations.source_entity_id
         JOIN knowledge_entities target ON target.id = relations.target_entity_id
         WHERE relations.status = 'active' AND source.status = 'active' AND target.status = 'active'
+          AND source.namespace = @namespace AND target.namespace = @namespace
           AND (relations.relation_type LIKE @query ESCAPE '\\' OR relations.evidence LIKE @query ESCAPE '\\' OR source.canonical_name LIKE @query ESCAPE '\\' OR target.canonical_name LIKE @query ESCAPE '\\')
         ORDER BY relations.confidence DESC, relations.updated_at DESC
         LIMIT @limit
       `)
-      .all({ query: like, limit }) as KnowledgeRelationJoinRow[]).map(mapKnowledgeRelationJoinRow);
+      .all({ query: like, limit, namespace }) as KnowledgeRelationJoinRow[]).map(mapKnowledgeRelationJoinRow);
 
     return { query: normalizedQuery, entities, relations };
   }
@@ -1377,10 +1408,10 @@ export class SqliteMemoryStore {
     return mapKnowledgeAuditEventRow(row);
   }
 
-  private getKnowledgeEntityByName(canonicalName: string, kind: KnowledgeEntityKind): KnowledgeEntity | undefined {
+  private getKnowledgeEntityByName(canonicalName: string, kind: KnowledgeEntityKind, namespace = "primary"): KnowledgeEntity | undefined {
     const row = this.db
-      .prepare("SELECT * FROM knowledge_entities WHERE canonical_name = ? AND kind = ?")
-      .get(canonicalName, kind) as KnowledgeEntityRow | undefined;
+      .prepare("SELECT * FROM knowledge_entities WHERE canonical_name = ? AND kind = ? AND namespace = ?")
+      .get(canonicalName, kind, namespace) as KnowledgeEntityRow | undefined;
     return row ? mapKnowledgeEntityRow(row) : undefined;
   }
 
@@ -1920,6 +1951,7 @@ interface PendingMemoryRow {
   reason: string | null;
   source: string | null;
   explicit_consent: number | null;
+  namespace: string | null;
   created_at: string;
 }
 
@@ -1952,6 +1984,7 @@ interface MemoryRow {
   policy_reason: string | null;
   pinned: number | null;
   scope: string | null;
+  namespace: string | null;
   confidence: number | null;
   expires_at: string | null;
   superseded_by: number | null;
@@ -2008,6 +2041,7 @@ interface KnowledgeEntityRow {
   aliases_json: string | null;
   sensitivity: KnowledgeSensitivity;
   scope: string | null;
+  namespace: string | null;
   confidence: number | null;
   source_memory_id: number | null;
   source_message_id: string | null;
@@ -2024,6 +2058,7 @@ interface KnowledgeRelationRow {
   evidence: string | null;
   sensitivity: KnowledgeSensitivity;
   scope: string | null;
+  namespace: string | null;
   confidence: number | null;
   source_memory_id: number | null;
   source_message_id: string | null;
@@ -2039,6 +2074,7 @@ interface KnowledgeRelationJoinRow extends KnowledgeRelationRow {
   source_aliases_json: string | null;
   source_sensitivity: KnowledgeSensitivity;
   source_scope: string | null;
+  source_namespace: string | null;
   source_confidence: number | null;
   source_source_memory_id: number | null;
   source_source_message_id: string | null;
@@ -2049,6 +2085,7 @@ interface KnowledgeRelationJoinRow extends KnowledgeRelationRow {
   target_canonical_name: string;
   target_kind: KnowledgeEntityKind;
   target_aliases_json: string | null;
+  target_namespace: string | null;
   target_sensitivity: KnowledgeSensitivity;
   target_scope: string | null;
   target_confidence: number | null;
@@ -2065,6 +2102,7 @@ interface PendingKnowledgeItemRow {
   reason: string | null;
   source: string | null;
   explicit_consent: number | null;
+  namespace: string | null;
   created_at: string;
 }
 
@@ -2094,6 +2132,7 @@ function mapMemoryRow(row: MemoryRow): StoredMemory {
     policyReason: row.policy_reason ?? undefined,
     pinned: row.pinned === 1,
     scope: normalizeMemoryScope(row.scope),
+    namespace: row.namespace ?? "primary",
     confidence: row.confidence ?? 1,
     expiresAt: row.expires_at ?? undefined,
     supersededBy: row.superseded_by ?? undefined,
@@ -2178,6 +2217,7 @@ function mapKnowledgeEntityRow(row: KnowledgeEntityRow): KnowledgeEntity {
     aliases: parseStringArrayJson(row.aliases_json),
     sensitivity: row.sensitivity,
     scope: normalizeMemoryScope(row.scope),
+    namespace: row.namespace ?? "primary",
     confidence: row.confidence ?? 1,
     sourceMemoryId: row.source_memory_id ?? undefined,
     sourceMessageId: row.source_message_id ?? undefined,
@@ -2196,6 +2236,7 @@ function mapKnowledgeRelationRow(row: KnowledgeRelationRow): KnowledgeRelation {
     evidence: row.evidence ?? undefined,
     sensitivity: row.sensitivity,
     scope: normalizeMemoryScope(row.scope),
+    namespace: row.namespace ?? "primary",
     confidence: row.confidence ?? 1,
     sourceMemoryId: row.source_memory_id ?? undefined,
     sourceMessageId: row.source_message_id ?? undefined,
@@ -2215,6 +2256,7 @@ function mapKnowledgeRelationJoinRow(row: KnowledgeRelationJoinRow): KnowledgeRe
       aliases_json: row.source_aliases_json,
       sensitivity: row.source_sensitivity,
       scope: row.source_scope,
+      namespace: row.source_namespace,
       confidence: row.source_confidence,
       source_memory_id: row.source_source_memory_id,
       source_message_id: row.source_source_message_id,
@@ -2229,6 +2271,7 @@ function mapKnowledgeRelationJoinRow(row: KnowledgeRelationJoinRow): KnowledgeRe
       aliases_json: row.target_aliases_json,
       sensitivity: row.target_sensitivity,
       scope: row.target_scope,
+      namespace: row.target_namespace,
       confidence: row.target_confidence,
       source_memory_id: row.target_source_memory_id,
       source_message_id: row.target_source_message_id,
@@ -2247,6 +2290,7 @@ function mapPendingKnowledgeItemRow(row: PendingKnowledgeItemRow): PendingKnowle
     source: row.source ?? undefined,
     explicitConsent: row.explicit_consent === 1,
     createdAt: row.created_at,
+    namespace: row.namespace ?? "primary",
   };
 }
 
@@ -2286,6 +2330,7 @@ function mapPendingMemoryRow(row: PendingMemoryRow): PendingMemory {
     source: row.source ?? undefined,
     explicitConsent: row.explicit_consent === 1,
     createdAt: row.created_at,
+    namespace: row.namespace ?? "primary",
   };
 }
 
@@ -2653,6 +2698,7 @@ function applyMemoryMigrations(db: Database.Database): void {
   addColumnIfMissing(db, "memories", "policy_reason", "TEXT");
   addColumnIfMissing(db, "memories", "pinned", "INTEGER DEFAULT 0");
   addColumnIfMissing(db, "memories", "scope", "TEXT DEFAULT 'global'");
+  addColumnIfMissing(db, "memories", "namespace", "TEXT NOT NULL DEFAULT 'primary'");
   addColumnIfMissing(db, "memories", "confidence", "REAL DEFAULT 1.0");
   addColumnIfMissing(db, "memories", "expires_at", "TEXT");
   addColumnIfMissing(db, "memories", "superseded_by", "INTEGER");
@@ -2660,6 +2706,7 @@ function applyMemoryMigrations(db: Database.Database): void {
   addColumnIfMissing(db, "memories", "access_count", "INTEGER DEFAULT 0");
   addColumnIfMissing(db, "pending_memories", "source", "TEXT DEFAULT 'manual'");
   addColumnIfMissing(db, "pending_memories", "explicit_consent", "INTEGER DEFAULT 0");
+  addColumnIfMissing(db, "pending_memories", "namespace", "TEXT NOT NULL DEFAULT 'primary'");
   addColumnIfMissing(db, "pending_action_approvals", "payload_json", "TEXT");
   db.exec(`
     CREATE TABLE IF NOT EXISTS conversation_summaries (
@@ -2747,6 +2794,7 @@ function applyMemoryMigrations(db: Database.Database): void {
   addColumnIfMissing(db, "knowledge_entities", "aliases_json", "TEXT DEFAULT '[]'");
   addColumnIfMissing(db, "knowledge_entities", "sensitivity", "TEXT DEFAULT 'normal'");
   addColumnIfMissing(db, "knowledge_entities", "scope", "TEXT DEFAULT 'global'");
+  addColumnIfMissing(db, "knowledge_entities", "namespace", "TEXT NOT NULL DEFAULT 'primary'");
   addColumnIfMissing(db, "knowledge_entities", "confidence", "REAL DEFAULT 1.0");
   addColumnIfMissing(db, "knowledge_entities", "source_memory_id", "INTEGER");
   addColumnIfMissing(db, "knowledge_entities", "source_message_id", "TEXT");
@@ -2754,12 +2802,15 @@ function applyMemoryMigrations(db: Database.Database): void {
   addColumnIfMissing(db, "knowledge_relations", "evidence", "TEXT");
   addColumnIfMissing(db, "knowledge_relations", "sensitivity", "TEXT DEFAULT 'normal'");
   addColumnIfMissing(db, "knowledge_relations", "scope", "TEXT DEFAULT 'global'");
+  addColumnIfMissing(db, "knowledge_relations", "namespace", "TEXT NOT NULL DEFAULT 'primary'");
   addColumnIfMissing(db, "knowledge_relations", "confidence", "REAL DEFAULT 1.0");
   addColumnIfMissing(db, "knowledge_relations", "source_memory_id", "INTEGER");
   addColumnIfMissing(db, "knowledge_relations", "source_message_id", "TEXT");
   addColumnIfMissing(db, "knowledge_relations", "status", "TEXT DEFAULT 'active'");
   addColumnIfMissing(db, "pending_knowledge_items", "source", "TEXT DEFAULT 'manual'");
   addColumnIfMissing(db, "pending_knowledge_items", "explicit_consent", "INTEGER DEFAULT 0");
+  addColumnIfMissing(db, "pending_knowledge_items", "namespace", "TEXT NOT NULL DEFAULT 'primary'");
+  migrateKnowledgeEntityNamespaceUniqueConstraint(db);
   db.exec(`
     CREATE TABLE IF NOT EXISTS memory_hygiene_snapshots (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -2835,6 +2886,69 @@ function applyMemoryMigrations(db: Database.Database): void {
   addColumnIfMissing(db, "ui_chat_messages", "run_id", "INTEGER");
   addColumnIfMissing(db, "ui_chat_messages", "metadata_json", "TEXT");
   addColumnIfMissing(db, "ui_chat_events", "run_id", "INTEGER");
+}
+
+function migrateKnowledgeEntityNamespaceUniqueConstraint(db: Database.Database): void {
+  const indexes = db.prepare("PRAGMA index_list('knowledge_entities')").all() as Array<{ name: string; origin: string }>;
+  const legacyUniqueIndex = indexes.find((index) => {
+    if (index.origin !== "u") return false;
+    const columns = db.prepare(`PRAGMA index_info('${index.name.replace(/'/g, "''")}')`).all() as Array<{ name: string }>;
+    return columns.map((column) => column.name).join(",") === "canonical_name,kind";
+  });
+  if (!legacyUniqueIndex) return;
+
+  db.pragma("foreign_keys = OFF");
+  try {
+    db.transaction(() => {
+      db.exec(`
+        CREATE TABLE knowledge_entities_rebuilt (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          canonical_name TEXT NOT NULL,
+          kind TEXT NOT NULL,
+          aliases_json TEXT DEFAULT '[]',
+          sensitivity TEXT DEFAULT 'normal',
+          scope TEXT DEFAULT 'global',
+          namespace TEXT NOT NULL DEFAULT 'primary',
+          confidence REAL DEFAULT 1.0,
+          source_memory_id INTEGER,
+          source_message_id TEXT,
+          status TEXT DEFAULT 'active',
+          created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+          updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE(canonical_name, kind, namespace),
+          FOREIGN KEY (source_memory_id) REFERENCES memories(id) ON DELETE SET NULL
+        );
+        CREATE TABLE knowledge_relations_rebuilt (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          source_entity_id INTEGER NOT NULL,
+          relation_type TEXT NOT NULL,
+          target_entity_id INTEGER NOT NULL,
+          evidence TEXT,
+          sensitivity TEXT DEFAULT 'normal',
+          scope TEXT DEFAULT 'global',
+          namespace TEXT NOT NULL DEFAULT 'primary',
+          confidence REAL DEFAULT 1.0,
+          source_memory_id INTEGER,
+          source_message_id TEXT,
+          status TEXT DEFAULT 'active',
+          created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+          updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY (source_entity_id) REFERENCES knowledge_entities(id) ON DELETE CASCADE,
+          FOREIGN KEY (target_entity_id) REFERENCES knowledge_entities(id) ON DELETE CASCADE,
+          FOREIGN KEY (source_memory_id) REFERENCES memories(id) ON DELETE SET NULL,
+          UNIQUE(source_entity_id, relation_type, target_entity_id)
+        );
+        INSERT INTO knowledge_entities_rebuilt SELECT id, canonical_name, kind, aliases_json, sensitivity, scope, namespace, confidence, source_memory_id, source_message_id, status, created_at, updated_at FROM knowledge_entities;
+        INSERT INTO knowledge_relations_rebuilt SELECT id, source_entity_id, relation_type, target_entity_id, evidence, sensitivity, scope, namespace, confidence, source_memory_id, source_message_id, status, created_at, updated_at FROM knowledge_relations;
+        DROP TABLE knowledge_relations;
+        DROP TABLE knowledge_entities;
+        ALTER TABLE knowledge_entities_rebuilt RENAME TO knowledge_entities;
+        ALTER TABLE knowledge_relations_rebuilt RENAME TO knowledge_relations;
+      `);
+    })();
+  } finally {
+    db.pragma("foreign_keys = ON");
+  }
 }
 
 function initializeMemorySearchIndex(db: Database.Database): void {

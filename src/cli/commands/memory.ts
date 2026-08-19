@@ -411,7 +411,7 @@ async function runMemoryGraphCommand(argv: string[]): Promise<void> {
   }
 
   console.error(`Unknown memory graph command: ${action}`);
-  console.error("Usage: bestie memory graph status | search <query> | entities [--kind <kind>] | relations | analyze|hygiene [--json] | review [--json] [--limit <n>] | inspect entity|relation <id> | add entity <kind> <name> | add relation <sourceId> <type> <targetId> [evidence] | update relation <id> [--confidence <n>] [--evidence <text>] [--scope core|project|session] [--sensitivity normal|sensitive] --yes | merge entity <primaryId> <duplicateId> --yes | forget entity|relation <id> | export | pending [--limit <n>] | pending inspect <id> | pending sanitize <id> | approve <id> | reject <id> | reject-all --yes");
+  console.error("Usage: bestie memory graph status | search <query> [--agent <id>] | entities [--kind <kind>] [--agent <id>] | relations [--agent <id>] | analyze|hygiene [--json] | review [--json] [--limit <n>] | inspect entity|relation <id> | add entity <kind> <name> [--agent <id>] | add relation <sourceId> <type> <targetId> [evidence] [--agent <id>] | update relation <id> [--confidence <n>] [--evidence <text>] [--scope core|project|session] [--sensitivity normal|sensitive] --yes | merge entity <primaryId> <duplicateId> --yes | forget entity|relation <id> | export | pending [--limit <n>] | pending inspect <id> | pending sanitize <id> | approve <id> | reject <id> | reject-all --yes");
   process.exitCode = 1;
 }
 
@@ -432,7 +432,9 @@ async function showKnowledgeGraphStatus(): Promise<void> {
 }
 
 async function searchKnowledgeGraph(argv: string[]): Promise<void> {
-  const query = argv.slice(5).join(" ").trim();
+  const namespace = await resolveKnowledgeGraphNamespace(argv);
+  if (namespace === false) return;
+  const query = withoutAgentFlag(argv.slice(5)).join(" ").trim();
   if (!query) {
     console.error("Usage: bestie memory graph search <query>");
     process.exitCode = 1;
@@ -441,7 +443,7 @@ async function searchKnowledgeGraph(argv: string[]): Promise<void> {
 
   const store = await SqliteMemoryStore.open();
   try {
-    const result = store.searchKnowledgeGraph(query);
+    const result = store.searchKnowledgeGraph(query, 20, namespace);
     if (result.entities.length === 0 && result.relations.length === 0) {
       console.log(`${badge("INFO", "blue")} No matching knowledge graph items.`);
       return;
@@ -461,6 +463,8 @@ async function searchKnowledgeGraph(argv: string[]): Promise<void> {
 }
 
 async function listKnowledgeEntities(argv: string[]): Promise<void> {
+  const namespace = await resolveKnowledgeGraphNamespace(argv);
+  if (namespace === false) return;
   const kind = parseKnowledgeKindFlag(argv);
   if (kind === false) {
     return;
@@ -468,7 +472,7 @@ async function listKnowledgeEntities(argv: string[]): Promise<void> {
 
   const store = await SqliteMemoryStore.open();
   try {
-    const entities = store.listKnowledgeEntities({ kind, limit: 100 });
+    const entities = store.listKnowledgeEntities({ kind, limit: 100, namespace });
     if (entities.length === 0) {
       console.log(`${badge("INFO", "blue")} No active knowledge entities${kind ? ` of kind ${kind}` : ""}.`);
       return;
@@ -485,10 +489,12 @@ async function listKnowledgeEntities(argv: string[]): Promise<void> {
 }
 
 async function listKnowledgeRelations(argv: string[]): Promise<void> {
+  const namespace = await resolveKnowledgeGraphNamespace(argv);
+  if (namespace === false) return;
   const limit = parseLimitFlag(argv) ?? 100;
   const store = await SqliteMemoryStore.open();
   try {
-    const relations = store.listKnowledgeRelations(limit);
+    const relations = store.listKnowledgeRelations(limit, namespace);
     if (relations.length === 0) {
       console.log(`${badge("INFO", "blue")} No active knowledge relations.`);
       return;
@@ -664,6 +670,8 @@ async function inspectKnowledgeGraphItem(argv: string[]): Promise<void> {
 }
 
 async function addKnowledgeGraphItem(argv: string[]): Promise<void> {
+  const namespace = await resolveKnowledgeGraphNamespace(argv);
+  if (namespace === false) return;
   const kind = argv[5];
   const store = await SqliteMemoryStore.open();
   try {
@@ -674,14 +682,14 @@ async function addKnowledgeGraphItem(argv: string[]): Promise<void> {
 
     if (kind === "entity") {
       const entityKind = argv[6];
-      const name = argv.slice(7).join(" ").trim();
+      const name = withoutAgentFlag(argv.slice(7)).join(" ").trim();
       if (!isKnowledgeEntityKind(entityKind) || !name) {
         console.error("Usage: bestie memory graph add entity <kind> <name>");
         console.error(`Kinds: ${Array.from(allowedKnowledgeEntityKinds).join(", ")}`);
         process.exitCode = 1;
         return;
       }
-      const entity = store.upsertKnowledgeEntity({ kind: entityKind, canonicalName: name });
+      const entity = store.upsertKnowledgeEntity({ kind: entityKind, canonicalName: name, namespace });
       console.log(`${badge("STORED", "green")} Knowledge entity stored: #${entity.id}`);
       console.log(formatKnowledgeEntityLine(entity));
       return;
@@ -691,13 +699,13 @@ async function addKnowledgeGraphItem(argv: string[]): Promise<void> {
       const sourceEntityId = Number(argv[6]);
       const relationType = argv[7];
       const targetEntityId = Number(argv[8]);
-      const evidence = argv.slice(9).join(" ").trim();
+      const evidence = withoutAgentFlag(argv.slice(9)).join(" ").trim();
       if (!Number.isInteger(sourceEntityId) || sourceEntityId <= 0 || !relationType || !Number.isInteger(targetEntityId) || targetEntityId <= 0) {
         console.error("Usage: bestie memory graph add relation <sourceId> <type> <targetId> [evidence]");
         process.exitCode = 1;
         return;
       }
-      const relation = store.upsertKnowledgeRelation({ sourceEntityId, relationType, targetEntityId, evidence });
+      const relation = store.upsertKnowledgeRelation({ sourceEntityId, relationType, targetEntityId, evidence, namespace });
       if (!relation) {
         console.log(`${badge("INFO", "blue")} Source or target entity not found.`);
         return;
@@ -2025,6 +2033,32 @@ function formatPendingKnowledgeGraphBlock(item: PendingKnowledgeItem): string {
 
 function isKnowledgeEntityKind(value: string | undefined): value is KnowledgeEntityKind {
   return value !== undefined && allowedKnowledgeEntityKinds.has(value as KnowledgeEntityKind);
+}
+
+async function resolveKnowledgeGraphNamespace(argv: string[]): Promise<string | undefined | false> {
+  const agentIndexes = argv.reduce<number[]>((indexes, value, index) => (value === "--agent" ? [...indexes, index] : indexes), []);
+  if (agentIndexes.length === 0) {
+    return undefined;
+  }
+  if (agentIndexes.length !== 1 || !argv[agentIndexes[0] + 1] || argv[agentIndexes[0] + 1].startsWith("--")) {
+    console.error("Usage: --agent <agentId>");
+    process.exitCode = 1;
+    return false;
+  }
+
+  const agentId = argv[agentIndexes[0] + 1];
+  const config = await loadConfig();
+  if (!config.agents?.[agentId]) {
+    console.error(`Unknown workforce agent: ${agentId}`);
+    process.exitCode = 1;
+    return false;
+  }
+  return `agent:${agentId}:knowledge`;
+}
+
+function withoutAgentFlag(args: string[]): string[] {
+  const index = args.indexOf("--agent");
+  return index === -1 ? args : [...args.slice(0, index), ...args.slice(index + 2)];
 }
 
 function parseKnowledgeKindFlag(argv: string[]): KnowledgeEntityKind | undefined | false {

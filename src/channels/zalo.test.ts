@@ -826,6 +826,105 @@ test("handleZaloUpdate sends outbound files and photos through the Zalo client",
   }
 });
 
+test("handleZaloUpdate isolates public customer context and uses only the bound agent knowledge", async () => {
+  const paths = await createTempPaths();
+  const sent: Array<{ chatId: string; text: string }> = [];
+  const chatRequests: Array<{ messages: unknown[] }> = [];
+  const promptPath = resolve(paths.appDir, "agents", "support", "system-prompt.md");
+  const publicConfig: AppConfig = {
+    ...config,
+    channels: {
+      zalo: {
+        enabled: true,
+        botTokenEnv: "BESTIE_ZALO_BOT_TOKEN",
+        ownerUserId: ["*"],
+        adminUserIds: ["operator-1"],
+      },
+    },
+    agents: {
+      support: {
+        enabled: true,
+        displayName: "Support",
+        role: "Customer support",
+        description: "Answers customers from the approved support knowledge base.",
+        promptPath,
+        channels: ["zalo"],
+        memoryScope: "agent:support",
+        approvalPolicy: "deny-external-actions",
+        public: { enabled: true, customerMemory: "isolated", knowledgeAccess: "agent-only", toolPolicy: "deny" },
+      },
+    },
+  };
+
+  try {
+    await writeRuntimeFiles(paths);
+    await mkdir(resolve(paths.appDir, "agents", "support"), { recursive: true });
+    await writeFile(promptPath, "You are the public support agent.");
+    const store = await SqliteMemoryStore.open(paths);
+    try {
+      store.addMemory({ type: "user_fact", content: "Customer A has an active subscription.", namespace: "agent:support:customer:customer-a" });
+      store.addMemory({ type: "user_fact", content: "Customer B has a billing dispute.", namespace: "agent:support:customer:customer-b" });
+      store.addMemory({ type: "project_context", content: "Internal billing escalation secret.", namespace: "primary" });
+      store.addMessage({ channel: "zalo", userId: "agent:support:user:customer-b", role: "user", content: "Customer B private conversation." });
+      store.upsertKnowledgeEntity({ canonicalName: "Public subscription guide", kind: "topic", namespace: "agent:support:knowledge" });
+      store.upsertKnowledgeEntity({ canonicalName: "Internal subscription playbook", kind: "topic", namespace: "primary" });
+    } finally {
+      store.close();
+    }
+
+    const result = await handleZaloUpdate({ update_id: 1, message: { from: { id: "customer-a" }, chat: { id: "chat-a" }, text: "Can you help with my subscription?" } }, {
+      config: publicConfig,
+      paths,
+      client: createRecordingClient(sent),
+      chatCompletion: async (_config, _apiKey, options) => {
+        chatRequests.push({ messages: options.messages as unknown[] });
+        return "Public support reply.";
+      },
+    });
+
+    assert.equal(result, "replied");
+    const prompt = JSON.stringify(chatRequests[0]?.messages ?? []);
+    assert.match(prompt, /Customer A has an active subscription/);
+    assert.match(prompt, /Public subscription guide/);
+    assert.doesNotMatch(prompt, /Customer B has a billing dispute|Customer B private conversation|Internal billing escalation secret|Internal subscription playbook/);
+    assert.deepEqual(sent.at(-1), { chatId: "chat-a", text: "Public support reply." });
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("handleZaloUpdate blocks management commands for public channel admins", async () => {
+  const paths = await createTempPaths();
+  const sent: Array<{ chatId: string; text: string }> = [];
+  const publicConfig: AppConfig = {
+    ...config,
+    channels: {
+      zalo: {
+        enabled: true,
+        botTokenEnv: "BESTIE_ZALO_BOT_TOKEN",
+        ownerUserId: ["*"],
+        adminUserIds: ["operator-1"],
+      },
+    },
+  };
+
+  try {
+    const result = await handleZaloUpdate({ update_id: 1, message: { from: { id: "operator-1" }, chat: { id: "public-chat" }, text: "/memory list" } }, {
+      config: publicConfig,
+      paths,
+      client: createRecordingClient(sent),
+      chatCompletion: async () => {
+        throw new Error("The provider must not be called for public commands.");
+      },
+    });
+
+    assert.equal(result, "replied");
+    assert.deepEqual(sent, [{ chatId: "public-chat", text: "Commands are not available in this public support chat." }]);
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
 test("handleZaloUpdate sends generated media to an explicit Zalo Personal direct-message target", async () => {
   const paths = await createTempPaths();
   const sent: Array<{ chatId: string; text: string }> = [];

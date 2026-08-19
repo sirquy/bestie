@@ -7,7 +7,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { basename, extname, join, resolve } from "node:path";
 
 import { matchesOwnerId, type OwnerUserIdConfig } from "./owner-policy.js";
-import { buildChannelAgentToolRunner, resolveChannelAgentRuntime } from "../agents/channel-binding.js";
+import { buildPublicChannelAgentToolRunner, resolveChannelAgentRuntime } from "../agents/channel-binding.js";
 import { loadSystemPrompt } from "../character/prompt-loader.js";
 import { buildChatMessages, getRecentMessageLimit } from "../chat/message-builder.js";
 import {
@@ -466,8 +466,13 @@ export async function handleTelegramUpdate(update: TelegramUpdate, options: Tele
   }
 
   const { chatId, userId } = decision;
-
+  const isPublicChannel = Array.isArray(telegramConfig?.ownerUserId) && telegramConfig.ownerUserId.length === 1 && telegramConfig.ownerUserId[0] === "*";
   await sendTelegramChatActionBestEffort(options.client, chatId, "typing");
+
+  if (!attachment && text.startsWith("/") && isPublicChannel) {
+    await options.client.sendMessage(chatId, "Commands are not available in this public support chat.");
+    return "replied";
+  }
 
   if (!attachment && text === "/start") {
     await options.client.sendMessage(chatId, `${options.config.agent.name} is online.`);
@@ -495,21 +500,23 @@ export async function handleTelegramUpdate(update: TelegramUpdate, options: Tele
   let apiKey = "";
 
   try {
-    const channelAgent = await resolveChannelAgentRuntime(options.config, options.paths, "telegram", userId);
+    const channelAgent = await resolveChannelAgentRuntime(options.config, options.paths, "telegram", userId, [userId, ...(decision.incoming.senderUsername ? [normalizeTelegramOwner(decision.incoming.senderUsername)] : [])]);
     const effectiveConfig = channelAgent?.config ?? options.config;
     const conversationUserId = channelAgent?.conversationUserId ?? userId;
     apiKey = await loadLlmCandidateSecret(resolvePrimaryLlmCandidate(effectiveConfig), options.paths);
-    const effectiveToolRunner = channelAgent ? buildChannelAgentToolRunner(channelAgent.agent, mcpToolRunner) : mcpToolRunner;
+    const effectiveToolRunner = channelAgent ? buildPublicChannelAgentToolRunner(channelAgent, mcpToolRunner) : mcpToolRunner;
     const savedAttachment = decision.attachment ? await adapter.attachments?.processAttachment(decision.attachment, decision.incoming) as SavedTelegramAttachment | undefined : undefined;
     if (savedAttachment) {
       await options.onAttachmentParsed?.(summarizeTelegramAttachmentParse(savedAttachment));
     }
     const userInput = savedAttachment ? buildTelegramAttachmentUserInput(text, savedAttachment) : text;
     const systemPrompt = channelAgent?.systemPrompt ?? await loadSystemPrompt(options.paths);
-    const memories = await loadRelevantMemories(options.paths, { query: userInput });
+    const memories = await loadRelevantMemories(options.paths, { query: userInput, namespace: channelAgent?.publicAccess?.memoryNamespace });
     const recentMessageLimit = getRecentMessageLimit(effectiveConfig);
     const recentTurns = await loadRecentTelegramTurns(options.paths, conversationUserId, recentMessageLimit);
-    const knowledgeGraph = await loadRelevantKnowledgeGraph(options.paths, userInput);
+    const knowledgeGraph = channelAgent?.publicAccess?.knowledgeNamespace === undefined && channelAgent?.publicAccess
+      ? undefined
+      : await loadRelevantKnowledgeGraph(options.paths, userInput, { namespace: channelAgent?.publicAccess?.knowledgeNamespace });
     const conversationSummary = await loadConversationSummaryContext(options.paths, "telegram", conversationUserId);
     const messages = buildChatMessages(buildMcpToolSystemPrompt(systemPrompt, effectiveConfig, buildTelegramRuntimeToolContext(decision.incoming)), recentTurns, userInput, memories, { memoryRetrievalPolicy: effectiveConfig.memory?.retrievalPolicy ?? "full", knowledgeGraph, conversationSummary, recentMessageLimit });
     if (savedAttachment?.visionImage) {
@@ -535,11 +542,13 @@ export async function handleTelegramUpdate(update: TelegramUpdate, options: Tele
       chatCompletion,
       toolRunner: async (toolOptions) => {
         const result = await effectiveToolRunner(toolOptions);
-        await sendTelegramMemoryApprovalIfNeeded(options.client, chatId, options.paths, userId, toolOptions.request.tool, result);
-        await sendTelegramKnowledgeApprovalIfNeeded(options.client, chatId, options.paths, userId, toolOptions.request.tool, result);
+        if (!channelAgent?.publicAccess) {
+          await sendTelegramMemoryApprovalIfNeeded(options.client, chatId, options.paths, userId, toolOptions.request.tool, result);
+          await sendTelegramKnowledgeApprovalIfNeeded(options.client, chatId, options.paths, userId, toolOptions.request.tool, result);
+        }
         return result;
       },
-      approver: createTelegramPermissionApprover(options.client, chatId, userId, options.paths),
+      approver: channelAgent?.publicAccess ? undefined : createTelegramPermissionApprover(options.client, chatId, userId, options.paths),
       policy: channelAgent?.policy ?? TELEGRAM_PERMISSION_POLICY,
       streamFinalResponse: true,
       onToolActivity: handleToolActivity,
@@ -566,6 +575,8 @@ export async function handleTelegramUpdate(update: TelegramUpdate, options: Tele
       apiKey,
       turn: { channel: "telegram", userId: conversationUserId, userInput, assistantText },
       chatCompletion,
+      namespace: channelAgent?.publicAccess?.memoryNamespace,
+      writePolicyOverride: channelAgent?.publicAccess ? channelAgent.publicAccess.memoryWritePolicy === "pending" ? "ask" : channelAgent.publicAccess.memoryWritePolicy : undefined,
     });
     const knowledgeReasoning = await runTelegramKnowledgeReasoningPass({
       config: effectiveConfig,
@@ -573,9 +584,12 @@ export async function handleTelegramUpdate(update: TelegramUpdate, options: Tele
       apiKey,
       turn: { channel: "telegram", userId: conversationUserId, userInput, assistantText },
       chatCompletion,
+      writePolicyOverride: channelAgent?.publicAccess ? "deny" : undefined,
     });
-    await sendTelegramMemoryReasoningApprovalsIfNeeded(options.client, chatId, options.paths, userId, memoryReasoning);
-    await sendTelegramKnowledgeReasoningApprovalsIfNeeded(options.client, chatId, options.paths, userId, knowledgeReasoning);
+    if (!channelAgent?.publicAccess) {
+      await sendTelegramMemoryReasoningApprovalsIfNeeded(options.client, chatId, options.paths, userId, memoryReasoning);
+      await sendTelegramKnowledgeReasoningApprovalsIfNeeded(options.client, chatId, options.paths, userId, knowledgeReasoning);
+    }
     await appendLog({ event: "telegram_chat_success", detail: { model: options.config.llm.primary } }, { paths: options.paths });
     return "replied";
   } catch (error) {
@@ -889,6 +903,13 @@ async function handleTelegramCallbackQuery(update: TelegramUpdate, options: Tele
   const callbackQuery = update.callback_query;
 
   if (!telegramConfig?.enabled || !callbackQuery) {
+    return "ignored";
+  }
+
+  const isPublicChannel = Array.isArray(telegramConfig.ownerUserId) && telegramConfig.ownerUserId.length === 1 && telegramConfig.ownerUserId[0] === "*";
+  if (isPublicChannel) {
+    await appendLog({ event: "telegram_approval_callback_ignored", detail: { reason: "public_channel", fromId: callbackQuery.from.id, fromUsername: callbackQuery.from.username } }, { paths: options.paths });
+    await options.client.answerCallbackQuery?.(callbackQuery.id, "Approvals are not available in a public support chat.");
     return "ignored";
   }
 

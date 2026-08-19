@@ -1,7 +1,7 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 
-import { loadConfig, writeConfig, type AgentChannelBinding, type AppConfig } from "../runtime/config.js";
+import { loadConfig, writeConfig, type AgentChannelBinding, type AppConfig, type PublicWorkforceAgentConfig } from "../runtime/config.js";
 import type { RuntimePaths } from "../runtime/paths.js";
 
 export type WorkforceAgentApprovalPolicy = "ask-for-external-actions" | "ask-for-all-actions" | "deny-external-actions";
@@ -17,6 +17,7 @@ export interface WorkforceAgentConfig {
   channels?: AgentChannelBinding[];
   memoryScope: string;
   approvalPolicy: WorkforceAgentApprovalPolicy;
+  public?: PublicWorkforceAgentConfig;
 }
 
 export interface HireWorkforceAgentInput {

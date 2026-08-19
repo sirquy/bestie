@@ -13,6 +13,17 @@ export type InternalToolPolicy = "allow" | "ask" | "deny";
 export type WorkspaceExternalPathAccess = "read" | "write" | "readwrite";
 export type WorkspaceExternalPathConfig = string | { path: string; access?: WorkspaceExternalPathAccess };
 export type WorkforceAgentApprovalPolicy = "ask-for-external-actions" | "ask-for-all-actions" | "deny-external-actions";
+export type PublicAgentToolPolicy = "deny" | "allowlist";
+export type PublicAgentMemoryWritePolicy = "deny" | "pending" | "allow";
+
+export interface PublicWorkforceAgentConfig {
+  enabled: true;
+  toolPolicy?: PublicAgentToolPolicy;
+  customerMemory?: "isolated" | "primary";
+  customerMemoryWrite?: PublicAgentMemoryWritePolicy;
+  knowledgeAccess?: "agent-only" | "none" | "primary";
+  allowUnsafeSharedData?: boolean;
+}
 type OpenAiCompatibleSpeechConfig = Extract<NonNullable<AppConfig["speech"]>, { provider: "openai-compatible" }>;
 
 export type LlmAuthMode = "api-key" | "oauth" | "local";
@@ -151,6 +162,7 @@ export interface AppConfig {
       enabled: boolean;
       botTokenEnv: string;
       ownerUserId: OwnerUserIdConfig;
+      adminUserIds?: string[];
       voiceReplyPolicy?: "deny" | "voice-input-only";
       voiceReplyMaxChars?: number;
       voiceReplyCooldownMs?: number;
@@ -171,6 +183,7 @@ export interface AppConfig {
       enabled: boolean;
       botTokenEnv: string;
       ownerUserId: OwnerUserIdConfig;
+      adminUserIds?: string[];
       pollingTimeoutSeconds?: number;
       attachments?: {
         downloadPolicy?: "allow" | "deny";
@@ -189,6 +202,7 @@ export interface AppConfig {
       enabled: boolean;
       sessionEnv: string;
       ownerUserId: OwnerUserIdConfig;
+      adminUserIds?: string[];
       reconnect?: {
         initialDelayMs?: number;
         maxDelayMs?: number;
@@ -278,6 +292,7 @@ export interface AppConfig {
     channels?: AgentChannelBinding[];
     memoryScope: string;
     approvalPolicy: WorkforceAgentApprovalPolicy;
+    public?: PublicWorkforceAgentConfig;
   }>;
 }
 
@@ -353,6 +368,7 @@ export function validateConfig(config: unknown): AppConfig {
   const mcp = optionalMcp(config.mcp, config.mcpServers);
   const internalTools = optionalInternalTools(config.internalTools);
   const agents = optionalAgents(config.agents);
+  validatePublicChannelBindings(channels, agents);
 
   return {
     version: 2,
@@ -742,6 +758,7 @@ function optionalAgents(value: unknown): AppConfig["agents"] | undefined {
       assignedChannels.add(channel);
     }
 
+    const publicConfig = optionalPublicWorkforceAgentConfig(agent.public, `agents.${id}.public`);
     agents[id] = {
       enabled: requireBoolean(agent.enabled, `agents.${id}.enabled`),
       displayName: requireString(agent.displayName, `agents.${id}.displayName`),
@@ -753,6 +770,7 @@ function optionalAgents(value: unknown): AppConfig["agents"] | undefined {
       ...(channels === undefined ? {} : { channels }),
       memoryScope: requireString(agent.memoryScope, `agents.${id}.memoryScope`),
       approvalPolicy,
+      ...(publicConfig === undefined ? {} : { public: publicConfig }),
     };
   }
 
@@ -786,6 +804,59 @@ function optionalInternalTools(value: unknown): AppConfig["internalTools"] | und
   }
 
   return { policies: validated, ...(exec === undefined ? {} : { exec }), ...(browser === undefined ? {} : { browser }) };
+}
+
+function optionalPublicWorkforceAgentConfig(value: unknown, path: string): PublicWorkforceAgentConfig | undefined {
+  if (value === undefined) return undefined;
+  const policy = requireRecord(value, path);
+  if (policy.enabled !== true) throw new InvalidConfigError(`${path}.enabled must be true when public policy is configured.`);
+  if (policy.toolPolicy !== undefined && policy.toolPolicy !== "deny" && policy.toolPolicy !== "allowlist") throw new InvalidConfigError(`${path}.toolPolicy must be deny or allowlist.`);
+  if (policy.customerMemory !== undefined && policy.customerMemory !== "isolated" && policy.customerMemory !== "primary") throw new InvalidConfigError(`${path}.customerMemory must be isolated or primary.`);
+  if (policy.customerMemoryWrite !== undefined && !["deny", "pending", "allow"].includes(String(policy.customerMemoryWrite))) throw new InvalidConfigError(`${path}.customerMemoryWrite must be deny, pending, or allow.`);
+  if (policy.knowledgeAccess !== undefined && policy.knowledgeAccess !== "agent-only" && policy.knowledgeAccess !== "none" && policy.knowledgeAccess !== "primary") throw new InvalidConfigError(`${path}.knowledgeAccess must be agent-only, none, or primary.`);
+  if (policy.allowUnsafeSharedData !== undefined && typeof policy.allowUnsafeSharedData !== "boolean") throw new InvalidConfigError(`${path}.allowUnsafeSharedData must be a boolean.`);
+  if (policy.toolPolicy === "allowlist" && policy.allowUnsafeSharedData !== true) {
+    throw new InvalidConfigError(`${path}.toolPolicy=allowlist requires ${path}.allowUnsafeSharedData=true because tools can access data outside the customer namespace.`);
+  }
+  if ((policy.customerMemory === "primary" || policy.knowledgeAccess === "primary") && policy.allowUnsafeSharedData !== true) {
+    throw new InvalidConfigError(`${path} shared primary data requires ${path}.allowUnsafeSharedData=true.`);
+  }
+  return {
+    enabled: true,
+    ...(policy.toolPolicy === undefined ? {} : { toolPolicy: policy.toolPolicy as PublicAgentToolPolicy }),
+    ...(policy.customerMemory === undefined ? {} : { customerMemory: policy.customerMemory as "isolated" | "primary" }),
+    ...(policy.customerMemoryWrite === undefined ? {} : { customerMemoryWrite: policy.customerMemoryWrite as PublicAgentMemoryWritePolicy }),
+    ...(policy.knowledgeAccess === undefined ? {} : { knowledgeAccess: policy.knowledgeAccess as "agent-only" | "none" | "primary" }),
+    ...(policy.allowUnsafeSharedData === undefined ? {} : { allowUnsafeSharedData: policy.allowUnsafeSharedData }),
+  };
+}
+
+function validatePublicChannelBindings(channels: AppConfig["channels"] | undefined, agents: AppConfig["agents"] | undefined): void {
+  const wildcardChannels = (Object.entries({ telegram: channels?.telegram, zalo: channels?.zalo, "zalo-personal": channels?.zaloPersonal }) as Array<[AgentChannelBinding, { ownerUserId: OwnerUserIdConfig } | undefined]>)
+    .filter(([, channel]) => Array.isArray(channel?.ownerUserId) && channel.ownerUserId.length === 1 && channel.ownerUserId[0] === "*")
+    .map(([channel]) => channel);
+  if (wildcardChannels.length === 0) return;
+  if (!agents) {
+    throw new InvalidConfigError(`Public channel ${wildcardChannels.join(", ")} requires a bound workforce agent with an explicit public policy.`);
+  }
+  for (const [id, agent] of Object.entries(agents)) {
+    for (const channel of agent.channels ?? []) {
+      const channelConfig = channel === "telegram" ? channels?.telegram : channel === "zalo" ? channels?.zalo : channels?.zaloPersonal;
+      if (channelConfig && Array.isArray(channelConfig.ownerUserId) && channelConfig.ownerUserId.length === 1 && channelConfig.ownerUserId[0] === "*") {
+        if (!agent.public?.enabled) {
+          throw new InvalidConfigError(`agents.${id}.public must be explicitly configured before binding to public ${channel}.`);
+        }
+        if (!agent.enabled) {
+          throw new InvalidConfigError(`agents.${id}.enabled must be true while bound to public ${channel}. Disable the channel or bind an enabled public agent first.`);
+        }
+      }
+    }
+  }
+  for (const channel of wildcardChannels) {
+    if (!Object.values(agents).some((agent) => agent.channels?.includes(channel))) {
+      throw new InvalidConfigError(`Public channel ${channel} requires a bound workforce agent with an explicit public policy.`);
+    }
+  }
 }
 
 function optionalAgentChannels(value: unknown, path: string): AgentChannelBinding[] {
@@ -1119,6 +1190,7 @@ function optionalZaloPersonalChannel(value: unknown): NonNullable<NonNullable<Ap
     enabled,
     sessionEnv: requireString(zaloPersonal.sessionEnv, "channels.zaloPersonal.sessionEnv"),
     ownerUserId,
+    ...(zaloPersonal.adminUserIds === undefined ? {} : { adminUserIds: requireAdminUserIds(zaloPersonal.adminUserIds, "channels.zaloPersonal.adminUserIds") }),
     ...(initialDelayMs === undefined && maxDelayMs === undefined ? {} : { reconnect: { ...(initialDelayMs === undefined ? {} : { initialDelayMs }), ...(maxDelayMs === undefined ? {} : { maxDelayMs }) } }),
     ...(zaloPersonal.attachments === undefined ? {} : { attachments: optionalChannelAttachments(zaloPersonal.attachments, "channels.zaloPersonal.attachments") }),
   };
@@ -1140,6 +1212,7 @@ function optionalZaloChannel(value: unknown): NonNullable<NonNullable<AppConfig[
     enabled,
     botTokenEnv: requireString(zalo.botTokenEnv, "channels.zalo.botTokenEnv"),
     ownerUserId: requireOwnerUserId(zalo.ownerUserId, "channels.zalo.ownerUserId"),
+    ...(zalo.adminUserIds === undefined ? {} : { adminUserIds: requireAdminUserIds(zalo.adminUserIds, "channels.zalo.adminUserIds") }),
     ...(zalo.pollingTimeoutSeconds === undefined ? {} : { pollingTimeoutSeconds: optionalPositiveInteger(zalo.pollingTimeoutSeconds, "channels.zalo.pollingTimeoutSeconds") }),
     ...(zalo.attachments === undefined ? {} : { attachments: optionalChannelAttachments(zalo.attachments, "channels.zalo.attachments") }),
   };
@@ -1166,6 +1239,7 @@ function optionalTelegramChannel(value: unknown): NonNullable<NonNullable<AppCon
     enabled,
     botTokenEnv: requireString(telegram.botTokenEnv, "channels.telegram.botTokenEnv"),
     ownerUserId: requireOwnerUserId(telegram.ownerUserId, "channels.telegram.ownerUserId"),
+    ...(telegram.adminUserIds === undefined ? {} : { adminUserIds: requireAdminUserIds(telegram.adminUserIds, "channels.telegram.adminUserIds") }),
     ...(voiceReplyPolicy === undefined ? {} : { voiceReplyPolicy }),
     ...(telegram.voiceReplyMaxChars === undefined ? {} : { voiceReplyMaxChars: optionalPositiveInteger(telegram.voiceReplyMaxChars, "channels.telegram.voiceReplyMaxChars") }),
     ...(telegram.voiceReplyCooldownMs === undefined ? {} : { voiceReplyCooldownMs: optionalNonNegativeInteger(telegram.voiceReplyCooldownMs, "channels.telegram.voiceReplyCooldownMs") }),
@@ -1312,6 +1386,17 @@ function requireOwnerUserId(value: unknown, fieldName: string): OwnerUserIdConfi
   }
 
   return ownerUserIds;
+}
+
+function requireAdminUserIds(value: unknown, fieldName: string): string[] {
+  if (!Array.isArray(value) || value.length === 0 || value.some((item) => typeof item !== "string" || !item.trim() || item.trim() === "*")) {
+    throw new InvalidConfigError(`${fieldName} must be a non-empty array of non-empty IDs and cannot include "*".`);
+  }
+  const ids = value.map((item) => item.trim());
+  if (new Set(ids).size !== ids.length) {
+    throw new InvalidConfigError(`${fieldName} must not contain duplicate IDs.`);
+  }
+  return ids;
 }
 
 function requireBoolean(value: unknown, fieldName: string): boolean {

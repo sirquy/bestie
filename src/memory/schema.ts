@@ -12,6 +12,7 @@ CREATE TABLE IF NOT EXISTS memories (
   policy_reason TEXT,
   pinned INTEGER DEFAULT 0,
   scope TEXT DEFAULT 'global',
+  namespace TEXT NOT NULL DEFAULT 'primary',
   confidence REAL DEFAULT 1.0,
   expires_at TEXT,
   superseded_by INTEGER,
@@ -41,13 +42,14 @@ CREATE TABLE IF NOT EXISTS knowledge_entities (
   aliases_json TEXT DEFAULT '[]',
   sensitivity TEXT DEFAULT 'normal',
   scope TEXT DEFAULT 'global',
+  namespace TEXT NOT NULL DEFAULT 'primary',
   confidence REAL DEFAULT 1.0,
   source_memory_id INTEGER,
   source_message_id TEXT,
   status TEXT DEFAULT 'active',
   created_at TEXT DEFAULT CURRENT_TIMESTAMP,
   updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
-  UNIQUE(canonical_name, kind),
+  UNIQUE(canonical_name, kind, namespace),
   FOREIGN KEY (source_memory_id) REFERENCES memories(id) ON DELETE SET NULL
 );
 
@@ -59,6 +61,7 @@ CREATE TABLE IF NOT EXISTS knowledge_relations (
   evidence TEXT,
   sensitivity TEXT DEFAULT 'normal',
   scope TEXT DEFAULT 'global',
+  namespace TEXT NOT NULL DEFAULT 'primary',
   confidence REAL DEFAULT 1.0,
   source_memory_id INTEGER,
   source_message_id TEXT,
@@ -77,6 +80,7 @@ CREATE TABLE IF NOT EXISTS pending_knowledge_items (
   reason TEXT,
   source TEXT DEFAULT 'manual',
   explicit_consent INTEGER DEFAULT 0,
+  namespace TEXT NOT NULL DEFAULT 'primary',
   created_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
 

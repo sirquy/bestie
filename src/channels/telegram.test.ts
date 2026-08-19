@@ -2171,6 +2171,139 @@ test("handleTelegramUpdate answers non-owner approval callbacks", async () => {
   }
 });
 
+test("handleTelegramUpdate isolates public customer context and uses only the bound agent knowledge", async () => {
+  const paths = await createTempPaths();
+  const sentMessages: Array<{ chatId: number; text: string }> = [];
+  const chatRequests: Array<{ messages: unknown[] }> = [];
+  const promptPath = resolve(paths.appDir, "agents", "support", "system-prompt.md");
+  const publicConfig: AppConfig = {
+    ...config,
+    channels: {
+      telegram: {
+        enabled: true,
+        botTokenEnv: "BESTIE_TELEGRAM_BOT_TOKEN",
+        ownerUserId: ["*"],
+        adminUserIds: ["12345"],
+      },
+    },
+    agents: {
+      support: {
+        enabled: true,
+        displayName: "Support",
+        role: "Customer support",
+        description: "Answers customers from the approved support knowledge base.",
+        promptPath,
+        channels: ["telegram"],
+        memoryScope: "agent:support",
+        approvalPolicy: "deny-external-actions",
+        public: { enabled: true, customerMemory: "isolated", knowledgeAccess: "agent-only", toolPolicy: "deny" },
+      },
+    },
+  };
+
+  try {
+    await writeRuntimeFiles(paths);
+    await mkdir(resolve(paths.appDir, "agents", "support"), { recursive: true });
+    await writeFile(promptPath, "You are the public support agent.");
+    const store = await SqliteMemoryStore.open(paths);
+    try {
+      store.addMemory({ type: "user_fact", content: "Customer A has an extended warranty.", namespace: "agent:support:customer:2001" });
+      store.addMemory({ type: "user_fact", content: "Customer B has a disputed warranty.", namespace: "agent:support:customer:2002" });
+      store.addMemory({ type: "project_context", content: "Internal warranty escalation secret.", namespace: "primary" });
+      store.addMessage({ channel: "telegram", userId: "agent:support:user:2002", role: "user", content: "Customer B private conversation." });
+      store.upsertKnowledgeEntity({ canonicalName: "Public warranty guide", kind: "topic", namespace: "agent:support:knowledge" });
+      store.upsertKnowledgeEntity({ canonicalName: "Internal warranty playbook", kind: "topic", namespace: "primary" });
+    } finally {
+      store.close();
+    }
+
+    const result = await handleTelegramUpdate(createTextUpdate("Can you help with my warranty?", 2001), {
+      config: publicConfig,
+      paths,
+      client: createRecordingClient(sentMessages),
+      chatCompletion: async (_config, _apiKey, options) => {
+        chatRequests.push({ messages: options.messages as unknown[] });
+        return "Public support reply.";
+      },
+    });
+
+    assert.equal(result, "replied");
+    const prompt = JSON.stringify(chatRequests[0]?.messages ?? []);
+    assert.match(prompt, /Customer A has an extended warranty/);
+    assert.match(prompt, /Public warranty guide/);
+    assert.doesNotMatch(prompt, /Customer B has a disputed warranty|Customer B private conversation|Internal warranty escalation secret|Internal warranty playbook/);
+    assert.deepEqual(sentMessages.at(-1), { chatId: 777, text: "Public support reply." });
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("handleTelegramUpdate blocks management commands for public channel admins", async () => {
+  const paths = await createTempPaths();
+  const sentMessages: Array<{ chatId: number; text: string }> = [];
+  const publicConfig: AppConfig = {
+    ...config,
+    channels: {
+      telegram: {
+        enabled: true,
+        botTokenEnv: "BESTIE_TELEGRAM_BOT_TOKEN",
+        ownerUserId: ["*"],
+        adminUserIds: ["12345"],
+      },
+    },
+  };
+
+  try {
+    const result = await handleTelegramUpdate(createTextUpdate("/memory list", 12345), {
+      config: publicConfig,
+      paths,
+      client: createRecordingClient(sentMessages),
+      chatCompletion: async () => {
+        throw new Error("The provider must not be called for public commands.");
+      },
+    });
+
+    assert.equal(result, "replied");
+    assert.deepEqual(sentMessages, [{ chatId: 777, text: "Commands are not available in this public support chat." }]);
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("handleTelegramUpdate rejects all approval callbacks from a public support chat", async () => {
+  const paths = await createTempPaths();
+  const sentMessages: Array<{ chatId: number; text: string; options?: unknown }> = [];
+  const editedMessages: Array<{ chatId: number; messageId: number; text: string }> = [];
+  const callbackAnswers: Array<{ id: string; text?: string }> = [];
+  const publicConfig: AppConfig = {
+    ...config,
+    channels: {
+      telegram: {
+        enabled: true,
+        botTokenEnv: "BESTIE_TELEGRAM_BOT_TOKEN",
+        ownerUserId: ["*"],
+        adminUserIds: ["12345"],
+      },
+    },
+  };
+
+  try {
+    await writeRuntimeFiles(paths);
+    const result = await handleTelegramUpdate(createCallbackUpdate("approval:approve:1", 99999, 2, "customer"), {
+      config: publicConfig,
+      paths,
+      client: createRecordingClient(sentMessages, [], editedMessages, callbackAnswers),
+    });
+
+    assert.equal(result, "ignored");
+    assert.deepEqual(callbackAnswers, [{ id: "callback-1", text: "Approvals are not available in a public support chat." }]);
+    const logText = await readFile(paths.appLogPath, "utf8");
+    assert.match(logText, /"reason":"public_channel"/);
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
 test("handleTelegramUpdate executes approved edit and patch action payloads", async () => {
   const paths = await createTempPaths();
 

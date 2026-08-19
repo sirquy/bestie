@@ -52,6 +52,8 @@ export async function runKnowledgeReasoningPass(options: {
   apiKey: string;
   turn: KnowledgeReasoningTurn;
   chatCompletion: KnowledgeReasoningChatCompletion;
+  namespace?: string;
+  writePolicyOverride?: "allow" | "ask" | "deny";
 }): Promise<KnowledgeReasoningResult> {
   const store = await SqliteMemoryStore.open(options.paths);
 
@@ -60,7 +62,7 @@ export async function runKnowledgeReasoningPass(options: {
       return emptyKnowledgeReasoningResult();
     }
 
-    const writePolicy = options.config.memory?.writePolicy;
+    const writePolicy = options.writePolicyOverride ?? options.config.memory?.writePolicy;
     if (!writePolicy || writePolicy === "deny") {
       return emptyKnowledgeReasoningResult();
     }
@@ -91,7 +93,7 @@ export async function runKnowledgeReasoningPass(options: {
 
     const reason = `Reasoned from ${options.turn.channel} conversation. ${policy.reason}`;
     if (writePolicy === "ask" || policy.decision === "pending") {
-      result.pending.push(store.addPendingKnowledgeItem({ payload: { entities, relations }, reason, source: `reasoning:${options.turn.channel}`, explicitConsent: false }));
+      result.pending.push(store.addPendingKnowledgeItem({ payload: { entities, relations }, reason, source: `reasoning:${options.turn.channel}`, explicitConsent: false, namespace: options.namespace }));
       return result;
     }
 
@@ -105,14 +107,15 @@ export async function runKnowledgeReasoningPass(options: {
         scope: entity.scope,
         confidence: entity.confidence,
         sourceMessageId: entity.sourceMessageId,
+        namespace: options.namespace,
       });
       result.storedEntities.push(stored);
       idsByKey.set(entityKey(stored.canonicalName, stored.kind), stored.id);
     }
 
     for (const relation of relations) {
-      const sourceEntityId = idsByKey.get(entityKey(relation.sourceName, relation.sourceKind)) ?? store.upsertKnowledgeEntity({ canonicalName: relation.sourceName, kind: relation.sourceKind, sourceMessageId }).id;
-      const targetEntityId = idsByKey.get(entityKey(relation.targetName, relation.targetKind)) ?? store.upsertKnowledgeEntity({ canonicalName: relation.targetName, kind: relation.targetKind, sourceMessageId }).id;
+      const sourceEntityId = idsByKey.get(entityKey(relation.sourceName, relation.sourceKind)) ?? store.upsertKnowledgeEntity({ canonicalName: relation.sourceName, kind: relation.sourceKind, sourceMessageId, namespace: options.namespace }).id;
+      const targetEntityId = idsByKey.get(entityKey(relation.targetName, relation.targetKind)) ?? store.upsertKnowledgeEntity({ canonicalName: relation.targetName, kind: relation.targetKind, sourceMessageId, namespace: options.namespace }).id;
       const stored = store.upsertKnowledgeRelation({
         sourceEntityId,
         relationType: relation.type,
@@ -122,6 +125,7 @@ export async function runKnowledgeReasoningPass(options: {
         scope: relation.scope,
         confidence: relation.confidence,
         sourceMessageId: relation.sourceMessageId,
+        namespace: options.namespace,
       });
       if (stored) {
         result.storedRelations.push(stored);
