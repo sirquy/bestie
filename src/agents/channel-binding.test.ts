@@ -69,7 +69,7 @@ test("fails closed for an unbound public channel", async () => {
   }
 });
 
-test("public bound agents of any role use isolated user namespaces and deny tools by default", async () => {
+test("public bound agents of any role use isolated user namespaces without changing tool permissions", async () => {
   const paths = await createTempPaths();
   try {
     const promptPath = resolve(paths.appDir, "agents", "support", "system-prompt.md");
@@ -85,8 +85,9 @@ test("public bound agents of any role use isolated user namespaces and deny tool
     const runtime = await resolveChannelAgentRuntime(config, paths, "telegram", "customer-a");
     assert.equal(runtime?.publicAccess?.memoryNamespace, "agent:support:customer:customer-a");
     assert.equal(runtime?.publicAccess?.knowledgeNamespace, "agent:support:knowledge");
-    const runner = buildPublicChannelAgentToolRunner(runtime!, async () => ({ ok: true, status: "pass", message: "unsafe" }));
-    assert.equal((await runner({ request: { tool: "internal.read_file", arguments: {} }, config, paths })).ok, false);
+    const runner = buildPublicChannelAgentToolRunner(runtime!, async () => ({ ok: true, status: "pass", message: "allowed" }));
+    assert.equal((await runner({ request: { tool: "internal.read_file", arguments: {} }, config, paths })).ok, true);
+    assert.deepEqual(runtime?.policy, { allowTrustedRead: true, allowLocalWrite: false, denyExternalActions: true });
     assert.doesNotMatch(runtime?.systemPrompt ?? "", /Xong rồi Sếp|Always call every user Sếp/);
     assert.match(runtime?.systemPrompt ?? "", /Treat the sender as an independent external user/);
   } finally {

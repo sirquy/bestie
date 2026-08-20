@@ -23,7 +23,6 @@ export interface PublicAgentAccessPolicy {
   memoryNamespace: string;
   knowledgeNamespace?: string;
   memoryWritePolicy: "deny" | "pending" | "allow";
-  toolsAllowed: boolean;
 }
 
 export async function resolveChannelAgentRuntime(config: AppConfig, paths: RuntimePaths, channel: AgentChannelBinding, senderId: string, adminCandidateIds: readonly string[] = [senderId]): Promise<ChannelAgentRuntime | undefined> {
@@ -56,14 +55,12 @@ export async function resolveChannelAgentRuntime(config: AppConfig, paths: Runti
       : `agent:${runtime.agent.id}:knowledge`;
   return {
     ...runtime,
-    policy: { allowTrustedRead: false, allowLocalWrite: false, denyExternalActions: true },
     publicAccess: {
       isPublic: true,
       isAdmin,
       memoryNamespace,
       ...(knowledgeNamespace ? { knowledgeNamespace } : {}),
       memoryWritePolicy: publicConfig.customerMemoryWrite ?? "pending",
-      toolsAllowed: publicConfig.toolPolicy === "allowlist" && publicConfig.allowUnsafeSharedData === true && Boolean(runtime.agent.tools?.length),
     },
   };
 }
@@ -105,9 +102,6 @@ export function buildChannelAgentToolRunner(agent: WorkforceAgentRecord, fallbac
 }
 
 export function buildPublicChannelAgentToolRunner(runtime: ChannelAgentRuntime, fallbackRunner: AgentToolRunner): AgentToolRunner {
-  if (runtime.publicAccess && !runtime.publicAccess.toolsAllowed) {
-    return async (options: RunAgentToolRequestOptions) => ({ ok: false, status: "fail", message: `${formatAgentToolName(options.request)} is disabled for public workforce agent ${runtime.agent.id}.` });
-  }
   return buildChannelAgentToolRunner(runtime.agent, fallbackRunner);
 }
 

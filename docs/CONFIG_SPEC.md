@@ -449,7 +449,7 @@ Set `NO_COLOR=1` to disable ANSI colors in human-facing tables, badges, and prog
 
 `ownerUserId: ["*"]` makes a configured Telegram, Zalo, or Zalo Personal channel public. It is not an administrator grant. A public channel must be bound to exactly one workforce agent through that agent's `channels` list, and the bound profile must declare `public.enabled: true`. This applies to any workforce role, not only customer support. Use `adminUserIds` for one or more operator identities; it must not contain `"*"`. No one can use slash commands or approval callbacks inside a public chat, including operators: manage the agent through the CLI, WebUI, or a separate private channel so operational output cannot reach external users.
 
-The secure defaults are `customerMemory: "isolated"`, `customerMemoryWrite: "pending"`, `knowledgeAccess: "agent-only"`, and `toolPolicy: "deny"`. Each external user receives a separate memory namespace and conversation context; the agent reads only its curated knowledge namespace, not the primary agent's memories or graph. Public conversations never write to the curated knowledge base. Operators curate it explicitly with `bestie memory graph add entity ... --agent <id>`, `bestie memory graph add relation ... --agent <id>`, `bestie memory graph search <query> --agent <id>`, `bestie memory graph entities --agent <id>`, and `bestie memory graph relations --agent <id>`.
+The secure defaults are `customerMemory: "isolated"`, `customerMemoryWrite: "pending"`, and `knowledgeAccess: "agent-only"`. Each external user receives a separate memory namespace and conversation context; the agent reads only its curated knowledge namespace, not the primary agent's memories or graph. Public conversations never write to the curated knowledge base. Tool and action permissions remain those configured on the workforce agent through its `tools` allowlist and `approvalPolicy`; public mode only hides tool-progress messages from external users. Operators curate knowledge explicitly with `bestie memory graph add entity ... --agent <id>`, `bestie memory graph add relation ... --agent <id>`, `bestie memory graph search <query> --agent <id>`, `bestie memory graph entities --agent <id>`, and `bestie memory graph relations --agent <id>`.
 
 ```json
 {
@@ -475,15 +475,14 @@ The secure defaults are `customerMemory: "isolated"`, `customerMemoryWrite: "pen
         "enabled": true,
         "customerMemory": "isolated",
         "customerMemoryWrite": "pending",
-        "knowledgeAccess": "agent-only",
-        "toolPolicy": "deny"
+        "knowledgeAccess": "agent-only"
       }
     }
   }
 }
 ```
 
-`customerMemory: "primary"`, `knowledgeAccess: "primary"`, and `toolPolicy: "allowlist"` require `allowUnsafeSharedData: true`; this is an explicit acknowledgement that shared private data or broad tools can be exposed. Do not use those options for normal public agents. They are not a prompt-security control and tool allowlisting is not namespace-aware yet.
+`customerMemory: "primary"` and `knowledgeAccess: "primary"` require `allowUnsafeSharedData: true`; this is an explicit acknowledgement that shared private data can be exposed. Do not use those options for normal public agents. Tool permissions are not a prompt-security control and continue to be governed by the workforce agent's `tools` and `approvalPolicy`.
 
 ## character.json
 
