@@ -64,6 +64,12 @@ export function ChannelsPanel({ data, loading, onData, onLoading }: ChannelsPane
     await runAction(() => postChannelAction({ action, channel, confirm: true }));
   }
 
+  async function updateAccess(channel: ConfiguredChannel, ownerUserIds: string[], adminUserIds: string[]): Promise<void> {
+    const isPublic = ownerUserIds.length === 1 && ownerUserIds[0] === "*";
+    if (!await confirmDialog({ title: isPublic ? "Mở channel công khai?" : "Lưu quyền channel?", description: isPublic ? "Chỉ bật khi channel đã được gán cho agent public đang hoạt động. Mọi người sẽ có thể nhắn tin, nhưng lệnh quản trị bị chặn trong channel công khai." : "Cập nhật danh sách owner và admin của channel.", confirmLabel: "Lưu quyền", cancelLabel: "Huỷ" })) return;
+    await runAction(() => postChannelAction({ action: "update_access", channel: channel.id, ownerUserIds, adminUserIds: adminUserIds.length ? adminUserIds : undefined, confirm: true }), "Đã lưu quyền truy cập channel.");
+  }
+
   async function cronToggle(schedule: CronSchedule): Promise<void> {
     const enabled = !schedule.enabled;
     if (!await confirmDialog(`${enabled ? "Bật" : "Tắt"} tin nhắn hẹn giờ ${schedule.name}?`)) return;
@@ -116,7 +122,7 @@ export function ChannelsPanel({ data, loading, onData, onLoading }: ChannelsPane
           <Button variant="outline" onClick={() => void reload()} disabled={loading}><RefreshCw className={loading ? "animate-spin" : ""} /> Tải lại</Button>
         </CardHeader>
         <CardContent className="grid gap-3 md:grid-cols-2">
-          {data.channels.map((channel) => <ChannelCard key={channel.id} channel={channel} loading={loading} onDaemon={daemon} />)}
+          {data.channels.map((channel) => <ChannelCard key={channel.id} channel={channel} loading={loading} onDaemon={daemon} onAccess={updateAccess} />)}
         </CardContent>
       </Card> : null}
 
@@ -164,15 +170,22 @@ async function postChannelAction(body: Record<string, unknown>): Promise<Channel
   return fetchJson<ChannelActionResult>("/api/channels/action", { method: "POST", body: JSON.stringify(body) });
 }
 
-function ChannelCard({ channel, loading, onDaemon }: { channel: ConfiguredChannel; loading: boolean; onDaemon: (action: "daemon_start" | "daemon_stop" | "daemon_restart", channel: DaemonChannel) => Promise<void> }): ReactElement {
+function ChannelCard({ channel, loading, onDaemon, onAccess }: { channel: ConfiguredChannel; loading: boolean; onDaemon: (action: "daemon_start" | "daemon_stop" | "daemon_restart", channel: DaemonChannel) => Promise<void>; onAccess: (channel: ConfiguredChannel, ownerUserIds: string[], adminUserIds: string[]) => Promise<void> }): ReactElement {
   const daemonChannel = channel.id as DaemonChannel;
   const isRunning = channel.daemon.state === "running";
   const isStopped = channel.daemon.state === "stopped";
+  const isPublic = channel.ownerUserIds?.length === 1 && channel.ownerUserIds[0] === "*";
+  const [publicAccess, setPublicAccess] = useState(isPublic);
+  const [ownerIds, setOwnerIds] = useState((isPublic ? [] : channel.ownerUserIds ?? []).join("\n"));
+  const [adminIds, setAdminIds] = useState((channel.adminUserIds ?? []).join("\n"));
+  const parseIds = (value: string) => Array.from(new Set(value.split(/[\n,]/).map((item) => item.trim()).filter(Boolean)));
+  const saveAccess = (): void => { const owners = publicAccess ? ["*"] : parseIds(ownerIds); void onAccess(channel, owners, parseIds(adminIds)); };
   return (
     <div className="rounded-2xl border border-white/10 bg-card/60 p-4 text-sm">
       <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-lg font-semibold">{channel.displayName}</p><p className="text-muted-foreground">{channel.id}</p></div><Badge variant={channel.enabled ? "secondary" : "outline"}>{channel.enabled ? "đã bật" : "đã tắt"}</Badge></div>
       <Separator className="my-3" />
       <div className="grid gap-2"><StatusLine label="Chủ sở hữu" value={channel.ownerConfigured ? "sẵn sàng" : "chưa đặt"} /><StatusLine label="Khoá bí mật" value={channel.secretPresent ? "sẵn sàng" : channel.tokenEnv ? "thiếu" : "không cần"} /><StatusLine label="Dịch vụ nền" value={formatDaemonState(channel.daemon.state)} /></div>
+      <div className="mt-3 grid gap-2 rounded-xl border border-white/10 bg-background/35 p-3"><p className="text-xs font-medium text-muted-foreground">Quyền truy cập</p><label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={publicAccess} onChange={(event) => setPublicAccess(event.target.checked)} /> Channel công khai cho mọi người</label>{!publicAccess ? <><FormField label="Owner user IDs (mỗi dòng hoặc dấu phẩy)"><Textarea value={ownerIds} onChange={(event) => setOwnerIds(event.target.value)} className="min-h-20" placeholder="userid-1\nuserid-2" /></FormField><FormField label="Admin user IDs (tuỳ chọn)"><Textarea value={adminIds} onChange={(event) => setAdminIds(event.target.value)} className="min-h-20" placeholder="admin-user-id" /></FormField></> : <p className="text-xs text-accent">Cần gán channel này cho workforce agent có policy public trước khi lưu.</p>}<Button type="button" size="sm" variant="outline" onClick={saveAccess} disabled={loading || (!publicAccess && parseIds(ownerIds).length === 0)}><Save /> Lưu quyền</Button></div>
       <div className="mt-3 flex flex-wrap gap-2" data-channel-action={channel.id}><Button size="sm" onClick={() => void onDaemon("daemon_start", daemonChannel)} disabled={loading || isRunning}><Play /> Bắt đầu</Button><Button size="sm" variant="outline" onClick={() => void onDaemon("daemon_stop", daemonChannel)} disabled={loading || isStopped}><Square /> Dừng</Button><Button size="sm" variant="secondary" onClick={() => void onDaemon("daemon_restart", daemonChannel)} disabled={loading || isRunning}><RefreshCw /> Khởi động lại</Button></div>
     </div>
   );

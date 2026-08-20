@@ -6,7 +6,7 @@ import { getDaemonChannelStatus, runDaemonCommand, type DaemonChannel } from "..
 import { CronExecutor } from "../../cron/executor.js";
 import { computeNextRun } from "../../cron/scheduler.js";
 import { SqliteMemoryStore, type CronLog, type CronSchedule } from "../../memory/sqlite-store.js";
-import { loadConfig, type AppConfig } from "../../runtime/config.js";
+import { loadConfig, writeConfig, type AgentChannelBinding, type AppConfig } from "../../runtime/config.js";
 import { loadEnvFile } from "../../runtime/env.js";
 import { getRuntimePaths, type RuntimePaths } from "../../runtime/paths.js";
 
@@ -29,7 +29,7 @@ export interface UiChannelSummary {
   };
 }
 
-export type UiChannelActionOptions = UiDaemonActionOptions | UiCronToggleActionOptions | UiCronAddActionOptions | UiCronUpdateActionOptions | UiCronDeleteActionOptions | UiCronTriggerActionOptions;
+export type UiChannelActionOptions = UiDaemonActionOptions | UiCronToggleActionOptions | UiCronAddActionOptions | UiCronUpdateActionOptions | UiCronDeleteActionOptions | UiCronTriggerActionOptions | UiChannelAccessUpdateOptions;
 
 interface UiDaemonActionOptions {
   action: "daemon_start" | "daemon_stop" | "daemon_restart";
@@ -85,6 +85,15 @@ interface UiCronTriggerActionOptions {
   paths?: RuntimePaths;
 }
 
+interface UiChannelAccessUpdateOptions {
+  action: "update_access";
+  channel: AgentChannelBinding;
+  ownerUserIds: string[];
+  adminUserIds?: string[];
+  confirm: boolean;
+  paths?: RuntimePaths;
+}
+
 export interface UiChannelActionResult extends UiChannelSummary {
   action: UiChannelActionOptions["action"];
   channel?: DaemonChannel;
@@ -98,6 +107,8 @@ interface UiConfiguredChannel {
   displayName: string;
   enabled: boolean;
   ownerConfigured: boolean;
+  ownerUserIds?: string[];
+  adminUserIds?: string[];
   tokenEnv?: string;
   secretPresent: boolean;
   daemon: {
@@ -141,6 +152,8 @@ export async function getUiChannelSummary(paths: RuntimePaths = getRuntimePaths(
       displayName: channel.displayName,
       enabled: channelConfig?.enabled === true,
       ownerConfigured: hasConfiguredOwner(channelConfig?.ownerUserId),
+      ...(channelConfig?.ownerUserId === undefined ? {} : { ownerUserIds: Array.isArray(channelConfig.ownerUserId) ? channelConfig.ownerUserId : [channelConfig.ownerUserId] }),
+      ...(channelConfig?.adminUserIds ? { adminUserIds: channelConfig.adminUserIds } : {}),
       ...(channelConfig?.botTokenEnv ?? channelConfig?.sessionEnv ? { tokenEnv: channelConfig.botTokenEnv ?? channelConfig.sessionEnv } : {}),
       secretPresent: channelConfig?.botTokenEnv ?? channelConfig?.sessionEnv ? Boolean(process.env[channelConfig.botTokenEnv ?? channelConfig.sessionEnv!] ?? envValues[channelConfig.botTokenEnv ?? channelConfig.sessionEnv!]) : false,
       daemon: {
@@ -170,7 +183,9 @@ export async function runUiChannelAction(options: UiChannelActionOptions): Promi
 
   const paths = options.paths ?? getRuntimePaths();
   const messages: string[] = [];
-  if (options.action === "cron_toggle") {
+  if (options.action === "update_access") {
+    await updateChannelAccess(paths, options, messages);
+  } else if (options.action === "cron_toggle") {
     if (!Number.isInteger(options.id) || options.id <= 0) {
       throw new Error("Cron toggle requires numeric id and boolean enabled.");
     }
@@ -201,6 +216,7 @@ export async function runUiChannelAction(options: UiChannelActionOptions): Promi
 }
 
 function toActionMetadata(options: UiChannelActionOptions): { id?: number; enabled?: boolean; channel?: DaemonChannel } {
+  if (options.action === "update_access") return {};
   if (options.action === "cron_add") {
     return { enabled: options.enabled };
   }
@@ -293,7 +309,22 @@ async function triggerCronSchedule(paths: RuntimePaths, id: number, messages: st
   messages.push(`Cron schedule ${id} triggered.`);
 }
 
-function getChannelConfig(config: AppConfig, configKey: string): { enabled: boolean; ownerUserId: OwnerUserIdConfig; botTokenEnv?: string; sessionEnv?: string } | undefined {
+async function updateChannelAccess(paths: RuntimePaths, options: UiChannelAccessUpdateOptions, messages: string[]): Promise<void> {
+  const config = await loadConfig(paths);
+  const channelKey = options.channel === "zalo-personal" ? "zaloPersonal" : options.channel;
+  const existing = config.channels?.[channelKey];
+  if (!existing) throw new Error(`Channel ${options.channel} is not configured.`);
+  const updated = {
+    ...existing,
+    ownerUserId: options.ownerUserIds,
+    ...(options.adminUserIds?.length ? { adminUserIds: options.adminUserIds } : {}),
+  };
+  if (!options.adminUserIds?.length) delete updated.adminUserIds;
+  await writeConfig({ ...config, channels: { ...config.channels, [channelKey]: updated } }, paths);
+  messages.push(`Access roles for ${options.channel} updated.`);
+}
+
+function getChannelConfig(config: AppConfig, configKey: string): { enabled: boolean; ownerUserId: OwnerUserIdConfig; adminUserIds?: string[]; botTokenEnv?: string; sessionEnv?: string } | undefined {
   return config.channels?.[configKey as keyof NonNullable<AppConfig["channels"]>];
 }
 

@@ -37,6 +37,7 @@ export interface UpdateWorkforceAgentInput {
   model?: string;
   tools?: string[];
   approvalPolicy?: WorkforceAgentApprovalPolicy;
+  public?: PublicWorkforceAgentConfig | null;
 }
 
 export interface WorkforceAgentRecord extends WorkforceAgentConfig {
@@ -161,6 +162,8 @@ export async function updateWorkforceAgent(paths: RuntimePaths, id: string, inpu
   };
   if (input.model !== undefined && !input.model.trim()) delete updated.model;
   if (input.tools !== undefined && input.tools.length === 0) delete updated.tools;
+  if (input.public === null) delete updated.public;
+  if (input.public !== undefined && input.public !== null) updated.public = input.public;
 
   await saveAgentsConfig(paths, config, { ...(config.agents ?? {}), [normalizedId]: updated });
   return { id: normalizedId, ...updated };

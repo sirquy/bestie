@@ -330,7 +330,8 @@ export async function loadConfig(paths: RuntimePaths = getRuntimePaths()): Promi
 }
 
 export async function writeConfig(config: AppConfig, paths: RuntimePaths = getRuntimePaths()): Promise<void> {
-  await writeFile(paths.configPath, `${JSON.stringify(config, null, 2)}\n`, { mode: 0o600 });
+  const validatedConfig = validateConfig(config);
+  await writeFile(paths.configPath, `${JSON.stringify(validatedConfig, null, 2)}\n`, { mode: 0o600 });
 }
 
 export function validateConfig(config: unknown): AppConfig {

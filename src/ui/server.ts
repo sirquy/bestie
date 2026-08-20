@@ -27,6 +27,7 @@ import { HOME_PAGE_CLIENT_SCRIPT } from "./home/client-script.js";
 import { renderHomePage } from "./home-page.js";
 import { UiAuthService } from "./auth.js";
 import { getRuntimePaths, type RuntimePaths } from "../runtime/paths.js";
+import type { PublicWorkforceAgentConfig } from "../runtime/config.js";
 import { loadEnvFile } from "../runtime/env.js";
 import { createCloudflareAccessVerifier, type TunnelAccessVerifier } from "./tunnel/access.js";
 import { createUiOriginPolicy, isAllowedSameOrigin, isRemoteTunnelRequest, type UiOriginPolicy } from "./tunnel/origin-policy.js";
@@ -767,7 +768,7 @@ async function handleRequestAsync(request: IncomingMessage, response: ServerResp
   if (method === "POST" && url.pathname === "/api/channels/action") {
     const body = await readJsonBody(request);
     if (!isRecord(body) || !isUiChannelAction(body.action)) {
-      sendJson(response, 400, { ok: false, error: "Missing action daemon_start|daemon_stop|daemon_restart|cron_toggle|cron_add|cron_update|cron_delete|cron_trigger.", code: "UiChannelInvalidActionRequest" });
+      sendJson(response, 400, { ok: false, error: "Missing valid channel action.", code: "UiChannelInvalidActionRequest" });
       return;
     }
     if (body.action === "cron_toggle" && (typeof body.id !== "number" || typeof body.enabled !== "boolean")) {
@@ -782,7 +783,12 @@ async function handleRequestAsync(request: IncomingMessage, response: ServerResp
       sendJson(response, 400, { ok: false, error: "Cron write requires name, scheduleType, scheduleValue, prompt, and enabled.", code: "UiChannelInvalidActionRequest" });
       return;
     }
-    if (!body.action.startsWith("cron_") && !isUiDaemonChannel(body.channel)) {
+    if (body.action === "update_access") {
+      if (!isAgentChannelBinding(body.channel) || !isStringArray(body.ownerUserIds) || (body.adminUserIds !== undefined && !isStringArray(body.adminUserIds))) {
+        sendJson(response, 400, { ok: false, error: "Access update requires channel and owner/admin user ID arrays.", code: "UiChannelInvalidActionRequest" });
+        return;
+      }
+    } else if (!body.action.startsWith("cron_") && !isUiDaemonChannel(body.channel)) {
       sendJson(response, 400, { ok: false, error: "Daemon actions require channel telegram|zalo|cron.", code: "UiChannelInvalidActionRequest" });
       return;
     }
@@ -845,6 +851,18 @@ async function handleRequestAsync(request: IncomingMessage, response: ServerResp
       return;
     }
 
+    if (body.action === "update_access") {
+      const channel = body.channel;
+      const ownerUserIds = body.ownerUserIds;
+      const adminUserIds = body.adminUserIds;
+      if (!isAgentChannelBinding(channel) || !isStringArray(ownerUserIds) || (adminUserIds !== undefined && !isStringArray(adminUserIds))) {
+        sendJson(response, 400, { ok: false, error: "Access update requires channel and owner/admin user ID arrays.", code: "UiChannelInvalidActionRequest" });
+        return;
+      }
+      sendJson(response, 200, await runUiChannelAction({ action: "update_access", channel, ownerUserIds, ...(adminUserIds === undefined ? {} : { adminUserIds }), confirm: true }));
+      return;
+    }
+
     const channel = body.channel;
     if (!isUiDaemonChannel(channel)) {
       sendJson(response, 400, { ok: false, error: "Daemon actions require channel telegram|zalo|cron.", code: "UiChannelInvalidActionRequest" });
@@ -869,8 +887,7 @@ async function handleRequestAsync(request: IncomingMessage, response: ServerResp
         sendJson(response, 400, { ok: false, error: "Saving an agent requires id, displayName, role, and description.", code: "UiAgentsInvalidActionRequest" });
         return;
       }
-      sendJson(response, 200, await runUiAgentsAction({
-        action: body.action,
+      const agentInput = {
         id: body.id,
         displayName: body.displayName,
         role: body.role,
@@ -878,8 +895,12 @@ async function handleRequestAsync(request: IncomingMessage, response: ServerResp
         ...(typeof body.model === "string" && body.model.trim() ? { model: body.model } : {}),
         ...(Array.isArray(body.tools) && body.tools.every((tool) => typeof tool === "string") ? { tools: body.tools } : {}),
         ...(isWorkforceApprovalPolicy(body.approvalPolicy) ? { approvalPolicy: body.approvalPolicy } : {}),
-        confirm: true,
-      }));
+      };
+      if (body.action === "update") {
+        sendJson(response, 200, await runUiAgentsAction({ action: "update", ...agentInput, ...(body.public === null || isUiPublicAgentPolicy(body.public) ? { public: body.public } : {}), confirm: true }));
+      } else {
+        sendJson(response, 200, await runUiAgentsAction({ action: "hire", ...agentInput, confirm: true }));
+      }
       return;
     }
     if (body.action === "pause" || body.action === "resume" || body.action === "remove") {
@@ -1169,8 +1190,21 @@ function isUiChatSessionFilter(value: string): value is "all" | "approval" | "ca
   return value === "all" || value === "approval" || value === "cancelled" || value === "error" || value === "fork" || value === "retry";
 }
 
-function isUiChannelAction(value: unknown): value is "daemon_start" | "daemon_stop" | "daemon_restart" | "cron_toggle" | "cron_add" | "cron_update" | "cron_delete" | "cron_trigger" {
-  return value === "daemon_start" || value === "daemon_stop" || value === "daemon_restart" || value === "cron_toggle" || value === "cron_add" || value === "cron_update" || value === "cron_delete" || value === "cron_trigger";
+function isUiChannelAction(value: unknown): value is "daemon_start" | "daemon_stop" | "daemon_restart" | "cron_toggle" | "cron_add" | "cron_update" | "cron_delete" | "cron_trigger" | "update_access" {
+  return value === "daemon_start" || value === "daemon_stop" || value === "daemon_restart" || value === "cron_toggle" || value === "cron_add" || value === "cron_update" || value === "cron_delete" || value === "cron_trigger" || value === "update_access";
+}
+
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((item) => typeof item === "string");
+}
+
+function isUiPublicAgentPolicy(value: unknown): value is PublicWorkforceAgentConfig {
+  if (!isRecord(value) || value.enabled !== true) return false;
+  return (value.toolPolicy === undefined || value.toolPolicy === "deny" || value.toolPolicy === "allowlist")
+    && (value.customerMemory === undefined || value.customerMemory === "isolated" || value.customerMemory === "primary")
+    && (value.customerMemoryWrite === undefined || value.customerMemoryWrite === "deny" || value.customerMemoryWrite === "pending" || value.customerMemoryWrite === "allow")
+    && (value.knowledgeAccess === undefined || value.knowledgeAccess === "agent-only" || value.knowledgeAccess === "none" || value.knowledgeAccess === "primary")
+    && (value.allowUnsafeSharedData === undefined || typeof value.allowUnsafeSharedData === "boolean");
 }
 
 function isUiCronWriteRequest(value: Record<string, unknown>, requireId: boolean): value is Record<string, unknown> & { id?: number; name: string; scheduleType: "interval" | "cron_expr" | "once"; scheduleValue: string; prompt: string; channel?: string; enabled: boolean } {

@@ -3,7 +3,7 @@ import { assignWorkforceTask, listWorkforceTasks, updateWorkforceTaskStatus, typ
 import { bindWorkforceAgentChannel, hireWorkforceAgent, listWorkforceAgents, removeWorkforceAgent, setWorkforceAgentEnabled, unbindWorkforceAgentChannel, updateWorkforceAgent, type WorkforceAgentApprovalPolicy, type WorkforceAgentRecord } from "../../agents/registry.js";
 import { INTERNAL_TOOL_NAMES } from "../../chat/mcp-tool-use.js";
 import { getDaemonChannelStatus, runDaemonCommand } from "../../cli/commands/daemon.js";
-import { loadConfig, type AgentChannelBinding } from "../../runtime/config.js";
+import { loadConfig, type AgentChannelBinding, type PublicWorkforceAgentConfig } from "../../runtime/config.js";
 import { getRuntimePaths, type RuntimePaths } from "../../runtime/paths.js";
 
 export interface UiAgentsSummary {
@@ -155,6 +155,7 @@ interface UiAgentsUpdateOptions {
   model?: string;
   tools?: string[];
   approvalPolicy?: WorkforceAgentApprovalPolicy;
+  public?: PublicWorkforceAgentConfig | null;
   confirm: boolean;
   paths?: RuntimePaths;
 }

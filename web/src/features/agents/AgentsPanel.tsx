@@ -15,7 +15,7 @@ import { fetchJson, formatError } from "@/lib/api";
 import { confirmDialog } from "@/lib/dialogs";
 import { ToastEffect } from "@/lib/toasts";
 import { cn } from "@/lib/utils";
-import type { AgentAvailableTool, AgentsActionResult, AgentsSummary, WorkforceAgent, WorkforceAgentChannel, WorkforceApprovalPolicy, WorkforceTask, WorkforceTaskStatus } from "./types";
+import type { AgentAvailableTool, AgentsActionResult, AgentsSummary, PublicAgentPolicy, WorkforceAgent, WorkforceAgentChannel, WorkforceApprovalPolicy, WorkforceTask, WorkforceTaskStatus } from "./types";
 
 interface AgentsPanelProps {
   data?: AgentsSummary;
@@ -32,6 +32,7 @@ interface HireDraft {
   model: string;
   tools: string[];
   approvalPolicy: WorkforceApprovalPolicy;
+  public?: PublicAgentPolicy | null;
 }
 
 interface TaskDraft {
@@ -124,6 +125,7 @@ export function AgentsPanel({ data, loading, onData, onLoading }: AgentsPanelPro
       model: editDraft.model.trim(),
       tools: editDraft.tools,
       approvalPolicy: editDraft.approvalPolicy,
+      public: editDraft.public,
       confirm: true,
     }), "Đã cập nhật agent.");
     setEditAgentId(null);
@@ -141,6 +143,7 @@ export function AgentsPanel({ data, loading, onData, onLoading }: AgentsPanelPro
       model: agent.model ?? "",
       tools: agent.tools ?? [],
       approvalPolicy: agent.approvalPolicy,
+      public: agent.public ?? null,
     });
     setDrawer("edit");
   }
@@ -303,7 +306,10 @@ function HireForm({ draft, tools, loading, onDraft, onSubmit }: { draft: HireDra
 }
 
 function AgentProfileForm({ draft, tools, loading, submitLabel, idLocked = false, onDraft, onSubmit }: { draft: HireDraft; tools: AgentAvailableTool[]; loading: boolean; submitLabel: string; idLocked?: boolean; onDraft: (draft: HireDraft) => void; onSubmit: (event: FormEvent<HTMLFormElement>) => Promise<void> }): ReactElement {
-  return <form className="grid gap-3" onSubmit={(event) => void onSubmit(event)}><FormField label="Mã agent"><Input value={draft.id} onChange={(event) => onDraft({ ...draft, id: event.target.value })} placeholder="researcher" disabled={idLocked} required /></FormField><FormField label="Tên hiển thị"><Input value={draft.displayName} onChange={(event) => onDraft({ ...draft, displayName: event.target.value })} placeholder="Mika" required /></FormField><FormField label="Vai trò"><Input value={draft.role} onChange={(event) => onDraft({ ...draft, role: event.target.value })} placeholder="Trợ lý nghiên cứu" required /></FormField><FormField label="Mô tả"><Textarea value={draft.description} onChange={(event) => onDraft({ ...draft, description: event.target.value })} placeholder="Nghiên cứu, tổng hợp và đưa ra đề xuất." required /></FormField><FormField label="Model riêng (tuỳ chọn)"><Input value={draft.model} onChange={(event) => onDraft({ ...draft, model: event.target.value })} placeholder="openai/gpt-4.1-mini" /></FormField><ToolCheckboxPicker tools={tools} selected={draft.tools} onSelected={(selected) => onDraft({ ...draft, tools: selected })} /><FormField label="Quyền thao tác"><Select value={draft.approvalPolicy} onChange={(event) => onDraft({ ...draft, approvalPolicy: event.target.value as WorkforceApprovalPolicy })}><option value="ask-for-external-actions">Hỏi trước thao tác bên ngoài</option><option value="ask-for-all-actions">Hỏi trước mọi thao tác</option><option value="deny-external-actions">Chặn thao tác bên ngoài</option></Select></FormField><Button type="submit" disabled={loading}><UserPlus /> {submitLabel}</Button></form>;
+  const publicPolicy = draft.public;
+  const unsafe = publicPolicy?.customerMemory === "primary" || publicPolicy?.knowledgeAccess === "primary" || publicPolicy?.toolPolicy === "allowlist";
+  const updatePublic = (changes: Partial<PublicAgentPolicy>) => onDraft({ ...draft, public: { enabled: true, customerMemory: "isolated", customerMemoryWrite: "pending", knowledgeAccess: "agent-only", toolPolicy: "deny", ...publicPolicy, ...changes } });
+  return <form className="grid gap-3" onSubmit={(event) => void onSubmit(event)}><FormField label="Mã agent"><Input value={draft.id} onChange={(event) => onDraft({ ...draft, id: event.target.value })} placeholder="researcher" disabled={idLocked} required /></FormField><FormField label="Tên hiển thị"><Input value={draft.displayName} onChange={(event) => onDraft({ ...draft, displayName: event.target.value })} placeholder="Mika" required /></FormField><FormField label="Vai trò"><Input value={draft.role} onChange={(event) => onDraft({ ...draft, role: event.target.value })} placeholder="Trợ lý nghiên cứu" required /></FormField><FormField label="Mô tả"><Textarea value={draft.description} onChange={(event) => onDraft({ ...draft, description: event.target.value })} placeholder="Nghiên cứu, tổng hợp và đưa ra đề xuất." required /></FormField><FormField label="Model riêng (tuỳ chọn)"><Input value={draft.model} onChange={(event) => onDraft({ ...draft, model: event.target.value })} placeholder="openai/gpt-4.1-mini" /></FormField><ToolCheckboxPicker tools={tools} selected={draft.tools} onSelected={(selected) => onDraft({ ...draft, tools: selected })} /><FormField label="Quyền thao tác"><Select value={draft.approvalPolicy} onChange={(event) => onDraft({ ...draft, approvalPolicy: event.target.value as WorkforceApprovalPolicy })}><option value="ask-for-external-actions">Hỏi trước thao tác bên ngoài</option><option value="ask-for-all-actions">Hỏi trước mọi thao tác</option><option value="deny-external-actions">Chặn thao tác bên ngoài</option></Select></FormField>{idLocked ? <div className="grid gap-3 rounded-2xl border border-white/10 bg-background/35 p-3"><label className="flex items-center gap-2 text-sm font-medium"><input type="checkbox" checked={Boolean(publicPolicy)} onChange={(event) => onDraft({ ...draft, public: event.target.checked ? { enabled: true, customerMemory: "isolated", customerMemoryWrite: "pending", knowledgeAccess: "agent-only", toolPolicy: "deny" } : null })} /> Agent hỗ trợ khách hàng công khai</label>{publicPolicy ? <><p className="text-xs text-muted-foreground">Mặc định cách ly từng khách, chỉ dùng tri thức của agent và chặn tools. Lệnh quản trị/approval không dùng được trong channel công khai.</p><FormField label="Bộ nhớ khách"><Select value={publicPolicy.customerMemory ?? "isolated"} onChange={(event) => updatePublic({ customerMemory: event.target.value as "isolated" | "primary" })}><option value="isolated">Cách ly theo khách</option><option value="primary">Dùng bộ nhớ primary</option></Select></FormField><FormField label="Ghi bộ nhớ khách"><Select value={publicPolicy.customerMemoryWrite ?? "pending"} onChange={(event) => updatePublic({ customerMemoryWrite: event.target.value as "deny" | "pending" | "allow" })}><option value="pending">Chờ duyệt</option><option value="deny">Không ghi</option><option value="allow">Tự ghi</option></Select></FormField><FormField label="Knowledge base"><Select value={publicPolicy.knowledgeAccess ?? "agent-only"} onChange={(event) => updatePublic({ knowledgeAccess: event.target.value as "agent-only" | "none" | "primary" })}><option value="agent-only">Chỉ knowledge của agent</option><option value="none">Không dùng knowledge</option><option value="primary">Dùng knowledge primary</option></Select></FormField><FormField label="Chính sách tools"><Select value={publicPolicy.toolPolicy ?? "deny"} onChange={(event) => updatePublic({ toolPolicy: event.target.value as "deny" | "allowlist" })}><option value="deny">Chặn toàn bộ</option><option value="allowlist">Dùng allowlist agent</option></Select></FormField>{unsafe ? <label className="flex items-start gap-2 text-xs text-destructive"><input type="checkbox" checked={publicPolicy.allowUnsafeSharedData === true} onChange={(event) => updatePublic({ allowUnsafeSharedData: event.target.checked })} /> Tôi hiểu lựa chọn này có thể lộ dữ liệu/tools dùng chung.</label> : null}</> : null}</div> : null}<Button type="submit" disabled={loading || (unsafe && publicPolicy?.allowUnsafeSharedData !== true)}><UserPlus /> {submitLabel}</Button></form>;
 }
 
 function ToolCheckboxPicker({ tools, selected, onSelected }: { tools: AgentAvailableTool[]; selected: string[]; onSelected: (selected: string[]) => void }): ReactElement {

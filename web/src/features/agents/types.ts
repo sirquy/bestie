@@ -1,6 +1,7 @@
 export type WorkforceTaskStatus = "queued" | "in_progress" | "done" | "blocked" | "canceled";
 export type WorkforceApprovalPolicy = "ask-for-external-actions" | "ask-for-all-actions" | "deny-external-actions";
 export type WorkforceAgentChannel = "telegram" | "zalo" | "zalo-personal";
+export interface PublicAgentPolicy { enabled: true; toolPolicy?: "deny" | "allowlist"; customerMemory?: "isolated" | "primary"; customerMemoryWrite?: "deny" | "pending" | "allow"; knowledgeAccess?: "agent-only" | "none" | "primary"; allowUnsafeSharedData?: boolean; }
 
 export interface WorkforceAgent {
   id: string;
@@ -14,6 +15,7 @@ export interface WorkforceAgent {
   channels?: WorkforceAgentChannel[];
   memoryScope: string;
   approvalPolicy: WorkforceApprovalPolicy;
+  public?: PublicAgentPolicy;
 }
 
 export interface WorkforceTask {

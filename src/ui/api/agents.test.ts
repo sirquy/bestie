@@ -78,6 +78,29 @@ test("runUiAgentsAction manages profiles and task state", async () => {
   }
 });
 
+test("runUiAgentsAction saves a public workforce policy", async () => {
+  const paths = await createTempPaths();
+  try {
+    await writeConfig(createTestConfig(), paths);
+    await runUiAgentsAction({ action: "hire", id: "support", displayName: "Support", role: "Customer Support", description: "Help customers safely.", confirm: true, paths });
+
+    const result = await runUiAgentsAction({
+      action: "update",
+      id: "support",
+      displayName: "Support",
+      role: "Customer Support",
+      description: "Help customers safely.",
+      public: { enabled: true, customerMemory: "isolated", customerMemoryWrite: "pending", knowledgeAccess: "agent-only", toolPolicy: "deny" },
+      confirm: true,
+      paths,
+    });
+
+    assert.deepEqual(result.agents[0]?.public, { enabled: true, customerMemory: "isolated", customerMemoryWrite: "pending", knowledgeAccess: "agent-only", toolPolicy: "deny" });
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
 test("runUiAgentsAction can drain an empty queue without provider calls", async () => {
   const paths = await createTempPaths();
   try {

@@ -1,5 +1,5 @@
 ﻿export type DaemonChannel = "telegram" | "zalo" | "cron";
-export type ChannelAction = "daemon_start" | "daemon_stop" | "daemon_restart" | "cron_toggle" | "cron_add" | "cron_update" | "cron_delete" | "cron_trigger";
+export type ChannelAction = "daemon_start" | "daemon_stop" | "daemon_restart" | "cron_toggle" | "cron_add" | "cron_update" | "cron_delete" | "cron_trigger" | "update_access";
 export type CronScheduleType = "interval" | "cron_expr" | "once";
 
 export interface ChannelSummary {
@@ -26,6 +26,8 @@ export interface ConfiguredChannel {
   displayName: string;
   enabled: boolean;
   ownerConfigured: boolean;
+  ownerUserIds?: string[];
+  adminUserIds?: string[];
   tokenEnv?: string;
   secretPresent: boolean;
   daemon: {
