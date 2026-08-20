@@ -1,6 +1,6 @@
 {
   "name": "bestie-agent",
-  "version": "0.1.56",
+  "version": "0.1.57",
   "description": "Vietnamese-first bestie agent CLI.",
   "type": "module",
   "files": [
