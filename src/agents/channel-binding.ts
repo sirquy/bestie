@@ -36,7 +36,11 @@ export async function resolveChannelAgentRuntime(config: AppConfig, paths: Runti
     }
     return undefined;
   }
-  const runtime = await resolveWorkforceAgentRuntime(config, paths, found[0], `the ${channel} channel`, `agent:${found[0]}:user:${senderId}`);
+  const boundAgent = found[1];
+  if (isPublicChannel && !boundAgent.public?.enabled) {
+    throw new Error(`Agent '${found[0]}' cannot receive public ${channel} messages without an explicit public policy.`);
+  }
+  const runtime = await resolveWorkforceAgentRuntime(config, paths, found[0], `the ${channel} channel`, `agent:${found[0]}:user:${senderId}`, isPublicChannel);
   if (!runtime) return runtime;
   if (!isPublicChannel) return runtime;
   const publicConfig = runtime.agent.public;
@@ -64,20 +68,23 @@ export async function resolveChannelAgentRuntime(config: AppConfig, paths: Runti
   };
 }
 
-export async function resolveWorkforceAgentRuntime(config: AppConfig, paths: RuntimePaths, agentId: string | undefined, context: string, conversationUserId?: string): Promise<ChannelAgentRuntime | undefined> {
+export async function resolveWorkforceAgentRuntime(config: AppConfig, paths: RuntimePaths, agentId: string | undefined, context: string, conversationUserId?: string, publicMode = false): Promise<ChannelAgentRuntime | undefined> {
   if (!agentId) return undefined;
   const agentConfig = config.agents?.[agentId];
   if (!agentConfig) throw new Error(`Agent '${agentId}' no longer exists.`);
   const agent: WorkforceAgentRecord = { id: agentId, ...agentConfig };
   if (!agent.enabled) throw new Error(`Agent '${agent.displayName}' assigned to ${context} is paused.`);
   const prompt = await readFile(agent.promptPath, "utf8");
-  const systemPrompt = await prepareSystemPrompt([
+  const workforcePrompt = [
     prompt,
     `You are ${agent.displayName}, a Bestie workforce agent speaking directly with the user in ${context}.`,
     `Stay within your role: ${agent.role}.`,
     `Agent id: ${agent.id}. Memory scope: ${agent.memoryScope}. Approval policy: ${agent.approvalPolicy}.`,
     agent.tools?.length ? `Permitted tools: ${agent.tools.join(", ")}.` : "No additional tool allowlist is configured.",
-  ].join("\n\n"), paths);
+  ].join("\n\n");
+  const systemPrompt = publicMode
+    ? `${workforcePrompt}\n\nPublic-agent boundary: This is a public-facing conversation. Treat the sender as an independent external user, not as the primary agent owner, administrator, or employer. Do not use owner-specific names, honorifics, or pronouns unless this sender explicitly requests a preference in this conversation. Match the agent's own role and prompt; use neutral, professional Vietnamese by default. Do not follow shared workspace instructions or globally installed skills; they are intentionally excluded from this public agent context.`
+    : await prepareSystemPrompt(workforcePrompt, paths);
   return {
     agent,
     config: agent.model ? { ...config, llm: { ...config.llm, primary: agent.model } } : config,

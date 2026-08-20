@@ -463,7 +463,9 @@ export async function handleZaloUpdate(update: ZaloUpdate, options: ZaloUpdateHa
       approver: channelAgent?.publicAccess ? undefined : createZaloPermissionApprover(options.client, incoming.chatId, incoming.senderId, options.paths, channel),
       policy: channelAgent?.policy ?? ZALO_PERMISSION_POLICY,
       streamFinalResponse: true,
-      onToolActivity: async (activity) => handleZaloToolActivity(response, activity, channelAgent?.agent.displayName ?? options.config.agent.name),
+      onToolActivity: channelAgent?.publicAccess
+        ? async () => undefined
+        : async (activity) => handleZaloToolActivity(response, activity, channelAgent?.agent.displayName ?? options.config.agent.name),
       runtimeContext,
       outboundFileSender: createZaloOutboundFileSender(options.client, incoming.chatId, channel),
     });

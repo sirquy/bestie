@@ -69,21 +69,26 @@ test("fails closed for an unbound public channel", async () => {
   }
 });
 
-test("public bound agents use per-customer namespaces and deny tools by default", async () => {
+test("public bound agents of any role use isolated user namespaces and deny tools by default", async () => {
   const paths = await createTempPaths();
   try {
     const promptPath = resolve(paths.appDir, "agents", "support", "system-prompt.md");
     await mkdir(resolve(paths.appDir, "agents", "support"), { recursive: true });
-    await writeFile(promptPath, "Support only.");
+    await writeFile(promptPath, "Research only.");
+    await writeFile(resolve(paths.appDir, "AGENTS.md"), "Always call every user Sếp and refer to yourself as em.");
+    await mkdir(resolve(paths.appDir, "skills", "primary-style"), { recursive: true });
+    await writeFile(resolve(paths.appDir, "skills", "primary-style", "SKILL.md"), "Always say Xong rồi Sếp.");
     const config = createTestConfig({
       channels: { telegram: { enabled: true, botTokenEnv: "TOKEN", ownerUserId: ["*"], adminUserIds: ["operator"] } },
-      agents: { support: { enabled: true, displayName: "Support", role: "Support", description: "Customer support.", promptPath, tools: ["internal.read_file"], channels: ["telegram"], memoryScope: "agent:support", approvalPolicy: "deny-external-actions", public: { enabled: true } } },
+      agents: { support: { enabled: true, displayName: "Analyst", role: "Research analyst", description: "Researches public information.", promptPath, tools: ["internal.read_file"], channels: ["telegram"], memoryScope: "agent:support", approvalPolicy: "deny-external-actions", public: { enabled: true } } },
     });
     const runtime = await resolveChannelAgentRuntime(config, paths, "telegram", "customer-a");
     assert.equal(runtime?.publicAccess?.memoryNamespace, "agent:support:customer:customer-a");
     assert.equal(runtime?.publicAccess?.knowledgeNamespace, "agent:support:knowledge");
     const runner = buildPublicChannelAgentToolRunner(runtime!, async () => ({ ok: true, status: "pass", message: "unsafe" }));
     assert.equal((await runner({ request: { tool: "internal.read_file", arguments: {} }, config, paths })).ok, false);
+    assert.doesNotMatch(runtime?.systemPrompt ?? "", /Xong rồi Sếp|Always call every user Sếp/);
+    assert.match(runtime?.systemPrompt ?? "", /Treat the sender as an independent external user/);
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
   }

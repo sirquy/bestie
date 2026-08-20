@@ -2175,6 +2175,7 @@ test("handleTelegramUpdate isolates public customer context and uses only the bo
   const paths = await createTempPaths();
   const sentMessages: Array<{ chatId: number; text: string }> = [];
   const chatRequests: Array<{ messages: unknown[] }> = [];
+  let completionCalls = 0;
   const promptPath = resolve(paths.appDir, "agents", "support", "system-prompt.md");
   const publicConfig: AppConfig = {
     ...config,
@@ -2223,7 +2224,10 @@ test("handleTelegramUpdate isolates public customer context and uses only the bo
       client: createRecordingClient(sentMessages),
       chatCompletion: async (_config, _apiKey, options) => {
         chatRequests.push({ messages: options.messages as unknown[] });
-        return "Public support reply.";
+        completionCalls += 1;
+        return completionCalls === 1
+          ? '{"tool":"internal.list_files","arguments":{"path":".","limit":10}}'
+          : "Public support reply.";
       },
     });
 
@@ -2232,7 +2236,7 @@ test("handleTelegramUpdate isolates public customer context and uses only the bo
     assert.match(prompt, /Customer A has an extended warranty/);
     assert.match(prompt, /Public warranty guide/);
     assert.doesNotMatch(prompt, /Customer B has a disputed warranty|Customer B private conversation|Internal warranty escalation secret|Internal warranty playbook/);
-    assert.deepEqual(sentMessages.at(-1), { chatId: 777, text: "Public support reply." });
+    assert.deepEqual(sentMessages, [{ chatId: 777, text: "Public support reply." }]);
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
   }

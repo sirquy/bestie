@@ -524,6 +524,10 @@ export async function handleTelegramUpdate(update: TelegramUpdate, options: Tele
     }
     const response = createChannelResponseController(adapter.outbound.createResponseAdapter(chatId));
     const handleToolActivity = async (activity: AgentToolActivity): Promise<void> => {
+      if (channelAgent?.publicAccess) {
+        return;
+      }
+
       if (!shouldShowToolProgress(activity)) {
         return;
       }

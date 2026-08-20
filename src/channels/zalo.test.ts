@@ -830,6 +830,7 @@ test("handleZaloUpdate isolates public customer context and uses only the bound 
   const paths = await createTempPaths();
   const sent: Array<{ chatId: string; text: string }> = [];
   const chatRequests: Array<{ messages: unknown[] }> = [];
+  let completionCalls = 0;
   const promptPath = resolve(paths.appDir, "agents", "support", "system-prompt.md");
   const publicConfig: AppConfig = {
     ...config,
@@ -878,7 +879,10 @@ test("handleZaloUpdate isolates public customer context and uses only the bound 
       client: createRecordingClient(sent),
       chatCompletion: async (_config, _apiKey, options) => {
         chatRequests.push({ messages: options.messages as unknown[] });
-        return "Public support reply.";
+        completionCalls += 1;
+        return completionCalls === 1
+          ? '{"tool":"internal.list_files","arguments":{"path":".","limit":10}}'
+          : "Public support reply.";
       },
     });
 
@@ -887,7 +891,7 @@ test("handleZaloUpdate isolates public customer context and uses only the bound 
     assert.match(prompt, /Customer A has an active subscription/);
     assert.match(prompt, /Public subscription guide/);
     assert.doesNotMatch(prompt, /Customer B has a billing dispute|Customer B private conversation|Internal billing escalation secret|Internal subscription playbook/);
-    assert.deepEqual(sent.at(-1), { chatId: "chat-a", text: "Public support reply." });
+    assert.deepEqual(sent, [{ chatId: "chat-a", text: "Public support reply." }]);
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
   }
