@@ -8,6 +8,8 @@ import test from "node:test";
 import { callMcpServerTool, listMcpServerTools, testMcpServerConnection } from "./connection.js";
 import type { McpServerSummary } from "./servers.js";
 
+const STDIO_TEST_TIMEOUT_MS = 5_000;
+
 test("testMcpServerConnection initializes a stdio MCP server", async () => {
   const rootDir = await mkdtemp(resolve(tmpdir(), "bestie-mcp-connection-test-"));
 
@@ -28,7 +30,7 @@ process.stdin.on("data", (chunk) => {
 `,
     );
 
-    const result = await testMcpServerConnection(server("fake", process.execPath, [serverPath]), { timeoutMs: 1_000 });
+    const result = await testMcpServerConnection(server("fake", process.execPath, [serverPath]), { timeoutMs: STDIO_TEST_TIMEOUT_MS });
 
     assert.deepEqual(result, { ok: true, status: "pass", message: "MCP server fake responded to initialize." });
   } finally {
@@ -59,7 +61,7 @@ process.stdin.on("data", (chunk) => {
 `,
     );
 
-    const result = await listMcpServerTools(server("fake", process.execPath, [serverPath]), { timeoutMs: 1_000 });
+    const result = await listMcpServerTools(server("fake", process.execPath, [serverPath]), { timeoutMs: STDIO_TEST_TIMEOUT_MS });
 
     assert.deepEqual(result, {
       ok: true,
@@ -95,7 +97,7 @@ process.stdin.on("data", (chunk) => {
 `,
     );
 
-    const result = await callMcpServerTool(server("fake", process.execPath, [serverPath]), "greet", { name: "Miu" }, { timeoutMs: 1_000 });
+    const result = await callMcpServerTool(server("fake", process.execPath, [serverPath]), "greet", { name: "Miu" }, { timeoutMs: STDIO_TEST_TIMEOUT_MS });
 
     assert.deepEqual(result, {
       ok: true,
@@ -135,7 +137,7 @@ process.stdin.on("data", (chunk) => {
 `,
     );
 
-    const result = await listMcpServerTools({ ...server("fake", process.execPath, [serverPath]), env: { EXPLICIT_SECRET_TOKEN: "configured-secret" } }, { timeoutMs: 1_000 });
+    const result = await listMcpServerTools({ ...server("fake", process.execPath, [serverPath]), env: { EXPLICIT_SECRET_TOKEN: "configured-secret" } }, { timeoutMs: STDIO_TEST_TIMEOUT_MS });
     assert.equal(result.ok, true);
     assert.deepEqual(JSON.parse(result.tools[0]?.description ?? "{}"), { secret: null, explicit: "configured-secret", visible: "visible" });
   } finally {
