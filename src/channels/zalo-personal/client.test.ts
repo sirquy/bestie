@@ -23,7 +23,7 @@ function createApi(sent: Array<{ message: unknown; threadId: string; type: numbe
   };
 }
 
-test("Zalo Personal client maps direct text and media, while suppressing self and group events", async () => {
+test("Zalo Personal client maps direct text, media, and stickers, while suppressing self and group events", async () => {
   const client = ZaloPersonalClient.fromApi(createApi([]));
 
   const text = client.toUpdate({
@@ -38,10 +38,17 @@ test("Zalo Personal client maps direct text and media, while suppressing self an
     isSelf: false,
     data: { msgId: "image-1", uidFrom: "controller-1", msgType: "image", content: { href: "https://media.example.test/photo.jpg", title: "photo.jpg", totalSize: 3, type: "image" } },
   });
+  const sticker = client.toUpdate({
+    threadId: "controller-1",
+    type: 0,
+    isSelf: false,
+    data: { msgId: "sticker-1", uidFrom: "controller-1", msgType: "sticker", content: { emoji: "🙂" } },
+  });
 
   assert.deepEqual(text?.message, { message_id: "text-1", from: { id: "controller-1" }, chat: { id: "controller-1", type: "private" }, text: "xin chào" });
   assert.deepEqual(image?.message?.photo, { file_id: "https://media.example.test/photo.jpg", file_path: "https://media.example.test/photo.jpg", file_name: "photo.jpg", file_size: 3 });
   assert.deepEqual(await client.getFile("https://media.example.test/photo.jpg"), { fileId: "https://media.example.test/photo.jpg", filePath: "https://media.example.test/photo.jpg", fileSize: 3 });
+  assert.equal(sticker?.message?.text, "[User sent a sticker.]");
   assert.equal(client.toUpdate({ threadId: "controller-1", type: 0, isSelf: true, data: { uidFrom: "controller-1", content: "loop" } }), undefined);
   assert.equal(client.toUpdate({ threadId: "group-1", type: 1, isSelf: false, data: { uidFrom: "controller-1", content: "group" } }), undefined);
 });

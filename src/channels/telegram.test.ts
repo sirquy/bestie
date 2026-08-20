@@ -62,6 +62,18 @@ test("mapTelegramIncomingMessage normalizes owner text and captions", () => {
   assert.equal(captionIncoming.caption, "look");
 });
 
+test("mapTelegramIncomingMessage represents sticker-only messages as chat input", () => {
+  const stickerMessage = {
+    message_id: 11,
+    from: { id: 12345, is_bot: false, first_name: "Boss" },
+    chat: { id: 777, type: "private" },
+    date: 1,
+    sticker: { file_id: "sticker-file", file_unique_id: "sticker-unique", width: 512, height: 512, is_animated: false, is_video: false, type: "regular" },
+  } as NonNullable<TelegramUpdate["message"]>;
+
+  assert.equal(mapTelegramIncomingMessage(stickerMessage).text, "[User sent a sticker.]");
+});
+
 test("createTelegramOutboundAdapter wires responses and typing activity", async () => {
   const sentMessages: Array<{ chatId: number; text: string }> = [];
   const editedMessages: Array<{ chatId: number; messageId: number; text: string }> = [];

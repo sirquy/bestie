@@ -141,7 +141,13 @@ export class ZaloPersonalClient implements ZaloClient {
     if (message.isSelf || message.type !== USER_THREAD_TYPE || !message.threadId || !message.data.uidFrom) return undefined;
     const attachment = extractAttachment(message.data.content, message.data.msgType);
     if (attachment) this.attachments.set(attachment.id, { url: attachment.url, bytes: attachment.bytes });
-    const text = typeof message.data.content === "string" ? message.data.content : "";
+    const text = typeof message.data.content === "string"
+      ? message.data.content
+      : attachment
+        ? ""
+        : isStickerMessage(message.data.msgType)
+          ? "[User sent a sticker.]"
+          : "";
     return {
       update_id: stableUpdateId(message),
       message: {
@@ -249,15 +255,19 @@ async function loadZca(): Promise<ZaloPersonalZcaModule> {
   return import("zca-js") as Promise<ZaloPersonalZcaModule>;
 }
 
-function extractAttachment(content: unknown, msgType: string | undefined): { id: string; url: string; name: string; mimeType?: string; bytes?: number; kind: "photo" | "document" | "video" | "audio" } | undefined {
+function extractAttachment(content: unknown, msgType: string | undefined): { id: string; url: string; name: string; mimeType?: string; bytes?: number; kind: "photo" | "document" | "video" | "audio" | "sticker" } | undefined {
   if (!content || typeof content !== "object" || Array.isArray(content)) return undefined;
   const record = content as Record<string, unknown>;
   const url = firstString(record, ["href", "url", "fileUrl", "hdUrl", "normalUrl"]);
   if (!url || !/^https:\/\//i.test(url)) return undefined;
   const type = `${msgType ?? ""} ${firstString(record, ["type", "fileType"]) ?? ""}`.toLowerCase();
-  const kind = type.includes("image") || type.includes("photo") ? "photo" : type.includes("video") ? "video" : type.includes("audio") || type.includes("voice") ? "audio" : "document";
+  const kind = isStickerMessage(type) ? "sticker" : type.includes("image") || type.includes("photo") ? "photo" : type.includes("video") ? "video" : type.includes("audio") || type.includes("voice") ? "audio" : "document";
   const id = firstString(record, ["fileId", "photoId", "id"]) ?? url;
   return { id, url, name: firstString(record, ["title", "fileName", "name"]) ?? `zalo-${kind}`, mimeType: firstString(record, ["mimeType", "contentType"]), bytes: firstNumber(record, ["totalSize", "size", "fileSize"]), kind };
+}
+
+function isStickerMessage(msgType: string | undefined): boolean {
+  return msgType?.toLowerCase().includes("sticker") === true;
 }
 
 function stableUpdateId(message: ZaloPersonalInboundMessage): number {

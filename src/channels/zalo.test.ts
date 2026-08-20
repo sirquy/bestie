@@ -110,6 +110,16 @@ test("ZaloHttpClient treats string timeout code as no updates", async () => {
   assert.deepEqual(await client.getUpdates(undefined, 20), []);
 });
 
+test("mapZaloIncomingMessage represents sticker-only messages as chat input", () => {
+  const incoming = mapZaloIncomingMessage({
+    from: { id: "customer-a" },
+    chat: { id: "chat-a" },
+    sticker: { emoji: "🙂" },
+  });
+
+  assert.equal(incoming.text, "[User sent a sticker.]");
+});
+
 test("ZaloHttpClient sends text messages with Markdown parse mode", async () => {
   const calls: Array<{ url: string; init?: RequestInit }> = [];
   const client = new ZaloHttpClient("bot-token", async (input, init) => {

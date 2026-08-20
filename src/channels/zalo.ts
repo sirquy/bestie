@@ -498,14 +498,21 @@ export async function handleZaloUpdate(update: ZaloUpdate, options: ZaloUpdateHa
 
 export function mapZaloIncomingMessage(message: ZaloMessage): ChannelIncomingMessage<string, string | number | undefined, ZaloMessage> {
   const senderId = extractZaloSenderId(message);
+  const text = typeof message.text === "string" ? message.text : message.text?.text;
   return {
     chatId: extractZaloChatId(message) ?? senderId,
     messageId: message.message_id ?? message.messageId,
     senderId,
-    text: typeof message.text === "string" ? message.text : message.text?.text,
+    text: text || (isZaloStickerMessage(message) ? "[User sent a sticker.]" : undefined),
     caption: message.caption,
     raw: message,
   };
+}
+
+function isZaloStickerMessage(message: ZaloMessage): boolean {
+  if (message.sticker !== undefined) return true;
+  if (inferZaloAttachmentKind(message) === "sticker") return true;
+  return Array.isArray(message.attachments) && message.attachments.some((attachment) => inferZaloAttachmentKind(asRecord(attachment)) === "sticker");
 }
 
 function extractZaloSenderId(message: ZaloMessage): string {

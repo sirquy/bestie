@@ -653,7 +653,7 @@ export function mapTelegramIncomingMessage(message: NonNullable<TelegramUpdate["
     messageId: message.message_id,
     senderId: String(message.from?.id ?? ""),
     senderUsername: message.from?.username,
-    text: message.text,
+    text: message.text ?? (message.sticker ? "[User sent a sticker.]" : undefined),
     caption: message.caption,
     raw: message,
   };
@@ -1292,18 +1292,6 @@ function getTelegramAttachment(message: NonNullable<TelegramUpdate["message"]>):
       width: message.video.width,
       height: message.video.height,
       duration: message.video.duration,
-    };
-  }
-
-  if (message.sticker) {
-    return {
-      kind: "sticker",
-      fileId: message.sticker.file_id,
-      fileUniqueId: message.sticker.file_unique_id,
-      fileSize: message.sticker.file_size,
-      width: message.sticker.width,
-      height: message.sticker.height,
-      emoji: message.sticker.emoji,
     };
   }
 
