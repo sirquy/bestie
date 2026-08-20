@@ -8,9 +8,6 @@ import { loadConfig } from "../../runtime/config.js";
 import { getRuntimePaths, type RuntimePaths } from "../../runtime/paths.js";
 import type { ActionPermissionRequest, ActionPermissionResult } from "../../safety/permission-policy.js";
 
-export const DEFAULT_UI_KNOWLEDGE_GRAPH_LIMIT = 1000;
-export const MAX_UI_KNOWLEDGE_GRAPH_LIMIT = 500;
-
 const KNOWLEDGE_GRAPH_ANALYSIS_LIMIT = 10_000;
 
 export interface UiKnowledgeGraphDisplayCount {
@@ -151,51 +148,41 @@ export interface UiKnowledgeAuditEvent {
 export type UiKnowledgeGraphTrustSummary = KnowledgeTrustSummary;
 export type UiKnowledgeTrustMetrics = KnowledgeTrustMetrics;
 
-export async function getUiKnowledgeGraphSummary(paths: RuntimePaths = getRuntimePaths(), limit = DEFAULT_UI_KNOWLEDGE_GRAPH_LIMIT): Promise<UiKnowledgeGraphSummary> {
-  const normalizedLimit = normalizeUiKnowledgeGraphLimit(limit);
+export async function getUiKnowledgeGraphSummary(paths: RuntimePaths = getRuntimePaths()): Promise<UiKnowledgeGraphSummary> {
   const databaseExists = await fileExists(paths.memoryDbPath);
   if (!databaseExists) {
-    return emptyKnowledgeGraphSummary(paths, normalizedLimit);
+    return emptyKnowledgeGraphSummary(paths);
   }
 
   const store = await SqliteMemoryStore.open(paths);
   try {
-    const entities = limitKnowledgeGraphItems(store.listKnowledgeEntities({ limit: normalizedLimit + 1 }), normalizedLimit);
-    const relations = limitKnowledgeGraphItems(store.listKnowledgeRelations(normalizedLimit + 1), normalizedLimit);
-    const pending = limitKnowledgeGraphItems(store.listPendingKnowledgeItems(normalizedLimit + 1), normalizedLimit);
-    return buildKnowledgeGraphSummary(paths, store, entities.items, relations.items, pending.items, databaseExists, {
-      limit: normalizedLimit,
-      entitiesTruncated: entities.truncated,
-      relationsTruncated: relations.truncated,
-      pendingTruncated: pending.truncated,
+    return buildKnowledgeGraphSummary(paths, store, store.listKnowledgeEntities({ limit: null }), store.listKnowledgeRelations(null), store.listPendingKnowledgeItems(null), databaseExists, {
+      limit: 0,
+      entitiesTruncated: false,
+      relationsTruncated: false,
+      pendingTruncated: false,
     });
   } finally {
     store.close();
   }
 }
 
-export async function searchUiKnowledgeGraph(query: string, paths: RuntimePaths = getRuntimePaths(), limit = DEFAULT_UI_KNOWLEDGE_GRAPH_LIMIT): Promise<UiKnowledgeGraphSearchResult> {
-  const normalizedLimit = normalizeUiKnowledgeGraphLimit(limit);
+export async function searchUiKnowledgeGraph(query: string, paths: RuntimePaths = getRuntimePaths()): Promise<UiKnowledgeGraphSearchResult> {
   const databaseExists = await fileExists(paths.memoryDbPath);
   if (!databaseExists || query.trim().length === 0) {
-    return { ...emptyKnowledgeGraphSummary(paths, normalizedLimit), query };
+    return { ...emptyKnowledgeGraphSummary(paths), query };
   }
 
   const store = await SqliteMemoryStore.open(paths);
   try {
-    const graph = store.searchKnowledgeGraph(query, normalizedLimit + 1);
-    const entities = limitKnowledgeGraphItems(graph.entities, normalizedLimit);
-    const relations = limitKnowledgeGraphItems(graph.relations, normalizedLimit);
-    const pending = limitKnowledgeGraphItems(
-      store.listPendingKnowledgeItems(KNOWLEDGE_GRAPH_ANALYSIS_LIMIT).filter((item) => pendingKnowledgeMatches(item, query)),
-      normalizedLimit,
-    );
+    const graph = store.searchKnowledgeGraph(query, null);
+    const pending = store.listPendingKnowledgeItems(null).filter((item) => pendingKnowledgeMatches(item, query));
     return {
-      ...buildKnowledgeGraphSummary(paths, store, entities.items, relations.items, pending.items, databaseExists, {
-        limit: normalizedLimit,
-        entitiesTruncated: entities.truncated,
-        relationsTruncated: relations.truncated,
-        pendingTruncated: pending.truncated,
+      ...buildKnowledgeGraphSummary(paths, store, graph.entities, graph.relations, pending, databaseExists, {
+        limit: 0,
+        entitiesTruncated: false,
+        relationsTruncated: false,
+        pendingTruncated: false,
         search: true,
       }),
       query: graph.query,
@@ -236,7 +223,7 @@ export async function runUiKnowledgeGraphAction(options: UiKnowledgeGraphActionO
     } finally {
       store.close();
     }
-    return { ...(await getUiKnowledgeGraphSummary(paths, options.limit)), action: options.action, actionStatus: "executed", message: options.action === "approve_pending" ? "Đã duyệt mục đồ thị đang chờ." : options.action === "sanitize_pending" ? "Đã làm sạch mục đồ thị đang chờ." : "Đã từ chối mục đồ thị đang chờ." };
+    return { ...(await getUiKnowledgeGraphSummary(paths)), action: options.action, actionStatus: "executed", message: options.action === "approve_pending" ? "Đã duyệt mục đồ thị đang chờ." : options.action === "sanitize_pending" ? "Đã làm sạch mục đồ thị đang chờ." : "Đã từ chối mục đồ thị đang chờ." };
   }
 
   const request = buildGraphToolRequest(options);
@@ -273,7 +260,7 @@ export async function runUiKnowledgeGraphAction(options: UiKnowledgeGraphActionO
   }
 
   return {
-    ...(await getUiKnowledgeGraphSummary(paths, options.limit)),
+    ...(await getUiKnowledgeGraphSummary(paths)),
     action: options.action,
     actionStatus,
     message: approvalId ? `Đã đưa phê duyệt vào hàng chờ: ${approvalId}.` : result.message,
@@ -372,7 +359,7 @@ function buildKnowledgeGraphSummary(
   };
 }
 
-function emptyKnowledgeGraphSummary(paths: RuntimePaths, limit = DEFAULT_UI_KNOWLEDGE_GRAPH_LIMIT): UiKnowledgeGraphSummary {
+function emptyKnowledgeGraphSummary(paths: RuntimePaths, limit = 0): UiKnowledgeGraphSummary {
   const analysis = analyzeKnowledgeGraph({ entities: [], relations: [], pending: [] });
   return {
     ok: true,
@@ -391,21 +378,6 @@ function emptyKnowledgeGraphSummary(paths: RuntimePaths, limit = DEFAULT_UI_KNOW
     analysis,
     review: planKnowledgeGraphReview(analysis, 8),
     trust: summarizeKnowledgeTrust([]),
-  };
-}
-
-function normalizeUiKnowledgeGraphLimit(value: number | undefined): number {
-  if (value === undefined || !Number.isInteger(value) || value <= 0) {
-    return DEFAULT_UI_KNOWLEDGE_GRAPH_LIMIT;
-  }
-
-  return Math.min(value, MAX_UI_KNOWLEDGE_GRAPH_LIMIT);
-}
-
-function limitKnowledgeGraphItems<T>(items: T[], limit: number): { items: T[]; truncated: boolean } {
-  return {
-    items: items.slice(0, limit),
-    truncated: items.length > limit,
   };
 }
 

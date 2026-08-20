@@ -988,12 +988,12 @@ async function handleRequestAsync(request: IncomingMessage, response: ServerResp
   }
 
   if (method === "GET" && url.pathname === "/api/knowledge-graph") {
-    sendJson(response, 200, await getUiKnowledgeGraphSummary(undefined, optionalPositiveQueryInteger(url.searchParams.get("limit"))));
+    sendJson(response, 200, await getUiKnowledgeGraphSummary());
     return;
   }
 
   if (method === "GET" && url.pathname === "/api/knowledge-graph/search") {
-    sendJson(response, 200, await searchUiKnowledgeGraph(url.searchParams.get("q") ?? "", undefined, optionalPositiveQueryInteger(url.searchParams.get("limit"))));
+    sendJson(response, 200, await searchUiKnowledgeGraph(url.searchParams.get("q") ?? ""));
     return;
   }
 

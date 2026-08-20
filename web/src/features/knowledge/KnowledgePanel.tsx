@@ -34,11 +34,8 @@ interface RelationEditDraft {
   sensitivity: "" | "normal" | "sensitive";
 }
 
-const KNOWLEDGE_GRAPH_DISPLAY_LIMITS = [100, 250, 500, 1000] as const;
-
 export function KnowledgePanel({ data, loading, onData, onLoading }: KnowledgePanelProps): ReactElement {
   const [query, setQuery] = useState("");
-  const [displayLimit, setDisplayLimit] = useState(1000);
   const [inventoryView, setInventoryView] = useState<"entities" | "relations">("entities");
   const [mergePrimaryId, setMergePrimaryId] = useState("");
   const [mergeDuplicateId, setMergeDuplicateId] = useState("");
@@ -57,7 +54,6 @@ export function KnowledgePanel({ data, loading, onData, onLoading }: KnowledgePa
     try {
       const nextData = await request();
       onData(nextData);
-      setDisplayLimit(nextData.display.limit);
       setActionMessage(nextData.message ?? success ?? null);
     } catch (error: unknown) {
       setActionError(formatError(error));
@@ -68,23 +64,18 @@ export function KnowledgePanel({ data, loading, onData, onLoading }: KnowledgePa
 
   async function reload(): Promise<void> {
     setQuery("");
-    await runRequest(() => fetchJson<KnowledgeGraphSummary>(knowledgeGraphPath(undefined, displayLimit)));
+    await runRequest(() => fetchJson<KnowledgeGraphSummary>(knowledgeGraphPath()));
   }
 
   async function search(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
     const trimmed = query.trim();
-    await runRequest(() => fetchJson<KnowledgeGraphSummary>(knowledgeGraphPath(trimmed || undefined, displayLimit)));
-  }
-
-  async function changeDisplayLimit(nextLimit: number): Promise<void> {
-    setDisplayLimit(nextLimit);
-    await runRequest(() => fetchJson<KnowledgeGraphSummary>(knowledgeGraphPath(query.trim() || undefined, nextLimit)));
+    await runRequest(() => fetchJson<KnowledgeGraphSummary>(knowledgeGraphPath(trimmed || undefined)));
   }
 
   async function postAction(body: Record<string, unknown>, confirmText: string): Promise<void> {
     if (!await confirmDialog(confirmText)) return;
-    await runRequest(() => fetchJson<KnowledgeGraphSummary>("/api/knowledge-graph/action", { method: "POST", body: JSON.stringify({ ...body, confirm: true, limit: displayLimit }) }));
+    await runRequest(() => fetchJson<KnowledgeGraphSummary>("/api/knowledge-graph/action", { method: "POST", body: JSON.stringify({ ...body, confirm: true }) }));
   }
 
   async function runPendingAction(action: KnowledgeGraphAction, item: PendingKnowledgeItem): Promise<void> {
@@ -155,10 +146,6 @@ export function KnowledgePanel({ data, loading, onData, onLoading }: KnowledgePa
             <div className="flex flex-wrap items-center gap-2">
               <Badge variant={data.database.exists ? "secondary" : "destructive"}>{data.database.exists ? "tri thức sẵn sàng" : "chưa có tri thức"}</Badge>
               <Badge variant={data.state.paused ? "destructive" : "outline"}>{data.state.paused ? "đang tạm dừng" : "đang hoạt động"}</Badge>
-              <Label className="sr-only" htmlFor="knowledge-display-limit">Số mục hiển thị</Label>
-              <Select id="knowledge-display-limit" className="w-28" value={displayLimit} disabled={loading} onChange={(event) => void changeDisplayLimit(Number(event.target.value))} data-knowledge-display-limit>
-                {KNOWLEDGE_GRAPH_DISPLAY_LIMITS.map((limit) => <option key={limit} value={limit}>{limit} mục</option>)}
-              </Select>
               <Button variant="outline" onClick={() => void reload()} disabled={loading}><RefreshCw className={loading ? "animate-spin" : ""} /> Tải lại</Button>
             </div>
           </div>
@@ -412,10 +399,9 @@ function KnowledgeMap3D({ entities, relations, display }: { entities: KnowledgeE
   );
 }
 
-function knowledgeGraphPath(query: string | undefined, limit: number): string {
-  const params = new URLSearchParams({ limit: String(limit) });
-  if (query) params.set("q", query);
-  return `/api/knowledge-graph${query ? "/search" : ""}?${params.toString()}`;
+function knowledgeGraphPath(query?: string): string {
+  if (!query) return "/api/knowledge-graph";
+  return `/api/knowledge-graph/search?${new URLSearchParams({ q: query }).toString()}`;
 }
 
 function formatDisplayCount(display: KnowledgeGraphDisplayCount): string {

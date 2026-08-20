@@ -1057,8 +1057,10 @@ export class SqliteMemoryStore {
     return row ? mapPendingKnowledgeItemRow(row) : undefined;
   }
 
-  listPendingKnowledgeItems(limit = 20): PendingKnowledgeItem[] {
-    const rows = this.db.prepare("SELECT * FROM pending_knowledge_items ORDER BY created_at DESC LIMIT ?").all(limit) as PendingKnowledgeItemRow[];
+  listPendingKnowledgeItems(limit: number | null = 20): PendingKnowledgeItem[] {
+    const rows = limit === null
+      ? this.db.prepare("SELECT * FROM pending_knowledge_items ORDER BY created_at DESC").all() as PendingKnowledgeItemRow[]
+      : this.db.prepare("SELECT * FROM pending_knowledge_items ORDER BY created_at DESC LIMIT ?").all(limit) as PendingKnowledgeItemRow[];
     return rows.map(mapPendingKnowledgeItemRow);
   }
 
@@ -1169,18 +1171,24 @@ export class SqliteMemoryStore {
     return row ? mapKnowledgeRelationRow(row) : undefined;
   }
 
-  listKnowledgeEntities(options: { kind?: KnowledgeEntityKind; limit?: number; namespace?: string } = {}): KnowledgeEntity[] {
-    const rows = options.kind && options.namespace
-      ? (this.db.prepare("SELECT * FROM knowledge_entities WHERE status = 'active' AND kind = @kind AND namespace = @namespace ORDER BY updated_at DESC, id DESC LIMIT @limit").all({ kind: options.kind, namespace: options.namespace, limit: options.limit ?? 100 }) as KnowledgeEntityRow[])
-      : options.kind
-        ? (this.db.prepare("SELECT * FROM knowledge_entities WHERE status = 'active' AND kind = ? ORDER BY updated_at DESC, id DESC LIMIT ?").all(options.kind, options.limit ?? 100) as KnowledgeEntityRow[])
-        : options.namespace
-          ? (this.db.prepare("SELECT * FROM knowledge_entities WHERE status = 'active' AND namespace = @namespace ORDER BY updated_at DESC, id DESC LIMIT @limit").all({ namespace: options.namespace, limit: options.limit ?? 100 }) as KnowledgeEntityRow[])
-          : (this.db.prepare("SELECT * FROM knowledge_entities WHERE status = 'active' ORDER BY updated_at DESC, id DESC LIMIT ?").all(options.limit ?? 100) as KnowledgeEntityRow[]);
+  listKnowledgeEntities(options: { kind?: KnowledgeEntityKind; limit?: number | null; namespace?: string } = {}): KnowledgeEntity[] {
+    const filters = ["status = 'active'"];
+    const parameters: Record<string, string | number> = {};
+    if (options.kind) {
+      filters.push("kind = @kind");
+      parameters.kind = options.kind;
+    }
+    if (options.namespace) {
+      filters.push("namespace = @namespace");
+      parameters.namespace = options.namespace;
+    }
+    const limit = options.limit === undefined ? 100 : options.limit;
+    if (limit !== null) parameters.limit = limit;
+    const rows = this.db.prepare(`SELECT * FROM knowledge_entities WHERE ${filters.join(" AND ")} ORDER BY updated_at DESC, id DESC${limit === null ? "" : " LIMIT @limit"}`).all(parameters) as KnowledgeEntityRow[];
     return rows.map(mapKnowledgeEntityRow);
   }
 
-  listKnowledgeRelations(limit = 100, namespace?: string): KnowledgeRelationWithEntities[] {
+  listKnowledgeRelations(limit: number | null = 100, namespace?: string): KnowledgeRelationWithEntities[] {
     const rows = this.db
       .prepare(`
         SELECT relations.*,
@@ -1196,9 +1204,9 @@ export class SqliteMemoryStore {
         WHERE relations.status = 'active' AND source.status = 'active' AND target.status = 'active'
           AND (@namespace IS NULL OR (source.namespace = @namespace AND target.namespace = @namespace))
         ORDER BY relations.updated_at DESC, relations.id DESC
-        LIMIT @limit
+        ${limit === null ? "" : "LIMIT @limit"}
       `)
-      .all({ limit, namespace: namespace ?? null }) as KnowledgeRelationJoinRow[];
+      .all({ ...(limit === null ? {} : { limit }), namespace: namespace ?? null }) as KnowledgeRelationJoinRow[];
     return rows.map(mapKnowledgeRelationJoinRow);
   }
 
@@ -1224,7 +1232,7 @@ export class SqliteMemoryStore {
     return rows.map(mapKnowledgeRelationJoinRow);
   }
 
-  searchKnowledgeGraph(query: string, limit = 20, namespace = "primary"): KnowledgeGraphSearchResult {
+  searchKnowledgeGraph(query: string, limit: number | null = 20, namespace = "primary"): KnowledgeGraphSearchResult {
     const normalizedQuery = query.trim();
     if (!normalizedQuery) {
       return { query, entities: [], relations: [] };
@@ -1238,9 +1246,9 @@ export class SqliteMemoryStore {
           AND namespace = @namespace
           AND (canonical_name LIKE @query ESCAPE '\\' OR kind LIKE @query ESCAPE '\\' OR aliases_json LIKE @query ESCAPE '\\')
         ORDER BY confidence DESC, updated_at DESC
-        LIMIT @limit
+        ${limit === null ? "" : "LIMIT @limit"}
       `)
-      .all({ query: like, limit, namespace }) as KnowledgeEntityRow[]).map(mapKnowledgeEntityRow);
+      .all({ query: like, ...(limit === null ? {} : { limit }), namespace }) as KnowledgeEntityRow[]).map(mapKnowledgeEntityRow);
 
     const relations = (this.db
       .prepare(`
@@ -1258,9 +1266,9 @@ export class SqliteMemoryStore {
           AND source.namespace = @namespace AND target.namespace = @namespace
           AND (relations.relation_type LIKE @query ESCAPE '\\' OR relations.evidence LIKE @query ESCAPE '\\' OR source.canonical_name LIKE @query ESCAPE '\\' OR target.canonical_name LIKE @query ESCAPE '\\')
         ORDER BY relations.confidence DESC, relations.updated_at DESC
-        LIMIT @limit
+        ${limit === null ? "" : "LIMIT @limit"}
       `)
-      .all({ query: like, limit, namespace }) as KnowledgeRelationJoinRow[]).map(mapKnowledgeRelationJoinRow);
+      .all({ query: like, ...(limit === null ? {} : { limit }), namespace }) as KnowledgeRelationJoinRow[]).map(mapKnowledgeRelationJoinRow);
 
     return { query: normalizedQuery, entities, relations };
   }

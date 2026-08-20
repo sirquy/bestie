@@ -390,6 +390,29 @@ test("runUiChat stores outbound Web UI files on the assistant message", async ()
   }
 });
 
+test("getUiKnowledgeGraphSummary returns every knowledge graph node", async () => {
+  const paths = await createTempPaths();
+
+  try {
+    const store = await SqliteMemoryStore.open(paths);
+    try {
+      for (let index = 0; index < 501; index += 1) {
+        store.upsertKnowledgeEntity({ canonicalName: `Node ${index}`, kind: "project" });
+      }
+    } finally {
+      store.close();
+    }
+
+    const graph = await getUiKnowledgeGraphSummary(paths);
+    assert.equal(graph.entities.length, 501);
+    assert.equal(graph.display.entities.shown, 501);
+    assert.equal(graph.display.entities.total, 501);
+    assert.equal(graph.display.entities.truncated, false);
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
 test("runUiChat applies the selected workforce agent to its Web UI session", async () => {
   const paths = await createTempPaths();
   try {
