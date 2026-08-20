@@ -472,6 +472,27 @@ test("runAgentToolRequest runs internal search_files without MCP config", async 
   }
 });
 
+test("runAgentToolRequest validates Zalo Personal capability calls before restoring a session", async () => {
+  const paths = await createTempPaths();
+  try {
+    const invalid = await runAgentToolRequest({
+      config: { ...createConfig(), mcp: undefined }, paths,
+      request: { tool: "internal.zalo_personal", arguments: { operation: "unknown", args: [] } },
+    });
+    assert.equal(invalid.ok, false);
+    assert.match(invalid.message, /supported arguments\.operation/);
+
+    const invalidArgs = await runAgentToolRequest({
+      config: { ...createConfig(), mcp: undefined }, paths,
+      request: { tool: "internal.zalo_personal", arguments: { operation: "getOwnId", args: {} } },
+    });
+    assert.equal(invalidArgs.ok, false);
+    assert.match(invalidArgs.message, /args as an array/);
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
 test("runAgentToolRequest searches and previews verified remote library skills", async () => {
   const paths = await createTempPaths();
 

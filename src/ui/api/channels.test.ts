@@ -8,7 +8,7 @@ import { bindWorkforceAgentChannel, hireWorkforceAgent, updateWorkforceAgent } f
 import { loadConfig, writeConfig } from "../../runtime/config.js";
 import type { RuntimePaths } from "../../runtime/paths.js";
 import { createTestConfig } from "../../test-support/config.js";
-import { runUiChannelAction } from "./channels.js";
+import { getUiChannelConfigSummary, runUiChannelAction, updateUiChannelConfig } from "./channels.js";
 
 test("runUiChannelAction updates owner and admin IDs", async () => {
   const paths = await createTempPaths();
@@ -41,6 +41,39 @@ test("public channel access requires an enabled public bound agent", async () =>
 
     const result = await runUiChannelAction({ action: "update_access", channel: "telegram", ownerUserIds: ["*"], confirm: true, paths });
     assert.deepEqual(result.channels.find((channel) => channel.id === "telegram")?.ownerUserIds, ["*"]);
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("channel config update merges attachment settings and redacts secrets", async () => {
+  const paths = await createTempPaths();
+  try {
+    await writeConfig(createTestConfig({ channels: {
+      telegram: {
+        enabled: false,
+        botTokenEnv: "TELEGRAM_BOT_TOKEN",
+        ownerUserId: "owner",
+        attachments: { downloadPolicy: "allow", maxBytes: 1_024, allowedMimeTypes: ["image/png"] },
+      },
+    } }), paths);
+
+    const result = await updateUiChannelConfig({
+      channel: "telegram",
+      config: { ownerUserId: ["owner", "admin"], attachments: { visionPolicy: "deny" } },
+      confirm: true,
+      paths,
+    });
+    const channel = result.channels.find((item) => item.id === "telegram");
+    assert.deepEqual(channel?.ownerUserIds, ["owner", "admin"]);
+    assert.deepEqual(channel?.attachments, { downloadPolicy: "allow", maxBytes: 1_024, allowedMimeTypes: ["image/png"], visionPolicy: "deny" });
+    assert.equal("botToken" in (channel ?? {}), false);
+
+    const config = await loadConfig(paths);
+    assert.equal(config.channels?.telegram?.botTokenEnv, "TELEGRAM_BOT_TOKEN");
+    assert.equal(config.channels?.telegram?.attachments?.maxBytes, 1_024);
+    assert.equal(config.channels?.telegram?.attachments?.visionPolicy, "deny");
+    assert.equal((await getUiChannelConfigSummary(paths)).channels.find((item) => item.id === "telegram")?.credentialEnv, "TELEGRAM_BOT_TOKEN");
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
   }

@@ -23,6 +23,8 @@ import { assignWorkforceTask, listWorkforceTasks, updateWorkforceTaskStatus, typ
 import { getUiSkillLibrary, getUiSkillLibraryItem, installUiSkillFromLibrary } from "../ui/api/skills.js";
 import { runTunnelTool } from "../tools/tunnel-tools.js";
 import { runServiceTool } from "../tools/service-tools.js";
+import { runZaloPersonalOperationTool } from "../tools/zalo-personal-tools.js";
+import { isZaloPersonalOperation, ZALO_PERSONAL_OPERATION_NAMES } from "../channels/zalo-personal/capabilities.js";
 
 const CRON_SCHEDULE_PROMPT_GUIDANCE = '- When creating or updating a cron schedule, the cron prompt must be the future task itself, written as a standalone instruction the isolated cron runner can execute later. Never store your current reply, a success message, the schedule ID, next_run_at, or text like "I created the schedule" in the prompt. For example, if the user asks "check YouTube and summarize every day at 17:00", store a prompt like "Check the configured YouTube channel for new content and summarize the findings for the user." Then, after the tool succeeds, answer the user with the schedule confirmation separately. Use update_cron_schedule for changing an existing schedule, remove_cron_schedule/toggle_cron_schedule for changing schedule state, and trigger_cron_schedule only when the user wants to run an existing cron job now. Do not trigger a newly created schedule just to prove it exists unless the user explicitly asks for an immediate run.';
 
@@ -83,6 +85,7 @@ export const INTERNAL_TOOL_NAMES = [
   "internal.browser_reset",
   "internal.send_photo",
   "internal.send_file",
+  "internal.zalo_personal",
   "internal.git_status",
   "internal.git_diff",
   "internal.git_log",
@@ -436,6 +439,7 @@ export function buildMcpToolInstructions(config: AppConfig, runtimeContext?: str
     'internal.browser_reset {}',
     'internal.send_photo {"path":"workspace/or/allowed/image.png","caption":"optional caption","channel":"optional telegram:<chatId>|zalo:<chatId>","fileName":"optional.png","mimeType":"image/png"}',
     'internal.send_file {"path":"workspace/or/allowed/file.pdf","caption":"optional caption","channel":"optional telegram:<chatId>|zalo:<chatId>","fileName":"optional.pdf","mimeType":"application/pdf"}',
+    'internal.zalo_personal {"operation":"getStickers","args":["optional sticker keyword"]} (Use only with an enabled Zalo Personal session. args must match the zca-js operation signature. Read operations may be enabled with internalTools.policies.internal.zalo_personal="allow"; external, destructive, and money operations require approval.)',
     'internal.git_status {"path":"optional/repo/path"}',
     'internal.git_diff {"path":"optional/repo/path","staged":false,"maxBytes":98304}',
     'internal.git_log {"path":"optional/repo/path","limit":10}',
@@ -764,6 +768,10 @@ export function formatToolActivityLabel(request: AgentToolRequest): string {
     return "processes";
   }
 
+  if (request.tool === "internal.zalo_personal") {
+    return stringArg(args.operation) ?? "Zalo Personal";
+  }
+
   if (request.tool === "internal.browser_list_pages") {
     return "browser pages";
   }
@@ -942,6 +950,15 @@ export async function runAgentToolRequest(options: RunAgentToolRequestOptions): 
   }
 
   const args = options.request.arguments;
+  if (options.request.tool === "internal.zalo_personal") {
+    const operation = stringArg(args.operation);
+    if (!operation || !isZaloPersonalOperation(operation)) {
+      return { ok: false, status: "fail", message: `internal.zalo_personal requires a supported arguments.operation: ${ZALO_PERSONAL_OPERATION_NAMES.join(", ")}.` };
+    }
+    if (!Array.isArray(args.args)) return { ok: false, status: "fail", message: "internal.zalo_personal requires arguments.args as an array matching the zca-js API signature." };
+    const result = await runZaloPersonalOperationTool({ config: options.config, paths: options.paths, operation, args: args.args, approver: options.approver, policy: options.policy });
+    return { ok: result.ok, status: result.ok ? "pass" : "fail", message: result.message, ...("result" in result ? { result: result.result } : {}) };
+  }
   if (options.request.tool.startsWith("internal.service_")) {
     const action = options.request.tool.slice("internal.service_".length) as "install" | "uninstall" | "stop" | "restart";
     const result = await runServiceTool({ action, config: options.config, paths: options.paths, approver: options.approver, policy: options.policy });

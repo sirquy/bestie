@@ -85,6 +85,37 @@ interface UiCronTriggerActionOptions {
   paths?: RuntimePaths;
 }
 
+export type UiChannelId = "telegram" | "zalo" | "zalo-personal";
+
+export interface UiChannelConfig {
+  id: UiChannelId;
+  configured: boolean;
+  enabled: boolean;
+  ownerUserIds: string[];
+  adminUserIds: string[];
+  credentialEnv: string;
+  credentialLabel: "Bot token env" | "Session env";
+  pollingTimeoutSeconds?: number;
+  voiceReplyPolicy?: "deny" | "voice-input-only";
+  voiceReplyMaxChars?: number;
+  voiceReplyCooldownMs?: number;
+  reconnect?: { initialDelayMs?: number; maxDelayMs?: number };
+  attachments: {
+    downloadPolicy?: "allow" | "deny";
+    maxBytes?: number;
+    previewMaxBytes?: number;
+    parseMaxBytes?: number;
+    visionPolicy?: "allow" | "deny";
+    visionMaxBytes?: number;
+    transcriptionPolicy?: "allow" | "deny";
+    transcriptionMaxBytes?: number;
+    deleteAfterProcessingKinds?: string[];
+    allowedMimeTypes?: string[];
+  };
+}
+
+export interface UiChannelConfigSummary { ok: true; channels: UiChannelConfig[]; }
+
 interface UiChannelAccessUpdateOptions {
   action: "update_access";
   channel: AgentChannelBinding;
@@ -324,8 +355,74 @@ async function updateChannelAccess(paths: RuntimePaths, options: UiChannelAccess
   messages.push(`Access roles for ${options.channel} updated.`);
 }
 
+export async function getUiChannelConfigSummary(paths: RuntimePaths = getRuntimePaths()): Promise<UiChannelConfigSummary> {
+  const config = await loadConfig(paths);
+  return { ok: true, channels: (["telegram", "zalo", "zalo-personal"] as const).map((id) => toUiChannelConfig(config, id)) };
+}
+
+export async function updateUiChannelConfig(options: { channel: UiChannelId; config: Record<string, unknown>; confirm: true; paths?: RuntimePaths }): Promise<UiChannelConfigSummary> {
+  const paths = options.paths ?? getRuntimePaths();
+  const config = await loadConfig(paths);
+  const key = options.channel === "zalo-personal" ? "zaloPersonal" : options.channel;
+  const existing = config.channels?.[key];
+  const defaults = options.channel === "zalo-personal"
+    ? { enabled: false, sessionEnv: "BESTIE_ZALO_PERSONAL_SESSION", ownerUserId: [] }
+    : { enabled: false, botTokenEnv: options.channel === "telegram" ? "BESTIE_TELEGRAM_BOT_TOKEN" : "BESTIE_ZALO_BOT_TOKEN", ownerUserId: [] };
+  const updated = mergeUiChannelConfig(existing ?? defaults, options.config);
+  await writeConfig({ ...config, channels: { ...config.channels, [key]: updated } }, paths);
+  return getUiChannelConfigSummary(paths);
+}
+
 function getChannelConfig(config: AppConfig, configKey: string): { enabled: boolean; ownerUserId: OwnerUserIdConfig; adminUserIds?: string[]; botTokenEnv?: string; sessionEnv?: string } | undefined {
   return config.channels?.[configKey as keyof NonNullable<AppConfig["channels"]>];
+}
+
+function toUiChannelConfig(config: AppConfig, id: UiChannelId): UiChannelConfig {
+  const key = id === "zalo-personal" ? "zaloPersonal" : id;
+  const channel = config.channels?.[key];
+  const details = channel as (typeof channel & {
+    pollingTimeoutSeconds?: number;
+    voiceReplyPolicy?: "deny" | "voice-input-only";
+    voiceReplyMaxChars?: number;
+    voiceReplyCooldownMs?: number;
+    reconnect?: { initialDelayMs?: number; maxDelayMs?: number };
+  }) | undefined;
+  const isPersonal = id === "zalo-personal";
+  return {
+    id,
+    configured: Boolean(channel),
+    enabled: channel?.enabled ?? false,
+    ownerUserIds: channel ? (Array.isArray(channel.ownerUserId) ? channel.ownerUserId : [channel.ownerUserId]) : [],
+    adminUserIds: channel?.adminUserIds ?? [],
+    credentialEnv: channel ? ("sessionEnv" in channel ? channel.sessionEnv : channel.botTokenEnv) : (isPersonal ? "BESTIE_ZALO_PERSONAL_SESSION" : id === "telegram" ? "BESTIE_TELEGRAM_BOT_TOKEN" : "BESTIE_ZALO_BOT_TOKEN"),
+    credentialLabel: isPersonal ? "Session env" : "Bot token env",
+    ...(!isPersonal && id === "zalo" && details?.pollingTimeoutSeconds !== undefined ? { pollingTimeoutSeconds: details.pollingTimeoutSeconds } : {}),
+    ...(!isPersonal && id === "telegram" && details?.voiceReplyPolicy !== undefined ? { voiceReplyPolicy: details.voiceReplyPolicy } : {}),
+    ...(!isPersonal && id === "telegram" && details?.voiceReplyMaxChars !== undefined ? { voiceReplyMaxChars: details.voiceReplyMaxChars } : {}),
+    ...(!isPersonal && id === "telegram" && details?.voiceReplyCooldownMs !== undefined ? { voiceReplyCooldownMs: details.voiceReplyCooldownMs } : {}),
+    ...(isPersonal && details?.reconnect ? { reconnect: details.reconnect } : {}),
+    attachments: channel?.attachments ?? {},
+  };
+}
+
+function mergeUiChannelConfig(existing: Record<string, unknown>, update: Record<string, unknown>): Record<string, unknown> {
+  const allowed = ["enabled", "ownerUserId", "adminUserIds", "botTokenEnv", "sessionEnv", "pollingTimeoutSeconds", "voiceReplyPolicy", "voiceReplyMaxChars", "voiceReplyCooldownMs"];
+  const result: Record<string, unknown> = { ...existing };
+  for (const key of allowed) {
+    if (!(key in update)) continue;
+    const value = update[key];
+    if (value === null || value === "") delete result[key];
+    else result[key] = value;
+  }
+  for (const nestedKey of ["reconnect", "attachments"] as const) {
+    if (!update[nestedKey] || typeof update[nestedKey] !== "object" || Array.isArray(update[nestedKey])) continue;
+    const current = result[nestedKey] && typeof result[nestedKey] === "object" && !Array.isArray(result[nestedKey]) ? result[nestedKey] as Record<string, unknown> : {};
+    const nested = { ...current, ...(update[nestedKey] as Record<string, unknown>) };
+    for (const [key, value] of Object.entries(nested)) if (value === null || value === "") delete nested[key];
+    if (Object.keys(nested).length) result[nestedKey] = nested;
+    else delete result[nestedKey];
+  }
+  return result;
 }
 
 async function getCronSummary(paths: RuntimePaths): Promise<UiChannelSummary["cron"]> {

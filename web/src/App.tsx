@@ -26,6 +26,7 @@ import { Button } from "@/components/ui/button";
 import { AgentsPanel, AgentsPanelError } from "@/features/agents/AgentsPanel";
 import { ApprovalsPanel, ApprovalsPanelError } from "@/features/approvals/ApprovalsPanel";
 import { ChannelsPanel, ChannelsPanelError } from "@/features/channels/ChannelsPanel";
+import { ChannelEditor } from "@/features/channels/ChannelEditor";
 import { CharacterPanel, CharacterPanelError } from "@/features/character/CharacterPanel";
 import { ChatPanel, ChatPanelError } from "@/features/chat/ChatPanel";
 import { DoctorPanel, DoctorPanelError } from "@/features/doctor/DoctorPanel";
@@ -39,7 +40,7 @@ import { SkillsPanel, SkillsPanelError } from "@/features/skills/SkillsPanel";
 import { ToolsPanel, ToolsPanelError } from "@/features/tools/ToolsPanel";
 import type { AgentsSummary } from "@/features/agents/types";
 import type { ApprovalsSummary } from "@/features/approvals/types";
-import type { ChannelSummary } from "@/features/channels/types";
+import type { ChannelId, ChannelSummary } from "@/features/channels/types";
 import type { CharacterSummary } from "@/features/character/types";
 import type { ChatSessionsSummary } from "@/features/chat/types";
 import type { DoctorSummary } from "@/features/doctor/types";
@@ -136,6 +137,7 @@ function panelFromLocation(location: Location): PanelDefinition {
   if (route === "/providers") return panelsById.get("modelProviders") ?? defaultPanel;
   if (route.startsWith("/settings/")) return panelsById.get("settings") ?? defaultPanel;
   if (route.startsWith("/agents/")) return panelsById.get("agents") ?? defaultPanel;
+  if (route.startsWith("/channels/")) return panelsById.get("channels") ?? defaultPanel;
   if (route.startsWith("/skills/")) return panelsById.get("skills") ?? defaultPanel;
   return panelsByRoute.get(route) ?? defaultPanel;
 }
@@ -145,11 +147,16 @@ function normalizeRoute(pathname: string): string {
   return pathname.length > 1 ? pathname.replace(/\/+$/, "") : pathname;
 }
 
+function isChannelEditorRoute(route: string): boolean {
+  return route === "/channels/telegram" || route === "/channels/zalo" || route === "/channels/zalo-personal";
+}
+
 function isCanonicalPanelRoute(route: string, panel: PanelDefinition): boolean {
   return route === panel.route
     || (panel.id === "settings" && route.startsWith("/settings/"))
     || (panel.id === "skills" && route.startsWith("/skills/"))
-    || (panel.id === "agents" && route.startsWith("/agents/"));
+    || (panel.id === "agents" && route.startsWith("/agents/"))
+    || (panel.id === "channels" && route.startsWith("/channels/"));
 }
 
 function readSidebarCollapsed(): boolean {
@@ -191,6 +198,14 @@ function App({ onLocked }: { onLocked: () => void }): ReactElement {
     const nextUrl = `${panel.route}${window.location.search}`;
     if (normalizeRoute(window.location.pathname) === panel.route && !window.location.hash) return;
     window.history[mode === "replace" ? "replaceState" : "pushState"]({ panelId: panel.id }, "", nextUrl);
+  }
+
+  function navigateToRoute(route: string, mode: "push" | "replace" = "push"): void {
+    const panel = panelFromLocation({ ...window.location, pathname: route, hash: "" } as Location);
+    setActivePanel(panel.id);
+    setActiveRoute(route);
+    if (normalizeRoute(window.location.pathname) === route && !window.location.hash) return;
+    window.history[mode === "replace" ? "replaceState" : "pushState"]({ panelId: panel.id }, "", `${route}${window.location.search}`);
   }
 
   function refreshStatus(): void {
@@ -376,7 +391,7 @@ function App({ onLocked }: { onLocked: () => void }): ReactElement {
           </div>
         </aside>
 
-        <main className={cn("grid min-w-0 gap-4 transition-[margin] duration-300 lg:py-8 lg:pr-8", sidebarCollapsed ? "lg:ml-[4.75rem]" : "lg:ml-[16rem]")}>
+        <main className={cn("grid min-w-0 gap-4 transition-[margin] duration-300 lg:py-8 lg:pr-8 p-4", sidebarCollapsed ? "lg:ml-[4.75rem]" : "lg:ml-[16rem]")}>
           {updateAvailable && updateSummary ? <UpdateBanner summary={updateSummary} busy={updateBusy} onApply={() => void applyLatestUpdate()} onDismiss={() => void dismissUpdateBanner()} /> : null}
           {selectedPanel.id === "chat" ? (
                 activeError ? <ChatPanelError error={activeError} /> : (
@@ -428,7 +443,7 @@ function App({ onLocked }: { onLocked: () => void }): ReactElement {
                   />
                 )
               ) : selectedPanel.id === "channels" ? (
-                activeError ? <ChannelsPanelError error={activeError} /> : (
+                isChannelEditorRoute(activeRoute) ? <ChannelEditor channelId={activeRoute.slice("/channels/".length) as ChannelId} onBack={() => navigateToRoute("/channels")} /> : activeError ? <ChannelsPanelError error={activeError} /> : (
                   <ChannelsPanel
                     data={activeData as unknown as ChannelSummary | undefined}
                     loading={Boolean(loadingPanels[selectedPanel.id])}
@@ -437,6 +452,7 @@ function App({ onLocked }: { onLocked: () => void }): ReactElement {
                       setPanelErrors((current) => ({ ...current, channels: undefined }));
                     }}
                     onLoading={(loading) => setLoadingPanels((current) => ({ ...current, channels: loading }))}
+                    onNavigate={navigateToRoute}
                   />
                 )
               ) : selectedPanel.id === "agents" ? (

@@ -1,6 +1,7 @@
 import { chmod } from "node:fs/promises";
 
 import type { ZaloClient, ZaloFileInfo, ZaloSendFileOptions, ZaloSentMessage, ZaloUpdate } from "../zalo.js";
+import { isZaloPersonalOperation, type ZaloPersonalOperation } from "./capabilities.js";
 import type { ZaloPersonalCredentials } from "./session.js";
 
 const USER_THREAD_TYPE = 0;
@@ -10,6 +11,7 @@ export interface ZaloPersonalApi {
   getUserInfo(userId: string): Promise<{ changed_profiles?: Record<string, { displayName?: string; zaloName?: string }> }>;
   sendMessage(message: string | { msg: string; attachments?: unknown }, threadId: string, type: number): Promise<{ message: { msgId?: number } | null; attachment: Array<{ msgId?: number }> }>;
   sendTypingEvent(threadId: string, type: number): Promise<unknown>;
+  [operation: string]: unknown;
 }
 
 interface ZcaListener {
@@ -118,6 +120,55 @@ export class ZaloPersonalClient implements ZaloClient {
     const displayName = profile?.displayName?.trim() || profile?.zaloName?.trim();
     return displayName || undefined;
   }
+
+  async execute(operation: ZaloPersonalOperation, args: unknown[] = []): Promise<unknown> {
+    if (!isZaloPersonalOperation(operation)) throw new Error(`Unsupported Zalo Personal operation: ${operation}.`);
+    const candidate = this.api[operation];
+    if (typeof candidate !== "function") throw new Error(`The installed zca-js client does not provide ${operation}.`);
+    return Promise.resolve((candidate as (...parameters: unknown[]) => unknown).apply(this.api, args));
+  }
+
+  async acceptFriendRequest(friendId: string): Promise<unknown> { return this.execute("acceptFriendRequest", [friendId]); }
+  async changeAccountAvatar(avatarSource: unknown): Promise<unknown> { return this.execute("changeAccountAvatar", [avatarSource]); }
+  async changeFriendAlias(alias: string, friendId: string): Promise<unknown> { return this.execute("changeFriendAlias", [alias, friendId]); }
+  async fetchAccountInfo(): Promise<unknown> { return this.execute("fetchAccountInfo"); }
+  async findUser(phoneNumber: string, avatarSize?: number): Promise<unknown> { return this.execute("findUser", [phoneNumber, avatarSize]); }
+  async forwardMessage(payload: unknown, threadIds: string[], type?: number): Promise<unknown> { return this.execute("forwardMessage", [payload, threadIds, type]); }
+  async getAliasList(count?: number, page?: number): Promise<unknown> { return this.execute("getAliasList", [count, page]); }
+  async getAllFriends(count?: number, page?: number, avatarSize?: number): Promise<unknown> { return this.execute("getAllFriends", [count, page, avatarSize]); }
+  async getAllGroups(): Promise<unknown> { return this.execute("getAllGroups"); }
+  async getContext(): Promise<unknown> { return this.execute("getContext"); }
+  async getFriendRecommendations(): Promise<unknown> { return this.execute("getFriendRecommendations"); }
+  async getFriendRequestStatus(friendId: string): Promise<unknown> { return this.execute("getFriendRequestStatus", [friendId]); }
+  async getGroupInfo(groupId: string | string[]): Promise<unknown> { return this.execute("getGroupInfo", [groupId]); }
+  async getGroupLinkDetail(groupId: string): Promise<unknown> { return this.execute("getGroupLinkDetail", [groupId]); }
+  async getGroupLinkInfo(payload: unknown): Promise<unknown> { return this.execute("getGroupLinkInfo", [payload]); }
+  async getGroupMembersInfo(memberId: string | string[]): Promise<unknown> { return this.execute("getGroupMembersInfo", [memberId]); }
+  async getOwnId(): Promise<unknown> { return this.execute("getOwnId"); }
+  async getQR(userId: string | string[]): Promise<unknown> { return this.execute("getQR", [userId]); }
+  async getStickers(keyword: string): Promise<unknown> { return this.execute("getStickers", [keyword]); }
+  async getStickersDetail(stickerIds: number | number[]): Promise<unknown> { return this.execute("getStickersDetail", [stickerIds]); }
+  async getUserInfo(userId: string | string[], avatarSize?: number): Promise<unknown> { return this.execute("getUserInfo", [userId, avatarSize]); }
+  async inviteUserToGroups(userId: string, groupId: string | string[]): Promise<unknown> { return this.execute("inviteUserToGroups", [userId, groupId]); }
+  async joinGroupLink(link: string): Promise<unknown> { return this.execute("joinGroupLink", [link]); }
+  async keepAlive(): Promise<unknown> { return this.execute("keepAlive"); }
+  async lastOnline(uid: string): Promise<unknown> { return this.execute("lastOnline", [uid]); }
+  async parseLink(link: string): Promise<unknown> { return this.execute("parseLink", [link]); }
+  async sendBankCard(payload: unknown, threadId: string, type?: number): Promise<unknown> { return this.execute("sendBankCard", [payload, threadId, type]); }
+  async sendCard(options: unknown, threadId: string, type?: number): Promise<unknown> { return this.execute("sendCard", [options, threadId, type]); }
+  async sendDeliveredEvent(isSeen: boolean, messages: unknown, type?: number): Promise<unknown> { return this.execute("sendDeliveredEvent", [isSeen, messages, type]); }
+  async sendFriendRequest(message: string, userId: string): Promise<unknown> { return this.execute("sendFriendRequest", [message, userId]); }
+  async sendLink(options: unknown, threadId: string, type?: number): Promise<unknown> { return this.execute("sendLink", [options, threadId, type]); }
+  async sendReport(options: unknown, threadId: string, type?: number): Promise<unknown> { return this.execute("sendReport", [options, threadId, type]); }
+  async sendSeenEvent(messages: unknown, type?: number): Promise<unknown> { return this.execute("sendSeenEvent", [messages, type]); }
+  async sendSticker(sticker: unknown, threadId: string, type?: number): Promise<unknown> { return this.execute("sendSticker", [sticker, threadId, type]); }
+  async sendTypingEvent(threadId: string, type?: number, destType?: number): Promise<unknown> { return this.execute("sendTypingEvent", [threadId, type, destType]); }
+  async sendVideo(options: unknown, threadId: string, type?: number): Promise<unknown> { return this.execute("sendVideo", [options, threadId, type]); }
+  async sendVoice(options: unknown, threadId: string, type?: number): Promise<unknown> { return this.execute("sendVoice", [options, threadId, type]); }
+  async updateProfile(payload: unknown): Promise<unknown> { return this.execute("updateProfile", [payload]); }
+  async updateSettings(type: string, value: number): Promise<unknown> { return this.execute("updateSettings", [type, value]); }
+  async uploadAttachment(sources: unknown, threadId: string, type?: number): Promise<unknown> { return this.execute("uploadAttachment", [sources, threadId, type]); }
+  async uploadProductPhoto(payload: unknown): Promise<unknown> { return this.execute("uploadProductPhoto", [payload]); }
 
   startListening(handlers: ZaloPersonalListenerHandlers): () => void {
     const listener = this.api.listener;

@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import test from "node:test";
 
+import { ZALO_PERSONAL_OPERATION_NAMES } from "./capabilities.js";
 import { loginZaloPersonalWithQr, ZaloPersonalClient, type ZaloPersonalApi, type ZaloPersonalZcaModule } from "./client.js";
 
 function createApi(sent: Array<{ message: unknown; threadId: string; type: number }>): ZaloPersonalApi {
@@ -65,6 +66,25 @@ test("Zalo Personal client sends text, photos, and documents through zca-js atta
     { message: { msg: "image", attachments: { data: Buffer.from([1, 2, 3]), filename: "answer.png", metadata: { totalSize: 3 } } }, threadId: "controller-1", type: 0 },
     { message: { msg: "file", attachments: { data: Buffer.from([4, 5]), filename: "answer.txt", metadata: { totalSize: 2 } } }, threadId: "controller-1", type: 0 },
   ]);
+});
+
+test("Zalo Personal client forwards every supported capability only through its allowlisted facade", async () => {
+  const calls: Array<{ operation: string; args: unknown[] }> = [];
+  const api = createApi([]);
+  for (const operation of ZALO_PERSONAL_OPERATION_NAMES) {
+    (api as Record<string, unknown>)[operation] = (...args: unknown[]) => {
+      calls.push({ operation, args });
+      return { operation };
+    };
+  }
+  const client = ZaloPersonalClient.fromApi(api);
+
+  assert.equal(ZALO_PERSONAL_OPERATION_NAMES.length, 145, "zca-js@2.1.2 API contract changed; update the Zalo Personal capability registry.");
+  for (const operation of ZALO_PERSONAL_OPERATION_NAMES) {
+    assert.deepEqual(await client.execute(operation, [operation]), { operation });
+  }
+  assert.deepEqual(calls, ZALO_PERSONAL_OPERATION_NAMES.map((operation) => ({ operation, args: [operation] })));
+  await assert.rejects(() => client.execute("not-a-zca-api" as never), /Unsupported Zalo Personal operation/);
 });
 
 test("Zalo Personal QR login saves a private temporary QR before reporting it", async () => {

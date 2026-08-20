@@ -9,7 +9,7 @@ import { getUiAgentsSummary, runUiAgentsAction } from "./api/agents.js";
 import type { AgentToolActivity } from "../chat/mcp-tool-use.js";
 import { SqliteMemoryStore } from "../memory/sqlite-store.js";
 import { getUiCharacterSummary, updateUiCharacter } from "./api/character.js";
-import { getUiChannelSummary, runUiChannelAction } from "./api/channels.js";
+import { getUiChannelConfigSummary, getUiChannelSummary, runUiChannelAction, updateUiChannelConfig, type UiChannelId } from "./api/channels.js";
 import { createUiChatSession, deleteUiChatSession, exportUiChatSession, forkUiChatSession, getUiChatSessionEvents, getUiChatSessionMessages, getUiChatSessions, importUiChatSession, prepareUiChatRetry, prepareUiChatRunReplay, runUiChat, runUiChatContinue, searchUiChatSessions, updateUiChatSession } from "./api/chat.js";
 import { getUiDoctorSummary, runUiDoctorFix } from "./api/doctor.js";
 import { getUiKnowledgeGraphSummary, runUiKnowledgeGraphAction, searchUiKnowledgeGraph } from "./api/knowledge-graph.js";
@@ -40,7 +40,7 @@ const BESTIE_ICON_PNG_PATH = fileURLToPath(new URL("../../assets/bestie-app-icon
 const BESTIE_ICON_ICO_PATH = fileURLToPath(new URL("../../assets/bestie-app-icon.ico", import.meta.url));
 const UI_WEB_INDEX_PATH = fileURLToPath(new URL("./web/index.html", import.meta.url));
 const UI_WEB_SERVICE_WORKER_PATH = fileURLToPath(new URL("./web/sw.js", import.meta.url));
-const UI_WEB_ROUTE_PATHS = new Set(["/chat", "/doctor", "/providers", "/character", "/memory", "/knowledge", "/channels", "/agents", "/agents/tasks", "/approvals", "/mcp", "/tools", "/skills", "/skills/library", "/settings", "/settings/general", "/settings/memory", "/settings/security", "/settings/remote-access"]);
+const UI_WEB_ROUTE_PATHS = new Set(["/chat", "/doctor", "/providers", "/character", "/memory", "/knowledge", "/channels", "/channels/telegram", "/channels/zalo", "/channels/zalo-personal", "/agents", "/agents/tasks", "/approvals", "/mcp", "/tools", "/skills", "/skills/library", "/settings", "/settings/general", "/settings/memory", "/settings/security", "/settings/remote-access"]);
 const ROBOTS_TXT = "User-agent: *\nDisallow: /\n";
 const NO_INDEX_HEADER_VALUE = "noindex, nofollow, noarchive, nosnippet";
 
@@ -325,6 +325,21 @@ async function handleRequestAsync(request: IncomingMessage, response: ServerResp
 
   if (method === "GET" && url.pathname === "/api/channels") {
     sendJson(response, 200, await getUiChannelSummary());
+    return;
+  }
+
+  if (method === "GET" && url.pathname === "/api/channels/config") {
+    sendJson(response, 200, await getUiChannelConfigSummary());
+    return;
+  }
+
+  if (method === "PUT" && url.pathname === "/api/channels/config") {
+    const body = await readJsonBody(request);
+    if (!isRecord(body) || !isUiChannelId(body.channel) || !isRecord(body.config) || body.confirm !== true) {
+      sendJson(response, 400, { ok: false, error: "Channel config update requires channel, config, and confirm=true.", code: "UiChannelConfigInvalidRequest" });
+      return;
+    }
+    sendJson(response, 200, await updateUiChannelConfig({ channel: body.channel, config: body.config, confirm: true }));
     return;
   }
 
@@ -1192,6 +1207,10 @@ function isUiChatSessionFilter(value: string): value is "all" | "approval" | "ca
 
 function isUiChannelAction(value: unknown): value is "daemon_start" | "daemon_stop" | "daemon_restart" | "cron_toggle" | "cron_add" | "cron_update" | "cron_delete" | "cron_trigger" | "update_access" {
   return value === "daemon_start" || value === "daemon_stop" || value === "daemon_restart" || value === "cron_toggle" || value === "cron_add" || value === "cron_update" || value === "cron_delete" || value === "cron_trigger" || value === "update_access";
+}
+
+function isUiChannelId(value: unknown): value is UiChannelId {
+  return value === "telegram" || value === "zalo" || value === "zalo-personal";
 }
 
 function isStringArray(value: unknown): value is string[] {
