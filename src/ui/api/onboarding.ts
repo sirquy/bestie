@@ -5,6 +5,7 @@ import { buildModelRef, normalizeProviderId } from "../../llm/model-ref.js";
 import { getBuiltinLlmProvider } from "../../llm/model-catalog.js";
 import { DEFAULT_LLM_MAX_RETRIES, DEFAULT_LLM_RETRY_DELAY_MS, DEFAULT_LLM_TIMEOUT_MS, configExists, type AppConfig, type LlmAuthMode, writeConfig } from "../../runtime/config.js";
 import { loadEnvFile, writeEnvFile } from "../../runtime/env.js";
+import { completeOnboardingConfig } from "../../runtime/onboarding-defaults.js";
 import { getRuntimePaths, type RuntimePaths } from "../../runtime/paths.js";
 
 export interface UiOnboardingOptions {
@@ -56,7 +57,7 @@ export async function runUiOnboarding(options: UiOnboardingOptions): Promise<UiO
     : (options.baseUrl?.trim() || catalog.defaultBaseUrl)?.replace(/\/+$/, "");
   if (baseUrl === "") throw new Error("Provider base URL is required.");
 
-  const config: AppConfig = {
+  const config = completeOnboardingConfig({
     version: 2,
     agent: { name: agentName, ownerName, language, timeZone, toneIntensity },
     llm: {
@@ -68,8 +69,7 @@ export async function runUiOnboarding(options: UiOnboardingOptions): Promise<UiO
       maxRetries: DEFAULT_LLM_MAX_RETRIES,
       retryDelayMs: DEFAULT_LLM_RETRY_DELAY_MS,
     },
-    memory: { writePolicy: "ask", deletePolicy: "ask" },
-  };
+  }, paths);
   const character = generateCharacterConfig({ name: agentName, ownerName, language, timeZone, toneIntensity });
   await mkdir(paths.appDir, { recursive: true });
   await writeConfig(config, paths);

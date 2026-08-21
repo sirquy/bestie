@@ -5,6 +5,7 @@ import { resolve } from "node:path";
 import test from "node:test";
 
 import { getDefaultAgentsMarkdown } from "../../character/agents-template.js";
+import { INTERNAL_TOOL_NAMES } from "../../chat/mcp-tool-use.js";
 import { runOnboardCommand } from "./onboard.js";
 import { DEFAULT_LLM_TIMEOUT_MS, type AppConfig } from "../../runtime/config.js";
 import { getRuntimePaths, type RuntimePaths } from "../../runtime/paths.js";
@@ -57,6 +58,16 @@ test("runOnboardCommand writes local files and skips provider test when requeste
     assert.equal(config.agent.toneIntensity, 7);
     assert.equal(config.memory?.writePolicy, "ask");
     assert.equal(config.memory?.deletePolicy, "allow");
+    assert.equal(config.memory?.retrievalPolicy, "governed");
+    assert.deepEqual(config.internalTools?.policies, Object.fromEntries(INTERNAL_TOOL_NAMES.map((tool) => [tool, "allow"])));
+    assert.equal(config.workspace?.defaultPath, paths.workspaceDir);
+    assert.equal(config.channels?.telegram?.enabled, false);
+    assert.equal(config.channels?.zalo?.enabled, false);
+    assert.equal(config.channels?.zaloPersonal?.enabled, false);
+    assert.equal(config.channels?.telegram?.attachments?.visionPolicy, "allow");
+    assert.equal(config.channels?.telegram?.attachments?.transcriptionPolicy, "allow");
+    assert.deepEqual(config.mcp?.servers, []);
+    assert.equal(config.skills?.registry?.remoteOfficial?.enabled, true);
     assert.match(envText, /OPENAI_API_KEY="test-key"/);
     assert.equal(agentsText, getDefaultAgentsMarkdown());
     assert.match(agentsText, /# AGENTS\.md - Bestie Agent Workspace/);

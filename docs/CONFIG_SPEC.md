@@ -36,7 +36,7 @@ Installed skills:
 
 ## config.json
 
-Phase Now config started with non-secret `agent` and `llm` fields. The current local build uses config version 2 with canonical LLM model refs, auth profiles, a small model catalog, and optional `llm.image` media model refs. Optional `transcription`, `speech`, `generation`, `memory.writePolicy`, `memory.deletePolicy`, `memory.retrievalPolicy`, `skills.registry`, `workspace`, `internalTools`, `agents`, `channels`, and `mcp` fields are supported as features are enabled.
+Phase Now config started with non-secret `agent` and `llm` fields. The current local build uses config version 2 with canonical LLM model refs, auth profiles, a small model catalog, and optional `llm.image` media model refs. Optional `transcription`, `speech`, `generation`, `memory.writePolicy`, `memory.deletePolicy`, `memory.retrievalPolicy`, `skills.registry`, `workspace`, `internalTools`, `agents`, `channels`, and `mcp` fields are supported as features are enabled. Both CLI and WebUI onboarding write the basic runtime sections explicitly. Every known `internalTools.policies` entry, memory write/delete policy, and channel attachment policy that accepts `"allow"` starts as `"allow"`.
 
 ```json
 {

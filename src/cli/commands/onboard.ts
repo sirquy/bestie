@@ -11,6 +11,7 @@ import { testLlmProvider } from "../../llm/provider-test.js";
 import { DEFAULT_LLM_MAX_RETRIES, DEFAULT_LLM_RETRY_DELAY_MS, DEFAULT_LLM_TIMEOUT_MS, configExists, loadConfig, type AppConfig, writeConfig } from "../../runtime/config.js";
 import { loadEnvFile, writeEnvFile } from "../../runtime/env.js";
 import { appendLog } from "../../runtime/logger.js";
+import { completeOnboardingConfig } from "../../runtime/onboarding-defaults.js";
 import { getRuntimePaths, type RuntimePaths } from "../../runtime/paths.js";
 import { createCliQuestioner } from "../prompt.js";
 import { badge, bold, color, dim, title, withColorMode } from "../ui.js";
@@ -105,7 +106,7 @@ export async function runOnboardCommand(optionsOrArgv: string[] | OnboardCommand
 
     ui.section("Tạo cấu hình", "Đang tạo file tính cách cục bộ và cấu hình nhà cung cấp.");
     const existingConfig = await loadExistingConfig(paths);
-    const config = buildConfig(answers, existingConfig);
+    const config = buildConfig(answers, paths, existingConfig);
     const character = generateCharacterConfig({
       name: answers.agentName,
       ownerName: answers.ownerName,
@@ -285,7 +286,7 @@ async function loadExistingConfig(paths: RuntimePaths): Promise<AppConfig | unde
   return loadConfig(paths);
 }
 
-function buildConfig(answers: OnboardingAnswers, existingConfig?: AppConfig): AppConfig {
+function buildConfig(answers: OnboardingAnswers, paths: RuntimePaths, existingConfig?: AppConfig): AppConfig {
   const providerDefaults = getLlmProviderDefaults(answers.provider);
   const modelRef = buildModelRef(providerDefaults.catalogProvider, answers.model);
   const profileId = `${providerDefaults.catalogProvider}:api-key`;
@@ -297,7 +298,7 @@ function buildConfig(answers: OnboardingAnswers, existingConfig?: AppConfig): Ap
   };
 
   if (existingConfig) {
-    return {
+    return completeOnboardingConfig({
       ...existingConfig,
       agent: {
         ...existingConfig.agent,
@@ -319,10 +320,10 @@ function buildConfig(answers: OnboardingAnswers, existingConfig?: AppConfig): Ap
         writePolicy: answers.memoryWritePolicy,
         deletePolicy: answers.memoryDeletePolicy,
       },
-    };
+    }, paths);
   }
 
-  return {
+  return completeOnboardingConfig({
     version: 2,
     agent: {
       name: answers.agentName,
@@ -348,20 +349,7 @@ function buildConfig(answers: OnboardingAnswers, existingConfig?: AppConfig): Ap
       writePolicy: answers.memoryWritePolicy,
       deletePolicy: answers.memoryDeletePolicy,
     },
-    internalTools: {
-      policies: {
-        "internal.write_file": "allow",
-        "internal.edit_file": "allow",
-        "internal.apply_patch": "allow",
-        "internal.exec": "allow",
-        "internal.list_processes": "allow",
-        "internal.read_url": "allow"
-      },
-      exec: {
-        timeoutMs: 300000
-      }
-    }
-  };
+  }, paths);
 }
 
 async function runProviderTest(config: AppConfig, apiKey: string, paths: RuntimePaths, writeLine: (message: string) => void = console.log): Promise<void> {
