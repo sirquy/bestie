@@ -110,6 +110,62 @@ test("ZaloHttpClient treats string timeout code as no updates", async () => {
   assert.deepEqual(await client.getUpdates(undefined, 20), []);
 });
 
+test("createZaloOutboundAdapter routes group text and typing to the group thread", async () => {
+  const calls: Array<{ chatId: string; text?: string; threadType?: number }> = [];
+  const client = {
+    ...createRecordingClient([]),
+    sendMessage: async (chatId: string, text: string, options?: { threadType?: 0 | 1 }) => { calls.push({ chatId, text, threadType: options?.threadType }); },
+    sendChatAction: async (chatId: string, _action: "typing", threadType?: 0 | 1) => { calls.push({ chatId, threadType }); },
+  } satisfies ZaloClient;
+  const adapter = createZaloOutboundAdapter(client, 1);
+  await adapter.createResponseAdapter("group-1").sendMessage("hello group");
+  await adapter.createActivityOptions("group-1", "typing").client.sendChatAction("group-1", "typing");
+  assert.deepEqual(calls, [
+    { chatId: "group-1", text: "hello group", threadType: 1 },
+    { chatId: "group-1", threadType: 1 },
+  ]);
+});
+
+test("handleZaloUpdate applies Zalo Personal group policy and mention gating", async () => {
+  const paths = fakePaths();
+  const sent: Array<{ chatId: string; text: string }> = [];
+  const groupConfig: AppConfig = {
+    ...config,
+    channels: {
+      ...config.channels,
+      zaloPersonal: {
+        enabled: true,
+        sessionEnv: "BESTIE_ZALO_PERSONAL_SESSION",
+        ownerUserId: "controller-1",
+        groupPolicy: "allowlist",
+        groups: ["group-1"],
+        groupAllowFrom: ["member-1"],
+        requireMention: true,
+      },
+    },
+  };
+
+  assert.equal(await handleZaloUpdate({ update_id: 1, message: { from: { id: "member-1" }, chat: { id: "group-1", type: "group" }, text: "hello" } }, { config: groupConfig, paths, client: createRecordingClient(sent), channel: "zalo-personal" }), "ignored");
+  assert.equal(await handleZaloUpdate({ update_id: 2, message: { from: { id: "member-1" }, chat: { id: "group-2", type: "group" }, text: "@Miu hello" } }, { config: groupConfig, paths, client: createRecordingClient(sent), channel: "zalo-personal" }), "ignored");
+  assert.equal(await handleZaloUpdate({ update_id: 3, message: { from: { id: "member-2" }, chat: { id: "group-1", type: "group" }, text: "@Miu hello" } }, { config: groupConfig, paths, client: createRecordingClient(sent), channel: "zalo-personal", chatCompletion: async () => '{"answer":"must be ignored"}' }), "ignored");
+  assert.equal(await handleZaloUpdate({ update_id: 4, message: { from: { id: "member-1" }, chat: { id: "group-1", type: "group" }, text: "@Miu hello" } }, { config: groupConfig, paths, client: createRecordingClient(sent), channel: "zalo-personal", chatCompletion: async () => '{"answer":"hi"}' }), "replied");
+  assert.equal(sent.at(-1)?.chatId, "group-1");
+});
+
+test("handleZaloUpdate blocks slash commands in Zalo Personal groups", async () => {
+  const sent: Array<{ chatId: string; text: string }> = [];
+  const groupConfig: AppConfig = {
+    ...config,
+    channels: {
+      ...config.channels,
+      zaloPersonal: { enabled: true, sessionEnv: "BESTIE_ZALO_PERSONAL_SESSION", ownerUserId: "controller-1", groupPolicy: "allowlist", groups: ["group-1"], requireMention: false },
+    },
+  };
+
+  assert.equal(await handleZaloUpdate({ update_id: 1, message: { from: { id: "member-1" }, chat: { id: "group-1", type: "group" }, text: "/help" } }, { config: groupConfig, paths: fakePaths(), client: createRecordingClient(sent), channel: "zalo-personal" }), "replied");
+  assert.match(sent[0]?.text ?? "", /Commands are not available/);
+});
+
 test("mapZaloIncomingMessage represents sticker-only messages as chat input", () => {
   const incoming = mapZaloIncomingMessage({
     from: { id: "customer-a" },

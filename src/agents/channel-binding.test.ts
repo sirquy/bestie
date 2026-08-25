@@ -95,6 +95,47 @@ test("public bound agents of any role use isolated user namespaces without chang
   }
 });
 
+test("group runtimes cannot inherit public access from a wildcard Zalo Personal channel", async () => {
+  const paths = await createTempPaths();
+  try {
+    const promptPath = resolve(paths.appDir, "agents", "support", "system-prompt.md");
+    await mkdir(resolve(paths.appDir, "agents", "support"), { recursive: true });
+    await writeFile(promptPath, "Group support only.");
+    const config = createTestConfig({
+      channels: {
+        zaloPersonal: {
+          enabled: true,
+          sessionEnv: "BESTIE_ZALO_PERSONAL_SESSION",
+          ownerUserId: ["*"],
+          groupPolicy: "allowlist",
+          groups: ["group-1"],
+        },
+      },
+      agents: {
+        support: {
+          enabled: true,
+          displayName: "Support",
+          role: "Group support",
+          description: "Handles group messages.",
+          promptPath,
+          channels: ["zalo-personal"],
+          memoryScope: "agent:support",
+          approvalPolicy: "deny-external-actions",
+          public: { enabled: true },
+        },
+      },
+    });
+
+    const directRuntime = await resolveChannelAgentRuntime(config, paths, "zalo-personal", "customer-1");
+    const groupRuntime = await resolveChannelAgentRuntime(config, paths, "zalo-personal", "member-1", ["member-1"], false, "group:group-1");
+    assert.equal(directRuntime?.publicAccess?.isPublic, true);
+    assert.equal(groupRuntime?.publicAccess, undefined);
+    assert.equal(groupRuntime?.conversationUserId, "group:group-1");
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
 async function createTempPaths(): Promise<RuntimePaths> {
   const rootDir = await mkdtemp(resolve(tmpdir(), "bestie-channel-agent-test-"));
   const appDir = resolve(rootDir, ".bestie");

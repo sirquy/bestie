@@ -1,10 +1,12 @@
 import { chmod } from "node:fs/promises";
 
-import type { ZaloClient, ZaloFileInfo, ZaloSendFileOptions, ZaloSentMessage, ZaloUpdate } from "../zalo.js";
+import type { ZaloClient, ZaloFileInfo, ZaloSendFileOptions, ZaloSendMessageOptions, ZaloSentMessage, ZaloUpdate } from "../zalo.js";
 import { isZaloPersonalOperation, type ZaloPersonalOperation } from "./capabilities.js";
 import type { ZaloPersonalCredentials } from "./session.js";
 
 const USER_THREAD_TYPE = 0;
+const GROUP_THREAD_TYPE = 1;
+type ZaloPersonalThreadType = typeof USER_THREAD_TYPE | typeof GROUP_THREAD_TYPE;
 
 export interface ZaloPersonalApi {
   listener: ZcaListener;
@@ -52,9 +54,15 @@ export interface ZaloPersonalInboundMessage {
     uidFrom?: string;
     idTo?: string;
     content?: unknown;
+    mentions?: unknown;
+    mention?: unknown;
     msgType?: string;
     ts?: string;
   };
+}
+
+export function isZaloPersonalGroupMessage(message: ZaloPersonalInboundMessage): boolean {
+  return message.type === GROUP_THREAD_TYPE;
 }
 
 export interface ZaloPersonalListenerHandlers {
@@ -97,8 +105,8 @@ export class ZaloPersonalClient implements ZaloClient {
     return new Uint8Array(await response.arrayBuffer());
   }
 
-  async sendMessage(chatId: string, text: string): Promise<ZaloSentMessage> {
-    const sent = await this.api.sendMessage(text, chatId, USER_THREAD_TYPE);
+  async sendMessage(chatId: string, text: string, options: ZaloSendMessageOptions = {}): Promise<ZaloSentMessage> {
+    const sent = await this.api.sendMessage(text, chatId, options.threadType ?? USER_THREAD_TYPE);
     return { messageId: sent.message?.msgId ?? sent.attachment[0]?.msgId };
   }
 
@@ -110,8 +118,8 @@ export class ZaloPersonalClient implements ZaloClient {
     return this.sendAttachment(chatId, document, options, "bestie-file.bin");
   }
 
-  async sendChatAction(chatId: string): Promise<void> {
-    await this.api.sendTypingEvent(chatId, USER_THREAD_TYPE);
+  async sendChatAction(chatId: string, _action?: "typing", threadType?: ZaloPersonalThreadType): Promise<void> {
+    await this.api.sendTypingEvent(chatId, threadType ?? USER_THREAD_TYPE);
   }
 
   async getUserDisplayName(userId: string): Promise<string | undefined> {
@@ -189,7 +197,7 @@ export class ZaloPersonalClient implements ZaloClient {
   }
 
   toUpdate(message: ZaloPersonalInboundMessage): ZaloUpdate | undefined {
-    if (message.isSelf || message.type !== USER_THREAD_TYPE || !message.threadId || !message.data.uidFrom) return undefined;
+    if (message.isSelf || ![USER_THREAD_TYPE, GROUP_THREAD_TYPE].includes(message.type) || !message.threadId || !message.data.uidFrom) return undefined;
     const attachment = extractAttachment(message.data.content, message.data.msgType);
     if (attachment) this.attachments.set(attachment.id, { url: attachment.url, bytes: attachment.bytes });
     const text = typeof message.data.content === "string"
@@ -204,8 +212,10 @@ export class ZaloPersonalClient implements ZaloClient {
       message: {
         message_id: message.data.msgId ?? message.data.cliMsgId,
         from: { id: String(message.data.uidFrom) },
-        chat: { id: message.threadId, type: "private" },
+        chat: { id: message.threadId, type: message.type === GROUP_THREAD_TYPE ? "group" : "private" },
         text,
+        ...(message.data.mentions === undefined ? {} : { mentions: message.data.mentions }),
+        ...(message.data.mention === undefined ? {} : { mention: message.data.mention }),
         ...(attachment ? {
           [attachment.kind]: {
             file_id: attachment.id,
@@ -224,7 +234,7 @@ export class ZaloPersonalClient implements ZaloClient {
     const sent = await this.api.sendMessage({
       msg: options.caption ?? "",
       attachments: { data: Buffer.from(bytes), filename: fileName as `${string}.${string}`, metadata: { totalSize: bytes.byteLength } },
-    }, chatId, USER_THREAD_TYPE);
+    }, chatId, options.threadType ?? USER_THREAD_TYPE);
     return { messageId: sent.message?.msgId ?? sent.attachment[0]?.msgId };
   }
 }

@@ -24,7 +24,7 @@ function createApi(sent: Array<{ message: unknown; threadId: string; type: numbe
   };
 }
 
-test("Zalo Personal client maps direct text, media, and stickers, while suppressing self and group events", async () => {
+test("Zalo Personal client maps direct and group messages while suppressing self events", async () => {
   const client = ZaloPersonalClient.fromApi(createApi([]));
 
   const text = client.toUpdate({
@@ -45,13 +45,19 @@ test("Zalo Personal client maps direct text, media, and stickers, while suppress
     isSelf: false,
     data: { msgId: "sticker-1", uidFrom: "controller-1", msgType: "sticker", content: { emoji: "🙂" } },
   });
+  const group = client.toUpdate({
+    threadId: "group-1",
+    type: 1,
+    isSelf: false,
+    data: { msgId: "group-1", uidFrom: "member-1", content: "@Miu help", mentions: [{ uid: "automation-1" }] },
+  });
 
   assert.deepEqual(text?.message, { message_id: "text-1", from: { id: "controller-1" }, chat: { id: "controller-1", type: "private" }, text: "xin chào" });
   assert.deepEqual(image?.message?.photo, { file_id: "https://media.example.test/photo.jpg", file_path: "https://media.example.test/photo.jpg", file_name: "photo.jpg", file_size: 3 });
   assert.deepEqual(await client.getFile("https://media.example.test/photo.jpg"), { fileId: "https://media.example.test/photo.jpg", filePath: "https://media.example.test/photo.jpg", fileSize: 3 });
   assert.equal(sticker?.message?.text, "[User sent a sticker.]");
+  assert.deepEqual(group?.message, { message_id: "group-1", from: { id: "member-1" }, chat: { id: "group-1", type: "group" }, text: "@Miu help", mentions: [{ uid: "automation-1" }] });
   assert.equal(client.toUpdate({ threadId: "controller-1", type: 0, isSelf: true, data: { uidFrom: "controller-1", content: "loop" } }), undefined);
-  assert.equal(client.toUpdate({ threadId: "group-1", type: 1, isSelf: false, data: { uidFrom: "controller-1", content: "group" } }), undefined);
 });
 
 test("Zalo Personal client sends text, photos, and documents through zca-js attachments", async () => {
@@ -61,10 +67,14 @@ test("Zalo Personal client sends text, photos, and documents through zca-js atta
   assert.deepEqual(await client.sendMessage("controller-1", "hello"), { messageId: 11 });
   assert.deepEqual(await client.sendPhoto("controller-1", new Uint8Array([1, 2, 3]), { fileName: "answer.png", caption: "image" }), { messageId: 11 });
   assert.deepEqual(await client.sendDocument("controller-1", new Uint8Array([4, 5]), { fileName: "answer.txt", caption: "file" }), { messageId: 11 });
+  assert.deepEqual(await client.sendMessage("group-1", "group reply", { threadType: 1 }), { messageId: 11 });
+  assert.deepEqual(await client.sendPhoto("group-1", new Uint8Array([6]), { threadType: 1 }), { messageId: 11 });
   assert.deepEqual(sent, [
     { message: "hello", threadId: "controller-1", type: 0 },
     { message: { msg: "image", attachments: { data: Buffer.from([1, 2, 3]), filename: "answer.png", metadata: { totalSize: 3 } } }, threadId: "controller-1", type: 0 },
     { message: { msg: "file", attachments: { data: Buffer.from([4, 5]), filename: "answer.txt", metadata: { totalSize: 2 } } }, threadId: "controller-1", type: 0 },
+    { message: "group reply", threadId: "group-1", type: 1 },
+    { message: { msg: "", attachments: { data: Buffer.from([6]), filename: "bestie-photo.jpg", metadata: { totalSize: 1 } } }, threadId: "group-1", type: 1 },
   ]);
 });
 

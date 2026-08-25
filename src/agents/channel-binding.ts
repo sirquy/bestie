@@ -25,9 +25,9 @@ export interface PublicAgentAccessPolicy {
   memoryWritePolicy: "deny" | "pending" | "allow";
 }
 
-export async function resolveChannelAgentRuntime(config: AppConfig, paths: RuntimePaths, channel: AgentChannelBinding, senderId: string, adminCandidateIds: readonly string[] = [senderId]): Promise<ChannelAgentRuntime | undefined> {
+export async function resolveChannelAgentRuntime(config: AppConfig, paths: RuntimePaths, channel: AgentChannelBinding, senderId: string, adminCandidateIds: readonly string[] = [senderId], allowPublicAccess = true, conversationUserId?: string): Promise<ChannelAgentRuntime | undefined> {
   const channelConfig = channel === "telegram" ? config.channels?.telegram : channel === "zalo" ? config.channels?.zalo : config.channels?.zaloPersonal;
-  const isPublicChannel = channelConfig?.ownerUserId instanceof Array && channelConfig.ownerUserId.length === 1 && channelConfig.ownerUserId[0] === "*";
+  const isPublicChannel = allowPublicAccess && channelConfig?.ownerUserId instanceof Array && channelConfig.ownerUserId.length === 1 && channelConfig.ownerUserId[0] === "*";
   const found = Object.entries(config.agents ?? {}).find(([, agent]) => agent.channels?.includes(channel));
   if (!found) {
     if (isPublicChannel) {
@@ -39,7 +39,7 @@ export async function resolveChannelAgentRuntime(config: AppConfig, paths: Runti
   if (isPublicChannel && !boundAgent.public?.enabled) {
     throw new Error(`Agent '${found[0]}' cannot receive public ${channel} messages without an explicit public policy.`);
   }
-  const runtime = await resolveWorkforceAgentRuntime(config, paths, found[0], `the ${channel} channel`, `agent:${found[0]}:user:${senderId}`, isPublicChannel);
+  const runtime = await resolveWorkforceAgentRuntime(config, paths, found[0], `the ${channel} channel`, conversationUserId ?? `agent:${found[0]}:user:${senderId}`, isPublicChannel);
   if (!runtime) return runtime;
   if (!isPublicChannel) return runtime;
   const publicConfig = runtime.agent.public;

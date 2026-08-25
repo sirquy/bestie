@@ -935,6 +935,10 @@ test("validateConfig accepts Zalo Personal media settings and requires a control
         enabled: true,
         sessionEnv: "BESTIE_ZALO_PERSONAL_SESSION",
         ownerUserId: "controller-1",
+        groupPolicy: "allowlist",
+        groups: ["group-1"],
+        groupAllowFrom: ["member-1"],
+        requireMention: true,
         reconnect: { initialDelayMs: 1_000, maxDelayMs: 30_000 },
         attachments: { downloadPolicy: "allow", maxBytes: 4_096, visionPolicy: "allow" },
       },
@@ -945,12 +949,20 @@ test("validateConfig accepts Zalo Personal media settings and requires a control
     enabled: true,
     sessionEnv: "BESTIE_ZALO_PERSONAL_SESSION",
     ownerUserId: "controller-1",
+    groupPolicy: "allowlist",
+    groups: ["group-1"],
+    groupAllowFrom: ["member-1"],
+    requireMention: true,
     reconnect: { initialDelayMs: 1_000, maxDelayMs: 30_000 },
     attachments: { downloadPolicy: "allow", maxBytes: 4_096, visionPolicy: "allow" },
   });
   assert.throws(
     () => validateConfig({ ...validConfig, channels: { zaloPersonal: { enabled: true, sessionEnv: "BESTIE_ZALO_PERSONAL_SESSION", ownerUserId: "" } } }),
     /ownerUserId must be set/,
+  );
+  assert.throws(
+    () => validateConfig({ ...validConfig, channels: { zaloPersonal: { enabled: true, sessionEnv: "BESTIE_ZALO_PERSONAL_SESSION", ownerUserId: "controller-1", groupPolicy: "allowlist" } } }),
+    /groups must contain at least one group ID/,
   );
 });
 

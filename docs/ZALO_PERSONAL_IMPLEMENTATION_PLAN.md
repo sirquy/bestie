@@ -5,8 +5,9 @@
 Implemented as an experimental local runtime slice. It does not replace the
 existing official Zalo Bot transport at `channels.zalo`. Automated coverage
 verifies the local adapter, configuration, CLI lifecycle, QR/session handling,
-and text/media pipeline integration; a dedicated-account live smoke test is
-still required before relying on it in production.
+text/media pipeline integration, and the initial controlled-group policy. A
+dedicated-account live smoke test is still required before relying on it in
+production.
 
 ## Decision
 
@@ -239,6 +240,57 @@ responses during a running process, but it does not provide durable inbox
 semantics across a crash. A focused `zalo-personal-inbox` SQLite service is a
 future reliability enhancement; it must not persist raw callbacks in logs.
 
+## Group Support Implementation Plan
+
+Group support is enabled in a separate, conservative phase. The initial rollout
+must use an explicit group allowlist and mention gating; it must never open all
+groups by default.
+
+### Transport and message model
+
+- Preserve the Zalo thread type from `zca-js`: user `0`, group `1`.
+- Map group events to `chat.type: "group"` while retaining the sender ID and
+  group thread ID separately.
+- Pass the matching thread type to text, typing, photo, and document sends.
+- Keep self-message suppression and per-thread queueing unchanged.
+- Isolate conversation and memory keys by thread scope so group history cannot
+  mix with direct-message history.
+
+### Group policy
+
+Add these optional fields under `channels.zaloPersonal`:
+
+```json
+{
+  "groupPolicy": "disabled | allowlist",
+  "groups": ["stable-group-id"],
+  "groupAllowFrom": ["stable-member-id"],
+  "requireMention": true
+}
+```
+
+Safe defaults are `disabled`, an empty group list, no group sender allowlist,
+and `requireMention: true`. A group is processed only when its policy, group
+allowlist, sender allowlist (when configured), and mention requirement pass.
+Direct-message authorization continues to use `ownerUserId` and is unchanged.
+
+### Delivery phases
+
+1. Capture a redacted real group event and confirm the `zca-js` payload shape.
+2. Add typed group transport and exact `ThreadType.Group` outbound routing.
+3. Add config validation and group authorization at the shared Zalo handler.
+4. Add transport, policy, queue-isolation, and regression tests.
+5. Verify with one dedicated test group before expanding the allowlist.
+6. Add group discovery/configuration commands only after the allowlist flow is
+   stable.
+
+### Safety requirements
+
+Group members must not inherit direct-message owner privileges. Approval and
+risky external actions remain gated; a group message or wildcard direct-owner
+configuration must not implicitly authorize those actions. Logs may record a
+redacted ignore reason, but never raw message content, cookies, IMEI, user-agent,
+QR data, or session values.
 ## CLI, Daemon, Doctor, and UI Integration
 
 Changes by module:
@@ -295,9 +347,14 @@ transport-neutral helpers if duplication is proven while implementing tests.
 
 ### Phase 2: Controlled group support
 
+Transport and shared-handler implementation has started: group mapping,
+thread-aware outbound delivery, allowlist/mention gating, and focused
+regression tests are in place. Live `zca-js` payload verification and the
+dedicated-account smoke test remain required.
+
 Only after Phase 1 is stable in daily use:
 
-1. Add `groupPolicy: disabled | allowlist` with default `disabled`.
+1. Add `groupPolicy: disabled | allowlist` with default `disabled`. (Implemented.)
 2. Support only explicit group IDs and controller/sender allowlists.
 3. Require a mention by default; replying to a prior Bestie message may count
    as an explicit activation only after a test proves the metadata is stable.

@@ -203,6 +203,10 @@ export interface AppConfig {
       sessionEnv: string;
       ownerUserId: OwnerUserIdConfig;
       adminUserIds?: string[];
+      groupPolicy?: "disabled" | "allowlist";
+      groups?: string[];
+      groupAllowFrom?: string[];
+      requireMention?: boolean;
       reconnect?: {
         initialDelayMs?: number;
         maxDelayMs?: number;
@@ -1187,14 +1191,33 @@ function optionalZaloPersonalChannel(value: unknown): NonNullable<NonNullable<Ap
     throw new InvalidConfigError("channels.zaloPersonal.ownerUserId must be set when Zalo Personal is enabled.");
   }
 
+  const groupPolicy = zaloPersonal.groupPolicy === undefined ? undefined : requireGroupPolicy(zaloPersonal.groupPolicy, "channels.zaloPersonal.groupPolicy");
+  const groups = zaloPersonal.groups === undefined ? undefined : requireStringArray(zaloPersonal.groups, "channels.zaloPersonal.groups").map((id) => requireString(id, "channels.zaloPersonal.groups[]"));
+  const groupAllowFrom = zaloPersonal.groupAllowFrom === undefined ? undefined : requireStringArray(zaloPersonal.groupAllowFrom, "channels.zaloPersonal.groupAllowFrom").map((id) => requireString(id, "channels.zaloPersonal.groupAllowFrom[]"));
+  const requireMention = zaloPersonal.requireMention === undefined ? undefined : requireBoolean(zaloPersonal.requireMention, "channels.zaloPersonal.requireMention");
+  if (groupPolicy === "allowlist" && (!groups || groups.length === 0)) {
+    throw new InvalidConfigError("channels.zaloPersonal.groups must contain at least one group ID when groupPolicy is allowlist.");
+  }
+
   return {
     enabled,
     sessionEnv: requireString(zaloPersonal.sessionEnv, "channels.zaloPersonal.sessionEnv"),
     ownerUserId,
     ...(zaloPersonal.adminUserIds === undefined ? {} : { adminUserIds: requireAdminUserIds(zaloPersonal.adminUserIds, "channels.zaloPersonal.adminUserIds") }),
+    ...(groupPolicy === undefined ? {} : { groupPolicy }),
+    ...(groups === undefined ? {} : { groups }),
+    ...(groupAllowFrom === undefined ? {} : { groupAllowFrom }),
+    ...(requireMention === undefined ? {} : { requireMention }),
     ...(initialDelayMs === undefined && maxDelayMs === undefined ? {} : { reconnect: { ...(initialDelayMs === undefined ? {} : { initialDelayMs }), ...(maxDelayMs === undefined ? {} : { maxDelayMs }) } }),
     ...(zaloPersonal.attachments === undefined ? {} : { attachments: optionalChannelAttachments(zaloPersonal.attachments, "channels.zaloPersonal.attachments") }),
   };
+}
+
+function requireGroupPolicy(value: unknown, fieldName: string): "disabled" | "allowlist" {
+  if (value !== "disabled" && value !== "allowlist") {
+    throw new InvalidConfigError(`${fieldName} must be disabled or allowlist.`);
+  }
+  return value;
 }
 
 function optionalZaloChannel(value: unknown): NonNullable<NonNullable<AppConfig["channels"]>["zalo"]> | undefined {
