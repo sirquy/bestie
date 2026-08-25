@@ -652,7 +652,7 @@ function findConflictMemoryGroups(memories: StoredMemory[]): AnalyzeMemoriesResu
       const right = memories[rightIndex];
       if (left.type !== right.type || left.scope !== right.scope) continue;
       if (!looksContradictory(left.content, right.content)) continue;
-      conflicts.push({ ids: [left.id, right.id], reason: "Same type and scope contain opposing preference language." });
+      conflicts.push({ ids: [left.id, right.id].sort((leftId, rightId) => leftId - rightId), reason: "Same type and scope contain opposing preference language." });
     }
   }
 
