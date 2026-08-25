@@ -126,6 +126,24 @@ test("createZaloOutboundAdapter routes group text and typing to the group thread
   ]);
 });
 
+test("createZaloOutboundAdapter quotes the triggering Zalo Personal group message once", async () => {
+  const calls: Array<{ text: string; options?: { threadType?: 0 | 1; quote?: unknown } }> = [];
+  const quote = { msgId: "message-1", uidFrom: "member-1" };
+  const client = {
+    ...createRecordingClient([]),
+    sendMessage: async (_chatId: string, text: string, options?: { threadType?: 0 | 1; quote?: unknown }) => { calls.push({ text, options }); },
+  } satisfies ZaloClient;
+  const adapter = createZaloOutboundAdapter(client, 1, quote);
+
+  await adapter.createResponseAdapter("group-1").sendMessage("first reply");
+  await adapter.createResponseAdapter("group-1").sendMessage("second reply");
+
+  assert.deepEqual(calls, [
+    { text: "first reply", options: { threadType: 1, quote } },
+    { text: "second reply", options: { threadType: 1 } },
+  ]);
+});
+
 test("handleZaloUpdate applies Zalo Personal group policy and mention gating", async () => {
   const paths = fakePaths();
   const sent: Array<{ chatId: string; text: string }> = [];

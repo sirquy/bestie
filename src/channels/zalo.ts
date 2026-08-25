@@ -180,6 +180,7 @@ export interface ZaloClient {
 export interface ZaloSendMessageOptions {
   parseMode?: "Markdown";
   threadType?: 0 | 1;
+  quote?: unknown;
 }
 
 export interface ZaloSendFileOptions {
@@ -571,14 +572,21 @@ export function createZaloRuntimeAdapter(client: ZaloClient, update?: ZaloUpdate
         processAttachment: (attachment) => saveZaloAttachment(attachment, update, options),
       },
     } : {}),
-    outbound: createZaloOutboundAdapter(client, update?.message?.chat?.type === "group" ? 1 : 0),
+    outbound: createZaloOutboundAdapter(client, update?.message?.chat?.type === "group" ? 1 : 0, update?.message?.quote),
   };
 }
 
-export function createZaloOutboundAdapter(client: ZaloClient, threadType: 0 | 1 = 0): ChannelOutboundAdapter<string, "typing"> {
+export function createZaloOutboundAdapter(client: ZaloClient, threadType: 0 | 1 = 0, quote?: unknown): ChannelOutboundAdapter<string, "typing"> {
+  let pendingQuote = threadType === 1 ? quote : undefined;
+
   return {
     createResponseAdapter: (chatId) => ({
-      sendMessage: async (text) => normalizeZaloSentMessage(await client.sendMessage(chatId, text, { threadType })),
+      sendMessage: async (text) => {
+        const messageQuote = pendingQuote;
+        const sent = normalizeZaloSentMessage(await client.sendMessage(chatId, text, { threadType, ...(messageQuote === undefined ? {} : { quote: messageQuote }) }));
+        pendingQuote = undefined;
+        return sent;
+      },
       editMessage: async (_messageId, text) => {
         await client.sendMessage(chatId, text, { threadType });
       },

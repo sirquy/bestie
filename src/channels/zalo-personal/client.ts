@@ -11,7 +11,7 @@ type ZaloPersonalThreadType = typeof USER_THREAD_TYPE | typeof GROUP_THREAD_TYPE
 export interface ZaloPersonalApi {
   listener: ZcaListener;
   getUserInfo(userId: string): Promise<{ changed_profiles?: Record<string, { displayName?: string; zaloName?: string }> }>;
-  sendMessage(message: string | { msg: string; attachments?: unknown }, threadId: string, type: number): Promise<{ message: { msgId?: number } | null; attachment: Array<{ msgId?: number }> }>;
+  sendMessage(message: string | { msg: string; attachments?: unknown; quote?: unknown }, threadId: string, type: number): Promise<{ message: { msgId?: number } | null; attachment: Array<{ msgId?: number }> }>;
   sendTypingEvent(threadId: string, type: number): Promise<unknown>;
   [operation: string]: unknown;
 }
@@ -58,6 +58,7 @@ export interface ZaloPersonalInboundMessage {
     mention?: unknown;
     msgType?: string;
     ts?: string;
+    [key: string]: unknown;
   };
 }
 
@@ -106,7 +107,8 @@ export class ZaloPersonalClient implements ZaloClient {
   }
 
   async sendMessage(chatId: string, text: string, options: ZaloSendMessageOptions = {}): Promise<ZaloSentMessage> {
-    const sent = await this.api.sendMessage(text, chatId, options.threadType ?? USER_THREAD_TYPE);
+    const message = options.quote === undefined ? text : { msg: text, quote: options.quote };
+    const sent = await this.api.sendMessage(message, chatId, options.threadType ?? USER_THREAD_TYPE);
     return { messageId: sent.message?.msgId ?? sent.attachment[0]?.msgId };
   }
 
@@ -214,6 +216,7 @@ export class ZaloPersonalClient implements ZaloClient {
         from: { id: String(message.data.uidFrom) },
         chat: { id: message.threadId, type: message.type === GROUP_THREAD_TYPE ? "group" : "private" },
         text,
+        ...(message.type === GROUP_THREAD_TYPE ? { quote: message.data } : {}),
         ...(message.data.mentions === undefined ? {} : { mentions: message.data.mentions }),
         ...(message.data.mention === undefined ? {} : { mention: message.data.mention }),
         ...(attachment ? {

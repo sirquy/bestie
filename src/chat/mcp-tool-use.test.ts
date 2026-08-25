@@ -30,6 +30,8 @@ test("buildMcpToolInstructions includes global tool selection guidance", () => {
   const instructions = buildMcpToolInstructions(createConfig()) ?? "";
 
   assert.match(instructions, /Tool selection guide/);
+  assert.match(instructions, /Current runtime time/);
+  assert.match(instructions, /internal\.current_time/);
   assert.match(instructions, /Approved local memories and knowledge graph facts may already be included/);
   assert.match(instructions, /do not call memory or knowledge tools just to rediscover/);
   assert.match(instructions, /Use memory and knowledge tools only when the included context is missing or insufficient/);
@@ -470,6 +472,18 @@ test("runAgentToolRequest runs internal search_files without MCP config", async 
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
   }
+});
+
+test("runAgentToolRequest returns the configured runtime clock", async () => {
+  const result = await runAgentToolRequest({
+    config: { ...createConfig(), agent: { ...createConfig().agent, timeZone: "Asia/Ho_Chi_Minh" } },
+    paths: await createTempPaths(),
+    request: { tool: "internal.current_time", arguments: {} },
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal((result.result as { timeZone: string }).timeZone, "Asia/Ho_Chi_Minh");
+  assert.match(JSON.stringify(result.result), /nowIso/);
 });
 
 test("runAgentToolRequest validates Zalo Personal capability calls before restoring a session", async () => {

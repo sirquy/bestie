@@ -25,6 +25,7 @@ import { runTunnelTool } from "../tools/tunnel-tools.js";
 import { runServiceTool } from "../tools/service-tools.js";
 import { runZaloPersonalOperationTool } from "../tools/zalo-personal-tools.js";
 import { isZaloPersonalOperation, ZALO_PERSONAL_OPERATION_NAMES } from "../channels/zalo-personal/capabilities.js";
+import { formatRuntimeClock, getRuntimeClock } from "../runtime/clock.js";
 
 const CRON_SCHEDULE_PROMPT_GUIDANCE = '- When creating or updating a cron schedule, the cron prompt must be the future task itself, written as a standalone instruction the isolated cron runner can execute later. Never store your current reply, a success message, the schedule ID, next_run_at, or text like "I created the schedule" in the prompt. For example, if the user asks "check YouTube and summarize every day at 17:00", store a prompt like "Check the configured YouTube channel for new content and summarize the findings for the user." Then, after the tool succeeds, answer the user with the schedule confirmation separately. Use update_cron_schedule for changing an existing schedule, remove_cron_schedule/toggle_cron_schedule for changing schedule state, and trigger_cron_schedule only when the user wants to run an existing cron job now. Do not trigger a newly created schedule just to prove it exists unless the user explicitly asks for an immediate run.';
 
@@ -69,6 +70,7 @@ export interface McpToolRequest {
 }
 
 export const INTERNAL_TOOL_NAMES = [
+  "internal.current_time",
   "internal.read_file",
   "internal.read_many_files",
   "internal.read_markdown_bundle",
@@ -419,10 +421,12 @@ export function buildMcpToolInstructions(config: AppConfig, runtimeContext?: str
     .filter((server) => server.enabled)
     .flatMap((server) => (server.tools ?? []).map((tool) => `${server.name}/${tool.name} (${tool.category})`));
 
-  const contextSection = runtimeContext?.trim() ? `\nRuntime context:\n${runtimeContext.trim()}` : "";
+  const clockSection = `\n${formatRuntimeClock(getRuntimeClock(config.agent.timeZone ?? "UTC"))}`;
+  const contextSection = `${clockSection}${runtimeContext?.trim() ? `\nRuntime context:\n${runtimeContext.trim()}` : ""}`;
   const mcpSection = mcpTools.length === 0 ? "" : `\nAvailable configured MCP tools (category controls permission):\n${mcpTools.map((tool) => `- ${tool}`).join("\n")}`;
 
   const tools = [
+    'internal.current_time {}',
     'internal.read_file {"path":"relative/or/allowed/absolute/path"}',
     'internal.read_many_files {"paths":["README.md","docs/ARCHITECTURE.md"],"maxBytesPerFile":24576,"maxTotalBytes":163840}',
     'internal.read_markdown_bundle {"path":".","limit":40,"maxBytesPerFile":24576,"maxTotalBytes":163840}',
@@ -950,6 +954,10 @@ export async function runAgentToolRequest(options: RunAgentToolRequestOptions): 
   }
 
   const args = options.request.arguments;
+  if (options.request.tool === "internal.current_time") {
+    const clock = getRuntimeClock(options.config.agent.timeZone ?? "UTC");
+    return { ok: true, status: "pass", message: `Current time in ${clock.timeZone}.`, result: clock };
+  }
   if (options.request.tool === "internal.zalo_personal") {
     const operation = stringArg(args.operation);
     if (!operation || !isZaloPersonalOperation(operation)) {
