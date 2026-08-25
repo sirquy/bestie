@@ -82,6 +82,14 @@ test("cron isolated prompt exposes internal and configured MCP tools", () => {
   assert.match(prompt, /composio\/gmail_search/);
 });
 
+test("cron isolated prompt instructs reports to use the saved destination", () => {
+  const prompt = buildCronSystemPrompt(TEST_CONFIG, undefined, "zalo-personal-group:group-1");
+
+  assert.match(prompt, /saved report destination: zalo-personal-group:group-1/);
+  assert.match(prompt, /Do not ask for a recipient, channel, user ID, or delivery instructions/);
+  assert.match(prompt, /scheduler handles delivery/);
+});
+
 test("CronExecutor tick picks up due jobs", async () => {
   const paths = await createTempPaths();
   try {
@@ -265,6 +273,38 @@ test("CronExecutor keeps long successful reports untruncated and chunks channel 
     assert.doesNotMatch(deliveredText, /\.\.\.$/);
   } finally {
     globalThis.fetch = originalFetch;
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("CronExecutor passes the schedule channel to the isolated chat runner", async () => {
+  const paths = await createTempPaths();
+  let receivedDestination: string | undefined;
+
+  try {
+    const store = await SqliteMemoryStore.open(paths);
+    store.addCronSchedule({
+      name: "Bound report",
+      scheduleType: "once",
+      scheduleValue: new Date(Date.now() - 60_000).toISOString(),
+      prompt: "Send a reminder",
+      channel: "zalo-personal-group:group-1",
+      nextRunAt: new Date(Date.now() - 60_000).toISOString(),
+    });
+    store.close();
+
+    const executor = new CronExecutor({
+      config: TEST_CONFIG,
+      paths,
+      isolatedChatRunner: async (options) => {
+        receivedDestination = options.reportDestination;
+        return "Reminder: scheduled task completed.";
+      },
+    });
+    await executor.tick();
+
+    assert.equal(receivedDestination, "zalo-personal-group:group-1");
+  } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
   }
 });

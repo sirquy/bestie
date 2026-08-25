@@ -137,6 +137,7 @@ export class CronExecutor {
         paths: this.options.paths,
         apiKey: this.options.apiKey,
         prompt: job.prompt,
+        reportDestination: job.channel,
       });
 
       store.finishCronLog(logId, "ok", output);

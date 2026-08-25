@@ -19,6 +19,7 @@ export interface IsolatedChatOptions {
   paths: RuntimePaths;
   apiKey?: string;
   prompt: string;
+  reportDestination?: string;
   maxToolCalls?: number;
 }
 
@@ -28,7 +29,7 @@ const cronChatCompletion: AgentToolChatCompletionRunner = (config: AppConfig, _a
 export async function runIsolatedChat(options: IsolatedChatOptions): Promise<string> {
   const apiKey = options.apiKey ?? (await loadLlmCandidateSecret(resolvePrimaryLlmCandidate(options.config), options.paths));
 
-  const systemPrompt = buildCronSystemPrompt(options.config, await loadWorkspaceInstructions(options.paths));
+  const systemPrompt = buildCronSystemPrompt(options.config, await loadWorkspaceInstructions(options.paths), options.reportDestination);
   const memories = await loadRelevantMemories(options.paths, { query: options.prompt });
   const knowledgeGraph = await loadRelevantKnowledgeGraph(options.paths, options.prompt);
   const messages = buildChatMessages(systemPrompt, [], options.prompt, memories, { memoryRetrievalPolicy: options.config.memory?.retrievalPolicy ?? "full", knowledgeGraph });
@@ -51,7 +52,12 @@ export async function runIsolatedChat(options: IsolatedChatOptions): Promise<str
   return result;
 }
 
-export function buildCronSystemPrompt(config: AppConfig, workspaceInstructions?: string): string {
-  const base = [CRON_SYSTEM_PREFIX, `Agent name: ${config.agent.name}. Owner: ${config.agent.ownerName}.`].join("\n\n");
+export function buildCronSystemPrompt(config: AppConfig, workspaceInstructions?: string, reportDestination?: string): string {
+  const deliveryInstruction = reportDestination
+    ? `Your final answer is automatically delivered to the saved report destination: ${reportDestination}. Produce only the message or report content to deliver there. Do not ask for a recipient, channel, user ID, or delivery instructions. Do not say that you cannot send it; the scheduler handles delivery.`
+    : undefined;
+  const base = [CRON_SYSTEM_PREFIX, `Agent name: ${config.agent.name}. Owner: ${config.agent.ownerName}.`, deliveryInstruction]
+    .filter((instruction): instruction is string => Boolean(instruction))
+    .join("\n\n");
   return buildMcpToolSystemPrompt(appendWorkspaceInstructionsText(base, workspaceInstructions), config);
 }
