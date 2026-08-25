@@ -166,6 +166,40 @@ test("handleZaloUpdate blocks slash commands in Zalo Personal groups", async () 
   assert.match(sent[0]?.text ?? "", /Commands are not available/);
 });
 
+test("handleZaloUpdate accepts any mentioned group member in open wildcard mode", async () => {
+  const paths = await createTempPaths();
+  const sent: Array<{ chatId: string; text: string }> = [];
+  const openConfig: AppConfig = {
+    ...config,
+    channels: {
+      ...config.channels,
+      zaloPersonal: {
+        enabled: true,
+        sessionEnv: "BESTIE_ZALO_PERSONAL_SESSION",
+        ownerUserId: "controller-1",
+        groupPolicy: "open",
+        groups: ["*"],
+        groupAllowFrom: ["*"],
+        requireMention: true,
+      },
+    },
+  };
+
+  try {
+    await writeRuntimeFiles(paths);
+    const result = await handleZaloUpdate(
+      { update_id: 1, message: { from: { id: "any-member" }, chat: { id: "any-group", type: "group" }, text: "@Miu hello" } },
+      { config: openConfig, paths, client: createRecordingClient(sent), channel: "zalo-personal", chatCompletion: async () => '{"answer":"hello group"}' },
+    );
+
+    assert.equal(result, "replied");
+    assert.equal(sent.at(-1)?.chatId, "any-group");
+    assert.equal(sent.at(-1)?.text, "hello group");
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
 test("mapZaloIncomingMessage represents sticker-only messages as chat input", () => {
   const incoming = mapZaloIncomingMessage({
     from: { id: "customer-a" },

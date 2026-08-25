@@ -203,7 +203,7 @@ export interface AppConfig {
       sessionEnv: string;
       ownerUserId: OwnerUserIdConfig;
       adminUserIds?: string[];
-      groupPolicy?: "disabled" | "allowlist";
+      groupPolicy?: "disabled" | "allowlist" | "open";
       groups?: string[];
       groupAllowFrom?: string[];
       requireMention?: boolean;
@@ -1198,6 +1198,15 @@ function optionalZaloPersonalChannel(value: unknown): NonNullable<NonNullable<Ap
   if (groupPolicy === "allowlist" && (!groups || groups.length === 0)) {
     throw new InvalidConfigError("channels.zaloPersonal.groups must contain at least one group ID when groupPolicy is allowlist.");
   }
+  if (groupPolicy !== "open" && (groups?.includes("*") || groupAllowFrom?.includes("*"))) {
+    throw new InvalidConfigError("channels.zaloPersonal wildcard group IDs are only supported when groupPolicy is open.");
+  }
+  if (groups?.includes("*") && groups.length !== 1) {
+    throw new InvalidConfigError("channels.zaloPersonal.groups may contain * only as its sole entry.");
+  }
+  if (groupAllowFrom?.includes("*") && groupAllowFrom.length !== 1) {
+    throw new InvalidConfigError("channels.zaloPersonal.groupAllowFrom may contain * only as its sole entry.");
+  }
 
   return {
     enabled,
@@ -1213,9 +1222,9 @@ function optionalZaloPersonalChannel(value: unknown): NonNullable<NonNullable<Ap
   };
 }
 
-function requireGroupPolicy(value: unknown, fieldName: string): "disabled" | "allowlist" {
-  if (value !== "disabled" && value !== "allowlist") {
-    throw new InvalidConfigError(`${fieldName} must be disabled or allowlist.`);
+function requireGroupPolicy(value: unknown, fieldName: string): "disabled" | "allowlist" | "open" {
+  if (value !== "disabled" && value !== "allowlist" && value !== "open") {
+    throw new InvalidConfigError(`${fieldName} must be disabled, allowlist, or open.`);
   }
   return value;
 }

@@ -219,7 +219,7 @@ type ZaloRuntimeConfig = {
   enabled: boolean;
   ownerUserId: OwnerUserIdConfig;
   adminUserIds?: string[];
-  groupPolicy?: "disabled" | "allowlist";
+  groupPolicy?: "disabled" | "allowlist" | "open";
   groups?: string[];
   groupAllowFrom?: string[];
   requireMention?: boolean;
@@ -526,8 +526,9 @@ function isZaloMessageAllowed(incoming: ChannelIncomingMessage<string, string | 
   }
 
   if ((config.groupPolicy ?? "disabled") === "disabled") return false;
-  if (config.groupPolicy !== "allowlist" || !config.groups?.includes(incoming.chatId)) return false;
-  if (config.groupAllowFrom?.length && !config.groupAllowFrom.includes(incoming.senderId)) return false;
+  if (config.groupPolicy === "allowlist" && !config.groups?.includes(incoming.chatId)) return false;
+  if (config.groupPolicy === "open" && config.groups?.length && !config.groups.includes("*") && !config.groups.includes(incoming.chatId)) return false;
+  if (config.groupAllowFrom?.length && !config.groupAllowFrom.includes("*") && !config.groupAllowFrom.includes(incoming.senderId)) return false;
   if (config.requireMention !== false && !hasZaloPersonalMention(incoming, agentName)) return false;
   return true;
 }

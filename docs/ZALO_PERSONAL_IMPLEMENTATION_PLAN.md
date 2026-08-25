@@ -67,15 +67,16 @@ Included:
 - existing Bestie tools, permission reviews, memory, approvals, and response
   pipeline through a transport-specific adapter
 
-Explicitly deferred:
+Explicitly deferred from the initial direct-message slice:
 
-- groups, pairing, open access, name-based identity matching, and multi-account
+- pairing, generic open access, name-based identity matching, and multi-account
 - reactions, delivery/seen acknowledgements, and streaming
 - Web UI QR login flow, directory/contact search, and session cookie refresh
 
-Deferring groups is a security boundary, not a compatibility shortcut. Group
-support has different trust, routing, and mention semantics and must arrive as
-a separately reviewed phase.
+Group support is a security boundary, not a compatibility shortcut. It has
+different trust, routing, and mention semantics and is covered by the
+separately reviewed Phase 2 policy below. The explicit `groupPolicy: "open"`
+mode is opt-in and does not change the safe default of `disabled`.
 
 ## Account Model
 
@@ -132,8 +133,8 @@ Rules:
 - Keep `reconnect` optional with conservative validated bounds. Do not make
   heartbeat or retry policies user-configurable in the initial setup wizard.
 - Add group fields only in the later group phase: `groupPolicy`, `groups`,
-  `groupAllowFrom`, and `requireMention`. Their safe defaults must be disabled
-  or explicit allowlists, never open groups.
+  `groupAllowFrom`, and `requireMention`. Their safe default remains disabled;
+  `open` is an explicit operator choice and must never be implicit.
 
 Do not reuse `botTokenEnv`, `pollingTimeoutSeconds`, or the existing Zalo Bot
 config validator. Doing so would imply an HTTP bot token exists when this
@@ -243,8 +244,8 @@ future reliability enhancement; it must not persist raw callbacks in logs.
 ## Group Support Implementation Plan
 
 Group support is enabled in a separate, conservative phase. The initial rollout
-must use an explicit group allowlist and mention gating; it must never open all
-groups by default.
+uses an explicit group allowlist and mention gating. An `open` policy is
+available only through explicit configuration and is never the default.
 
 ### Transport and message model
 
@@ -262,7 +263,7 @@ Add these optional fields under `channels.zaloPersonal`:
 
 ```json
 {
-  "groupPolicy": "disabled | allowlist",
+  "groupPolicy": "disabled | allowlist | open",
   "groups": ["stable-group-id"],
   "groupAllowFrom": ["stable-member-id"],
   "requireMention": true
@@ -270,9 +271,12 @@ Add these optional fields under `channels.zaloPersonal`:
 ```
 
 Safe defaults are `disabled`, an empty group list, no group sender allowlist,
-and `requireMention: true`. A group is processed only when its policy, group
-allowlist, sender allowlist (when configured), and mention requirement pass.
-Direct-message authorization continues to use `ownerUserId` and is unchanged.
+and `requireMention: true`. In `allowlist`, `groups` must contain explicit
+group IDs and wildcard entries are rejected. In `open`, `groups` and
+`groupAllowFrom` may be omitted or set to `["*"]` to match all groups or
+members; explicit arrays restrict the scope. Mention gating still applies by
+default. Direct-message authorization continues to use `ownerUserId` and is
+unchanged.
 
 ### Delivery phases
 
@@ -280,7 +284,7 @@ Direct-message authorization continues to use `ownerUserId` and is unchanged.
 2. Add typed group transport and exact `ThreadType.Group` outbound routing.
 3. Add config validation and group authorization at the shared Zalo handler.
 4. Add transport, policy, queue-isolation, and regression tests.
-5. Verify with one dedicated test group before expanding the allowlist.
+5. Verify with one dedicated test group before expanding the allowlist or enabling `open`.
 6. Add group discovery/configuration commands only after the allowlist flow is
    stable.
 
@@ -354,8 +358,8 @@ dedicated-account smoke test remain required.
 
 Only after Phase 1 is stable in daily use:
 
-1. Add `groupPolicy: disabled | allowlist` with default `disabled`. (Implemented.)
-2. Support only explicit group IDs and controller/sender allowlists.
+1. Add `groupPolicy: disabled | allowlist | open` with default `disabled`. (Implemented.)
+2. Support explicit group/member IDs and opt-in wildcard scopes only under `open`. (Implemented.)
 3. Require a mention by default; replying to a prior Bestie message may count
    as an explicit activation only after a test proves the metadata is stable.
 4. Accumulate ignored group context only if a bounded, privacy-reviewed history

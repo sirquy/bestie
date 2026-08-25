@@ -995,6 +995,37 @@ test("validateConfig accepts multiple channel owners and a wildcard", () => {
   assert.throws(() => validateConfig({ ...validConfig, channels: { telegram: { enabled: true, botTokenEnv: "TOKEN", ownerUserId: ["*", "owner-1"] } } }), /single array value/);
 });
 
+test("validateConfig accepts open Zalo Personal group wildcards", () => {
+  const config = validateConfig({
+    ...validConfig,
+    channels: {
+      zaloPersonal: {
+        enabled: true,
+        sessionEnv: "BESTIE_ZALO_PERSONAL_SESSION",
+        ownerUserId: "controller-1",
+        groupPolicy: "open",
+        groups: ["*"],
+        groupAllowFrom: ["*"],
+      },
+    },
+  });
+
+  assert.equal(config.channels?.zaloPersonal?.groupPolicy, "open");
+  assert.deepEqual(config.channels?.zaloPersonal?.groups, ["*"]);
+  assert.deepEqual(config.channels?.zaloPersonal?.groupAllowFrom, ["*"]);
+});
+
+test("validateConfig rejects wildcard group scopes outside open policy", () => {
+  assert.throws(
+    () => validateConfig({ ...validConfig, channels: { zaloPersonal: { enabled: true, sessionEnv: "BESTIE_ZALO_PERSONAL_SESSION", ownerUserId: "controller-1", groupPolicy: "allowlist", groups: ["*"] } } }),
+    /wildcard group IDs are only supported when groupPolicy is open/,
+  );
+  assert.throws(
+    () => validateConfig({ ...validConfig, channels: { zaloPersonal: { enabled: true, sessionEnv: "BESTIE_ZALO_PERSONAL_SESSION", ownerUserId: "controller-1", groupPolicy: "open", groups: ["group-1", "*"] } } }),
+    /groups may contain \* only as its sole entry/,
+  );
+});
+
 test("validateConfig validates workforce agent channel bindings", () => {
   const agent = {
     enabled: true,
