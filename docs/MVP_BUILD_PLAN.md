@@ -158,22 +158,6 @@ Acceptance:
 - failed install gives understandable recovery instructions
 - local smoke verifies fresh install, onboarding handoff, reinstall preservation, and unknown-directory refusal
 
-## Milestone 7 - Optional Zep Memory
-
-Deliverables:
-
-- Zep provider config
-- connection test
-- create/get user/thread
-- write messages
-- retrieve context block
-- fallback to SQLite
-
-Acceptance:
-
-- Zep can be enabled after local memory works
-- Zep failure does not kill the agent
-
 ## Non-MVP
 
 Do not build yet:

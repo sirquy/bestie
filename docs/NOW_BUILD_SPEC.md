@@ -2,7 +2,7 @@
 
 ## Goal
 
-Build the smallest working slice that proves the Bestie character feels alive before the project invests in Telegram, Zep, installer, UI, MCP, or avatar/voice work. This spec is the historical contract for Phase Now; the current project has since moved into a broader local MVP with config v2, provider profiles, Telegram/Zalo, cron, local memory, Doctor, permission-gated tools, installed skills, npm update checks, daemon/service management, local Vite/React Web UI, and MCP read foundations.
+Build the smallest working slice that proves the Bestie character feels alive before the project invests in Telegram, installer, UI, MCP, or avatar/voice work. This spec is the historical contract for Phase Now; the current project has since moved into a broader local MVP with config v2, provider profiles, Telegram/Zalo, cron, local memory, Doctor, permission-gated tools, installed skills, npm update checks, daemon/service management, local Vite/React Web UI, and MCP read foundations.
 
 Phase Now delivered a terminal-based chat loop with a configurable character prompt, LLM provider calls, minimal onboarding/config wizard, and basic logs for local development. The shipped implementation now supports OpenAI/ChatGPT, Anthropic Claude, generic OpenAI-compatible endpoints, Groq, OpenRouter, Ollama, and native Gemini API-key mode.
 
@@ -30,7 +30,7 @@ If this spec conflicts with either file, prefer `PROJECT.md`, then `docs/IMPLEME
 ## Out Of Scope For Original Phase Now
 
 - Telegram, Discord, web chat, or any external chat channel.
-- SQLite memory, Zep memory, memory extraction, or memory recall. Local SQLite memory was intentionally added later as Next-scope foundation work.
+- SQLite memory, memory extraction, or memory recall. Local SQLite memory was intentionally added later as Next-scope foundation work.
 - MCP, ACP, plugins, agent tools, reminders, notes, web search, or external actions.
 - One-command installer, update, backup, restore, rollback, systemd service, or daemon mode.
 - Full local web UI, hosted UI, avatar, voice, or body layer.
@@ -163,7 +163,7 @@ Secrets must live in `.env` and must not be printed after entry.
 - Redact secrets from logs and errors.
 - Fail with actionable messages, not stack traces by default.
 - Keep modules small enough that Telegram, memory, and Doctor can reuse runtime services later.
-- Avoid adding abstractions for Zep, MCP, plugins, UI, or hosted SaaS during Phase Now.
+- Avoid adding abstractions for MCP, plugins, UI, or hosted SaaS during Phase Now.
 
 ## Architecture
 
@@ -199,7 +199,7 @@ Terminal user input
   -> redacted log event
 ```
 
-Original Phase Now did not introduce channel, memory, tool, MCP, or UI dependencies into the chat loop. The current code has since added local memory recall and writes, permission-gated internal tools, provider-backed image/video generation, classified permission-gated MCP calls, Telegram/Zalo/cron runtimes, and a localhost UI shell around shared runtime services. Broader external/destructive tool use, hosted UI, optional Zep, and named multi-agent orchestration remain out of current scope.
+Original Phase Now did not introduce channel, memory, tool, MCP, or UI dependencies into the chat loop. The current code has since added local memory recall and writes, permission-gated internal tools, provider-backed image/video generation, classified permission-gated MCP calls, Telegram/Zalo/cron runtimes, and a localhost UI shell around shared runtime services. Broader external/destructive tool use, hosted UI, and named multi-agent orchestration remain out of current scope.
 
 ## Failure States
 
@@ -225,7 +225,7 @@ Original Phase Now did not introduce channel, memory, tool, MCP, or UI dependenc
 - Logs are written for command start, provider test result, chat request success/failure, and handled errors.
 - Logs redact API keys and token-like values.
 - Provider fallback diagnostics are available without exposing secrets: raw structured attempts stay in local logs, while `/providers` redacts and truncates displayed error text.
-- No Telegram, Zep, MCP, plugin, installer, avatar, voice, or UI code was required for the original phase. Telegram/Zalo, local SQLite memory, cron, Doctor, tools, MCP read foundations, installed skills, local Vite/React Web UI, installer/update flows, daemon/service management, and shared voice helpers were added after this phase as local MVP work.
+- No Telegram, MCP, plugin, installer, avatar, voice, or UI code was required for the original phase. Telegram/Zalo, local SQLite memory, cron, Doctor, tools, MCP read foundations, installed skills, local Vite/React Web UI, installer/update flows, daemon/service management, and shared voice helpers were added after this phase as local MVP work.
 
 ## Validation Plan
 

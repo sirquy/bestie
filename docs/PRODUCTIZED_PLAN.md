@@ -9,7 +9,7 @@ Core direction:
 - onboarding wizard
 - user-created character
 - provider-profile LLM setup across OpenAI/ChatGPT, Anthropic Claude, OpenAI-compatible endpoints, Groq, OpenRouter, Ollama, and native Gemini API-key mode
-- local SQLite memory, with optional Zep later
+- local SQLite memory
 - terminal, Telegram, Zalo, cron, daemon/service, and local Vite/React Web UI surfaces
 - safe local-first MVP
 
@@ -20,7 +20,7 @@ Implemented local MVP order:
 3. Provider profiles and fallback diagnostics.
 4. Local SQLite memory, Doctor, and permission-gated tools.
 5. Telegram, Zalo, cron, daemon/service, installer/update, skills, MCP read foundations, and local Vite/React Web UI.
-6. Optional Zep, hosted/product UI, and avatar/voice/body layer remain later product work.
+6. Hosted/product UI and avatar/voice/body layer remain later product work.
 
 ## Owner Direction Snapshot
 
@@ -30,7 +30,6 @@ The owner explicitly wants this to become a shareable/self-hosted product, not j
 - automatic environment setup
 - onboarding wizard
 - agent character creation
-- optional Zep setup later
 - LLM provider setup
 - channel connection setup
 
@@ -45,6 +44,6 @@ bestie doctor
 bestie doctor --fix
 ```
 
-Doctor should eventually detect environment, config, LLM provider, Zep memory, SQLite, channel, service, and character prompt issues. For MVP scope, follow `PROJECT.md` section `33. Doctor And Auto-Fix Requirement`: start with Node version, config/env parsing, LLM key and test call, SQLite writability, Telegram token if enabled, character prompt presence, and log directory writability.
+Doctor should eventually detect environment, config, LLM provider, SQLite, channel, service, and character prompt issues. For MVP scope, follow `PROJECT.md` section `33. Doctor And Auto-Fix Requirement`: start with Node version, config/env parsing, LLM key and test call, SQLite writability, Telegram token if enabled, character prompt presence, and log directory writability.
 
 `bestie doctor --fix` may repair safe local problems automatically, but must not overwrite config, delete data, change keys, modify public channel settings, stop services, or use sudo without explicit confirmation.

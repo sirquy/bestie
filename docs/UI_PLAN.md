@@ -102,4 +102,4 @@ npm run smoke:ui:all
 - Continue local UI polish before hosted UI.
 - Improve first-run onboarding and provider setup for non-technical users.
 - Add richer backup/restore/migration surfaces after CLI/runtime support is solid.
-- Keep hosted/product UI, marketplace, avatar/body, optional Zep, and broader external action execution as later scoped milestones.
+- Keep hosted/product UI, marketplace, avatar/body, and broader external action execution as later scoped milestones.

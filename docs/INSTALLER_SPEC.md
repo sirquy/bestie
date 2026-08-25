@@ -98,7 +98,6 @@ The smoke must not require real provider or Telegram secrets.
 
 - installing or starting user services; that belongs to `bestie service install|uninstall|restart|status`
 - auto-starting Telegram polling
-- Zep setup
 - hosted accounts
 - GUI installer
 - shell profile edits without clear user consent

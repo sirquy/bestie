@@ -41,7 +41,7 @@ The local MVP foundation is implemented and includes:
 - `bestie update` and throttled update notices for new npm versions.
 - Doctor diagnostics, safe local fixes, redacted logs, smoke tests, and character regression evals.
 
-Still intentionally later: hosted/SaaS mode, public marketplace, avatar/body layer, optional Zep, broad autonomous external actions, unrestricted MCP execution, Bestie manager routing, and general multi-agent collaboration beyond the fixed-role Agent Workforce.
+Still intentionally later: hosted/SaaS mode, public marketplace, avatar/body layer, broad autonomous external actions, unrestricted MCP execution, Bestie manager routing, and general multi-agent collaboration beyond the fixed-role Agent Workforce.
 
 ## Requirements
 

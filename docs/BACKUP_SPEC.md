@@ -8,7 +8,7 @@ Later milestone. This document specifies a local-first backup and restore system
 
 When requirements conflict, use the latest user instruction, then `PROJECT.md`, then `docs/IMPLEMENTATION_PRIORITY.md`, then this document.
 
-This slice delivers encrypted, portable backups for a local Bestie installation. It protects character data, configuration, local SQLite state, skills, Agent Workforce data, cron data, and selected operational metadata. It is not hosted sync, multi-device conflict resolution, Zep backup, arbitrary workspace backup, or a plugin marketplace feature.
+This slice delivers encrypted, portable backups for a local Bestie installation. It protects character data, configuration, local SQLite state, skills, Agent Workforce data, cron data, and selected operational metadata. It is not hosted sync, multi-device conflict resolution, arbitrary workspace backup, or a plugin marketplace feature.
 
 ## Goals
 

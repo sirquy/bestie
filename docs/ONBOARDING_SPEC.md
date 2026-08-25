@@ -73,7 +73,6 @@ Use this for offline setup, smoke tests, or slow/unavailable providers. The comm
 ```bash
 bestie channel connect telegram
 bestie memory setup
-bestie provider connect zep
 bestie doctor
 ```
 

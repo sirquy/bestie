@@ -59,7 +59,7 @@ Coordinates one turn:
 4. send response
 5. store redacted operational logs
 
-The current runtime also includes approved local memory recall, explicit memory writes, permission-gated tools, provider-backed image/video generation, a multi-step tool loop, bounded internal subagents for focused helper investigations, Doctor diagnostics, and a localhost Vite/React Web UI around runtime APIs. Broader write/external/destructive tool maturity, optional Zep, hosted/product UI, and named multi-agent orchestration remain later work.
+The current runtime also includes approved local memory recall, explicit memory writes, permission-gated tools, provider-backed image/video generation, a multi-step tool loop, bounded internal subagents for focused helper investigations, Doctor diagnostics, and a localhost Vite/React Web UI around runtime APIs. Broader write/external/destructive tool maturity, hosted/product UI, and named multi-agent orchestration remain later work.
 
 ### Character System
 
@@ -101,7 +101,6 @@ MVP memory:
 
 Later:
 
-- optional Zep
 - memory merge logic
 - pending sensitive memory approvals
 

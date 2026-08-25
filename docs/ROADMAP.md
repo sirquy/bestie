@@ -44,7 +44,6 @@ Status: local MVP foundation complete. Terminal chat, onboarding, local SQLite m
 ## Later
 
 - fuller onboarding
-- optional Zep memory
 - backup/restore/migration
 - polish the shipped local Vite/React Web UI when it improves real owner workflows
 - hosted/product UI beyond the local React console
@@ -62,8 +61,7 @@ Status: local MVP foundation complete. Terminal chat, onboarding, local SQLite m
 
 ## Hard Rules
 
-- The original Phase Now excluded Telegram, memory, Zep, MCP/ACP, plugins, installer, UI, avatar, voice, hosted/SaaS, analytics, and telemetry. The current local MVP has since implemented Telegram, Zalo, cron, local memory, Doctor, permission-gated tools, bounded internal subagents, fixed-role Agent Workforce, MCP setup/read foundations, installer, skills with a verified remote registry lifecycle, update checks, local Vite/React Web UI, daemon management, cross-platform user service integration, and channel-neutral voice helpers.
-- Zep after SQLite
+- The original Phase Now excluded Telegram, memory, MCP/ACP, plugins, installer, UI, avatar, voice, hosted/SaaS, analytics, and telemetry. The current local MVP has since implemented Telegram, Zalo, cron, local memory, Doctor, permission-gated tools, bounded internal subagents, fixed-role Agent Workforce, MCP setup/read foundations, installer, skills with a verified remote registry lifecycle, update checks, local Vite/React Web UI, daemon management, cross-platform user service integration, and channel-neutral voice helpers.
 - MCP/ACP after Doctor + permissions
 - product/hosted UI after the shipped local console proves useful
 - installer after onboarding works

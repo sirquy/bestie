@@ -30,7 +30,7 @@ Current shipped scope is no longer only the original Phase Now slice. The local 
 - local Doctor diagnostics and safe fixes
 - npm version checks through `bestie update` and throttled update notices on chat/daemon/service startup
 
-Do not pull Zep, broad MCP/ACP platform work, a plugin marketplace, UI, avatar/body, or hosted/SaaS work into the current scope unless the user explicitly asks.
+Do not pull broad MCP/ACP platform work, a plugin marketplace, UI, avatar/body, or hosted/SaaS work into the current scope unless the user explicitly asks.
 
 ## Architecture Rules
 
@@ -58,7 +58,7 @@ See [docs/SECURITY_PRIVACY.md](docs/SECURITY_PRIVACY.md) for security, privacy, 
 - [docs/CONFIG_SPEC.md](docs/CONFIG_SPEC.md) - config paths and schemas.
 - [docs/ONBOARDING_SPEC.md](docs/ONBOARDING_SPEC.md) - onboarding flow.
 - [docs/DOCTOR_SPEC.md](docs/DOCTOR_SPEC.md) - diagnostics and repair.
-- [docs/MEMORY_SPEC.md](docs/MEMORY_SPEC.md) - local and Zep memory design.
+- [docs/MEMORY_SPEC.md](docs/MEMORY_SPEC.md) - local SQLite memory design.
 - [docs/CHARACTER_EVALS.md](docs/CHARACTER_EVALS.md) - personality regression checks.
 - [docs/TELEGRAM_MVP_SPEC.md](docs/TELEGRAM_MVP_SPEC.md) - Telegram channel behavior.
 - [docs/CHANNEL_ADAPTER_PLAN.md](docs/CHANNEL_ADAPTER_PLAN.md) - checklist for channel adapters.

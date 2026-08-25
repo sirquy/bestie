@@ -34,7 +34,7 @@ Inside boundary:
 Outside boundary for original Phase Now:
 
 - Telegram, Discord, web chat, and other channels.
-- SQLite memory and Zep memory.
+- SQLite memory.
 - MCP, ACP, plugins, tools, reminders, notes, and web search.
 - One-command installer, systemd, update, backup, restore, and rollback.
 - Local web UI, hosted UI, avatar, voice, analytics, and telemetry.
@@ -374,7 +374,6 @@ Add only lightweight boundaries now:
 
 Do not add abstractions for:
 
-- Zep memory.
 - MCP servers.
 - Multi-agent routing.
 - Plugin manifests.

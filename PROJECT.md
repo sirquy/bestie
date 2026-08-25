@@ -24,7 +24,7 @@ Current local MVP status:
 - Logs provider failures, fallback attempts, memory updates, permission decisions, and runtime diagnostics with secret redaction.
 - Loads installed skills from `~/.bestie/skills` and supports SDK-backed MCP setup plus classified read calls.
 - Ships a localhost Vite/React Web UI through `bestie ui` for chat, Doctor, providers, character, memory, knowledge graph, channels, approvals, MCP, tools, skills, and settings.
-- Can later evolve into hosted/product UI, avatar/body, optional Zep, and broader external actions.
+- Can later evolve into hosted/product UI, avatar/body, and broader external actions.
 
 Do not let the local MVP become a fully autonomous public agent. Keep power behind explicit config, Doctor checks, permission review, and redacted logs.
 
@@ -225,7 +225,7 @@ Terminal / Telegram / Zalo / Cron
       -> Redacted logs + memory reasoning
 ```
 
-The original v1 sketch mentioned Telegram or web chat. The shipped local MVP currently prioritizes terminal, Telegram, Zalo, cron, daemon/service, SQLite memory, Doctor, local Vite/React Web UI, MCP read foundations, and installed skills. Hosted/product UI, avatar/body, optional Zep, and broad external execution remain later work.
+The original v1 sketch mentioned Telegram or web chat. The shipped local MVP currently prioritizes terminal, Telegram, Zalo, cron, daemon/service, SQLite memory, Doctor, local Vite/React Web UI, MCP read foundations, and installed skills. Hosted/product UI, avatar/body, and broad external execution remain later work.
 
 Main components:
 
@@ -520,11 +520,10 @@ After running one command, the installer should:
 4. Start an onboarding wizard.
 5. Let the user create their own bestie character.
 6. Ask for required API keys and provider choices.
-7. Connect memory provider such as Zep.
-8. Connect an LLM provider.
-9. Connect one or more chat channels.
-10. Start the agent as a background service.
-11. Print the management commands and next steps.
+7. Connect an LLM provider.
+8. Connect one or more chat channels.
+9. Start the agent as a background service.
+10. Print the management commands and next steps.
 
 This changes the project from a local experiment into a small self-hosted product.
 
@@ -539,7 +538,6 @@ The user should not need to understand:
 - systemd details
 - webhook plumbing
 - LLM API details
-- Zep implementation details
 - prompt engineering
 
 The user should only answer simple questions:
@@ -564,7 +562,6 @@ For beginners and hobby users.
 - Runs on a VPS, laptop, or home server.
 - Uses SQLite by default.
 - Uses local config files.
-- Optional Zep memory.
 - Starts one agent instance.
 - One owner/user.
 
@@ -644,10 +641,6 @@ Config uses `llm.primary`, `llm.profiles`, and `llm.modelCatalog`:
 Default:
 
 - SQLite local memory at `~/.bestie/data/memory.sqlite` for simple install.
-
-Optional:
-
-- Zep for graph/long-term memory later.
 
 Config:
 
@@ -785,7 +778,6 @@ bestie memory inspect
 bestie memory clear
 bestie channel connect telegram
 bestie provider connect llm
-bestie provider connect zep
 bestie update
 bestie uninstall
 ```
@@ -868,11 +860,6 @@ Questions:
 2. Local memory retrieval policy:
    - full
    - governed
-3. Optional Zep setup remains later:
-   - enter Zep API key
-   - test connection
-   - create/get Zep user
-   - create/get default thread
 
 ### Step 4 - Channel
 
@@ -956,7 +943,6 @@ bestie/
   package.json
   README.md
   PROJECT.md
-  ZEP_API_NOTES.md
   src/
     cli/
       index.ts
@@ -974,7 +960,6 @@ bestie/
       templates/
     memory/
       sqlite.ts
-      zep.ts
       memory-router.ts
     channels/
       telegram.ts
@@ -996,40 +981,9 @@ bestie/
   docs/
     install.md
     configuration.md
-    zep.md
     telegram.md
     architecture.md
 ```
-
-## 28. Zep Integration In Productized Version
-
-Zep should be optional, not required.
-
-Why:
-
-- beginners may not have a Zep account
-- local SQLite makes first install easier
-- Zep adds complexity and external dependency
-
-Memory provider strategy:
-
-```text
-local memory: always available
-Zep memory: optional advanced backend
-```
-
-Runtime logic:
-
-```text
-if Zep enabled:
-  retrieve Zep context block
-  retrieve local recent state
-  merge both into prompt
-else:
-  retrieve local memory only
-```
-
-Never make the product fail completely just because Zep is down. Fall back to local memory.
 
 ## 29. Public README Positioning
 
@@ -1098,16 +1052,7 @@ Avoid overpromising:
 - run onboarding
 - start command
 
-### Milestone 6 - Zep Optional Memory
-
-- add optional Zep setup after local SQLite memory is stable
-- ask for Zep API key only in that setup flow
-- create/get user/thread
-- write messages
-- retrieve context block
-- fallback to local memory
-
-### Milestone 7 - Body Layer
+### Milestone 6 - Body Layer
 
 - avatar config
 - generated avatar variants
@@ -1120,7 +1065,6 @@ Next concrete action:
 
 Create the repo skeleton and onboarding-first architecture.
 
-Do not start with Zep.
 Do not start with avatar.
 Do not start with agent tools.
 
@@ -1132,7 +1076,6 @@ terminal chat + character prompt + config wizard
 
 Then add Telegram.
 Then add memory.
-Then add Zep.
 
 Reason:
 
@@ -1147,7 +1090,7 @@ These are explicit owner requirements to preserve for future planning.
 - The installer should set up the environment, install Bestie, and launch an onboarding wizard.
 - Onboarding should let users create/configure their own agent character.
 - Onboarding should collect or connect required providers:
-  - local memory policy now, with optional Zep memory later
+  - local memory policy
   - LLM provider and API key
   - chat channel providers such as Telegram and Zalo
   - future channels later
@@ -1158,7 +1101,7 @@ These are explicit owner requirements to preserve for future planning.
   3. provider-profile LLM setup
   4. local memory, Doctor, and permissions
   5. Telegram, Zalo, cron, daemon/service, installer/update, skills, MCP read foundations, and local Vite/React Web UI
-  6. optional Zep, hosted/product UI, and avatar/voice/body layer later
+  6. hosted/product UI and avatar/voice/body layer later
 
 Principle:
 
@@ -1182,7 +1125,7 @@ Purpose:
 - suggest exact fixes
 - optionally apply safe fixes automatically with `--fix`
 
-This is important because the product is intended for non-expert users. If setup breaks, the user should not need to understand Node, Telegram/Zalo setup, env files, SQLite, Zep, or user services to recover.
+This is important because the product is intended for non-expert users. If setup breaks, the user should not need to understand Node, Telegram/Zalo setup, env files, SQLite, or user services to recover.
 
 ### Doctor Checks
 
@@ -1210,34 +1153,27 @@ This is important because the product is intended for non-expert users. If setup
    - small test completion works
    - common auth/rate-limit errors are explained
 
-4. Zep memory, if enabled
-   - API key exists
-   - connection works
-   - user/thread can be created or fetched
-   - context retrieval works
-   - local fallback is available if Zep fails
-
-5. Local memory
+4. Local memory
    - SQLite database exists
    - migrations are applied
    - database is writable
    - recent memory can be read
 
-6. Channels
+5. Channels
    - Telegram bot token exists
    - bot identity can be fetched
    - owner allowlist is configured
    - polling/webhook mode is valid
    - channel can send a test reply when safe
 
-7. Service/runtime
+6. Service/runtime
    - agent process is running or stopped cleanly
    - port conflicts
    - stale lock files
    - log files writable
   - one `bestie.service` user service installed if selected
 
-8. Character files
+7. Character files
    - character profile exists
    - system prompt exists
    - prompt is not empty
@@ -1259,10 +1195,7 @@ Bestie Doctor
 ✗ Telegram bot token missing
   Fix: run `bestie channel connect telegram`
 
-⚠ Zep enabled but API key is missing
-  Fix: run `bestie provider connect zep`
-
-Summary: 2 issues found, 1 warning.
+Summary: 1 issue found.
 Run `bestie doctor --fix` to repair safe issues automatically.
 ```
 
@@ -1328,7 +1261,7 @@ The UI should help users:
 
 - create their bestie character visually
 - configure personality, tone, boundaries, and memory
-- connect LLM providers and chat channels, with optional Zep later
+- connect LLM providers and chat channels
 - inspect agent health through Doctor
 - review logs and conversation issues
 - manage memories safely
@@ -1456,7 +1389,6 @@ Screens:
 - Memory search
 - Delete/edit memory
 - Export memory
-- Zep status if enabled
 
 Important rule:
 
@@ -1476,9 +1408,7 @@ Screens:
   - QuotaCheap
   - Custom OpenAI-compatible
 
-- Memory provider
-  - Local SQLite
-  - Zep
+- Memory provider: Local SQLite
 
 - Channels
   - Telegram
@@ -1634,7 +1564,7 @@ The local UI milestone currently includes:
 7. memory and knowledge graph surfaces
 8. approvals, MCP, tools, skills, and settings surfaces
 
-Leave avatar/body, hosted accounts, optional Zep UI, and broad external action UI for later.
+Leave avatar/body, hosted accounts, and broad external action UI for later.
 
 ### UI Principle
 
@@ -1677,7 +1607,6 @@ Example future use cases:
 - connect a docs/research MCP server
 - connect a calendar/notes MCP server
 - connect a custom business API MCP server
-- connect Zep docs or memory-related MCP servers if useful
 
 Config concept:
 
@@ -1686,12 +1615,6 @@ Config concept:
   "mcp": {
     "enabled": true,
     "servers": {
-      "zep-docs": {
-        "transport": "streamable-http",
-        "url": "https://docs-mcp.getzep.com/mcp",
-        "enabled": true,
-        "toolPolicy": "ask-before-write"
-      },
       "local-files": {
         "transport": "stdio",
         "command": "npx",
@@ -2153,7 +2076,6 @@ Required docs:
 - uninstall guide
 - configuration guide
 - troubleshooting guide
-- Zep setup guide
 - Telegram setup guide
 - MCP guide
 - contributor guide if open-source
@@ -2204,23 +2126,19 @@ This section captures implementation guardrails to prevent the project from drif
 
 ### Dangerous Mistakes To Avoid
 
-1. Do not build Zep before local SQLite.
-
-Zep is important later, but the MVP should prove the chat loop, persona, and local memory first. Zep should be optional and layered in after the core agent works.
-
-2. Do not build MCP/ACP before Doctor and permission layer.
+1. Do not build MCP/ACP before Doctor and permission layer.
 
 MCP and multi-agent features open access to external tools, local files, network writes, and delegated agents. They must wait until diagnostics, permissions, logging, and approval flows exist.
 
-3. Do not let “playfully rude” become abusive.
+2. Do not let “playfully rude” become abusive.
 
 The character should be funny, blunt, and cheeky, but never cruel. Implementation needs tone calibration tests, especially for vulnerable, sad, spiraling, or unsafe user states.
 
-4. Do not market the product as conscious, therapy, romantic companionship, or perfect memory.
+3. Do not market the product as conscious, therapy, romantic companionship, or perfect memory.
 
 Public copy must avoid overclaiming. The product is an AI companion/agent with personality and memory, not a human, therapist, lover, or conscious being.
 
-5. Do not overcomplicate onboarding v1.
+4. Do not overcomplicate onboarding v1.
 
 The first onboarding flow should not ask every possible integration question. Too many setup steps will scare beginner users away.
 
@@ -2262,7 +2180,6 @@ Focus:
 
 - one-command installer
 - fuller onboarding
-- Zep optional memory
 - update checks shipped locally; backup/restore/migration remain later hardening
 - local Vite/React Web UI polish and hosted/product UI exploration
 

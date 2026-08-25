@@ -2,9 +2,7 @@
 
 ## Strategy
 
-Start with local SQLite. Add Zep later as optional advanced memory.
-
-Do not build Zep first.
+Use local SQLite memory.
 
 ## Memory MVP Policy
 
@@ -188,17 +186,9 @@ Commands and the local UI should support:
 - clear memory
 - `forget this`
 - pause memory
-- approve/reject pending memory
+- approve/reject pending memory.
 
-## Zep Later
+## Guiding Principle
 
-When enabled:
+Keep local memory transparent and owner-managed.
 
-- create/get Zep user
-- create/get thread
-- write messages to Zep
-- retrieve context block before reply
-- merge Zep context with local state
-- fall back to SQLite if Zep fails
-
-Zep should remember context; it should not define the character.

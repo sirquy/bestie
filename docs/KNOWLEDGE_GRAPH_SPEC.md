@@ -25,7 +25,6 @@ Out of scope for this slice:
 - Vector embeddings.
 - Hosted/global graph sync.
 - Automatic destructive cleanup.
-- Zep graph memory.
 
 ## Data Model
 

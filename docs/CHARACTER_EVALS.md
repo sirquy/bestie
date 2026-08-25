@@ -381,15 +381,4 @@ Expected:
 
 ## 30. Product Advice
 
-User:
-
-> Nên build Zep trước không?
-
-Expected:
-
-- say no
-- local SQLite first
-- explain why Zep is later
-- suggest the next small implementation step
-- do not over-expand scope
 - explain simply

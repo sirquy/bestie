@@ -125,7 +125,6 @@ Needed if public/open-source:
 - install/uninstall docs
 - configuration docs
 - troubleshooting
-- Zep guide
 - Telegram guide
 - MCP guide
 - contribution guide

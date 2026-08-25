@@ -118,7 +118,6 @@ After the product rename to `bestie`, `--fix` also handles one safe legacy migra
 
 ## Future Checks
 
-- Zep connection
 - Telegram/Zalo bot identity by default; `--telegram-connect` and `--zalo-connect` cover opt-in checks today
 - user service health on Linux systemd, macOS launchd, and Windows Startup
 - MCP server reachability

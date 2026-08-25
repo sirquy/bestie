@@ -4,11 +4,10 @@ This file defines what to build now, next, later, and future. It exists to preve
 
 ## Dangerous Mistakes To Avoid
 
-1. Do not build Zep before local SQLite.
-2. Do not build MCP/ACP before Doctor and permission layer.
-3. Do not let playful rude tone become abusive.
-4. Do not market the agent as conscious, therapy, romantic companionship, or perfect memory.
-5. Do not make onboarding v1 too long.
+1. Do not build MCP/ACP before Doctor and permission layer.
+2. Do not let playful rude tone become abusive.
+3. Do not market the agent as conscious, therapy, romantic companionship, or perfect memory.
+4. Do not make onboarding v1 too long.
 
 ## Now
 
@@ -53,7 +52,7 @@ Maintenance guardrails:
 
 - keep Doctor useful for local config, secrets, logs, SQLite, and Telegram
 - rerun Telegram real-bot smoke after risky channel/tool changes
-- avoid broadening into Zep, hosted/product UI, public tools, hosted mode, or general multi-agent orchestration/collaboration without a scoped milestone decision
+- avoid broadening into hosted/product UI, public tools, hosted mode, or general multi-agent orchestration/collaboration without a scoped milestone decision
 
 Goal: make it usable in a real chat channel.
 
@@ -63,7 +62,6 @@ Build:
 
 - one-command installer (completed for local development)
 - fuller onboarding
-- optional Zep memory
 - backup/restore/migration
 - hosted/product UI beyond the shipped localhost React console
 - broader tool surfaces after permission defaults have real-channel mileage
