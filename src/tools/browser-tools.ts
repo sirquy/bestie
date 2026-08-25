@@ -212,14 +212,22 @@ async function loadChromium(): Promise<Chromium> {
   }
 }
 
-async function pageSummary(page: Page, options: BrowserToolOptions, label: string): Promise<Omit<BrowserToolResult, "allowed" | "reason">> {
-  const [title, text, elements, screenshotPath] = await Promise.all([
+async function pageSummary(page: Page, options: BrowserToolOptions & { timeoutMs?: number }, label: string): Promise<Omit<BrowserToolResult, "allowed" | "reason">> {
+  const [title, text, elements] = await Promise.all([
     page.title(),
-    page.locator("body").innerText({ timeout: 2_000 }).catch(() => ""),
+    readPageText(page, options),
     summarizeElements(page),
-    saveScreenshot(page, options, label),
   ]);
+  const screenshotPath = await saveScreenshot(page, options, label);
   return { url: page.url(), title, text: truncateChars(text, MAX_SNAPSHOT_TEXT_CHARS), elements, screenshotPath };
+}
+
+async function readPageText(page: Page, options: BrowserToolOptions & { timeoutMs?: number }): Promise<string> {
+  const timeout = browserTimeout(options.timeoutMs);
+  const text = await page.locator("body").innerText({ timeout }).catch(() => "");
+  if (text.trim()) return text;
+
+  return page.locator("body").textContent({ timeout }).then((content) => content ?? "").catch(() => "");
 }
 
 async function summarizeElements(page: Page): Promise<BrowserElementSummary[]> {
