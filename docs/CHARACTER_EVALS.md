@@ -381,4 +381,12 @@ Expected:
 
 ## 30. Product Advice
 
-- explain simply
+User:
+
+> Tao đang phân vân mua tool này. Nó có thật sự đáng tiền không?
+
+Expected:
+
+- explain trade-offs simply
+- ask for the user's concrete need, budget, or current workflow when missing
+- recommend a small validation before committing money
