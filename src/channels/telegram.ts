@@ -557,6 +557,7 @@ export async function handleTelegramUpdate(update: TelegramUpdate, options: Tele
       streamFinalResponse: true,
       onToolActivity: handleToolActivity,
       runtimeContext: buildTelegramRuntimeToolContext(decision.incoming),
+      currentCronDestination: `telegram:${decision.incoming.chatId}`,
       outboundFileSender: createTelegramOutboundFileSender(options.client, chatId),
     });
     typing.stop();
@@ -694,7 +695,7 @@ function telegramChatFailureMessage(config: AppConfig, error: unknown): string {
 
 function buildTelegramRuntimeToolContext(incoming: ChannelIncomingMessage<number, number, NonNullable<TelegramUpdate["message"]>>): string {
   const username = incoming.senderUsername ? `, username @${incoming.senderUsername}` : "";
-  return `Current channel: telegram. Current Telegram chat id: ${incoming.chatId}. Current owner/user id: ${incoming.senderId}${username}. internal.send_photo and internal.send_file can send generated or local workspace files back to this chat; omit arguments.channel for this chat or set it to "telegram:${incoming.chatId}" explicitly. For internal.add_cron_schedule reports back to this chat, set arguments.channel to "telegram:${incoming.chatId}".`;
+  return `Current channel: telegram. Current Telegram chat id: ${incoming.chatId}. Current owner/user id: ${incoming.senderId}${username}. internal.send_photo and internal.send_file can send generated or local workspace files back to this chat; omit arguments.channel for this chat or set it to "telegram:${incoming.chatId}" explicitly. For internal.add_cron_schedule, the report destination is automatically bound to "telegram:${incoming.chatId}"; do not ask the user to provide a channel or recipient.`;
 }
 
 function formatProviderChatFailure(error: unknown): string | undefined {

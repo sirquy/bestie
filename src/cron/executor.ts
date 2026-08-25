@@ -9,6 +9,8 @@ import { loadEnvFile } from "../runtime/env.js";
 import { appendLog } from "../runtime/logger.js";
 import { runIsolatedChat } from "./isolated-chat.js";
 import { computeNextRun } from "./scheduler.js";
+import { decodeZaloPersonalSession } from "../channels/zalo-personal/session.js";
+import { ZaloPersonalClient } from "../channels/zalo-personal/client.js";
 
 const DEFAULT_TICK_INTERVAL_MS = 30_000;
 
@@ -272,11 +274,18 @@ async function notifyConfiguredChannels(config: AppConfig, paths: RuntimePaths, 
           { paths },
         );
       }
-    } else {
+    } else if (destination.channel === "zalo" ) {
       const zalo = config.channels?.zalo;
       const token = zalo ? process.env[zalo.botTokenEnv] ?? envValues[zalo.botTokenEnv] : undefined;
       if (zalo?.enabled && token) {
         sends.push(sendZaloCronReport(new ZaloHttpClient(token), destination.userId, message));
+      }
+    } else {
+      const zaloPersonal = config.channels?.zaloPersonal;
+      const session = zaloPersonal ? process.env[zaloPersonal.sessionEnv] ?? envValues[zaloPersonal.sessionEnv] : undefined;
+      if (zaloPersonal?.enabled && session) {
+        const client = await ZaloPersonalClient.restore(decodeZaloPersonalSession(session).credentials);
+        sends.push(sendZaloPersonalCronReport(client, destination.userId, message, destination.channel === "zalo-personal-group"));
       }
     }
 
@@ -328,6 +337,12 @@ async function sendTelegramCronReport(client: TelegramHttpClient, chatId: number
 async function sendZaloCronReport(client: ZaloHttpClient, chatId: string, message: string): Promise<void> {
   for (const chunk of splitZaloMessageText(message)) {
     await client.sendMessage(chatId, chunk);
+  }
+}
+
+async function sendZaloPersonalCronReport(client: ZaloPersonalClient, chatId: string, message: string, group: boolean): Promise<void> {
+  for (const chunk of splitZaloMessageText(message)) {
+    await client.sendMessage(chatId, chunk, { threadType: group ? 1 : 0 });
   }
 }
 

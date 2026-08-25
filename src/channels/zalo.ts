@@ -475,6 +475,7 @@ export async function handleZaloUpdate(update: ZaloUpdate, options: ZaloUpdateHa
         ? async () => undefined
         : async (activity) => handleZaloToolActivity(response, activity, channelAgent?.agent.displayName ?? options.config.agent.name),
       runtimeContext,
+      currentCronDestination: `${channel === "zalo-personal" && incoming.raw.chat?.type === "group" ? "zalo-personal-group" : channel}:${incoming.chatId}`,
       outboundFileSender: createZaloOutboundFileSender(options.client, incoming.chatId, channel, threadType),
     });
     typing.stop();
@@ -1569,7 +1570,8 @@ function zaloChatFailureMessage(config: AppConfig, error: unknown): string {
 }
 
 function buildZaloRuntimeToolContext(incoming: ChannelIncomingMessage<string, string | number | undefined, ZaloMessage>, ownerUserId: string, channel: ZaloRuntimeChannel = "zalo"): string {
-  return `Current channel: ${channel}. Current Zalo chat id: ${incoming.chatId}. Current owner/user id: ${ownerUserId}. internal.send_photo and internal.send_file can send generated or local workspace files back to this chat; omit arguments.channel for this chat or set it to "${channel}:${incoming.chatId}" explicitly. For internal.add_cron_schedule reports back to this chat, set arguments.channel to "${channel}:${incoming.chatId}".`;
+  const cronDestination = channel === "zalo-personal" && incoming.raw.chat?.type === "group" ? "zalo-personal-group" : channel;
+  return `Current channel: ${channel}. Current Zalo chat id: ${incoming.chatId}. Current owner/user id: ${ownerUserId}. internal.send_photo and internal.send_file can send generated or local workspace files back to this chat; omit arguments.channel for this chat or set it to "${channel}:${incoming.chatId}" explicitly. For internal.add_cron_schedule, the report destination is automatically bound to "${cronDestination}:${incoming.chatId}"; do not ask the user to provide a channel or recipient.`;
 }
 
 function formatProviderChatFailure(error: unknown): string | undefined {

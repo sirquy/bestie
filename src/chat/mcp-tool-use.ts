@@ -27,7 +27,7 @@ import { runZaloPersonalOperationTool } from "../tools/zalo-personal-tools.js";
 import { isZaloPersonalOperation, ZALO_PERSONAL_OPERATION_NAMES } from "../channels/zalo-personal/capabilities.js";
 import { formatRuntimeClock, getRuntimeClock } from "../runtime/clock.js";
 
-const CRON_SCHEDULE_PROMPT_GUIDANCE = '- When creating or updating a cron schedule, the cron prompt must be the future task itself, written as a standalone instruction the isolated cron runner can execute later. Never store your current reply, a success message, the schedule ID, next_run_at, or text like "I created the schedule" in the prompt. For example, if the user asks "check YouTube and summarize every day at 17:00", store a prompt like "Check the configured YouTube channel for new content and summarize the findings for the user." Then, after the tool succeeds, answer the user with the schedule confirmation separately. Use update_cron_schedule for changing an existing schedule, remove_cron_schedule/toggle_cron_schedule for changing schedule state, and trigger_cron_schedule only when the user wants to run an existing cron job now. Do not trigger a newly created schedule just to prove it exists unless the user explicitly asks for an immediate run.';
+const CRON_SCHEDULE_PROMPT_GUIDANCE = '- When creating or updating a cron schedule, the cron prompt must be the future task itself, written as a standalone instruction the isolated cron runner can execute later. Never store your current reply, a success message, the schedule ID, next_run_at, a request for the user to provide a channel/recipient, or text like "I created the schedule" in the prompt. The current chat destination is already bound automatically when available; do not ask the user where to send the report. For example, if the user asks "send me a reminder in 5 minutes", store a prompt like "Send the reminder: ..." and use the current chat destination. Then, after the tool succeeds, answer the user with the schedule confirmation separately. Use update_cron_schedule for changing an existing schedule, remove_cron_schedule/toggle_cron_schedule for changing schedule state, and trigger_cron_schedule only when the user wants to run an existing cron job now. Do not trigger a newly created schedule just to prove it exists unless the user explicitly asks for an immediate run.';
 
 export type AgentToolRunner = (options: RunAgentToolRequestOptions) => Promise<McpToolCallResult>;
 export type AgentToolChatCompletionRunner = (config: AppConfig, apiKey: string, options: ChatCompletionOptions) => Promise<string>;
@@ -60,6 +60,7 @@ export interface CompleteWithAgentToolsOptions {
   runtimeContext?: string;
   subagentDepth?: number;
   outboundFileSender?: AgentOutboundFileSender;
+  currentCronDestination?: string;
 }
 
 export interface McpToolRequest {
@@ -184,6 +185,7 @@ export interface RunAgentToolRequestOptions extends Omit<RunMcpToolRequestOption
   runtimeContext?: string;
   subagentDepth?: number;
   outboundFileSender?: AgentOutboundFileSender;
+  currentCronDestination?: string;
 }
 
 const DEFAULT_MAX_AGENT_TOOL_CALLS = 250;
@@ -229,7 +231,7 @@ export async function completeWithAgentTools(options: CompleteWithAgentToolsOpti
     await notifyToolActivity(options, { phase: "start", callIndex: toolCallCount + 1, toolName, label });
     let toolResult: McpToolCallResult;
     try {
-      toolResult = await toolRunner({ config: currentConfig, paths: options.paths, request: decision.request, approver: options.approver, policy: options.policy, apiKey: options.apiKey, chatCompletion: options.chatCompletion, runtimeContext: options.runtimeContext, subagentDepth: options.subagentDepth ?? 0, outboundFileSender: options.outboundFileSender });
+      toolResult = await toolRunner({ config: currentConfig, paths: options.paths, request: decision.request, approver: options.approver, policy: options.policy, apiKey: options.apiKey, chatCompletion: options.chatCompletion, runtimeContext: options.runtimeContext, subagentDepth: options.subagentDepth ?? 0, outboundFileSender: options.outboundFileSender, currentCronDestination: options.currentCronDestination });
     } catch (error) {
       toolResult = { ok: false, status: "fail", message: `Tool runtime error for ${toolName}: ${formatUnknownError(error)}` };
     }
@@ -496,9 +498,9 @@ export function buildMcpToolInstructions(config: AppConfig, runtimeContext?: str
     'internal.delete_memory {"id":1,"reason":"why this memory is stale, wrong, duplicate, or no longer useful"}',
     'internal.cleanup_memories {"ids":[1,2,3],"reason":"why these memories should be deleted"}',
     'internal.supersede_memory {"oldId":1,"newId":2,"reason":"why the old memory is replaced by the new memory"}',
-    'internal.add_cron_schedule {"name":"job name","schedule_type":"interval|cron_expr|once","schedule_value":"30m | 0 8 * * * | 2026-12-25T08:00:00Z","prompt":"self-contained task to perform when triggered, not the scheduling confirmation","channel":"optional telegram:<userId>|zalo:<userId> destination for completion report"}',
+    'internal.add_cron_schedule {"name":"job name","schedule_type":"interval|cron_expr|once","schedule_value":"30m | 0 8 * * * | 2026-12-25T08:00:00Z","prompt":"self-contained task to perform when triggered, not the scheduling confirmation","channel":"optional telegram:<userId>|zalo:<userId>|zalo-personal:<uid>|zalo-personal-group:<threadId> destination; current chat is automatic"}',
     'internal.list_cron_schedules {}',
-    'internal.update_cron_schedule {"schedule_id":1,"name":"optional new name","schedule_type":"interval|cron_expr|once","schedule_value":"optional new schedule value","prompt":"optional updated standalone future task","channel":"optional telegram:<userId>|zalo:<userId>|empty to clear","enabled":true}',
+    'internal.update_cron_schedule {"schedule_id":1,"name":"optional new name","schedule_type":"interval|cron_expr|once","schedule_value":"optional new schedule value","prompt":"optional updated standalone future task","channel":"optional telegram:<userId>|zalo:<userId>|zalo-personal:<uid>|zalo-personal-group:<threadId>|empty to clear","enabled":true}',
     'internal.remove_cron_schedule {"schedule_id":1}',
     'internal.toggle_cron_schedule {"schedule_id":1,"enabled":true}',
     'internal.trigger_cron_schedule {"schedule_id":1}',
@@ -1337,7 +1339,10 @@ export async function runAgentToolRequest(options: RunAgentToolRequestOptions): 
   }
 
   if (options.request.tool === "internal.add_cron_schedule") {
-    return addCronScheduleTool(options.request.arguments, { config: options.config, paths: options.paths });
+    const argumentsWithDestination = options.currentCronDestination && options.request.arguments.channel === undefined
+      ? { ...options.request.arguments, channel: options.currentCronDestination }
+      : options.request.arguments;
+    return addCronScheduleTool(argumentsWithDestination, { config: options.config, paths: options.paths });
   }
 
   if (options.request.tool === "internal.list_cron_schedules") {

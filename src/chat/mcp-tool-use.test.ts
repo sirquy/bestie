@@ -486,6 +486,24 @@ test("runAgentToolRequest returns the configured runtime clock", async () => {
   assert.match(JSON.stringify(result.result), /nowIso/);
 });
 
+test("runAgentToolRequest binds a missing cron destination to the current chat", async () => {
+  const paths = await createTempPaths();
+  const config = createConfig();
+  try {
+    const result = await runAgentToolRequest({
+      config,
+      paths,
+      currentCronDestination: "zalo-personal:group-123",
+      request: { tool: "internal.add_cron_schedule", arguments: { name: "Reminder", schedule_type: "interval", schedule_value: "5m", prompt: "Send the reminder." } },
+    });
+
+    assert.equal(result.ok, true);
+    assert.equal((result.result as { channel?: string }).channel, "zalo-personal:group-123");
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
 test("runAgentToolRequest validates Zalo Personal capability calls before restoring a session", async () => {
   const paths = await createTempPaths();
   try {

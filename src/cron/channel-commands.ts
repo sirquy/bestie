@@ -3,14 +3,14 @@ import { SqliteMemoryStore, type CronSchedule } from "../memory/sqlite-store.js"
 import type { RuntimePaths } from "../runtime/paths.js";
 import { computeNextRun, validateSchedule } from "./scheduler.js";
 
-export type CronReportChannel = "telegram" | "zalo" | "zalo-personal";
+export type CronReportChannel = "telegram" | "zalo" | "zalo-personal" | "zalo-personal-group";
 
 export interface CronReportDestination {
   channel: CronReportChannel;
   userId: string;
 }
 
-const CRON_DESTINATION_PATTERN = /^(telegram|zalo):([^\s:]+)$/;
+const CRON_DESTINATION_PATTERN = /^(telegram|zalo|zalo-personal|zalo-personal-group):([^\s:]+)$/;
 
 export function parseCronReportDestination(value: string | undefined): CronReportDestination | undefined {
   const trimmed = value?.trim();

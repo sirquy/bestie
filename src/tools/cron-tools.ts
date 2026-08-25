@@ -76,7 +76,7 @@ export async function addCronScheduleTool(
   }
 
   if (channel !== undefined && !isCronReportDestination(channel)) {
-    return { ok: false, status: "fail", message: "internal.add_cron_schedule arguments.channel must be 'telegram:<userId>' or 'zalo:<userId>'." };
+    return { ok: false, status: "fail", message: "internal.add_cron_schedule arguments.channel must be 'telegram:<userId>', 'zalo:<userId>', 'zalo-personal:<uid>', or 'zalo-personal-group:<threadId>'." };
   }
 
   const validationError = validateSchedule(scheduleType, scheduleValue, options.config.agent.timeZone);
