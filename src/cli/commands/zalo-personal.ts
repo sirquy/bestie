@@ -11,7 +11,6 @@ import { UserFacingError } from "../../runtime/errors.js";
 import { getRuntimePaths, type RuntimePaths } from "../../runtime/paths.js";
 import { createCliQuestioner } from "../prompt.js";
 import { badge, dim, title } from "../ui.js";
-import { renderQrPngInTerminal } from "../qr-image-terminal.js";
 
 const DEFAULT_ZALO_PERSONAL_SESSION_ENV = "BESTIE_ZALO_PERSONAL_SESSION";
 
@@ -126,9 +125,8 @@ async function loginAndSaveSession(options: { paths: RuntimePaths; sessionEnv?: 
         onEvent: (event) => {
           if (event.type === 0) {
             options.writeLine("Quét QR này bằng tài khoản automation:");
-            if (event.data?.image) options.writeLine(renderQrPngInTerminal(event.data.image));
-            else options.writeLine("Không thể hiển thị ảnh QR trong terminal; hãy mở file QR tạm bên dưới để quét.");
-            options.writeLine(`QR cũng được lưu tạm tại ${qrPath}.`);
+            options.writeLine("QR gốc của Zalo đã được lưu tạm tại:");
+            options.writeLine(qrPath);
           }
           if (event.type === 2) options.writeLine("QR đã được quét; đang hoàn tất đăng nhập.");
           if (event.type === 1) options.writeLine("QR đã hết hạn; Zalo đang yêu cầu tạo lại QR.");

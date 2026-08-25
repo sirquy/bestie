@@ -87,8 +87,9 @@ needs another Zalo account that can message the automation account. Setup must
 state this before login; it must not silently set `ownerUserId` to the
 logged-in account returned by QR login.
 
-Setup renders the short-lived QR directly in the local terminal and writes a
-temporary `0600` PNG only as a fallback. After QR login, setup asks the
+Setup writes the short-lived QR image received from Zalo to a temporary `0600`
+PNG and reports its local path so the operator can open it and scan it. It does
+not render or regenerate the QR in the terminal. After QR login, setup asks the
 operator to send any direct message from the separate controller account to
 the automation account. It resolves the sender's display name and stable Zalo
 ID, shows both for confirmation, and only then stores the ID as `ownerUserId`.
@@ -244,7 +245,7 @@ Changes by module:
 
 | Area | Required change |
 | --- | --- |
-| `src/channels/registry.ts` | Add `ZALO_PERSONAL_CHANNEL`; it is listener-based, supports text/media, tool activity, and approvals. |
+| `src/cli/commands/zalo-personal.ts` | Implement login/setup/logout/status/monitor commands and report the temporary QR image path. |
 | `src/cli/commands/zalo-personal.ts` | Implement login/setup/logout/status/monitor commands and narrow terminal QR surface. |
 | `src/cli/commands/channels.ts` | Register `zalo-personal` without changing the `zalo` command. |
 | `src/cli/commands/daemon.ts` | Add `zalo-personal` as an independently managed daemon channel. |

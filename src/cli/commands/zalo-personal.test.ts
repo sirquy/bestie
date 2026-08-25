@@ -36,7 +36,7 @@ test("Zalo Personal setup saves a redacted local session and controller configur
         close: () => { closed = true; },
       },
       loginWithQr: async ({ onEvent }) => {
-        onEvent?.({ type: 0, data: { code: "not-the-qr-payload", image: createQrPngBase64() }, actions: null });
+        onEvent?.({ type: 0, data: { code: "zalo-login-test-payload", image: createQrPngBase64() }, actions: null });
         const client = {
           getUserDisplayName: async () => "Nguyễn Văn A",
           startListening: ({ onMessage }: { onMessage: (message: { threadId: string; isSelf: boolean; type: number; data: { uidFrom?: string } }) => void }) => {
@@ -63,7 +63,8 @@ test("Zalo Personal setup saves a redacted local session and controller configur
     assert.ok(session);
     assert.deepEqual(decodeZaloPersonalSession(session).credentials, credentials);
     assert.ok(output.some((line) => line.includes("Quét QR này")));
-    assert.ok(output.some((line) => line.includes("█") || line.includes("▀") || line.includes("▄")));
+    assert.ok(output.some((line) => line.includes("QR gốc của Zalo đã được lưu tạm tại:")));
+    assert.ok(output.some((line) => line.endsWith(".png")));
     assert.doesNotMatch(output.join("\n"), /not-the-qr-payload/);
     assert.ok(confirmationQuestions.some((question) => question.includes("Nguyễn Văn A") && question.includes("controller-1")));
     assert.doesNotMatch(output.join("\n"), /secret-cookie|imei-1|test-agent/);
