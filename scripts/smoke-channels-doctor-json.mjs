@@ -15,9 +15,23 @@ try {
   await mkdir(paths.appDir, { recursive: true });
   await writeConfig(
     {
-      version: 1,
+      version: 2,
       agent: { name: "Bestie", ownerName: "Boss", language: "vi", toneIntensity: 7 },
-      llm: { provider: "openai-compatible", baseUrl: "http://127.0.0.1:9/v1", model: "test-model", apiKeyEnv: "OPENAI_API_KEY" },
+      llm: {
+        primary: "openai/test-model",
+        authProfile: "openai:api-key",
+        profiles: {
+          "openai:api-key": {
+            provider: "openai-compatible",
+            mode: "api-key",
+            baseUrl: "http://127.0.0.1:9/v1",
+            apiKeyEnv: "OPENAI_API_KEY",
+          },
+        },
+        modelCatalog: {
+          "openai/test-model": { profile: "openai:api-key" },
+        },
+      },
       channels: {
         telegram: { enabled: true, botTokenEnv: "BESTIE_TELEGRAM_BOT_TOKEN", ownerUserId: "12345" },
         zalo: { enabled: true, botTokenEnv: "BESTIE_ZALO_BOT_TOKEN", ownerUserId: "67890" },
@@ -31,7 +45,7 @@ try {
 
   const report = JSON.parse(lines.join("\n"));
   assert.equal(report.issueCount, 0);
-  assert.deepEqual(report.channels.map((channel) => channel.id), ["telegram", "zalo"]);
+  assert.deepEqual(report.channels.map((channel) => channel.id), ["telegram", "zalo", "zalo-personal"]);
   assert.equal(report.channels.every((channel) => Number.isInteger(channel.issueCount)), true);
   assert.equal(report.channels.every((channel) => Array.isArray(channel.checks)), true);
 

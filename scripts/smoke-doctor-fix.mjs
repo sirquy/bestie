@@ -22,7 +22,7 @@ try {
 
   const result = spawnSync(process.execPath, [cliPath, "doctor", "--fix", "--json"], {
     cwd: rootDir,
-    env: { ...process.env, HOME: rootDir },
+    env: { ...process.env, HOME: rootDir, USERPROFILE: rootDir, HOMEDRIVE: "", HOMEPATH: rootDir },
     encoding: "utf8",
   });
 
@@ -35,15 +35,18 @@ try {
   assert.equal(typeof report.issueCount, "number");
   assert.ok(report.issueCount > 0, "safe fixes must not create config or prompt files");
   assert.ok(report.fixes.some((fix) => fix.name === "Memory database" && fix.status === "fixed"));
-  assert.ok(report.fixes.some((fix) => fix.name === ".env permissions" && fix.status === "fixed"));
-  assert.ok(report.fixes.some((fix) => fix.name === "Log file permissions" && fix.status === "fixed"));
+  const expectedPermissionStatus = process.platform === "win32" ? "skipped" : "fixed";
+  assert.ok(report.fixes.some((fix) => fix.name === ".env permissions" && fix.status === expectedPermissionStatus));
+  assert.ok(report.fixes.some((fix) => fix.name === "Log file permissions" && fix.status === expectedPermissionStatus));
 
   assert.ok((await stat(appDir)).isDirectory());
   assert.ok((await stat(logsDir)).isDirectory());
   assert.ok((await stat(dataDir)).isDirectory());
   assert.ok((await stat(memoryDbPath)).isFile());
-  assert.equal((await stat(envPath)).mode & 0o777, 0o600);
-  assert.equal((await stat(appLogPath)).mode & 0o777, 0o600);
+  if (process.platform !== "win32") {
+    assert.equal((await stat(envPath)).mode & 0o777, 0o600);
+    assert.equal((await stat(appLogPath)).mode & 0o777, 0o600);
+  }
 
   const envText = await readFile(envPath, "utf8");
   assert.match(envText, /sk-smoke-secret/);

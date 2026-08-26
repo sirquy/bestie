@@ -2,6 +2,7 @@ import { spawnSync } from "node:child_process";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 
 import { writeConfig } from "../dist/runtime/config.js";
 import { writeEnvFile } from "../dist/runtime/env.js";
@@ -25,7 +26,7 @@ try {
   }
 
   if (command === "doctor-json") {
-    const { validateDoctorReportJsonContract } = await import(resolve(projectRoot, "dist/runtime/doctor-report-contract.js"));
+    const { validateDoctorReportJsonContract } = await import(pathToFileURL(resolve(projectRoot, "dist/runtime/doctor-report-contract.js")).href);
     const contract = validateDoctorReportJsonContract(result.stdout);
     if (!contract.valid) {
       throw new Error(contract.errors.join("\n"));
@@ -38,7 +39,7 @@ try {
 }
 
 function runCli(command, cliPath, rootDir) {
-  const env = { ...process.env, HOME: rootDir };
+  const env = { ...process.env, HOME: rootDir, USERPROFILE: rootDir, HOMEDRIVE: "", HOMEPATH: rootDir };
   if (command === "status") {
     return spawnSync(process.execPath, [cliPath, "status"], { cwd: rootDir, env, encoding: "utf8" });
   }
