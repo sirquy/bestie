@@ -81,6 +81,18 @@ bestie chat
 bestie ui
 ```
 
+To publish a release locally to npm and GitHub (requires authenticated `npm`
+and GitHub CLI `gh`):
+
+```bash
+npm run release -- patch
+```
+
+The release script runs tests, updates `package.json` and `package-lock.json`,
+commits and pushes the matching `vX.Y.Z` tag, publishes the package to npm,
+and creates the GitHub Release with the packed `.tgz` attached. Use
+`npm run release -- minor --dry-run` to inspect the planned release first.
+
 Useful runtime commands:
 
 ```bash

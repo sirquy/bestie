@@ -35,11 +35,11 @@ Use this before making the new repository public.
 - [ ] Create labels: `bug`, `docs`, `good first issue`, `help wanted`, `security`, `privacy`, `telegram`, `memory`, `provider`, `mcp`.
 - [ ] Create 3-5 good first issues before announcing publicly.
 - [ ] Enable Copilot code review or another auto-review gate for new pull requests.
-- [ ] Confirm release automation for `v*` tags runs build, tests, smoke, npm publish with provenance, and GitHub release creation.
+- [x] Use the local `npm run release -- <patch|minor|major|x.y.z>` script for tests, npm publish, tag push, and GitHub release creation.
 
 ## Nice Later
 
-- [ ] Keep the manual npm publish workflow as a protected fallback only; the tag release workflow should be the normal path.
+- [x] Keep publishing local and explicit; do not use a GitHub Actions release workflow.
 - [ ] Docs site.
 - [ ] Community discussions.
 - [ ] Project board.

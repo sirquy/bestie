@@ -23,6 +23,7 @@
     "pack:check": "npm run clean && npm run build && npm pack --dry-run",
     "prepack": "npm run clean && npm run build",
     "prepublishOnly": "npm test",
+    "release": "node scripts/release.mjs",
     "start": "node dist/cli/index.js",
     "test": "npm run build && node --test dist/**/*.test.js",
     "eval:character": "npm run build && node --test dist/character/prompt-generator.test.js dist/character/character-eval-cases.test.js",
