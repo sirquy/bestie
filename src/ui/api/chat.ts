@@ -1,6 +1,7 @@
 import { buildAgentToolResultMessage, buildMcpToolSystemPrompt, completeWithAgentTools, formatToolRequestName, parseAgentToolDecisionResult, runAgentToolRequest, type AgentToolActivity } from "../../chat/mcp-tool-use.js";
 import { buildChannelAgentToolRunner, resolveWorkforceAgentRuntime } from "../../agents/channel-binding.js";
 import { buildChatMessages, getRecentMessageLimit } from "../../chat/message-builder.js";
+import { formatChatFailureContext } from "../../chat/error-context.js";
 import { loadSystemPrompt } from "../../character/prompt-loader.js";
 import { getProviderAdapterMetadata } from "../../llm/adapters/registry.js";
 import { sendChatCompletionWithFallbacks } from "../../llm/chat-completion.js";
@@ -679,6 +680,7 @@ async function runUiChatUnlocked(options: UiChatOptions): Promise<UiChatResult> 
   } catch (error) {
     const label = error instanceof Error ? error.message : "Unexpected chat error.";
     await emitTimelineEvent(paths, session?.id, timelineOptions, { type: "error", label });
+    if (session) await persistAssistantChatMessage(paths, session.id, formatChatFailureContext(error, [apiKey]), run?.id);
     if (run) await finishUiChatRun(paths, run.id, { status: "error", metadataJson: JSON.stringify({ error: label, toolCalls: toolActivities.length }) });
     throw error;
   }

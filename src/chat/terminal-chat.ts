@@ -17,6 +17,7 @@ import type { ChatCompletionOptions, ChatMessage } from "../llm/types.js";
 import { createCliQuestioner } from "../cli/prompt.js";
 import { badge, dim } from "../cli/ui.js";
 import { appendConversationTurn, buildChatMessages, getRecentMessageLimit } from "./message-builder.js";
+import { formatChatFailureContext } from "./error-context.js";
 import { buildMcpToolSystemPrompt, completeWithAgentTools, runAgentToolRequest, type AgentToolActivity, type RunAgentToolRequestOptions } from "./mcp-tool-use.js";
 import { createTerminalChatInput } from "./terminal-chat-input.js";
 import { formatTerminalAssistantMessage, formatTerminalAssistantStart, formatTerminalError, formatTerminalGoodbye, formatTerminalPrompt, formatTerminalThinking, formatTerminalToolActivity, renderTerminalChatHeader } from "./terminal-chat-ui.js";
@@ -150,6 +151,11 @@ export async function runTerminalChat(options: TerminalChatOptions): Promise<voi
       } catch (error) {
         const message = error instanceof Error ? error.message : "Unknown chat error.";
         await appendLog({ event: "chat_request_failure", detail: { message, ...fallbackLogDetail(error) } }, { paths: options.paths, knownSecrets: apiKey ? [apiKey] : [] });
+        const failureContext = formatChatFailureContext(error, apiKey ? [apiKey] : []);
+        await persistConversationTurn(options.paths, userInput, failureContext);
+        if (!(await isMemoryPaused(options.paths))) {
+          recentTurns = appendConversationTurn(recentTurns, userInput, failureContext, recentMessageLimit);
+        }
         writeLine(formatErrorMessage(message));
       }
     }

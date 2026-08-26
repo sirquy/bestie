@@ -1032,12 +1032,11 @@ test("runTelegramCommand writes a redacted Telegram smoke transcript", async () 
       "telegram_set_my_commands",
       "telegram_get_updates_start",
       "telegram_get_updates_finish",
-      "telegram_send_chat_action",
       "telegram_send_message",
     ]);
     assert.equal((events[2].detail.updates as Array<{ fromOwner: boolean; textLength: number }>)[0].fromOwner, true);
     assert.equal((events[2].detail.updates as Array<{ fromOwner: boolean; textLength: number }>)[0].textLength, 6);
-    assert.equal(events[4].detail.kind, "reply");
+    assert.equal(events[3].detail.kind, "reply");
     assert.doesNotMatch(transcriptText, /telegram-secret-token|\/start|Miu is online/);
     assert.ok(output.some((line) => line.includes("Transcript smoke Telegram")));
   } finally {

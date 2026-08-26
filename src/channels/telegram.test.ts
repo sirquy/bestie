@@ -232,7 +232,8 @@ test("handleTelegramUpdate saves owner photo attachments and sends metadata to L
     });
 
     assert.equal(result, "replied");
-    assert.deepEqual(chatActions, [{ chatId: 777, action: "typing" }]);
+    assert.ok(chatActions.length >= 1);
+    assert.ok(chatActions.every((entry) => entry.chatId === 777 && entry.action === "typing"));
     assert.equal(sentMessages.at(-1)?.text, "Đã nhận ảnh và lưu lại.");
     assert.match(JSON.stringify(requestMessages), /User caption: what is this\?/);
     assert.match(JSON.stringify(requestMessages), /Kind: photo/);
@@ -2186,6 +2187,7 @@ test("handleTelegramUpdate answers non-owner approval callbacks", async () => {
 test("handleTelegramUpdate isolates public customer context and uses only the bound agent knowledge", async () => {
   const paths = await createTempPaths();
   const sentMessages: Array<{ chatId: number; text: string }> = [];
+  const chatActions: Array<{ chatId: number; action: string }> = [];
   const chatRequests: Array<{ messages: unknown[] }> = [];
   let completionCalls = 0;
   const promptPath = resolve(paths.appDir, "agents", "support", "system-prompt.md");
@@ -2233,7 +2235,7 @@ test("handleTelegramUpdate isolates public customer context and uses only the bo
     const result = await handleTelegramUpdate(createTextUpdate("Can you help with my warranty?", 2001), {
       config: publicConfig,
       paths,
-      client: createRecordingClient(sentMessages),
+      client: createRecordingClient(sentMessages, chatActions),
       chatCompletion: async (_config, _apiKey, options) => {
         chatRequests.push({ messages: options.messages as unknown[] });
         completionCalls += 1;
@@ -2249,6 +2251,7 @@ test("handleTelegramUpdate isolates public customer context and uses only the bo
     assert.match(prompt, /Public warranty guide/);
     assert.doesNotMatch(prompt, /Customer B has a disputed warranty|Customer B private conversation|Internal warranty escalation secret|Internal warranty playbook/);
     assert.deepEqual(sentMessages, [{ chatId: 777, text: "Public support reply." }]);
+    assert.deepEqual(chatActions, []);
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
   }

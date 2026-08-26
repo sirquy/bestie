@@ -10,6 +10,7 @@ import { matchesOwnerId, type OwnerUserIdConfig } from "./owner-policy.js";
 import { buildPublicChannelAgentToolRunner, resolveChannelAgentRuntime } from "../agents/channel-binding.js";
 import { loadSystemPrompt } from "../character/prompt-loader.js";
 import { buildChatMessages, getRecentMessageLimit } from "../chat/message-builder.js";
+import { formatChatFailureContext } from "../chat/error-context.js";
 import {
   buildMcpToolSystemPrompt,
   completeWithAgentTools,
@@ -467,7 +468,6 @@ export async function handleTelegramUpdate(update: TelegramUpdate, options: Tele
 
   const { chatId, userId } = decision;
   const isPublicChannel = Array.isArray(telegramConfig?.ownerUserId) && telegramConfig.ownerUserId.length === 1 && telegramConfig.ownerUserId[0] === "*";
-  await sendTelegramChatActionBestEffort(options.client, chatId, "typing");
 
   if (!attachment && text.startsWith("/") && isPublicChannel) {
     await options.client.sendMessage(chatId, "Commands are not available in this public support chat.");
@@ -496,20 +496,25 @@ export async function handleTelegramUpdate(update: TelegramUpdate, options: Tele
   const chatCompletion = options.chatCompletion ?? ((config, _apiKeyValue, requestOptions) => sendChatCompletionWithFallbacks(config, { ...requestOptions, stream: requestOptions.stream ?? true }, { paths: options.paths }));
   const mcpToolRunner = options.mcpToolRunner ?? runAgentToolRequest;
   const typing = createChannelActivityController(adapter.outbound.createActivityOptions(chatId, "typing"));
-  typing.start();
   let apiKey = "";
+  let conversationUserId = userId;
+  let userInput = text;
 
   try {
     const channelAgent = await resolveChannelAgentRuntime(options.config, options.paths, "telegram", userId, [userId, ...(decision.incoming.senderUsername ? [normalizeTelegramOwner(decision.incoming.senderUsername)] : [])]);
     const effectiveConfig = channelAgent?.config ?? options.config;
-    const conversationUserId = channelAgent?.conversationUserId ?? userId;
+    conversationUserId = channelAgent?.conversationUserId ?? userId;
+    if (!channelAgent?.publicAccess) {
+      await sendTelegramChatActionBestEffort(options.client, chatId, "typing");
+      typing.start();
+    }
     apiKey = await loadLlmCandidateSecret(resolvePrimaryLlmCandidate(effectiveConfig), options.paths);
     const effectiveToolRunner = channelAgent ? buildPublicChannelAgentToolRunner(channelAgent, mcpToolRunner) : mcpToolRunner;
     const savedAttachment = decision.attachment ? await adapter.attachments?.processAttachment(decision.attachment, decision.incoming) as SavedTelegramAttachment | undefined : undefined;
     if (savedAttachment) {
       await options.onAttachmentParsed?.(summarizeTelegramAttachmentParse(savedAttachment));
     }
-    const userInput = savedAttachment ? buildTelegramAttachmentUserInput(text, savedAttachment) : text;
+    userInput = savedAttachment ? buildTelegramAttachmentUserInput(text, savedAttachment) : text;
     const systemPrompt = channelAgent?.systemPrompt ?? await loadSystemPrompt(options.paths);
     const memories = await loadRelevantMemories(options.paths, { query: userInput, namespace: channelAgent?.publicAccess?.memoryNamespace });
     const recentMessageLimit = getRecentMessageLimit(effectiveConfig);
@@ -607,6 +612,7 @@ export async function handleTelegramUpdate(update: TelegramUpdate, options: Tele
 
     const errorMessage = error instanceof Error ? error.message : "Unknown Telegram chat error.";
     await appendLog({ event: "telegram_chat_failure", detail: { message: errorMessage, ...fallbackLogDetail(error) } }, { paths: options.paths, knownSecrets: [apiKey] });
+    await persistTelegramConversationTurn(options.paths, conversationUserId, userInput, formatChatFailureContext(error, apiKey ? [apiKey] : []));
     await options.client.sendMessage(chatId, telegramChatFailureMessage(options.config, error));
     return "replied";
   }

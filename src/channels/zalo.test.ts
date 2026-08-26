@@ -10,7 +10,7 @@ import { SqliteMemoryStore } from "../memory/sqlite-store.js";
 import type { AppConfig } from "../runtime/config.js";
 import { writeEnvFile } from "../runtime/env.js";
 import type { RuntimePaths } from "../runtime/paths.js";
-import { ZaloHttpClient, createZaloOutboundAdapter, handleZaloUpdate, mapZaloIncomingMessage, type ZaloClient } from "./zalo.js";
+import { ZaloHttpClient, createZaloOutboundAdapter, handleZaloUpdate, mapZaloIncomingMessage, stripMarkdown, type ZaloClient } from "./zalo.js";
 
 const config: AppConfig = {
   version: 2,
@@ -144,6 +144,20 @@ test("createZaloOutboundAdapter quotes the triggering Zalo Personal group messag
   ]);
 });
 
+test("createZaloOutboundAdapter omits Markdown formatting for Zalo Personal", async () => {
+  const calls: Array<{ options?: { parseMode?: "Markdown"; threadType?: 0 | 1 } }> = [];
+  const client = {
+    ...createRecordingClient([]),
+    sendMessage: async (_chatId: string, _text: string, options?: { parseMode?: "Markdown"; threadType?: 0 | 1 }) => { calls.push({ options }); },
+  } satisfies ZaloClient;
+  const adapter = createZaloOutboundAdapter(client, 0, undefined, true);
+
+  await adapter.createResponseAdapter("controller-1").sendMessage("# **plain** [text](https://example.com)\n- `code`");
+
+  assert.deepEqual(calls, [{ options: { threadType: 0 } }]);
+  assert.equal(stripMarkdown("# **plain** [text](https://example.com)\n- `code`"), "plain text\ncode");
+});
+
 test("handleZaloUpdate applies Zalo Personal group policy and mention gating", async () => {
   const paths = fakePaths();
   const sent: Array<{ chatId: string; text: string }> = [];
@@ -187,6 +201,7 @@ test("handleZaloUpdate blocks slash commands in Zalo Personal groups", async () 
 test("handleZaloUpdate accepts any mentioned group member in open wildcard mode", async () => {
   const paths = await createTempPaths();
   const sent: Array<{ chatId: string; text: string }> = [];
+  const chatActions: Array<{ chatId: string; action: string }> = [];
   const openConfig: AppConfig = {
     ...config,
     channels: {
@@ -947,6 +962,7 @@ test("handleZaloUpdate sends outbound files and photos through the Zalo client",
 test("handleZaloUpdate isolates public customer context and uses only the bound agent knowledge", async () => {
   const paths = await createTempPaths();
   const sent: Array<{ chatId: string; text: string }> = [];
+  const chatActions: Array<{ chatId: string; action: string }> = [];
   const chatRequests: Array<{ messages: unknown[] }> = [];
   let completionCalls = 0;
   const promptPath = resolve(paths.appDir, "agents", "support", "system-prompt.md");
@@ -994,7 +1010,7 @@ test("handleZaloUpdate isolates public customer context and uses only the bound 
     const result = await handleZaloUpdate({ update_id: 1, message: { from: { id: "customer-a" }, chat: { id: "chat-a" }, text: "Can you help with my subscription?" } }, {
       config: publicConfig,
       paths,
-      client: createRecordingClient(sent),
+      client: createRecordingClient(sent, chatActions),
       chatCompletion: async (_config, _apiKey, options) => {
         chatRequests.push({ messages: options.messages as unknown[] });
         completionCalls += 1;
@@ -1010,6 +1026,7 @@ test("handleZaloUpdate isolates public customer context and uses only the bound 
     assert.match(prompt, /Public subscription guide/);
     assert.doesNotMatch(prompt, /Customer B has a billing dispute|Customer B private conversation|Internal billing escalation secret|Internal subscription playbook/);
     assert.deepEqual(sent, [{ chatId: "chat-a", text: "Public support reply." }]);
+    assert.deepEqual(chatActions, []);
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
   }
@@ -1095,13 +1112,13 @@ test("handleZaloUpdate sends generated media to an explicit Zalo Personal direct
   }
 });
 
-function createRecordingClient(sent: Array<{ chatId: string; text: string }>): ZaloClient {
+function createRecordingClient(sent: Array<{ chatId: string; text: string }>, chatActions: Array<{ chatId: string; action: string }> = []): ZaloClient {
   return {
     getUpdates: async () => [],
     sendMessage: async (chatId, text) => {
       sent.push({ chatId, text });
     },
-    sendChatAction: async () => undefined,
+    sendChatAction: async (chatId, action) => { chatActions.push({ chatId, action }); },
   };
 }
 

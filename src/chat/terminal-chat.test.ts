@@ -730,6 +730,7 @@ test("runTerminalChat allows slash commands before API key loading", async () =>
 
   const output: string[] = [];
   let closed = false;
+  let attempts = 0;
 
   try {
     await runTerminalChat({
@@ -766,13 +767,14 @@ test("runTerminalChat allows slash commands before API key loading", async () =>
   }
 });
 
-test("runTerminalChat reports provider failures without persisting failed turns", async () => {
+test("runTerminalChat includes failed turns in the next LLM context", async () => {
   const paths = await createTempPaths();
   await mkdir(paths.appDir, { recursive: true });
   await writeFile(paths.envPath, "OPENAI_API_KEY=test-key\n", { mode: 0o600 });
 
   const output: string[] = [];
   let closed = false;
+  let attempts = 0;
 
   try {
     await runTerminalChat({
@@ -784,14 +786,17 @@ test("runTerminalChat reports provider failures without persisting failed turns"
       questioner: {
         ask: async (prompt) => {
           assert.equal(prompt, "[YOU] Andy > ");
-          return output.some((line) => line.startsWith("[FAIL]")) ? "/exit" : "hello";
+          attempts += 1;
+          return attempts === 1 ? "hello" : attempts === 2 ? "can you continue?" : "/exit";
         },
         close: () => {
           closed = true;
         },
       },
-      chatCompletion: async () => {
-        throw new Error("Provider unavailable.");
+      chatCompletion: async (_config, _apiKey, options) => {
+        if (attempts === 1) throw new Error("Provider unavailable.");
+        assert.ok(options.messages.some((message) => message.role === "assistant" && String(message.content).includes("Provider unavailable.")));
+        return "I can continue now.";
       },
       writeLine: (message) => output.push(message),
     });
@@ -804,13 +809,19 @@ test("runTerminalChat reports provider failures without persisting failed turns"
       "[BOT] Bea with [YOU] Andy",
       "Commands /help  /status  /providers  /memory  /pending  /exit",
       "----------------------------",
-      "[FAIL] Provider unavailable.",
-      "Bye.",
+       "[FAIL] Provider unavailable.",
+       "[BOT] Bea > I can continue now.",
+       "Bye.",
     ]);
 
     const store = await SqliteMemoryStore.open(paths);
     try {
-      assert.deepEqual(store.listRecentMessages(), []);
+       assert.deepEqual(store.listRecentMessages().map((message) => ({ role: message.role, content: message.content })), [
+         { role: "user", content: "hello" },
+         { role: "assistant", content: "[System: The previous assistant response failed before completion. Error: Provider unavailable.]" },
+         { role: "user", content: "can you continue?" },
+         { role: "assistant", content: "I can continue now." },
+       ]);
       assert.deepEqual(store.listActiveMemories(), []);
     } finally {
       store.close();
@@ -819,6 +830,7 @@ test("runTerminalChat reports provider failures without persisting failed turns"
     assert.deepEqual(await readLogEvents(paths), [
       { event: "command_start", command: "chat" },
       { event: "chat_request_failure", message: "Provider unavailable." },
+      { event: "chat_request_success", model: "openai/test-model" },
     ]);
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });

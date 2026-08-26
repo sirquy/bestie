@@ -1,6 +1,7 @@
 import { loadSystemPrompt } from "../character/prompt-loader.js";
 import { buildPublicChannelAgentToolRunner, resolveChannelAgentRuntime } from "../agents/channel-binding.js";
 import { buildChatMessages, getRecentMessageLimit } from "../chat/message-builder.js";
+import { formatChatFailureContext } from "../chat/error-context.js";
 import { buildMcpToolSystemPrompt, completeWithAgentTools, runAgentToolRequest, type AgentToolActivity } from "../chat/mcp-tool-use.js";
 import { fallbackLogDetail, formatProviderFallbackDiagnostics, formatProviderFallbackHealth } from "../llm/fallbacks.js";
 import { ProviderAuthError, ProviderFallbackError, ProviderNetworkError, ProviderRateLimitError, ProviderResponseError, ProviderTimeoutError } from "../llm/errors.js";
@@ -400,7 +401,6 @@ export async function handleZaloUpdate(update: ZaloUpdate, options: ZaloUpdateHa
   }
 
   const threadType = getZaloThreadType(incoming, channel);
-  await sendZaloChatActionBestEffort(options.client, incoming.chatId, "typing", threadType);
 
   if (!text && !attachment) {
     await options.client.sendMessage(incoming.chatId, `${options.config.agent.name} received this Zalo message type, but cannot save it yet. Please send a text description with it.`, { threadType });
@@ -429,17 +429,22 @@ export async function handleZaloUpdate(update: ZaloUpdate, options: ZaloUpdateHa
 
   const chatCompletion = options.chatCompletion ?? ((config, _apiKeyValue, requestOptions) => sendChatCompletionWithFallbacks(config, { ...requestOptions, stream: requestOptions.stream ?? true }, { paths: options.paths }));
   const typing = createChannelActivityController(adapter.outbound.createActivityOptions(incoming.chatId, "typing"));
-  typing.start();
   let apiKey = "";
+  let conversationUserId = threadType === 1 ? `group:${incoming.chatId}` : incoming.senderId;
+  let userInput = text;
 
   try {
     const channelAgent = await resolveChannelAgentRuntime(options.config, options.paths, channel, incoming.senderId, [incoming.senderId], threadType !== 1, threadType === 1 ? `group:${incoming.chatId}` : undefined);
     const effectiveConfig = channelAgent?.config ?? options.config;
-    const conversationUserId = channelAgent?.conversationUserId ?? (threadType === 1 ? `group:${incoming.chatId}` : incoming.senderId);
+    conversationUserId = channelAgent?.conversationUserId ?? conversationUserId;
+    if (!channelAgent?.publicAccess) {
+      await sendZaloChatActionBestEffort(options.client, incoming.chatId, "typing", threadType);
+      typing.start();
+    }
     apiKey = await loadLlmCandidateSecret(resolvePrimaryLlmCandidate(effectiveConfig), options.paths);
     const effectiveToolRunner = channelAgent ? buildPublicChannelAgentToolRunner(channelAgent, runAgentToolRequest) : runAgentToolRequest;
     const savedAttachment = attachment ? await adapter.attachments?.processAttachment(attachment, incoming) as SavedZaloAttachment | undefined : undefined;
-    const userInput = savedAttachment ? buildZaloAttachmentUserInput(text, savedAttachment) : text;
+    userInput = savedAttachment ? buildZaloAttachmentUserInput(text, savedAttachment) : text;
     const systemPrompt = channelAgent?.systemPrompt ?? await loadSystemPrompt(options.paths);
     const memories = await loadRelevantMemories(options.paths, { query: userInput, namespace: channelAgent?.publicAccess?.memoryNamespace });
     const recentMessageLimit = getRecentMessageLimit(effectiveConfig);
@@ -500,6 +505,7 @@ export async function handleZaloUpdate(update: ZaloUpdate, options: ZaloUpdateHa
 
     const errorMessage = error instanceof Error ? error.message : "Unknown Zalo chat error.";
     await appendLog({ event: "zalo_chat_failure", detail: { message: errorMessage, ...fallbackLogDetail(error) } }, { paths: options.paths, knownSecrets: [apiKey] });
+    await persistZaloConversationTurn(options.paths, conversationUserId, userInput, formatChatFailureContext(error, apiKey ? [apiKey] : []), channel);
     await options.client.sendMessage(incoming.chatId, zaloChatFailureMessage(options.config, error), { threadType });
     return "replied";
   }
@@ -573,23 +579,23 @@ export function createZaloRuntimeAdapter(client: ZaloClient, update?: ZaloUpdate
         processAttachment: (attachment) => saveZaloAttachment(attachment, update, options),
       },
     } : {}),
-    outbound: createZaloOutboundAdapter(client, update?.message?.chat?.type === "group" ? 1 : 0, update?.message?.quote),
+    outbound: createZaloOutboundAdapter(client, update?.message?.chat?.type === "group" ? 1 : 0, update?.message?.quote, options?.channel === "zalo-personal"),
   };
 }
 
-export function createZaloOutboundAdapter(client: ZaloClient, threadType: 0 | 1 = 0, quote?: unknown): ChannelOutboundAdapter<string, "typing"> {
+export function createZaloOutboundAdapter(client: ZaloClient, threadType: 0 | 1 = 0, quote?: unknown, plainText = false): ChannelOutboundAdapter<string, "typing"> {
   let pendingQuote = threadType === 1 ? quote : undefined;
 
   return {
     createResponseAdapter: (chatId) => ({
       sendMessage: async (text) => {
         const messageQuote = pendingQuote;
-        const sent = normalizeZaloSentMessage(await client.sendMessage(chatId, text, { threadType, ...(messageQuote === undefined ? {} : { quote: messageQuote }) }));
+        const sent = normalizeZaloSentMessage(await client.sendMessage(chatId, plainText ? stripMarkdown(text) : text, { threadType, ...(messageQuote === undefined ? {} : { quote: messageQuote }) }));
         pendingQuote = undefined;
         return sent;
       },
       editMessage: async (_messageId, text) => {
-        await client.sendMessage(chatId, text, { threadType });
+        await client.sendMessage(chatId, plainText ? stripMarkdown(text) : text, { threadType });
       },
       splitMessage: splitZaloMessage,
       isNoopEditError: () => true,
@@ -605,7 +611,7 @@ function createZaloOutboundFileSender(client: ZaloClient, currentChatId: string,
         throw new Error("Zalo client does not support sending photos.");
       }
       const chatId = resolveZaloOutboundChatId(payload.channel, currentChatId, channel);
-      const sent = normalizeZaloSentMessage(await client.sendPhoto(chatId, payload.bytes, { fileName: payload.fileName, mimeType: payload.mimeType, caption: payload.caption, threadType }));
+      const sent = normalizeZaloSentMessage(await client.sendPhoto(chatId, payload.bytes, { fileName: payload.fileName, mimeType: payload.mimeType, caption: channel === "zalo-personal" && payload.caption !== undefined ? stripMarkdown(payload.caption) : payload.caption, threadType }));
       return { channel: `${channel}:${chatId}`, target: chatId, ...(sent?.messageId === undefined ? {} : { messageId: sent.messageId }) };
     },
     async sendFile(payload) {
@@ -613,7 +619,7 @@ function createZaloOutboundFileSender(client: ZaloClient, currentChatId: string,
         throw new Error("Zalo client does not support sending files.");
       }
       const chatId = resolveZaloOutboundChatId(payload.channel, currentChatId, channel);
-      const sent = normalizeZaloSentMessage(await client.sendDocument(chatId, payload.bytes, { fileName: payload.fileName, mimeType: payload.mimeType, caption: payload.caption, threadType }));
+      const sent = normalizeZaloSentMessage(await client.sendDocument(chatId, payload.bytes, { fileName: payload.fileName, mimeType: payload.mimeType, caption: channel === "zalo-personal" && payload.caption !== undefined ? stripMarkdown(payload.caption) : payload.caption, threadType }));
       return { channel: `${channel}:${chatId}`, target: chatId, ...(sent?.messageId === undefined ? {} : { messageId: sent.messageId }) };
     },
   };
@@ -1595,6 +1601,22 @@ function splitZaloMessage(text: string): string[] {
     chunks.push(text.slice(index, index + ZALO_MESSAGE_MAX_CHARS));
   }
   return chunks;
+}
+
+export function stripMarkdown(text: string): string {
+  return text
+    .replace(/```(?:[a-zA-Z0-9_-]+)?\n?([\s\S]*?)```/g, "$1")
+    .replace(/!\[([^\]]*)\]\([^)]*\)/g, "$1")
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
+    .replace(/^\s{0,3}#{1,6}\s+/gm, "")
+    .replace(/^\s*[-*_]{3,}\s*$/gm, "")
+    .replace(/^\s*(?:[-+*]|\d+[.)])\s+/gm, "")
+    .replace(/~~([^~]+)~~/g, "$1")
+    .replace(/\*\*([^*]+)\*\*/g, "$1")
+    .replace(/__([^_]+)__/g, "$1")
+    .replace(/\*([^*\n]+)\*/g, "$1")
+    .replace(/_([^_\n]+)_/g, "$1")
+    .replace(/`([^`]+)`/g, "$1");
 }
 
 function toZaloDataUrl(bytes: Uint8Array, mimeType: string): string {
