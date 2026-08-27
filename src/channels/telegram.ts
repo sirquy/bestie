@@ -280,6 +280,53 @@ export type TelegramMcpToolRunner = (
   options: RunAgentToolRequestOptions,
 ) => Promise<{ ok: boolean; status: "pass" | "warn" | "fail"; message: string; result?: unknown }>;
 
+function describeTelegramAttachmentError(error: unknown, depth = 0): Record<string, unknown> {
+  if (depth >= 4 || error === undefined || error === null) {
+    return {};
+  }
+
+  if (!(error instanceof Error)) {
+    return { value: sanitizeTelegramAttachmentDiagnostic(String(error)) };
+  }
+
+  const record = error as Error & {
+    code?: unknown;
+    status?: unknown;
+    statusCode?: unknown;
+    statusText?: unknown;
+    cause?: unknown;
+    error?: unknown;
+  };
+  const detail: Record<string, unknown> = {
+    name: error.name,
+    message: sanitizeTelegramAttachmentDiagnostic(error.message),
+  };
+
+  for (const key of ["code", "status", "statusCode", "statusText"] as const) {
+    const value = record[key];
+    if (value !== undefined) {
+      detail[key] = typeof value === "string" ? sanitizeTelegramAttachmentDiagnostic(value) : value;
+    }
+  }
+
+  if (record.cause !== undefined) {
+    detail.cause = describeTelegramAttachmentError(record.cause, depth + 1);
+  }
+  if (record.error !== undefined && record.error !== record.cause) {
+    detail.error = describeTelegramAttachmentError(record.error, depth + 1);
+  }
+
+  return detail;
+}
+
+function sanitizeTelegramAttachmentDiagnostic(value: string): string {
+  return value
+    .replace(/https?:\/\/[^\s"']*\/file\/bot[^\s"']+/gi, "[telegram-file-url]")
+    .replace(/\bbot[A-Za-z0-9:_-]+\b/gi, "[telegram-token]")
+    .replace(/(^|[\s"'(])(?:documents|photos|videos|voice|audio|stickers)\/[^\s"')]+/gi, (_match, prefix: string) => `${prefix}[telegram-file-path]`)
+    .replace(/\bfile[_-]?id[=:]?\s*[^\s,;}]+/gi, "file_id=[redacted]");
+}
+
 export function formatTelegramDoctorSummary(report: unknown): string {
   const contract = validateDoctorReportContract(report);
 
@@ -328,12 +375,12 @@ export class TelegramHttpClient implements TelegramClient {
     try {
       const response = await (this.fetchImpl ?? fetch)(`https://api.telegram.org/file/bot${this.botToken}/${filePath}`);
       if (!response.ok) {
-        throw new Error(`status ${response.status}`);
+        throw new Error(`HTTP ${response.status} ${response.statusText || ""}`.trim());
       }
       return new Uint8Array(await response.arrayBuffer());
     } catch (error) {
-      const reason = error instanceof Error && error.message.startsWith("status ") ? error.message : "network error";
-      throw new Error(`Telegram file download failed: ${reason}`);
+      const reason = error instanceof Error ? error.message : "Unknown download error";
+      throw new Error(`Telegram file download failed: ${reason}`, { cause: error });
     }
   }
 
@@ -605,7 +652,7 @@ export async function handleTelegramUpdate(update: TelegramUpdate, options: Tele
   } catch (error) {
     typing.stop();
     if (error instanceof ChannelAttachmentHandlingError) {
-      await appendLog({ event: "telegram_attachment_failure", detail: { reason: error.reason, kind: attachment?.kind } }, { paths: options.paths, knownSecrets: [apiKey] });
+      await appendLog({ event: "telegram_attachment_failure", detail: { reason: error.reason, kind: attachment?.kind, diagnostics: describeTelegramAttachmentError(error.cause) } }, { paths: options.paths, knownSecrets: [apiKey] });
       await options.client.sendMessage(chatId, error.userMessage);
       return "replied";
     }

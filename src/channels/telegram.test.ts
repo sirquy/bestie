@@ -822,7 +822,9 @@ test("handleTelegramUpdate replies clearly for attachment download failures with
         ...createRecordingClient(sentMessages),
         getFile: async (fileId) => ({ fileId, filePath: "documents/secret-file-id.txt", fileSize: 18 }),
         downloadFile: async () => {
-          throw new Error("failed to download documents/secret-file-id.txt with token bot-secret-token");
+          const error = new Error("failed to download documents/secret-file-id.txt with token bot-secret-token") as Error & { code: string };
+          error.code = "ECONNRESET";
+          throw error;
         },
       },
     });
@@ -832,6 +834,8 @@ test("handleTelegramUpdate replies clearly for attachment download failures with
     const logText = await readFile(paths.appLogPath, "utf8");
     assert.match(logText, /telegram_attachment_failure/);
     assert.match(logText, /download_failed/);
+    assert.match(logText, /failed to download\s+\[telegram-file-path\] with token/);
+    assert.match(logText, /ECONNRESET/);
     assert.doesNotMatch(logText, /secret-file-id/);
     assert.doesNotMatch(logText, /bot-secret-token/);
   } finally {
