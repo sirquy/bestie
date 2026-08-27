@@ -1,12 +1,13 @@
 import { loadSystemPrompt } from "../character/prompt-loader.js";
 import { buildPublicChannelAgentToolRunner, resolveChannelAgentRuntime } from "../agents/channel-binding.js";
 import { buildChatMessages, getRecentMessageLimit } from "../chat/message-builder.js";
+import { formatReasoningCommandHelp, formatReasoningLevel, parseReasoningLevel } from "../chat/reasoning.js";
 import { formatChatFailureContext } from "../chat/error-context.js";
 import { buildMcpToolSystemPrompt, completeWithAgentTools, runAgentToolRequest, type AgentToolActivity } from "../chat/mcp-tool-use.js";
 import { fallbackLogDetail, formatProviderFallbackDiagnostics, formatProviderFallbackHealth } from "../llm/fallbacks.js";
 import { ProviderAuthError, ProviderFallbackError, ProviderNetworkError, ProviderRateLimitError, ProviderResponseError, ProviderTimeoutError } from "../llm/errors.js";
 import { sendChatCompletionWithFallbacks } from "../llm/chat-completion.js";
-import type { ChatCompletionOptions, ChatMessage, ChatMessageContent } from "../llm/types.js";
+import type { ChatCompletionOptions, ChatMessage, ChatMessageContent, ReasoningLevel } from "../llm/types.js";
 import { isMemoryRetrievalPolicy, setMemoryRetrievalPolicy } from "../memory/governance.js";
 import { buildMemoryHygieneDoctorReport, formatMemoryHygieneDoctorReport } from "../memory/hygiene-doctor.js";
 import { calculateMemoryHygieneScore } from "../memory/hygiene-score.js";
@@ -63,6 +64,7 @@ const ZALO_MESSAGE_MAX_CHARS = 2_000;
 const ZALO_POLLING_TIMEOUT_SECONDS = 25;
 const ZALO_TOOL_PROGRESS_EVERY = 3;
 const ZALO_ACTION_APPROVAL_TTL_MS = 30 * 60 * 1000;
+const zaloReasoningLevels = new Map<string, ReasoningLevel>();
 const ZALO_ATTACHMENT_MAX_BYTES = 20 * 1024 * 1024;
 const ZALO_ATTACHMENT_PREVIEW_MAX_BYTES = 16 * 1024;
 const ZALO_ATTACHMENT_PARSE_MAX_BYTES = 5 * 1024 * 1024;
@@ -427,7 +429,8 @@ export async function handleZaloUpdate(update: ZaloUpdate, options: ZaloUpdateHa
     return "replied";
   }
 
-  const chatCompletion = options.chatCompletion ?? ((config, _apiKeyValue, requestOptions) => sendChatCompletionWithFallbacks(config, { ...requestOptions, stream: requestOptions.stream ?? true }, { paths: options.paths }));
+  const reasoningLevel = zaloReasoningLevels.get(`${channel}:${incoming.chatId}:${incoming.senderId}`) ?? "off";
+  const chatCompletion = options.chatCompletion ?? ((config, _apiKeyValue, requestOptions) => sendChatCompletionWithFallbacks(config, { ...requestOptions, stream: requestOptions.stream ?? true, reasoningLevel }, { paths: options.paths }));
   const typing = createChannelActivityController(adapter.outbound.createActivityOptions(incoming.chatId, "typing"));
   let apiKey = "";
   let conversationUserId = threadType === 1 ? `group:${incoming.chatId}` : incoming.senderId;
@@ -944,6 +947,22 @@ function optionalNumberProperty<TKey extends string>(key: TKey, value: number | 
 
 async function handleZaloSlashCommand(text: string, chatId: string, userId: string, options: ZaloUpdateHandlerOptions, channel: ZaloRuntimeChannel = "zalo", threadType: 0 | 1 = 0): Promise<boolean> {
   const sendMessage = (message: string) => options.client.sendMessage(chatId, message, { threadType });
+  const reasoningKey = `${channel}:${chatId}:${userId}`;
+  if (text === "/reasoning") {
+    const level = zaloReasoningLevels.get(reasoningKey) ?? "off";
+    await sendMessage(`🧠 Suy luận: ${formatReasoningLevel(level)}\n${formatReasoningCommandHelp()}`);
+    return true;
+  }
+  if (text.startsWith("/reasoning ")) {
+    const level = parseReasoningLevel(text.slice("/reasoning ".length));
+    if (!level) {
+      await sendMessage(`⚠️ Mức suy luận không hợp lệ.\n${formatReasoningCommandHelp()}`);
+      return true;
+    }
+    zaloReasoningLevels.set(reasoningKey, level);
+    await sendMessage(`🧠 Đã đặt suy luận: ${formatReasoningLevel(level)}.`);
+    return true;
+  }
   if (await handleCronChannelCommand({ text, paths: options.paths, channel, userId: chatId, sendMessage: (message) => sendMessage(message).then(() => undefined) })) {
     return true;
   }

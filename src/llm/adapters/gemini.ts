@@ -53,6 +53,7 @@ export function buildGeminiGenerateContentRequest(candidate: ResolvedLlmCandidat
       ...(systemInstruction ? { systemInstruction } : {}),
       ...(options.temperature === undefined ? {} : { temperature: options.temperature }),
       ...(options.maxTokens === undefined ? {} : { maxOutputTokens: options.maxTokens }),
+      ...(options.reasoningLevel && options.reasoningLevel !== "off" ? { thinkingConfig: { thinkingBudget: options.reasoningLevel === "low" ? 1024 : options.reasoningLevel === "medium" ? 4096 : 8192 } } : {}),
     },
   };
 }

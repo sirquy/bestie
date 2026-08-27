@@ -186,11 +186,22 @@ async function withBrowserContext(options: BrowserToolOptions, run: (context: Br
     return await run(context);
   } catch (error) {
     await logBrowserCall(options, "internal.browser_runtime", browserCdpEndpoint(options) ? "configured CDP browser" : "isolated browser", false);
-    return { allowed: false, reason: `Browser tool failed: ${error instanceof Error ? error.message : String(error)}` };
+    return { allowed: false, reason: formatBrowserRuntimeError(error) };
   } finally {
     if (browser) await browser.close().catch(() => undefined);
     else await context?.close().catch(() => undefined);
   }
+}
+
+function formatBrowserRuntimeError(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error);
+  if (/Executable doesn't exist|executable doesn't exist|Please run the following command/i.test(message)) {
+    return `Browser tool failed: Chromium is not installed for Playwright. Run "npx playwright install chromium". Details: ${message}`;
+  }
+  if (/connectOverCDP|ECONNREFUSED|WebSocket/i.test(message)) {
+    return `Browser tool failed: could not connect to the configured browser (CDP). Check internalTools.browser.cdpEndpoint and that the browser is running. Details: ${message}`;
+  }
+  return `Browser tool failed: ${message}`;
 }
 
 function selectBrowserPage(context: BrowserContext, pageIndex: number | undefined): Page | undefined {
@@ -207,9 +218,17 @@ async function loadChromium(): Promise<Chromium> {
   try {
     const playwright = await import("playwright");
     return playwright.chromium as Chromium;
-  } catch {
-    throw new Error("Playwright is not installed. Install project dependencies before using browser tools.");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (isMissingPlaywrightModule(error)) {
+      throw new Error("Playwright runtime package is unavailable. Reinstall Bestie dependencies (npm install) and retry.", { cause: error });
+    }
+    throw new Error(`Playwright could not be loaded: ${message}`, { cause: error });
   }
+}
+
+function isMissingPlaywrightModule(error: unknown): boolean {
+  return typeof error === "object" && error !== null && "code" in error && (error as { code?: unknown }).code === "ERR_MODULE_NOT_FOUND";
 }
 
 async function pageSummary(page: Page, options: BrowserToolOptions & { timeoutMs?: number }, label: string): Promise<Omit<BrowserToolResult, "allowed" | "reason">> {

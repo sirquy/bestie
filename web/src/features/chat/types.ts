@@ -31,6 +31,7 @@ export interface ChatSession {
   toolsEnabled?: boolean | null;
   memoryEnabled?: boolean | null;
   providerModelRef?: string | null;
+  reasoningLevel?: "off" | "low" | "medium" | "high" | null;
   createdAt: string;
   updatedAt: string;
   lastMessageAt?: string | null;

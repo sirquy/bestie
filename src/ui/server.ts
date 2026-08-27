@@ -14,6 +14,7 @@ import { createUiChatSession, deleteUiChatSession, exportUiChatSession, forkUiCh
 import { getUiDoctorSummary, runUiDoctorFix } from "./api/doctor.js";
 import { getUiKnowledgeGraphSummary, runUiKnowledgeGraphAction, searchUiKnowledgeGraph } from "./api/knowledge-graph.js";
 import { getUiMemorySummary, runUiMemoryAction, searchUiMemories } from "./api/memory.js";
+import { getUiLogsSummary } from "./api/logs.js";
 import { getUiMcpSummary } from "./api/mcp.js";
 import { runUiOnboarding } from "./api/onboarding.js";
 import { getUiProviderSummary, runUiProviderTest, setUiProviderPrimary, setupUiProvider, updateUiProviderFallback } from "./api/providers.js";
@@ -40,7 +41,7 @@ const BESTIE_ICON_PNG_PATH = fileURLToPath(new URL("../../assets/bestie-app-icon
 const BESTIE_ICON_ICO_PATH = fileURLToPath(new URL("../../assets/bestie-app-icon.ico", import.meta.url));
 const UI_WEB_INDEX_PATH = fileURLToPath(new URL("./web/index.html", import.meta.url));
 const UI_WEB_SERVICE_WORKER_PATH = fileURLToPath(new URL("./web/sw.js", import.meta.url));
-const UI_WEB_ROUTE_PATHS = new Set(["/chat", "/doctor", "/providers", "/character", "/memory", "/knowledge", "/channels", "/channels/telegram", "/channels/zalo", "/channels/zalo-personal", "/agents", "/agents/tasks", "/approvals", "/mcp", "/tools", "/skills", "/skills/library", "/settings", "/settings/general", "/settings/memory", "/settings/security", "/settings/remote-access"]);
+const UI_WEB_ROUTE_PATHS = new Set(["/chat", "/doctor", "/providers", "/character", "/memory", "/knowledge", "/channels", "/channels/telegram", "/channels/zalo", "/channels/zalo-personal", "/agents", "/agents/tasks", "/approvals", "/mcp", "/tools", "/logs", "/skills", "/skills/library", "/settings", "/settings/general", "/settings/memory", "/settings/security", "/settings/remote-access"]);
 const ROBOTS_TXT = "User-agent: *\nDisallow: /\n";
 const NO_INDEX_HEADER_VALUE = "noindex, nofollow, noarchive, nosnippet";
 
@@ -526,6 +527,7 @@ async function handleRequestAsync(request: IncomingMessage, response: ServerResp
       attachments: Array.isArray(body.attachments) ? body.attachments.filter(isUiChatAttachment) : [],
       toolsEnabled: body.toolsEnabled !== false,
       memoryEnabled: body.memoryEnabled !== false,
+      reasoningLevel: isReasoningLevel(body.reasoningLevel) ? body.reasoningLevel : undefined,
       providerModelRef: typeof body.providerModelRef === "string" && body.providerModelRef ? body.providerModelRef : undefined,
       replaySourceRunId: typeof body.replaySourceRunId === "number" ? body.replaySourceRunId : undefined,
     }));
@@ -573,7 +575,7 @@ async function handleRequestAsync(request: IncomingMessage, response: ServerResp
       sendJson(response, 400, { ok: false, error: "Chat session update requires id.", code: "UiChatInvalidSessionUpdate" });
       return;
     }
-    sendJson(response, 200, await updateUiChatSession({ id: body.id, title: typeof body.title === "string" ? body.title : undefined, pinned: typeof body.pinned === "boolean" ? body.pinned : undefined, toolsEnabled: typeof body.toolsEnabled === "boolean" ? body.toolsEnabled : undefined, memoryEnabled: typeof body.memoryEnabled === "boolean" ? body.memoryEnabled : undefined, providerModelRef: typeof body.providerModelRef === "string" ? body.providerModelRef : undefined }));
+    sendJson(response, 200, await updateUiChatSession({ id: body.id, title: typeof body.title === "string" ? body.title : undefined, pinned: typeof body.pinned === "boolean" ? body.pinned : undefined, toolsEnabled: typeof body.toolsEnabled === "boolean" ? body.toolsEnabled : undefined, memoryEnabled: typeof body.memoryEnabled === "boolean" ? body.memoryEnabled : undefined, reasoningLevel: isReasoningLevel(body.reasoningLevel) ? body.reasoningLevel : undefined, providerModelRef: typeof body.providerModelRef === "string" ? body.providerModelRef : undefined }));
     return;
   }
 
@@ -682,6 +684,7 @@ async function handleRequestAsync(request: IncomingMessage, response: ServerResp
         attachments: Array.isArray(body.attachments) ? body.attachments.filter(isUiChatAttachment) : [],
         toolsEnabled: body.toolsEnabled !== false,
         memoryEnabled: body.memoryEnabled !== false,
+        reasoningLevel: isReasoningLevel(body.reasoningLevel) ? body.reasoningLevel : undefined,
         providerModelRef: typeof body.providerModelRef === "string" && body.providerModelRef ? body.providerModelRef : undefined,
         replaySourceRunId: typeof body.replaySourceRunId === "number" ? body.replaySourceRunId : undefined,
         stream: true,
@@ -992,6 +995,12 @@ async function handleRequestAsync(request: IncomingMessage, response: ServerResp
     return;
   }
 
+  if (method === "GET" && url.pathname === "/api/logs") {
+    const requestedLines = Number(url.searchParams.get("lines"));
+    sendJson(response, 200, await getUiLogsSummary({ lines: Number.isFinite(requestedLines) ? requestedLines : undefined }));
+    return;
+  }
+
   if (method === "GET" && url.pathname === "/api/knowledge-graph/search") {
     sendJson(response, 200, await searchUiKnowledgeGraph(url.searchParams.get("q") ?? ""));
     return;
@@ -1260,6 +1269,10 @@ function isUiTunnelAction(value: unknown): value is UiTunnelAction {
 
 function isMemoryWritePolicy(value: unknown): value is "allow" | "ask" | "deny" {
   return value === "allow" || value === "ask" || value === "deny";
+}
+
+function isReasoningLevel(value: unknown): value is "off" | "low" | "medium" | "high" {
+  return value === "off" || value === "low" || value === "medium" || value === "high";
 }
 
 function isUiKnowledgeGraphAction(value: unknown): value is "merge_entity" | "forget_entity" | "forget_relation" | "update_relation" | "approve_pending" | "reject_pending" | "sanitize_pending" {

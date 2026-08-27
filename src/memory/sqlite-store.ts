@@ -107,6 +107,7 @@ export interface UiChatSession {
   pinnedAt?: string;
   toolsEnabled: boolean;
   memoryEnabled: boolean;
+  reasoningLevel: import("../llm/types.js").ReasoningLevel;
   providerModelRef?: string;
   messageCount: number;
   eventTypes: string[];
@@ -1502,10 +1503,10 @@ export class SqliteMemoryStore {
     return this.getUiChatSession(id);
   }
 
-  updateUiChatSessionPreferences(id: number, preferences: { toolsEnabled?: boolean; memoryEnabled?: boolean; providerModelRef?: string | null }): UiChatSession {
+  updateUiChatSessionPreferences(id: number, preferences: { toolsEnabled?: boolean; memoryEnabled?: boolean; providerModelRef?: string | null; reasoningLevel?: import("../llm/types.js").ReasoningLevel }): UiChatSession {
     const current = this.getUiChatSession(id);
-    this.db.prepare("UPDATE ui_chat_sessions SET tools_enabled = ?, memory_enabled = ?, provider_model_ref = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?")
-      .run((preferences.toolsEnabled ?? current.toolsEnabled) ? 1 : 0, (preferences.memoryEnabled ?? current.memoryEnabled) ? 1 : 0, preferences.providerModelRef === undefined ? current.providerModelRef ?? null : preferences.providerModelRef || null, id);
+    this.db.prepare("UPDATE ui_chat_sessions SET tools_enabled = ?, memory_enabled = ?, provider_model_ref = ?, reasoning_level = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?")
+      .run((preferences.toolsEnabled ?? current.toolsEnabled) ? 1 : 0, (preferences.memoryEnabled ?? current.memoryEnabled) ? 1 : 0, preferences.providerModelRef === undefined ? current.providerModelRef ?? null : preferences.providerModelRef || null, preferences.reasoningLevel ?? current.reasoningLevel, id);
     return this.getUiChatSession(id);
   }
 
@@ -1913,6 +1914,7 @@ interface UiChatSessionRow {
   tools_enabled?: number | null;
   memory_enabled?: number | null;
   provider_model_ref?: string | null;
+  reasoning_level?: string | null;
   created_at: string;
   updated_at: string;
   message_count: number;
@@ -2396,6 +2398,7 @@ function mapUiChatSessionRow(row: UiChatSessionRow): UiChatSession {
     pinnedAt: row.pinned_at ?? undefined,
     toolsEnabled: row.tools_enabled !== 0,
     memoryEnabled: row.memory_enabled !== 0,
+    reasoningLevel: row.reasoning_level === "low" || row.reasoning_level === "medium" || row.reasoning_level === "high" ? row.reasoning_level : "off",
     providerModelRef: row.provider_model_ref ?? undefined,
     messageCount: row.message_count ?? 0,
     eventTypes: row.event_types ? row.event_types.split(",").filter(Boolean) : [],
@@ -2890,6 +2893,7 @@ function applyMemoryMigrations(db: Database.Database): void {
   addColumnIfMissing(db, "ui_chat_sessions", "tools_enabled", "INTEGER DEFAULT 1");
   addColumnIfMissing(db, "ui_chat_sessions", "memory_enabled", "INTEGER DEFAULT 1");
   addColumnIfMissing(db, "ui_chat_sessions", "provider_model_ref", "TEXT");
+  addColumnIfMissing(db, "ui_chat_sessions", "reasoning_level", "TEXT DEFAULT 'off'");
   addColumnIfMissing(db, "ui_chat_sessions", "agent_id", "TEXT");
   addColumnIfMissing(db, "ui_chat_messages", "run_id", "INTEGER");
   addColumnIfMissing(db, "ui_chat_messages", "metadata_json", "TEXT");

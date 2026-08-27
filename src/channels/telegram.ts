@@ -10,6 +10,7 @@ import { matchesOwnerId, type OwnerUserIdConfig } from "./owner-policy.js";
 import { buildPublicChannelAgentToolRunner, resolveChannelAgentRuntime } from "../agents/channel-binding.js";
 import { loadSystemPrompt } from "../character/prompt-loader.js";
 import { buildChatMessages, getRecentMessageLimit } from "../chat/message-builder.js";
+import { formatReasoningCommandHelp, formatReasoningLevel, parseReasoningLevel } from "../chat/reasoning.js";
 import { formatChatFailureContext } from "../chat/error-context.js";
 import {
   buildMcpToolSystemPrompt,
@@ -18,7 +19,7 @@ import {
   type AgentToolActivity,
   type RunAgentToolRequestOptions,
 } from "../chat/mcp-tool-use.js";
-import type { ChatCompletionOptions, ChatMessage, ChatMessageContent } from "../llm/types.js";
+import type { ChatCompletionOptions, ChatMessage, ChatMessageContent, ReasoningLevel } from "../llm/types.js";
 import { sendChatCompletionWithFallbacks } from "../llm/chat-completion.js";
 import { fallbackLogDetail, formatProviderFallbackDiagnostics, formatProviderFallbackHealth } from "../llm/fallbacks.js";
 import { runKnowledgeReasoningPass, type KnowledgeReasoningResult } from "../memory/knowledge-reasoning.js";
@@ -241,6 +242,7 @@ const TELEGRAM_PERMISSION_POLICY: PermissionPolicy = {
   allowLocalWrite: false,
 };
 const telegramSpeechReplyLastSentAt = new Map<number, number>();
+const telegramReasoningLevels = new Map<string, ReasoningLevel>();
 
 export interface TelegramPollingOptions {
   config: AppConfig;
@@ -540,7 +542,8 @@ export async function handleTelegramUpdate(update: TelegramUpdate, options: Tele
     return "replied";
   }
 
-  const chatCompletion = options.chatCompletion ?? ((config, _apiKeyValue, requestOptions) => sendChatCompletionWithFallbacks(config, { ...requestOptions, stream: requestOptions.stream ?? true }, { paths: options.paths }));
+  const reasoningLevel = telegramReasoningLevels.get(`${chatId}:${userId}`) ?? "off";
+  const chatCompletion = options.chatCompletion ?? ((config, _apiKeyValue, requestOptions) => sendChatCompletionWithFallbacks(config, { ...requestOptions, stream: requestOptions.stream ?? true, reasoningLevel }, { paths: options.paths }));
   const mcpToolRunner = options.mcpToolRunner ?? runAgentToolRequest;
   const typing = createChannelActivityController(adapter.outbound.createActivityOptions(chatId, "typing"));
   let apiKey = "";
@@ -1559,6 +1562,23 @@ function summarizeTelegramAttachmentParse(attachment: SavedTelegramAttachment): 
 }
 
 async function handleTelegramSlashCommand(text: string, chatId: number, userId: string, options: TelegramUpdateHandlerOptions): Promise<boolean> {
+  if (text === "/reasoning") {
+    const level = telegramReasoningLevels.get(`${chatId}:${userId}`) ?? "off";
+    await options.client.sendMessage(chatId, `🧠 **Suy luận:** ${formatReasoningLevel(level)}\n${formatReasoningCommandHelp()}`);
+    return true;
+  }
+
+  if (text.startsWith("/reasoning ")) {
+    const level = parseReasoningLevel(text.slice("/reasoning ".length));
+    if (!level) {
+      await options.client.sendMessage(chatId, `⚠️ Mức suy luận không hợp lệ.\n${formatReasoningCommandHelp()}`);
+      return true;
+    }
+    telegramReasoningLevels.set(`${chatId}:${userId}`, level);
+    await options.client.sendMessage(chatId, `🧠 Đã đặt suy luận: **${formatReasoningLevel(level)}**.`);
+    return true;
+  }
+
   if (await handleCronChannelCommand({ text, paths: options.paths, channel: "telegram", userId: String(chatId), sendMessage: (message) => options.client.sendMessage(chatId, message).then(() => undefined) })) {
     return true;
   }

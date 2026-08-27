@@ -6,7 +6,7 @@ import { loadSystemPrompt } from "../../character/prompt-loader.js";
 import { getProviderAdapterMetadata } from "../../llm/adapters/registry.js";
 import { sendChatCompletionWithFallbacks } from "../../llm/chat-completion.js";
 import { loadLlmCandidateSecret, resolvePrimaryLlmCandidate } from "../../llm/resolve-config.js";
-import type { ChatCompletionOptions, ChatMessage } from "../../llm/types.js";
+import type { ChatCompletionOptions, ChatMessage, ReasoningLevel } from "../../llm/types.js";
 import { loadUiConversationSummaryContext, refreshUiConversationSummary } from "../../memory/conversation-summary.js";
 import { loadRelevantMemories } from "../../memory/context.js";
 import { loadRelevantKnowledgeGraph } from "../../memory/knowledge-context.js";
@@ -31,6 +31,7 @@ export interface UiChatOptions {
   attachments?: UiChatAttachment[];
   toolsEnabled?: boolean;
   memoryEnabled?: boolean;
+  reasoningLevel?: ReasoningLevel;
   providerModelRef?: string;
   replaySourceRunId?: number;
   paths?: RuntimePaths;
@@ -124,6 +125,7 @@ export interface UiChatRetrySummary extends UiChatSessionMessagesSummary {
     runId: number;
     toolsEnabled?: boolean;
     memoryEnabled?: boolean;
+    reasoningLevel?: ReasoningLevel;
     providerModelRef?: string;
     attachments?: UiChatAttachment[];
   };
@@ -236,13 +238,13 @@ export async function createUiChatSession(title?: string, agentIdOrPaths?: strin
   }
 }
 
-export async function updateUiChatSession(options: { id: number; title?: string; pinned?: boolean; toolsEnabled?: boolean; memoryEnabled?: boolean; providerModelRef?: string | null; paths?: RuntimePaths }): Promise<UiChatSessionMessagesSummary> {
+export async function updateUiChatSession(options: { id: number; title?: string; pinned?: boolean; toolsEnabled?: boolean; memoryEnabled?: boolean; reasoningLevel?: ReasoningLevel; providerModelRef?: string | null; paths?: RuntimePaths }): Promise<UiChatSessionMessagesSummary> {
   const paths = options.paths ?? getRuntimePaths();
   const store = await SqliteMemoryStore.open(paths);
   try {
     if (typeof options.title === "string") store.updateUiChatSessionTitle(options.id, options.title);
     if (typeof options.pinned === "boolean") store.updateUiChatSessionPinned(options.id, options.pinned);
-    if ("toolsEnabled" in options || "memoryEnabled" in options || "providerModelRef" in options) {
+    if ("toolsEnabled" in options || "memoryEnabled" in options || "reasoningLevel" in options || "providerModelRef" in options) {
       const config = await loadConfig(paths);
       const providerModelRef = "providerModelRef" in options
         ? options.providerModelRef === null ? null : resolveValidUiProviderModelRef(config, options.providerModelRef) ?? null
@@ -407,6 +409,7 @@ export async function prepareUiChatRunReplay(options: UiChatReplayOptions): Prom
         runId: run.id,
         toolsEnabled: typeof metadata.toolsEnabled === "boolean" ? metadata.toolsEnabled : undefined,
         memoryEnabled: typeof metadata.memoryEnabled === "boolean" ? metadata.memoryEnabled : undefined,
+        reasoningLevel: metadata.reasoningLevel === "low" || metadata.reasoningLevel === "medium" || metadata.reasoningLevel === "high" ? metadata.reasoningLevel : "off",
         providerModelRef: typeof metadata.providerModelRef === "string" ? metadata.providerModelRef : undefined,
         attachments: readReplayAttachments(metadata.attachments),
       },
@@ -527,6 +530,7 @@ async function synthesizeContinuedChatAnswer(paths: RuntimePaths, config: Awaite
   const systemPrompt = agentSystemPrompt ?? await loadSystemPrompt(paths);
   const store = await SqliteMemoryStore.open(paths);
   try {
+    const session = store.getUiChatSession(sessionId);
     const recentMessageLimit = getRecentMessageLimit(config);
     const history = toChatHistory(store.listUiChatMessages(sessionId, recentMessageLimit).map((message) => ({ role: message.role, content: message.content })), recentMessageLimit);
     const conversationSummary = await loadUiConversationSummaryContext(paths, sessionId);
@@ -537,7 +541,7 @@ async function synthesizeContinuedChatAnswer(paths: RuntimePaths, config: Awaite
       ...history,
       { role: "user" as const, content: buildAgentToolResultMessage(toolName, execution.toolResult) },
     ];
-    const answer = await sendChatCompletionWithFallbacks(config, { messages, stream: options?.stream === true, onToken: options?.onToken }, { paths });
+    const answer = await sendChatCompletionWithFallbacks(config, { messages, reasoningLevel: session.reasoningLevel, stream: options?.stream === true, onToken: options?.onToken }, { paths });
     const decision = parseAgentToolDecisionResult(answer);
     return decision.kind === "answer" ? decision.content : answer.trim() || execution.message;
   } finally {
@@ -618,12 +622,13 @@ async function runUiChatUnlocked(options: UiChatOptions): Promise<UiChatResult> 
   const providerModelRef = resolveValidUiProviderModelRef(baseConfig, options.providerModelRef);
   if (options.sessionId !== undefined) await sanitizeUiChatSessionById(paths, baseConfig, options.sessionId);
   const sessionBeforeRun = options.sessionId === undefined ? undefined : (await getUiChatSessionMessages(options.sessionId, paths)).session;
+  const reasoningLevel = options.reasoningLevel ?? sessionBeforeRun?.reasoningLevel ?? "off";
   const agentRuntime = await resolveWorkforceAgentRuntime(baseConfig, paths, sessionBeforeRun?.agentId, "the Web UI chat", sessionBeforeRun ? `ui-chat:agent:${sessionBeforeRun.agentId}:session:${sessionBeforeRun.id}` : undefined);
   const applyProviderOverride = (config: Awaited<ReturnType<typeof loadConfig>>) => !agentRuntime && providerModelRef ? { ...config, llm: { ...config.llm, primary: providerModelRef } } : config;
   const config = applyProviderOverride(agentRuntime?.config ?? baseConfig);
   const systemPrompt = agentRuntime?.systemPrompt ?? await loadSystemPrompt(paths);
   const apiKey = await loadLlmCandidateSecret(resolvePrimaryLlmCandidate(config), paths);
-  const chatCompletion = options.chatCompletion ?? ((currentConfig: typeof config, _apiKey: string, requestOptions: ChatCompletionOptions) => sendChatCompletionWithFallbacks(currentConfig, requestOptions, { paths }));
+  const chatCompletion = options.chatCompletion ?? ((currentConfig: typeof config, _apiKey: string, requestOptions: ChatCompletionOptions) => sendChatCompletionWithFallbacks(currentConfig, { ...requestOptions, reasoningLevel }, { paths }));
   const recentMessageLimit = getRecentMessageLimit(config);
   const history = toChatHistory(await resolveUiChatHistory(paths, options, recentMessageLimit), recentMessageLimit);
   const promptInput = appendAttachmentContext(userInput, options.attachments);
@@ -641,9 +646,9 @@ async function runUiChatUnlocked(options: UiChatOptions): Promise<UiChatResult> 
     model: config.llm.primary,
     providerModelRef,
     userMessageId: persistedUser?.message.id,
-    metadataJson: JSON.stringify(buildChatRunMetadata(userInput, { ...options, providerModelRef }, { model: config.llm.primary })),
+        metadataJson: JSON.stringify(buildChatRunMetadata(userInput, { ...options, providerModelRef }, { model: config.llm.primary })),
   }) : undefined;
-  const sanitizedOptions = { ...options, providerModelRef };
+  const sanitizedOptions = { ...options, providerModelRef, reasoningLevel };
   const timelineOptions = run ? { ...sanitizedOptions, runId: run.id } : sanitizedOptions;
   await emitTimelineEvent(paths, session?.id, timelineOptions, { type: "thinking", label: "Preparing agent context", payload: { memoryCount: memories.length, model: config.llm.primary } });
 
@@ -832,6 +837,7 @@ function buildChatRunMetadata(userInput: string, options: UiChatOptions, result:
     model: result.model,
     toolsEnabled: options.toolsEnabled !== false,
     memoryEnabled: options.memoryEnabled !== false,
+    reasoningLevel: options.reasoningLevel ?? "off",
     providerModelRef: options.providerModelRef,
     replaySourceRunId: options.replaySourceRunId,
     attachmentCount: options.attachments?.length ?? 0,

@@ -10,7 +10,7 @@ test("Telegram channel descriptor exposes native commands and capabilities", () 
   assert.equal(TELEGRAM_CHANNEL.capabilities.toolActivity, true);
   assert.deepEqual(
     TELEGRAM_CHANNEL.commands.filter((command) => command.native).map((command) => command.command),
-    ["start", "help", "status", "providers", "doctor", "memory", "approvals"],
+    ["start", "help", "status", "providers", "doctor", "reasoning", "memory", "approvals"],
   );
 });
 
@@ -40,7 +40,7 @@ test("Zalo channel descriptor exposes polling attachments and tool activity", ()
   assert.equal(ZALO_CHANNEL.capabilities.toolActivity, true);
   assert.deepEqual(
     ZALO_CHANNEL.commands.filter((command) => command.native).map((command) => command.command),
-    ["help", "status", "providers", "memory", "approvals"],
+    ["help", "status", "providers", "reasoning", "memory", "approvals"],
   );
   assert.equal(ZALO_PERSONAL_CHANNEL.id, "zalo-personal");
   assert.equal(ZALO_PERSONAL_CHANNEL.configKey, "zaloPersonal");

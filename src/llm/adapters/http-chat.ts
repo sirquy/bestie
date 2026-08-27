@@ -31,6 +31,7 @@ export function buildChatCompletionRequestBody(
     ...(options.temperature === undefined ? {} : { temperature: options.temperature }),
     ...(options.maxTokens === undefined ? {} : { max_tokens: options.maxTokens }),
     ...(options.stream ? { stream: true } : {}),
+    ...(options.reasoningLevel && options.reasoningLevel !== "off" ? { reasoning_effort: options.reasoningLevel } : {}),
   };
 }
 
@@ -41,6 +42,7 @@ export interface AnthropicMessagesRequestBody {
   temperature?: number;
   max_tokens: number;
   stream?: boolean;
+  thinking?: { type: "enabled"; budget_tokens: number };
 }
 
 export function buildAnthropicMessagesRequestBody(candidate: ResolvedLlmCandidate, options: ChatCompletionOptions): AnthropicMessagesRequestBody {
@@ -63,7 +65,12 @@ export function buildAnthropicMessagesRequestBody(candidate: ResolvedLlmCandidat
     ...(options.temperature === undefined ? {} : { temperature: options.temperature }),
     max_tokens: options.maxTokens ?? 1024,
     ...(options.stream ? { stream: true } : {}),
+    ...(options.reasoningLevel && options.reasoningLevel !== "off" ? { thinking: { type: "enabled", budget_tokens: reasoningBudgetTokens(options.reasoningLevel) } } : {}),
   };
+}
+
+function reasoningBudgetTokens(level: "low" | "medium" | "high"): number {
+  return level === "low" ? 1024 : level === "medium" ? 4096 : 8192;
 }
 
 export function isAnthropicProvider(provider: string): boolean {

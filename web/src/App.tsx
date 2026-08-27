@@ -14,6 +14,7 @@ import {
   MessageSquareText,
   PlugZap,
   Route,
+  ScrollText,
   Settings,
   ShieldCheck,
   TerminalSquare,
@@ -31,6 +32,7 @@ import { CharacterPanel, CharacterPanelError } from "@/features/character/Charac
 import { ChatPanel, ChatPanelError } from "@/features/chat/ChatPanel";
 import { DoctorPanel, DoctorPanelError } from "@/features/doctor/DoctorPanel";
 import { KnowledgePanel, KnowledgePanelError } from "@/features/knowledge/KnowledgePanel";
+import { LogsPanel, LogsPanelError } from "@/features/logs/LogsPanel";
 import { MemoryPanel, MemoryPanelError } from "@/features/memory/MemoryPanel";
 import { McpPanel, McpPanelError } from "@/features/mcp/McpPanel";
 import { OnboardingScreen } from "@/features/onboarding/OnboardingScreen";
@@ -45,6 +47,7 @@ import type { CharacterSummary } from "@/features/character/types";
 import type { ChatSessionsSummary } from "@/features/chat/types";
 import type { DoctorSummary } from "@/features/doctor/types";
 import type { KnowledgeGraphSummary } from "@/features/knowledge/types";
+import type { LogsSummary } from "@/features/logs/types";
 import type { MemorySummary } from "@/features/memory/types";
 import type { McpSummary } from "@/features/mcp/types";
 import type { ProviderSummary } from "@/features/providers/types";
@@ -64,6 +67,7 @@ type PanelId =
   | "character"
   | "memory"
   | "knowledge"
+  | "logs"
   | "channels"
   | "agents"
   | "approvals"
@@ -90,6 +94,7 @@ const panels: PanelDefinition[] = [
   { id: "character", title: "Tính cách", nav: "Tính cách", route: "/character", description: "Điều chỉnh tính cách và phong cách trò chuyện của Bestie.", icon: Bot, endpoint: "/api/character" },
   { id: "memory", title: "Bộ nhớ", nav: "Bộ nhớ", route: "/memory", description: "Xem thông tin đã ghi nhớ và các cập nhật đang chờ.", icon: Brain, endpoint: "/api/memory" },
   { id: "knowledge", title: "Bản đồ tri thức", nav: "Tri thức", route: "/knowledge", description: "Khám phá tri thức đã liên kết và dọn dẹp dữ liệu.", icon: GitBranch, endpoint: "/api/knowledge-graph" },
+  { id: "logs", title: "Logs runtime", nav: "Logs", route: "/logs", description: "Kiểm tra log runtime gần nhất để chẩn đoán lỗi.", icon: ScrollText, endpoint: "/api/logs?lines=200" },
   { id: "channels", title: "Kênh kết nối", nav: "Kênh", route: "/channels", description: "Quản lý kênh đã kết nối và tin nhắn hẹn giờ.", icon: Cable, endpoint: "/api/channels" },
   { id: "agents", title: "Đội agent", nav: "Agent", route: "/agents", description: "Thuê agent cố định, giao việc và theo dõi hàng đợi xử lý.", icon: Users, endpoint: "/api/agents" },
   { id: "approvals", title: "Phê duyệt", nav: "Phê duyệt", route: "/approvals", description: "Các hành động cần bạn xem xét trước khi thực hiện.", icon: ClipboardCheck, endpoint: "/api/approvals" },
@@ -501,6 +506,17 @@ function App({ onLocked }: { onLocked: () => void }): ReactElement {
                       setPanelErrors((current) => ({ ...current, knowledge: undefined }));
                     }}
                     onLoading={(loading) => setLoadingPanels((current) => ({ ...current, knowledge: loading }))}
+                  />
+                )
+              ) : selectedPanel.id === "logs" ? (
+                activeError ? <LogsPanelError error={activeError} /> : (
+                  <LogsPanel
+                    data={activeData as unknown as LogsSummary | undefined}
+                    loading={Boolean(loadingPanels[selectedPanel.id])}
+                    onRefresh={() => {
+                      setPanelData((current) => { const next = { ...current }; delete next.logs; return next; });
+                      setPanelErrors((current) => ({ ...current, logs: undefined }));
+                    }}
                   />
                 )
               ) : selectedPanel.id === "mcp" ? (

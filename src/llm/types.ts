@@ -1,4 +1,5 @@
 export type ChatRole = "system" | "user" | "assistant";
+export type ReasoningLevel = "off" | "low" | "medium" | "high";
 
 export type ChatMessageContent = string | ChatMessageContentPart[];
 
@@ -13,6 +14,7 @@ export interface ChatMessage {
 
 export interface ChatCompletionOptions {
   messages: ChatMessage[];
+  reasoningLevel?: ReasoningLevel;
   temperature?: number;
   maxTokens?: number;
   stream?: boolean;
@@ -25,4 +27,5 @@ export interface ChatCompletionRequestBody {
   temperature?: number;
   max_tokens?: number;
   stream?: boolean;
+  reasoning_effort?: Exclude<ReasoningLevel, "off">;
 }
