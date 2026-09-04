@@ -125,6 +125,7 @@ export async function downloadChannelAttachmentBytes(options: {
     downloadFailed: string;
     tooLarge: string;
   };
+  retry?: { attempts?: number; delayMs?: number; sleep?: (milliseconds: number) => Promise<void> };
 }): Promise<ChannelDownloadedAttachment> {
   if (!options.getFile || !options.downloadFile) {
     throw new ChannelAttachmentHandlingError("client_unsupported", options.messages.clientUnsupported);
@@ -145,15 +146,36 @@ export async function downloadChannelAttachmentBytes(options: {
     throw new ChannelAttachmentHandlingError("missing_file_path", options.messages.missingFilePath);
   }
 
-  let bytes: Uint8Array;
-  try {
-    bytes = await options.downloadFile(file.filePath);
-  } catch (error) {
-    throw new ChannelAttachmentHandlingError("download_failed", options.messages.downloadFailed, { cause: error });
+  const attempts = Math.max(1, Math.floor(options.retry?.attempts ?? 3));
+  const delayMs = Math.max(0, options.retry?.delayMs ?? 250);
+  const sleep = options.retry?.sleep ?? ((milliseconds) => new Promise<void>((resolve) => setTimeout(resolve, milliseconds)));
+  let bytes: Uint8Array | undefined;
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      bytes = await options.downloadFile(file.filePath);
+      break;
+    } catch (error) {
+      lastError = error;
+      if (attempt < attempts && isRetryableAttachmentDownloadError(error)) await sleep(delayMs * attempt);
+      if (!isRetryableAttachmentDownloadError(error)) break;
+    }
+  }
+  if (!bytes) {
+    throw new ChannelAttachmentHandlingError("download_failed", options.messages.downloadFailed, { cause: lastError });
   }
 
   assertChannelAttachmentSizeAllowed({ bytes: bytes.byteLength, maxBytes: options.maxBytes, message: options.messages.tooLarge });
   return { filePath: file.filePath, bytes, expectedSize };
+}
+
+function isRetryableAttachmentDownloadError(error: unknown): boolean {
+  if (!(error instanceof Error)) return true;
+  const detail = error as Error & { code?: unknown; status?: unknown; statusCode?: unknown };
+  const status = typeof detail.status === "number" ? detail.status : typeof detail.statusCode === "number" ? detail.statusCode : undefined;
+  if (status !== undefined) return status >= 500;
+  if (typeof detail.code === "string" && /^(?:ECONN|ETIMEDOUT|EAI_AGAIN|ENET|EHOST|UND_ERR)/i.test(detail.code)) return true;
+  return !/^HTTP\s+4\d\d\b/i.test(error.message);
 }
 
 export async function persistChannelAttachmentFile(options: { localPath: string; bytes: Uint8Array }): Promise<ChannelPersistedAttachmentFile> {

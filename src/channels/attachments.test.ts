@@ -90,6 +90,51 @@ test("downloadChannelAttachmentBytes downloads metadata and bytes", async () => 
   assert.deepEqual(result, { filePath: "file-1.bin", bytes: new Uint8Array([1, 2, 3]), expectedSize: 3 });
 });
 
+test("downloadChannelAttachmentBytes retries transient download failures", async () => {
+  let attempts = 0;
+  const delays: number[] = [];
+
+  const result = await downloadChannelAttachmentBytes({
+    fileId: "file-1",
+    maxBytes: 10,
+    getFile: async () => ({ filePath: "file-1.bin", fileSize: 3 }),
+    downloadFile: async () => {
+      attempts += 1;
+      if (attempts < 3) throw new Error("temporary network failure");
+      return new Uint8Array([1, 2, 3]);
+    },
+    retry: { attempts: 3, delayMs: 10, sleep: async (milliseconds) => { delays.push(milliseconds); } },
+    messages: downloadMessages(),
+  });
+
+  assert.deepEqual(result.bytes, new Uint8Array([1, 2, 3]));
+  assert.equal(attempts, 3);
+  assert.deepEqual(delays, [10, 20]);
+});
+
+test("downloadChannelAttachmentBytes does not retry client download errors", async () => {
+  let attempts = 0;
+  const delays: number[] = [];
+
+  await assert.rejects(
+    () => downloadChannelAttachmentBytes({
+      fileId: "file-1",
+      maxBytes: 10,
+      getFile: async () => ({ filePath: "file-1.bin", fileSize: 3 }),
+      downloadFile: async () => {
+        attempts += 1;
+        throw new Error("HTTP 404 Not Found");
+      },
+      retry: { attempts: 3, delayMs: 10, sleep: async (milliseconds) => { delays.push(milliseconds); } },
+      messages: downloadMessages(),
+    }),
+    (error) => error instanceof ChannelAttachmentHandlingError && error.reason === "download_failed",
+  );
+
+  assert.equal(attempts, 1);
+  assert.deepEqual(delays, []);
+});
+
 test("downloadChannelAttachmentBytes maps adapter failures to structured errors", async () => {
   await assert.rejects(
     () => downloadChannelAttachmentBytes({ fileId: "file-1", maxBytes: 10, messages: downloadMessages() }),

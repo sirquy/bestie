@@ -7,7 +7,7 @@ import test from "node:test";
 import { ZALO_PERSONAL_OPERATION_NAMES } from "./capabilities.js";
 import { loginZaloPersonalWithQr, ZaloPersonalClient, type ZaloPersonalApi, type ZaloPersonalZcaModule } from "./client.js";
 
-function createApi(sent: Array<{ message: unknown; threadId: string; type: number }>): ZaloPersonalApi {
+function createApi(sent: Array<{ message: unknown; threadId: string; type: number }>, typing: Array<{ threadId: string; type: number; destType?: number }> = []): ZaloPersonalApi {
   return {
     listener: {
       on: () => undefined,
@@ -20,7 +20,7 @@ function createApi(sent: Array<{ message: unknown; threadId: string; type: numbe
       sent.push({ message, threadId, type });
       return { message: { msgId: 11 }, attachment: [{ msgId: 22 }] };
     },
-    sendTypingEvent: async () => undefined,
+    sendTypingEvent: async (threadId: string, type: number, destType?: number) => { typing.push({ threadId, type, destType }); },
   };
 }
 
@@ -83,6 +83,19 @@ test("Zalo Personal client sends text, photos, and documents through zca-js atta
     { message: { msg: "file", attachments: { data: Buffer.from([4, 5]), filename: "answer.txt", metadata: { totalSize: 2 } } }, threadId: "controller-1", type: 0 },
     { message: { msg: "group reply", quote }, threadId: "group-1", type: 1 },
     { message: { msg: "", attachments: { data: Buffer.from([6]), filename: "bestie-photo.jpg", metadata: { totalSize: 1 } } }, threadId: "group-1", type: 1 },
+  ]);
+});
+
+test("Zalo Personal client sends typing events with the correct zca-js thread and destination types", async () => {
+  const typing: Array<{ threadId: string; type: number; destType?: number }> = [];
+  const client = ZaloPersonalClient.fromApi(createApi([], typing));
+
+  await client.sendChatAction("controller-1", "typing", 0);
+  await client.sendChatAction("group-1", "typing", 1);
+
+  assert.deepEqual(typing, [
+    { threadId: "controller-1", type: 0, destType: 3 },
+    { threadId: "group-1", type: 1, destType: undefined },
   ]);
 });
 

@@ -502,7 +502,8 @@ export async function handleZaloUpdate(update: ZaloUpdate, options: ZaloUpdateHa
     typing.stop();
     if (error instanceof ChannelAttachmentHandlingError) {
       await appendLog({ event: "zalo_attachment_failure", detail: { reason: error.reason, kind: attachment?.kind } }, { paths: options.paths, knownSecrets: [apiKey] });
-    await options.client.sendMessage(incoming.chatId, error.userMessage, { threadType });
+      await persistZaloConversationTurn(options.paths, conversationUserId, userInput, formatChatFailureContext(error, apiKey ? [apiKey] : []), channel);
+      await options.client.sendMessage(incoming.chatId, error.userMessage, { threadType });
       return "replied";
     }
 

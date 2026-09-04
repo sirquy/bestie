@@ -656,6 +656,7 @@ export async function handleTelegramUpdate(update: TelegramUpdate, options: Tele
     typing.stop();
     if (error instanceof ChannelAttachmentHandlingError) {
       await appendLog({ event: "telegram_attachment_failure", detail: { reason: error.reason, kind: attachment?.kind, diagnostics: describeTelegramAttachmentError(error.cause) } }, { paths: options.paths, knownSecrets: [apiKey] });
+      await persistTelegramConversationTurn(options.paths, conversationUserId, userInput, formatChatFailureContext(error, apiKey ? [apiKey] : []));
       await options.client.sendMessage(chatId, error.userMessage);
       return "replied";
     }

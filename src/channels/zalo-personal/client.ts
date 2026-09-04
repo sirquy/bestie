@@ -12,7 +12,7 @@ export interface ZaloPersonalApi {
   listener: ZcaListener;
   getUserInfo(userId: string): Promise<{ changed_profiles?: Record<string, { displayName?: string; zaloName?: string }> }>;
   sendMessage(message: string | { msg: string; attachments?: unknown; quote?: unknown }, threadId: string, type: number): Promise<{ message: { msgId?: number } | null; attachment: Array<{ msgId?: number }> }>;
-  sendTypingEvent(threadId: string, type: number): Promise<unknown>;
+  sendTypingEvent(threadId: string, type: number, destType?: number): Promise<unknown>;
   [operation: string]: unknown;
 }
 
@@ -121,7 +121,8 @@ export class ZaloPersonalClient implements ZaloClient {
   }
 
   async sendChatAction(chatId: string, _action?: "typing", threadType?: ZaloPersonalThreadType): Promise<void> {
-    await this.api.sendTypingEvent(chatId, threadType ?? USER_THREAD_TYPE);
+    const resolvedThreadType = threadType ?? USER_THREAD_TYPE;
+    await this.api.sendTypingEvent(chatId, resolvedThreadType, resolvedThreadType === GROUP_THREAD_TYPE ? undefined : 3);
   }
 
   async getUserDisplayName(userId: string): Promise<string | undefined> {
