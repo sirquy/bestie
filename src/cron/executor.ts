@@ -13,6 +13,7 @@ import { decodeZaloPersonalSession } from "../channels/zalo-personal/session.js"
 import { ZaloPersonalClient } from "../channels/zalo-personal/client.js";
 
 const DEFAULT_TICK_INTERVAL_MS = 30_000;
+const CRON_RUN_LEASE_MS = 15 * 60_000;
 
 const MEMORY_HYGIENE_ALERT_STATE_KEY = "memory_hygiene_regression_alert_snapshot_id";
 const MEMORY_HYGIENE_SCORE_ALERT_THRESHOLD = 60;
@@ -91,8 +92,15 @@ export class CronExecutor {
           continue;
         }
 
+        const token = crypto.randomUUID();
+        const nextRunAt = job.scheduleType === "once" ? "" : computeNextRun(job.scheduleType, job.scheduleValue, undefined, this.options.config.agent.timeZone);
+        const claimed = store.claimCronSchedule(job.id, token, now, new Date(Date.now() + CRON_RUN_LEASE_MS).toISOString(), nextRunAt, true);
+        if (!claimed) {
+          continue;
+        }
+
         this.running.add(job.id);
-        const jobPromise = this.executeJob(job).finally(() => this.running.delete(job.id));
+        const jobPromise = this.executeJob(job, token).finally(() => this.running.delete(job.id));
         pendingJobs.push(jobPromise);
       }
 
@@ -112,10 +120,21 @@ export class CronExecutor {
       store.close();
     }
 
-    await this.executeJob(job);
+    const token = crypto.randomUUID();
+    const now = new Date().toISOString();
+    const nextRunAt = job.scheduleType === "once" ? "" : computeNextRun(job.scheduleType, job.scheduleValue, undefined, this.options.config.agent.timeZone);
+    const claimStore = await SqliteMemoryStore.open(this.options.paths);
+    try {
+      if (!claimStore.claimCronSchedule(job.id, token, now, new Date(Date.now() + CRON_RUN_LEASE_MS).toISOString(), nextRunAt, false)) {
+        throw new Error(`Cron schedule ${id} is already running.`);
+      }
+    } finally {
+      claimStore.close();
+    }
+    await this.executeJob(job, token);
   }
 
-  private async executeJob(job: CronSchedule): Promise<void> {
+  private async executeJob(job: CronSchedule, token: string): Promise<void> {
     const store = await SqliteMemoryStore.open(this.options.paths);
     let logId: number | undefined;
 
@@ -127,10 +146,6 @@ export class CronExecutor {
         { event: "cron_job_start", detail: { scheduleId: job.id, name: job.name, prompt: job.prompt.slice(0, 100) } },
         { paths: this.options.paths },
       );
-
-      // Compute next run before execution (handles one-shot by setting empty)
-      const nextRunAt = job.scheduleType === "once" ? "" : computeNextRun(job.scheduleType, job.scheduleValue, undefined, this.options.config.agent.timeZone);
-      store.updateCronNextRun(job.id, nextRunAt);
 
       const output = await (this.options.isolatedChatRunner ?? runIsolatedChat)({
         config: this.options.config,
@@ -161,6 +176,7 @@ export class CronExecutor {
         { paths: this.options.paths },
       );
     } finally {
+      store.releaseCronScheduleClaim(job.id, token);
       store.close();
     }
   }

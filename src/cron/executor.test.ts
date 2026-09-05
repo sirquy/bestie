@@ -396,6 +396,69 @@ test("CronExecutor skips jobs already running", async () => {
   }
 });
 
+test("CronExecutor claims a due schedule across executor instances", async () => {
+  const paths = await createTempPaths();
+  let executions = 0;
+  try {
+    const store = await SqliteMemoryStore.open(paths);
+    const schedule = store.addCronSchedule({
+      name: "Cross-process claim",
+      scheduleType: "interval",
+      scheduleValue: "1h",
+      prompt: "Run once",
+      nextRunAt: new Date(Date.now() - 60_000).toISOString(),
+    });
+    store.close();
+
+    const runner = async () => {
+      executions += 1;
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      return "done";
+    };
+    const first = new CronExecutor({ config: TEST_CONFIG, paths, isolatedChatRunner: runner });
+    const second = new CronExecutor({ config: TEST_CONFIG, paths, isolatedChatRunner: runner });
+    await Promise.all([first.tick(), second.tick()]);
+
+    const verifyStore = await SqliteMemoryStore.open(paths);
+    assert.equal(executions, 1);
+    assert.equal(verifyStore.listCronLogs(schedule.id).length, 1);
+    assert.equal(verifyStore.getCronSchedule(schedule.id).runToken, undefined);
+    verifyStore.close();
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("CronExecutor rejects manual triggering while a schedule is claimed", async () => {
+  const paths = await createTempPaths();
+  try {
+    const store = await SqliteMemoryStore.open(paths);
+    const schedule = store.addCronSchedule({
+      name: "Manual overlap",
+      scheduleType: "interval",
+      scheduleValue: "1h",
+      prompt: "Do not duplicate",
+      nextRunAt: new Date(Date.now() + 60_000).toISOString(),
+    });
+    store.close();
+
+    const executor = new CronExecutor({ config: TEST_CONFIG, paths, isolatedChatRunner: async () => "done" });
+    const claimStore = await SqliteMemoryStore.open(paths);
+    const now = new Date().toISOString();
+    const token = "manual-overlap-test";
+    assert.equal(claimStore.claimCronSchedule(schedule.id, token, now, new Date(Date.now() + 60_000).toISOString(), schedule.nextRunAt, false), true);
+    claimStore.close();
+
+    await assert.rejects(() => executor.runScheduleNow(schedule.id), /already running/);
+
+    const releaseStore = await SqliteMemoryStore.open(paths);
+    releaseStore.releaseCronScheduleClaim(schedule.id, token);
+    releaseStore.close();
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
 test("CronExecutor one-shot job sets empty next_run_at", async () => {
   const paths = await createTempPaths();
   try {

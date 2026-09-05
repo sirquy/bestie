@@ -195,7 +195,7 @@ async function withBrowserContext(options: BrowserToolOptions, run: (context: Br
 
 function formatBrowserRuntimeError(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
-  if (/Executable doesn't exist|executable doesn't exist|Please run the following command/i.test(message)) {
+  if (/Executable doesn't exist|executable doesn't exist|Please run the following command|Failed to launch|spawn (UNKNOWN|ENOENT|EACCES)/i.test(message)) {
     return `Browser tool failed: Chromium is not installed for Playwright. Run "npx playwright install chromium". Details: ${message}`;
   }
   if (/connectOverCDP|ECONNREFUSED|WebSocket/i.test(message)) {
@@ -232,11 +232,9 @@ function isMissingPlaywrightModule(error: unknown): boolean {
 }
 
 async function pageSummary(page: Page, options: BrowserToolOptions & { timeoutMs?: number }, label: string): Promise<Omit<BrowserToolResult, "allowed" | "reason">> {
-  const [title, text, elements] = await Promise.all([
-    page.title(),
-    readPageText(page, options),
-    summarizeElements(page),
-  ]);
+  const title = await page.title();
+  const text = await readPageText(page, options);
+  const elements = await summarizeElements(page);
   const screenshotPath = await saveScreenshot(page, options, label);
   return { url: page.url(), title, text: truncateChars(text, MAX_SNAPSHOT_TEXT_CHARS), elements, screenshotPath };
 }

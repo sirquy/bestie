@@ -58,6 +58,7 @@ export type ServiceCommandOptions = DaemonCommandOptions;
 
 interface DaemonState {
   channel?: ManagedDaemonTarget;
+  launchMode?: "daemon" | "service";
   pid: number;
   command: string;
   args: string[];
@@ -97,9 +98,9 @@ export async function runDaemonCommand(optionsOrArgv: string[] | DaemonCommandOp
 
   if (subcommand === "stop") {
     for (const channel of channels) {
-      await stopDaemon({ ...options, paths, writeLine }, channel);
+      await withDaemonLifecycleLock({ ...options, paths, writeLine }, channel, () => stopDaemon({ ...options, paths, writeLine }, channel));
     }
-    if (manageUi) await stopUiDaemon({ ...options, paths, writeLine });
+    if (manageUi) await withDaemonLifecycleLock({ ...options, paths, writeLine }, "ui", () => stopUiDaemon({ ...options, paths, writeLine }));
     return;
   }
 
@@ -483,7 +484,7 @@ async function runServiceChannel(channel: DaemonChannel, options: { paths: Runti
   const logPath = resolve(paths.logsDir, `daemon-${channel}.log`);
 
   await mkdir(paths.logsDir, { recursive: true });
-  await writeDaemonState(paths, channel, { channel, pid: process.pid, command, args, startedAt: new Date().toISOString(), logPath });
+  await writeDaemonState(paths, channel, { channel, launchMode: "service", pid: process.pid, command, args, startedAt: new Date().toISOString(), logPath });
 
   try {
     if (channel === "cron") {
@@ -536,13 +537,17 @@ async function printDaemonUpdateNotice(options: DaemonCommandOptions, paths: Run
 }
 
 async function startDaemon(options: Required<Pick<DaemonCommandOptions, "paths" | "writeLine">> & DaemonCommandOptions, channel: DaemonChannel): Promise<void> {
-  await withDaemonStartLock(options, channel, () => startDaemonLocked(options, channel));
+  await withDaemonLifecycleLock(options, channel, () => startDaemonLocked(options, channel));
 }
 
 async function startDaemonLocked(options: Required<Pick<DaemonCommandOptions, "paths" | "writeLine">> & DaemonCommandOptions, channel: DaemonChannel): Promise<void> {
   const state = await readDaemonState(options.paths, channel);
   const isRunning = options.isProcessRunning ?? defaultIsProcessRunning;
   if (state && isRunning(state.pid)) {
+    if (state.launchMode === "service" && isRecordedStateStillOwnedByBestie(options, state)) {
+      options.writeLine(`${badge("RUN", "green")} ${formatDaemonChannel(channel)} is managed by the Bestie service (pid ${state.pid}).`);
+      return;
+    }
     if (isRecordedStateStillOwnedByBestie(options, state)) {
       await stopOrphanDaemonProcesses(options, channel, [state.pid]);
       options.writeLine(`${badge("RUN", "green")} Daemon ${formatDaemonChannel(channel)} is already running with pid ${state.pid}.`);
@@ -580,13 +585,13 @@ async function startDaemonLocked(options: Required<Pick<DaemonCommandOptions, "p
   }
 
   child.unref();
-  await writeDaemonState(options.paths, channel, { channel, pid: child.pid, command, args, startedAt: new Date().toISOString(), logPath });
+  await writeDaemonState(options.paths, channel, { channel, launchMode: "daemon", pid: child.pid, command, args, startedAt: new Date().toISOString(), logPath });
   options.writeLine(`${badge("RUN", "green")} Daemon ${formatDaemonChannel(channel)} started with pid ${child.pid}.`);
   options.writeLine(`Log: ${logPath}`);
 }
 
 async function startUiDaemon(options: Required<Pick<DaemonCommandOptions, "paths" | "writeLine">> & DaemonCommandOptions): Promise<void> {
-  await withDaemonStartLock(options, "ui", () => startUiDaemonLocked(options));
+  await withDaemonLifecycleLock(options, "ui", () => startUiDaemonLocked(options));
 }
 
 async function startUiDaemonLocked(options: Required<Pick<DaemonCommandOptions, "paths" | "writeLine">> & DaemonCommandOptions): Promise<void> {
@@ -646,7 +651,7 @@ function isRecordedStateStillOwnedByBestie(options: DaemonCommandOptions, state:
   }
 
   const commandLine = getProcessCommandLine(state.pid);
-  return Boolean(commandLine && isRecordedDaemonProcess(state, commandLine));
+  return Boolean(commandLine && (state.launchMode === "service" ? isRecordedServiceProcess(state, commandLine) : isRecordedDaemonProcess(state, commandLine)));
 }
 
 async function stopDaemon(options: Required<Pick<DaemonCommandOptions, "paths" | "writeLine">> & DaemonCommandOptions, channel: DaemonChannel): Promise<void> {
@@ -660,6 +665,10 @@ async function stopDaemon(options: Required<Pick<DaemonCommandOptions, "paths" |
 
   const isRunning = options.isProcessRunning ?? defaultIsProcessRunning;
   if (isRunning(state.pid)) {
+    if (state.launchMode === "service" && isRecordedStateStillOwnedByBestie(options, state)) {
+      options.writeLine(`${badge("RUN", "green")} ${formatDaemonChannel(channel)} is managed by the Bestie service; use \`bestie service stop\` instead.`);
+      return;
+    }
     const getProcessCommandLine = options.getProcessCommandLine ?? (options.isProcessRunning ? undefined : defaultGetProcessCommandLine);
     if (getProcessCommandLine) {
       const commandLine = getProcessCommandLine(state.pid);
@@ -721,7 +730,7 @@ async function stopUiDaemon(options: Required<Pick<DaemonCommandOptions, "paths"
   options.writeLine(`${badge("STOP", "gray")} Web UI đã dừng: ${state.pid}.`);
 }
 
-async function withDaemonStartLock(options: Required<Pick<DaemonCommandOptions, "paths" | "writeLine">> & DaemonCommandOptions, target: ManagedDaemonTarget, run: () => Promise<void>): Promise<void> {
+async function withDaemonLifecycleLock(options: Required<Pick<DaemonCommandOptions, "paths" | "writeLine">> & DaemonCommandOptions, target: ManagedDaemonTarget, run: () => Promise<void>): Promise<void> {
   const sleepFn = options.sleep ?? sleep;
   const lockPath = getDaemonLockPath(options.paths, target);
   const deadline = Date.now() + DAEMON_START_LOCK_TIMEOUT_MS;
@@ -745,7 +754,7 @@ async function withDaemonStartLock(options: Required<Pick<DaemonCommandOptions, 
       if (!isNodeError(error) || error.code !== "EEXIST") throw error;
       await removeStaleDaemonStartLock(lockPath, options.isProcessRunning ?? defaultIsProcessRunning);
       if (Date.now() >= deadline) {
-        throw new UserFacingError(`Daemon ${target} start is already in progress. Try again in a few seconds.`, "DaemonStartLockTimeoutError");
+        throw new UserFacingError(`Daemon ${target} lifecycle operation is already in progress. Try again in a few seconds.`, "DaemonLifecycleLockTimeoutError");
       }
       await sleepFn(250);
     }
@@ -790,13 +799,17 @@ async function stopOrphanDaemonProcesses(options: Required<Pick<DaemonCommandOpt
 }
 
 async function restartDaemon(options: Required<Pick<DaemonCommandOptions, "paths" | "writeLine">> & DaemonCommandOptions, channel: DaemonChannel): Promise<void> {
-  await stopDaemon(options, channel);
-  await startDaemon(options, channel);
+  await withDaemonLifecycleLock(options, channel, async () => {
+    await stopDaemon(options, channel);
+    await startDaemonLocked(options, channel);
+  });
 }
 
 async function restartUiDaemon(options: Required<Pick<DaemonCommandOptions, "paths" | "writeLine">> & DaemonCommandOptions): Promise<void> {
-  await stopUiDaemon(options);
-  await startUiDaemon(options);
+  await withDaemonLifecycleLock(options, "ui", async () => {
+    await stopUiDaemon(options);
+    await startUiDaemonLocked(options);
+  });
 }
 
 async function showDaemonStatus(options: Required<Pick<DaemonCommandOptions, "paths" | "writeLine">> & DaemonCommandOptions, channel: DaemonChannel): Promise<void> {
@@ -1085,6 +1098,13 @@ function isBestieManagedProcessCommand(target: ManagedDaemonTarget, commandLine:
 function isRecordedDaemonProcess(state: DaemonState, commandLine: string[]): boolean {
   const normalizedCommandLine = commandLine.map(normalizeCommandArgument);
   return normalizedCommandLine[0] === normalizeCommandArgument(state.command) && state.args.every((arg, index) => normalizedCommandLine[index + 1] === normalizeCommandArgument(arg));
+}
+
+function isRecordedServiceProcess(state: DaemonState, commandLine: string[]): boolean {
+  const normalized = commandLine.map(normalizeCommandArgument);
+  return normalized[0] === normalizeCommandArgument(state.command)
+    && normalized.includes("service")
+    && normalized.includes("run");
 }
 
 function splitCommandLineForComparison(commandLine: string): string[] {

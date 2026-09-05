@@ -178,6 +178,8 @@ export interface CronSchedule {
   lastResult?: string;
   lastError?: string;
   runCount: number;
+  runToken?: string;
+  runLeaseUntil?: string;
 }
 
 export interface NewCronSchedule {
@@ -1645,6 +1647,23 @@ export class SqliteMemoryStore {
   // --- Cron schedule CRUD ---
 
   addCronSchedule(schedule: NewCronSchedule): CronSchedule {
+    const existing = this.db.prepare(`
+      SELECT id FROM cron_schedules
+      WHERE name = @name
+        AND schedule_type = @scheduleType
+        AND schedule_value = @scheduleValue
+        AND prompt = @prompt
+        AND COALESCE(channel, '') = COALESCE(@channel, '')
+    `).get({
+      name: schedule.name,
+      scheduleType: schedule.scheduleType,
+      scheduleValue: schedule.scheduleValue,
+      prompt: schedule.prompt,
+      channel: schedule.channel ?? null,
+    }) as { id: number } | undefined;
+    if (existing) {
+      throw new Error(`An identical cron schedule already exists (id ${existing.id}).`);
+    }
     const result = this.db
       .prepare(`
         INSERT INTO cron_schedules (name, schedule_type, schedule_value, prompt, channel, enabled, next_run_at)
@@ -1695,6 +1714,25 @@ export class SqliteMemoryStore {
 
   updateCronNextRun(id: number, nextRunAt: string): void {
     this.db.prepare("UPDATE cron_schedules SET next_run_at = ? WHERE id = ?").run(nextRunAt, id);
+  }
+
+  claimCronSchedule(id: number, token: string, now: string, leaseUntil: string, nextRunAt: string, requireDue: boolean): boolean {
+    const dueClause = requireDue ? "AND next_run_at != '' AND next_run_at <= @now" : "";
+    const result = this.db.prepare(`
+      UPDATE cron_schedules
+      SET next_run_at = @nextRunAt,
+          run_token = @token,
+          run_lease_until = @leaseUntil
+      WHERE id = @id
+        AND enabled = 1
+        ${dueClause}
+        AND (run_lease_until IS NULL OR run_lease_until <= @now)
+    `).run({ id, token, now, leaseUntil, nextRunAt });
+    return result.changes === 1;
+  }
+
+  releaseCronScheduleClaim(id: number, token: string): void {
+    this.db.prepare("UPDATE cron_schedules SET run_token = NULL, run_lease_until = NULL WHERE id = ? AND run_token = ?").run(id, token);
   }
 
   updateCronRunResult(id: number, result: string, error?: string): void {
@@ -2048,6 +2086,8 @@ interface CronScheduleRow {
   last_result: string | null;
   last_error: string | null;
   run_count: number;
+  run_token: string | null;
+  run_lease_until: string | null;
 }
 
 interface CronLogRow {
@@ -2218,6 +2258,8 @@ function mapCronScheduleRow(row: CronScheduleRow): CronSchedule {
     lastResult: row.last_result ?? undefined,
     lastError: row.last_error ?? undefined,
     runCount: row.run_count,
+    runToken: row.run_token ?? undefined,
+    runLeaseUntil: row.run_lease_until ?? undefined,
   };
 }
 
@@ -2734,6 +2776,8 @@ function parseJsonValue(value: string): unknown {
 }
 
 function applyMemoryMigrations(db: Database.Database): void {
+  addColumnIfMissing(db, "cron_schedules", "run_token", "TEXT");
+  addColumnIfMissing(db, "cron_schedules", "run_lease_until", "TEXT");
   addColumnIfMissing(db, "memories", "source", "TEXT DEFAULT 'manual'");
   addColumnIfMissing(db, "memories", "explicit_consent", "INTEGER DEFAULT 0");
   addColumnIfMissing(db, "memories", "policy_reason", "TEXT");

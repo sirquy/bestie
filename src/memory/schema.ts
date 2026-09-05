@@ -187,7 +187,9 @@ CREATE TABLE IF NOT EXISTS cron_schedules (
   next_run_at TEXT NOT NULL,
   last_result TEXT,
   last_error TEXT,
-  run_count INTEGER NOT NULL DEFAULT 0
+  run_count INTEGER NOT NULL DEFAULT 0,
+  run_token TEXT,
+  run_lease_until TEXT
 );
 
 CREATE TABLE IF NOT EXISTS cron_logs (

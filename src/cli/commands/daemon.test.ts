@@ -122,6 +122,43 @@ test("runDaemonCommand can manage channel daemons without touching Web UI", asyn
   }
 });
 
+test("runDaemonCommand does not replace a target owned by the service runtime", async () => {
+  const paths = await createTempPaths();
+  const output: string[] = [];
+  let spawned = false;
+
+  try {
+    await mkdir(paths.appDir, { recursive: true });
+    await writeFile(resolve(paths.appDir, "daemon-telegram.json"), JSON.stringify({
+      channel: "telegram",
+      launchMode: "service",
+      pid: 4242,
+      command: process.execPath,
+      args: ["bestie", "channels", "telegram"],
+      startedAt: new Date().toISOString(),
+      logPath: resolve(paths.logsDir, "daemon-telegram.log"),
+    }));
+
+    await runDaemonCommand({
+      argv: ["node", "bestie", "daemon", "start", "--channel", "telegram"],
+      paths,
+      manageUi: false,
+      writeLine: (message) => output.push(message),
+      printUpdateNotice: async () => undefined,
+      isProcessRunning: (pid) => pid === 4242,
+      spawnProcess: (() => {
+        spawned = true;
+        throw new Error("must not spawn");
+      }) as never,
+    });
+
+    assert.equal(spawned, false);
+    assert.match(output.join("\n"), /managed by the Bestie service/);
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
 test("runDaemonCommand can manage all runtime daemons", async () => {
   const paths = await createTempPaths();
   const output: string[] = [];
