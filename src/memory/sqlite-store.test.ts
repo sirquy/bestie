@@ -687,6 +687,36 @@ test("SqliteMemoryStore stores memory pause state", async () => {
   }
 });
 
+test("SqliteMemoryStore keeps the FTS index across reopen and rebuilds after clear", async () => {
+  const paths = await createTempPaths();
+  const firstStore = await SqliteMemoryStore.open(paths);
+
+  try {
+    firstStore.addMemory({ type: "preference", content: "Persistent FTS memory" });
+    assert.equal(firstStore.countActiveMemories(), 1);
+  } finally {
+    firstStore.close();
+  }
+
+  const reopenedStore = await SqliteMemoryStore.open(paths);
+  try {
+    assert.deepEqual(reopenedStore.searchMemories("Persistent FTS").map((memory) => memory.content), ["Persistent FTS memory"]);
+    assert.equal(reopenedStore.countActiveMemoriesByScope().core, 1);
+    reopenedStore.clearAllData();
+  } finally {
+    reopenedStore.close();
+  }
+
+  const afterClearStore = await SqliteMemoryStore.open(paths);
+  try {
+    const memory = afterClearStore.addMemory({ type: "preference", content: "Rebuilt FTS memory" });
+    assert.deepEqual(afterClearStore.searchMemories("Rebuilt FTS").map((item) => item.id), [memory.id]);
+  } finally {
+    afterClearStore.close();
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
 test("SqliteMemoryStore isolates memory and knowledge namespaces", async () => {
   const paths = await createTempPaths();
   const store = await SqliteMemoryStore.open(paths);

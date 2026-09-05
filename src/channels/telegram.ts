@@ -51,6 +51,7 @@ import { buildChannelAttachmentPreview, type AttachmentContentParser } from "./a
 import { ProviderAuthError, ProviderFallbackError, ProviderNetworkError, ProviderRateLimitError, ProviderResponseError, ProviderTimeoutError } from "../llm/errors.js";
 import type { ChannelIncomingMessage, ChannelOutboundAdapter, ChannelRuntimeAdapter } from "./adapter.js";
 import { createChannelActivityController } from "./activity.js";
+import { createChannelActionPermissionApprover } from "./action-approval.js";
 import { applyMemoryHygienePlanForChannel, formatMemoryAnalysisReport, formatMemoryCleanupDryRunReport, formatMemoryGovernanceStatus, formatMemoryHygieneReport, formatMemoryInspect, formatMemoryMaintenanceInstalled, formatMemoryMaintenanceRemoved, formatMemoryMaintenanceStatus, formatMemoryRetrievalPolicyUpdated, formatPendingKnowledgeSanitizeResult } from "./memory-commands.js";
 import { buildChannelAttachmentPrompt } from "./attachment-prompt.js";
 import { resolveChannelVisionPolicy } from "./attachment-policy.js";
@@ -1051,44 +1052,24 @@ function getCallbackMessageLocation(message: MaybeInaccessibleMessage | undefine
 }
 
 function createTelegramPermissionApprover(client: TelegramClient, chatId: number, userId: string, paths: RuntimePaths): PermissionApprover {
-  return async (request: ActionPermissionRequest, proposed: ActionPermissionResult) => {
-    const store = await SqliteMemoryStore.open(paths);
-    let approvalId: number;
-
-    try {
-      approvalId = store.addPendingActionApproval({
-        channel: "telegram",
-        userId,
-        category: request.category,
-        action: request.action,
-        target: request.target,
-        reason: request.reason,
-        proposedReason: proposed.reason,
-        payloadJson: request.payloadJson,
-        ttlMs: TELEGRAM_ACTION_APPROVAL_TTL_MS,
-      }).id;
-    } finally {
-      store.close();
-    }
-
-    await client.sendMessage(
-      chatId,
-      redactSecrets(
-        [
-          `Approval needed before running this action. Request: ${approvalId}`,
-          `Category: ${request.category}`,
-          `Action: ${request.action}`,
-          request.target ? `Target: ${request.target}` : undefined,
-          request.reason ? `Reason: ${request.reason}` : undefined,
-          `Policy: ${proposed.reason}`,
-          "Decision: choose Approve or Deny below.",
-        ].filter(Boolean).join("\n"),
-      ),
-      { replyMarkup: createApprovalReplyMarkup(approvalId) },
-    );
-
-    return { approved: false, reason: `Pending Telegram approval request ${approvalId} was recorded but not executed.` };
-  };
+  return createChannelActionPermissionApprover({
+    paths,
+    channel: "telegram",
+    userId,
+    ttlMs: TELEGRAM_ACTION_APPROVAL_TTL_MS,
+    send: async (approvalId, request, proposed) => {
+      await client.sendMessage(chatId, redactSecrets([
+        `Approval needed before running this action. Request: ${approvalId}`,
+        `Category: ${request.category}`,
+        `Action: ${request.action}`,
+        request.target ? `Target: ${request.target}` : undefined,
+        request.reason ? `Reason: ${request.reason}` : undefined,
+        `Policy: ${proposed.reason}`,
+        "Decision: choose Approve or Deny below.",
+      ].filter(Boolean).join("\n")), { replyMarkup: createApprovalReplyMarkup(approvalId) });
+    },
+    pendingReason: (approvalId) => `Pending Telegram approval request ${approvalId} was recorded but not executed.`,
+  });
 }
 
 async function sendTelegramMemoryApprovalIfNeeded(

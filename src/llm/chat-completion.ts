@@ -1,5 +1,3 @@
-import { setTimeout as delay } from "node:timers/promises";
-
 import { GoogleGenAI } from "@google/genai";
 
 import { DEFAULT_LLM_TIMEOUT_MS, type AppConfig } from "../runtime/config.js";
@@ -12,6 +10,7 @@ export { buildAnthropicMessagesRequestBody, buildChatCompletionRequestBody } fro
 import { ProviderAuthError, ProviderNetworkError, ProviderRateLimitError, ProviderResponseError, ProviderTimeoutError } from "./errors.js";
 import { ProviderFallbackRecorder } from "./fallbacks.js";
 import { loadLlmCandidateSecret, resolveLlmFallbackCandidates, resolvePrimaryLlmCandidate, type ResolvedLlmCandidate } from "./resolve-config.js";
+import { withRetries } from "./retry.js";
 import type { ChatCompletionOptions } from "./types.js";
 
 export type { FetchLike };
@@ -89,29 +88,18 @@ async function sendResolvedChatCompletion(
   context: ProviderAdapterContext,
 ): Promise<string> {
   const adapter = getProviderAdapter(candidate.provider);
-  let attempt = 0;
-
-  while (true) {
-    try {
-      return await adapter.send(candidate, apiKey, options, context);
-    } catch (error) {
-      if (!isRetryableProviderError(error) || attempt >= candidate.maxRetries) {
-        throw error;
-      }
-
-      attempt += 1;
-      await logProviderRetry(candidate, error, {
+  return withRetries(() => adapter.send(candidate, apiKey, options, context), {
+    maxRetries: candidate.maxRetries,
+    retryDelayMs: candidate.retryDelayMs,
+    shouldRetry: isRetryableProviderError,
+    onRetry: (error, attempt) => logProviderRetry(candidate, error, {
         attempt,
         maxRetries: candidate.maxRetries,
         retryDelayMs: candidate.retryDelayMs,
         paths: context.paths,
         knownSecrets: context.knownSecrets ?? (apiKey ? [apiKey] : []),
-      });
-      if (candidate.retryDelayMs > 0) {
-        await delay(candidate.retryDelayMs);
-      }
-    }
-  }
+      }),
+  });
 }
 
 async function logProviderRetry(

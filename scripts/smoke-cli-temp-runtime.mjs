@@ -6,12 +6,12 @@ import { pathToFileURL } from "node:url";
 
 import { writeConfig } from "../dist/runtime/config.js";
 import { writeEnvFile } from "../dist/runtime/env.js";
+import { createRuntimePaths } from "./runtime-paths.mjs";
 
 const command = process.argv[2];
 if (!command) {
   throw new Error("Usage: node scripts/smoke-cli-temp-runtime.mjs <status|doctor|doctor-json|chat>");
 }
-
 const rootDir = await mkdtemp(resolve(tmpdir(), "bestie-cli-smoke-"));
 const projectRoot = process.env.INIT_CWD ?? process.cwd();
 const cliPath = resolve(projectRoot, "dist/cli/index.js");
@@ -37,7 +37,6 @@ try {
 } finally {
   await rm(rootDir, { recursive: true, force: true });
 }
-
 function runCli(command, cliPath, rootDir) {
   const env = { ...process.env, HOME: rootDir, USERPROFILE: rootDir, HOMEDRIVE: "", HOMEPATH: rootDir };
   if (command === "status") {
@@ -55,7 +54,6 @@ function runCli(command, cliPath, rootDir) {
 
   throw new Error(`Unknown smoke command: ${command}`);
 }
-
 async function seedRuntime(paths) {
   await mkdir(paths.appDir, { recursive: true });
   await writeConfig(
@@ -91,24 +89,4 @@ async function seedRuntime(paths) {
     { mode: 0o600 },
   );
   await writeFile(paths.systemPromptPath, "You are Bestie. Keep replies concise.\n", { mode: 0o600 });
-}
-
-function createRuntimePaths(root) {
-  const appDir = resolve(root, ".bestie");
-  const logsDir = resolve(appDir, "logs");
-  const dataDir = resolve(appDir, "data");
-
-  return {
-    rootDir: root,
-    appDir,
-    configPath: resolve(appDir, "config.json"),
-    envPath: resolve(appDir, ".env"),
-    characterPath: resolve(appDir, "character.json"),
-    systemPromptPath: resolve(appDir, "system-prompt.md"),
-    logsDir,
-    appLogPath: resolve(logsDir, "app.log"),
-    dataDir,
-    memoryDbPath: resolve(dataDir, "memory.sqlite"),
-    workspaceDir: resolve(appDir, "workspace"),
-  };
 }

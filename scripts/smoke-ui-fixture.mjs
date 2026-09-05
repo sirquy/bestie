@@ -4,6 +4,7 @@ import { resolve } from "node:path";
 import { SqliteMemoryStore } from "../dist/memory/sqlite-store.js";
 import { writeConfig } from "../dist/runtime/config.js";
 import { writeEnvFile } from "../dist/runtime/env.js";
+import { createRuntimePaths } from "./runtime-paths.mjs";
 
 export async function seedUiSmokeRuntime(paths) {
   await mkdir(paths.appDir, { recursive: true });
@@ -83,21 +84,5 @@ export async function seedUiSmokeRuntime(paths) {
 }
 
 export function createUiSmokeRuntimePaths(root) {
-  const appDir = resolve(root, ".bestie");
-  const logsDir = resolve(appDir, "logs");
-  const dataDir = resolve(appDir, "data");
-
-  return {
-    rootDir: root,
-    appDir,
-    configPath: resolve(appDir, "config.json"),
-    envPath: resolve(appDir, ".env"),
-    characterPath: resolve(appDir, "character.json"),
-    systemPromptPath: resolve(appDir, "system-prompt.md"),
-    logsDir,
-    appLogPath: resolve(logsDir, "app.log"),
-    dataDir,
-    memoryDbPath: resolve(dataDir, "memory.sqlite"),
-    workspaceDir: resolve(appDir, "workspace"),
-  };
+  return createRuntimePaths(root);
 }

@@ -15,6 +15,7 @@ import { fetchJson, formatError } from "@/lib/api";
 import { confirmDialog } from "@/lib/dialogs";
 import { ToastEffect } from "@/lib/toasts";
 import { cn } from "@/lib/utils";
+import { formatRiskLabel } from "@/lib/risk";
 import type { AgentAvailableTool, AgentsActionResult, AgentsSummary, PublicAgentPolicy, WorkforceAgent, WorkforceAgentChannel, WorkforceApprovalPolicy, WorkforceTask, WorkforceTaskStatus } from "./types";
 
 interface AgentsPanelProps {
@@ -388,7 +389,5 @@ function formatAgentChannel(channel: WorkforceAgentChannel): string {
 }
 
 function formatRisk(risk: AgentAvailableTool["risk"]): string {
-  if (risk === "high") return "rủi ro cao";
-  if (risk === "medium") return "cần cân nhắc";
-  return "an toàn";
+  return formatRiskLabel(risk, "cần cân nhắc");
 }

@@ -34,6 +34,7 @@ import type { PermissionApprover, PermissionPolicy } from "../safety/permission-
 import type { ChannelIncomingMessage, ChannelOutboundAdapter, ChannelRuntimeAdapter } from "./adapter.js";
 import { matchesOwnerId, type OwnerUserIdConfig } from "./owner-policy.js";
 import { createChannelActivityController } from "./activity.js";
+import { createChannelActionPermissionApprover } from "./action-approval.js";
 import { buildChannelAttachmentPreview, type AttachmentContentParser } from "./attachment-preview.js";
 import { buildChannelAttachmentPrompt } from "./attachment-prompt.js";
 import { resolveChannelVisionPolicy } from "./attachment-policy.js";
@@ -1313,16 +1314,24 @@ async function handleZaloSlashCommand(text: string, chatId: string, userId: stri
 }
 
 function createZaloPermissionApprover(client: ZaloClient, chatId: string, userId: string, paths: RuntimePaths, channel: ZaloRuntimeChannel = "zalo", threadType: 0 | 1 = 0): PermissionApprover {
-  return async (request, proposed) => {
-      const store = await SqliteMemoryStore.open(paths);
-      try {
-        const approval = store.addPendingActionApproval({ channel, userId, category: request.category, action: request.action, target: request.target, reason: request.reason, proposedReason: proposed.reason, payloadJson: request.payloadJson, ttlMs: ZALO_ACTION_APPROVAL_TTL_MS });
-        await client.sendMessage(chatId, [`Approval needed. Request: ${approval.id}`, `Action: ${request.action}`, `Category: ${request.category}`, request.target ? `Target: ${request.target}` : undefined, request.reason ? `Reason: ${request.reason}` : undefined, `Reply /approve ${approval.id} or /deny ${approval.id}.`].filter(Boolean).join("\n"), { threadType });
-        return { approved: false, reason: `Approval request ${approval.id} is pending in Zalo.` };
-      } finally {
-        store.close();
-      }
-  };
+  return createChannelActionPermissionApprover({
+    paths,
+    channel,
+    userId,
+    ttlMs: ZALO_ACTION_APPROVAL_TTL_MS,
+    send: async (approvalId, request, proposed) => {
+      await client.sendMessage(chatId, [
+        `Approval needed. Request: ${approvalId}`,
+        `Action: ${request.action}`,
+        `Category: ${request.category}`,
+        request.target ? `Target: ${request.target}` : undefined,
+        request.reason ? `Reason: ${request.reason}` : undefined,
+        `Policy: ${proposed.reason}`,
+        `Reply /approve ${approvalId} or /deny ${approvalId}.`,
+      ].filter(Boolean).join("\n"), { threadType });
+    },
+    pendingReason: (approvalId) => `Approval request ${approvalId} is pending in Zalo.`,
+  });
 }
 
 async function handleZaloToolActivity(response: ReturnType<typeof createChannelResponseController>, activity: AgentToolActivity, agentName: string): Promise<void> {

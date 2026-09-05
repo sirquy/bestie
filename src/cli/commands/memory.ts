@@ -1515,7 +1515,7 @@ async function inspectMemory(argv: string[]): Promise<void> {
   const store = await SqliteMemoryStore.open();
 
   try {
-    const memory = store.listAllMemories().find((item) => item.id === id);
+    const memory = store.getMemory(id);
 
     if (!memory) {
       console.log(`No memory found for id ${id}.`);

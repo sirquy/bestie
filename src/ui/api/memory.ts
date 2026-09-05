@@ -129,19 +129,19 @@ export async function runUiMemoryAction(options: UiMemoryActionOptions): Promise
 }
 
 function buildMemorySummary(paths: RuntimePaths, store: SqliteMemoryStore, memories: StoredMemory[], pending: PendingMemory[], databaseExists: boolean): UiMemorySummary {
-  const allActive = store.listActiveMemories();
+  const activeCounts = store.countActiveMemoriesByScope();
   const conversationSummaries = store.listConversationSummaries({ limit: 20 });
   return {
     ok: true,
     database: { exists: databaseExists, path: paths.memoryDbPath },
     state: store.getMemoryState(),
     counts: {
-      active: allActive.length,
-      pending: store.listPendingMemories(1000).length,
-      core: allActive.filter((memory) => memory.scope === "core").length,
-      project: allActive.filter((memory) => memory.scope === "project").length,
-      session: allActive.filter((memory) => memory.scope === "session").length,
-      conversationSummaries: store.listConversationSummaries({ limit: 1000 }).length,
+      active: store.countActiveMemories(),
+      pending: store.countPendingMemories(),
+      core: activeCounts.core,
+      project: activeCounts.project,
+      session: activeCounts.session,
+      conversationSummaries: store.countConversationSummaries(),
     },
     memories: memories.map(toUiMemoryItem),
     pending: pending.map(toUiPendingMemoryItem),

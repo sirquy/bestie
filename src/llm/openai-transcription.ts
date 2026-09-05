@@ -1,6 +1,4 @@
 import { basename } from "node:path";
-import { setTimeout as delay } from "node:timers/promises";
-
 import { ElevenLabsClient, ElevenLabsError } from "@elevenlabs/elevenlabs-js";
 
 import { DEFAULT_LLM_MAX_RETRIES, DEFAULT_LLM_RETRY_DELAY_MS, DEFAULT_LLM_TIMEOUT_MS, type AppConfig } from "../runtime/config.js";
@@ -11,6 +9,7 @@ import { ProviderFallbackRecorder, type ProviderFallbackTarget } from "./fallbac
 import { createLocalAudioTranscription } from "./local-transcription.js";
 import type { FetchLike } from "./chat-completion.js";
 import { formatProviderHttpError } from "./provider-http.js";
+import { withRetries } from "./retry.js";
 
 export interface AudioTranscriptionInput {
   bytes: Uint8Array;
@@ -189,21 +188,10 @@ export async function sendAudioTranscription(
     throw new ProviderResponseError("transcription provider is not configured.");
   }
 
-  let attempt = 0;
-  while (true) {
-    try {
-      return await sendAudioTranscriptionAttempt(config, apiKey, input, fetchImpl, timeoutMs);
-    } catch (error) {
-      if (!isRetryableProviderError(error) || attempt >= DEFAULT_LLM_MAX_RETRIES) {
-        throw error;
-      }
-
-      attempt += 1;
-      if (DEFAULT_LLM_RETRY_DELAY_MS > 0) {
-        await delay(DEFAULT_LLM_RETRY_DELAY_MS);
-      }
-    }
-  }
+  return withRetries(
+    () => sendAudioTranscriptionAttempt(config, apiKey, input, fetchImpl, timeoutMs),
+    { maxRetries: DEFAULT_LLM_MAX_RETRIES, retryDelayMs: DEFAULT_LLM_RETRY_DELAY_MS, shouldRetry: isRetryableProviderError },
+  );
 }
 
 async function sendAudioTranscriptionAttempt(

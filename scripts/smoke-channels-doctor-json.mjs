@@ -6,6 +6,7 @@ import { resolve } from "node:path";
 import { runChannelsCommand } from "../dist/cli/commands/channels.js";
 import { writeConfig } from "../dist/runtime/config.js";
 import { writeEnvFile } from "../dist/runtime/env.js";
+import { createRuntimePaths } from "./runtime-paths.mjs";
 
 const rootDir = await mkdtemp(resolve(tmpdir(), "bestie-channels-doctor-json-smoke-"));
 const paths = createRuntimePaths(rootDir);
@@ -52,24 +53,4 @@ try {
   console.log(`${report.channels.length} channels, ${report.issueCount} issues`);
 } finally {
   await rm(rootDir, { recursive: true, force: true });
-}
-
-function createRuntimePaths(root) {
-  const appDir = resolve(root, ".bestie");
-  const logsDir = resolve(appDir, "logs");
-  const dataDir = resolve(appDir, "data");
-
-  return {
-    rootDir: root,
-    appDir,
-    configPath: resolve(appDir, "config.json"),
-    envPath: resolve(appDir, ".env"),
-    characterPath: resolve(appDir, "character.json"),
-    systemPromptPath: resolve(appDir, "system-prompt.md"),
-    logsDir,
-    appLogPath: resolve(logsDir, "app.log"),
-    dataDir,
-    memoryDbPath: resolve(dataDir, "memory.sqlite"),
-    workspaceDir: resolve(appDir, "workspace"),
-  };
 }

@@ -18,7 +18,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json && npm run build:ui && node -e \"import('node:fs/promises').then(({ chmod }) => chmod('dist/cli/index.js', 0o755))\"",
     "build:ui": "tsc -p web/tsconfig.json --noEmit && vite build --config web/vite.config.ts",
-    "clean": "rm -rf dist",
+    "clean": "node scripts/clean.mjs",
     "dev": "tsx src/cli/index.ts",
     "pack:check": "npm run clean && npm run build && npm pack --dry-run",
     "prepack": "npm run clean && npm run build",

@@ -14,6 +14,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { fetchJson, formatError } from "@/lib/api";
 import { confirmDialog } from "@/lib/dialogs";
 import { ToastEffect } from "@/lib/toasts";
+import { formatRiskLabel } from "@/lib/risk";
 import type { Skill, SkillItemResponse, SkillLibraryDiff, SkillLibraryItem, SkillLibraryItemResponse, SkillLibrarySummary, SkillRemoteRegistryTestResult, SkillsSummary } from "./types";
 
 interface SkillsPanelProps {
@@ -427,10 +428,7 @@ function formatBytes(value: number): string {
 }
 
 function formatSkillRisk(risk: string): string {
-  if (risk === "high") return "rủi ro cao";
-  if (risk === "medium") return "rủi ro vừa";
-  if (risk === "low") return "rủi ro thấp";
-  return risk;
+  return formatRiskLabel(risk, "rủi ro vừa");
 }
 
 function formatSkillTrust(trust: string): string {

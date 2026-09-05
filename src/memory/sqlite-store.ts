@@ -571,7 +571,7 @@ export class SqliteMemoryStore {
       supersededBy: memory.supersededBy ?? null,
     });
 
-    const inserted = this.getMemory(Number(result.lastInsertRowid));
+    const inserted = this.getMemoryOrThrow(Number(result.lastInsertRowid));
     this.upsertMemorySearchIndex(inserted);
     return inserted;
   }
@@ -746,7 +746,7 @@ export class SqliteMemoryStore {
       return undefined;
     }
 
-    const memory = this.getMemory(id);
+    const memory = this.getMemoryOrThrow(id);
     this.upsertMemorySearchIndex(memory);
     return memory;
   }
@@ -756,7 +756,7 @@ export class SqliteMemoryStore {
       .prepare("UPDATE memories SET pinned = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND status = 'active'")
       .run(pinned ? 1 : 0, id);
 
-    return result.changes === 0 ? undefined : this.getMemory(id);
+    return result.changes === 0 ? undefined : this.getMemoryOrThrow(id);
   }
 
   setMemoryScope(id: number, scope: MemoryScope): StoredMemory | undefined {
@@ -764,7 +764,7 @@ export class SqliteMemoryStore {
       .prepare("UPDATE memories SET scope = ?, expires_at = CASE WHEN ? = 'session' AND expires_at IS NULL THEN ? ELSE expires_at END, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND status = 'active'")
       .run(scope, scope, defaultExpiresAtForScope(scope), id);
 
-    return result.changes === 0 ? undefined : this.getMemory(id);
+    return result.changes === 0 ? undefined : this.getMemoryOrThrow(id);
   }
 
   supersedeMemory(oldId: number, newId: number): StoredMemory | undefined {
@@ -776,7 +776,7 @@ export class SqliteMemoryStore {
       .prepare("UPDATE memories SET superseded_by = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND status = 'active'")
       .run(newId, oldId);
 
-    return result.changes === 0 ? undefined : this.getMemory(oldId);
+    return result.changes === 0 ? undefined : this.getMemoryOrThrow(oldId);
   }
 
   forgetMemory(id: number): boolean {
@@ -810,6 +810,32 @@ export class SqliteMemoryStore {
       : (this.db.prepare("SELECT * FROM memories WHERE status = 'active' AND namespace = ? ORDER BY importance DESC, updated_at DESC LIMIT ?").all(namespace, limit) as MemoryRow[]);
 
     return rows.map(mapMemoryRow);
+  }
+
+  countActiveMemories(namespace = "primary"): number {
+    const row = this.db.prepare("SELECT COUNT(*) AS count FROM memories WHERE status = 'active' AND namespace = ?").get(namespace) as { count: number };
+    return row.count;
+  }
+
+  countActiveMemoriesByScope(namespace = "primary"): Record<MemoryScope, number> {
+    const rows = this.db.prepare("SELECT scope, COUNT(*) AS count FROM memories WHERE status = 'active' AND namespace = ? GROUP BY scope").all(namespace) as Array<{ scope: MemoryScope; count: number }>;
+    const counts: Record<MemoryScope, number> = { core: 0, project: 0, session: 0 };
+    for (const row of rows) {
+      if (row.scope in counts) {
+        counts[row.scope] = row.count;
+      }
+    }
+    return counts;
+  }
+
+  countPendingMemories(namespace = "primary"): number {
+    const row = this.db.prepare("SELECT COUNT(*) AS count FROM pending_memories WHERE namespace = ?").get(namespace) as { count: number };
+    return row.count;
+  }
+
+  countConversationSummaries(): number {
+    const row = this.db.prepare("SELECT COUNT(*) AS count FROM conversation_summaries").get() as { count: number };
+    return row.count;
   }
 
   listActiveMemoriesByScope(scope: MemoryScope): StoredMemory[] {
@@ -1783,6 +1809,7 @@ export class SqliteMemoryStore {
       this.db.prepare("DELETE FROM messages").run();
       if (hasMemorySearchIndex(this.db)) {
         this.db.prepare("DELETE FROM memory_search").run();
+        this.db.prepare("DELETE FROM memory_state WHERE key = 'memory_search_index_version'").run();
       }
     });
 
@@ -1809,14 +1836,17 @@ export class SqliteMemoryStore {
     return row ? mapPendingMemoryRow(row) : undefined;
   }
 
-  private getMemory(id: number): StoredMemory {
+  getMemory(id: number): StoredMemory | undefined {
     const row = this.db.prepare("SELECT * FROM memories WHERE id = ?").get(id) as MemoryRow | undefined;
+    return row ? mapMemoryRow(row) : undefined;
+  }
 
-    if (!row) {
+  private getMemoryOrThrow(id: number): StoredMemory {
+    const memory = this.getMemory(id);
+    if (!memory) {
       throw new Error(`Memory not found after insert: ${id}`);
     }
-
-    return mapMemoryRow(row);
+    return memory;
   }
 
   private getPendingActionApproval(id: number): PendingActionApproval | undefined {
@@ -2964,6 +2994,7 @@ function migrateKnowledgeEntityNamespaceUniqueConstraint(db: Database.Database):
 }
 
 function initializeMemorySearchIndex(db: Database.Database): void {
+  const indexVersion = "1";
   try {
     db.exec(`
       CREATE VIRTUAL TABLE IF NOT EXISTS memory_search USING fts5(
@@ -2973,11 +3004,21 @@ function initializeMemorySearchIndex(db: Database.Database): void {
         tokenize = 'porter unicode61'
       )
     `);
+    const version = db.prepare("SELECT value FROM memory_state WHERE key = 'memory_search_index_version'").get() as { value?: string } | undefined;
+    if (version?.value === indexVersion) {
+      return;
+    }
+
     db.prepare("DELETE FROM memory_search").run();
     db.prepare(`
       INSERT INTO memory_search(memory_id, type, content)
       SELECT id, type, content FROM memories WHERE status = 'active'
     `).run();
+    db.prepare(`
+      INSERT INTO memory_state (key, value, updated_at)
+      VALUES ('memory_search_index_version', ?, CURRENT_TIMESTAMP)
+      ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP
+    `).run(indexVersion);
   } catch {
     // FTS5 is optional across SQLite builds; LIKE search remains the compatibility path.
   }
