@@ -3,6 +3,7 @@ dist/
 .release-artifacts/
 .bestie/
 .audit/
+.firecrawl/
 
 *.log
 
