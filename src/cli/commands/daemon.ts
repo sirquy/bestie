@@ -585,6 +585,11 @@ async function startDaemonLocked(options: Required<Pick<DaemonCommandOptions, "p
   }
 
   child.unref();
+  await (options.sleep ?? sleep)(DAEMON_START_SETTLE_MS);
+  if (!isRunning(child.pid)) {
+    await removeDaemonState(options.paths, channel);
+    throw new UserFacingError(`Daemon ${formatDaemonChannel(channel)} exited immediately after startup. Check ${logPath}.`, "DaemonStartError");
+  }
   await writeDaemonState(options.paths, channel, { channel, launchMode: "daemon", pid: child.pid, command, args, startedAt: new Date().toISOString(), logPath });
   options.writeLine(`${badge("RUN", "green")} Daemon ${formatDaemonChannel(channel)} started with pid ${child.pid}.`);
   options.writeLine(`Log: ${logPath}`);

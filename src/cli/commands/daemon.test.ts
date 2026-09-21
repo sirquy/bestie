@@ -122,6 +122,29 @@ test("runDaemonCommand can manage channel daemons without touching Web UI", asyn
   }
 });
 
+test("runDaemonCommand rejects a channel daemon that exits immediately", async () => {
+  const paths = await createTempPaths();
+
+  try {
+    await assert.rejects(
+      () => runDaemonCommand({
+        argv: ["node", "bestie", "daemon", "start", "--channel", "telegram"],
+        paths,
+        manageUi: false,
+        printUpdateNotice: async () => undefined,
+        spawnProcess: (() => ({ pid: 4242, unref: () => undefined })) as never,
+        isProcessRunning: () => false,
+        sleep: async () => undefined,
+      }),
+      /Daemon Telegram exited immediately after startup/,
+    );
+
+    await assert.rejects(() => readFile(resolve(paths.appDir, "daemon-telegram.json"), "utf8"), /ENOENT/);
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
 test("runDaemonCommand does not replace a target owned by the service runtime", async () => {
   const paths = await createTempPaths();
   const output: string[] = [];
