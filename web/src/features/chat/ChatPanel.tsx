@@ -1,6 +1,6 @@
 import type { CSSProperties, FormEvent, KeyboardEvent, ReactElement, ReactNode } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { AlertCircle, Bot, Check, Copy, FileText, GitFork, Loader2, Maximize2, MessageSquareText, Minimize2, MoreHorizontal, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Paperclip, Pencil, Pin, Plus, RefreshCw, RotateCcw, Search, Send, Settings2, Trash2, User, X } from "lucide-react";
+import { AlertCircle, Bot, Check, Copy, FileText, GitFork, Ellipsis, Maximize2, MessageSquareText, Minimize2, MoreHorizontal, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Paperclip, Pencil, Pin, Plus, RefreshCw, RotateCcw, Search, Send, Settings2, Trash2, User, X } from "lucide-react";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -366,7 +366,7 @@ export function ChatPanel({ data, loading, onData, onLoading }: ChatPanelProps):
           <CardContent className="flex min-h-0 flex-1 flex-col gap-3 p-2 sm:p-3 md:p-4">
             <div ref={transcriptRef} className="chat-transcript no-scrollbar grid min-h-0 flex-1 content-start gap-3 overflow-auto rounded-2xl border border-white/10 bg-background/25 p-3 sm:p-4" id="chat-transcript">
               {visibleMessages.length ? visibleMessages.map((item) => <MessageBubble key={item.id} message={item} onCopy={copyMessage} onFork={forkAt} onRetry={retryMessage} />) : <EmptyText>Chưa có tin nhắn trong cuộc trò chuyện này.</EmptyText>}
-              {streaming ? <div className="chat-message rounded-2xl border border-primary/30 bg-primary/10 p-4 text-sm assistant"><div className="mb-2 flex items-center gap-2 font-semibold"><Loader2 className="size-4 animate-spin" /> Bestie đang trả lời</div><p className="whitespace-pre-wrap text-muted-foreground">{streamText || "Đang suy nghĩ..."}</p></div> : null}
+              {streaming ? <div className="chat-message rounded-2xl border border-primary/30 bg-primary/10 p-4 text-sm assistant"><div className="mb-2 flex items-center gap-2 font-semibold">Bestie đang trả lời</div><p className="whitespace-pre-wrap text-muted-foreground">{streamText || "Đang suy nghĩ"} {streaming && <Ellipsis className="size-4 animate-spin" />}</p></div> : null}
             </div>
 
             <form className="grid gap-2 rounded-2xl border border-white/10 bg-card/50 p-2.5 sm:p-3" onSubmit={(event) => void sendMessage(event)}>
