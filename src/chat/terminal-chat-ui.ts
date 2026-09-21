@@ -9,6 +9,8 @@ export interface TerminalChatPresentation {
   runtimePath: string;
 }
 
+const TERMINAL_HEADER_WIDTH = 68;
+
 export function isInteractiveTerminalChat(): boolean {
   return Boolean(output.isTTY && supportsColor());
 }
@@ -27,13 +29,24 @@ export function renderTerminalChatHeader(presentation: TerminalChatPresentation)
 
   return [
     "",
-    color("magenta", "+--------------------------------------------------------------------+"),
-    color("magenta", "|") + "  " + bold(color("magenta", "BESTIE")) + "  " + dim("Your private local AI companion") + "                                  " + color("magenta", "|"),
-    color("magenta", "|") + "  " + badge("ONLINE", "green") + " " + bold(presentation.agentName) + " " + dim("for") + " " + bold(presentation.ownerName) + " " + dim("|") + " " + color("cyan", presentation.model) + "                 " + color("magenta", "|"),
-    color("magenta", "|") + "  " + dim("Type / for commands; arrows navigate, Tab completes, Enter runs") + "       " + color("magenta", "|"),
-    color("magenta", "+--------------------------------------------------------------------+"),
+    color("magenta", `+${"-".repeat(TERMINAL_HEADER_WIDTH)}+`),
+    formatHeaderLine("  BESTIE  Your private local AI companion"),
+    formatHeaderLine(`  [ONLINE] ${presentation.agentName} for ${presentation.ownerName} | ${presentation.model}`),
+    formatHeaderLine("  Type / for commands; arrows navigate, Tab completes, Enter runs"),
+    color("magenta", `+${"-".repeat(TERMINAL_HEADER_WIDTH)}+`),
     "",
   ];
+}
+
+export function formatHeaderLine(value: string, width = TERMINAL_HEADER_WIDTH): string {
+  const content = truncateTerminalText(value, width);
+  return color("magenta", "|") + content.padEnd(width) + color("magenta", "|");
+}
+
+export function truncateTerminalText(value: string, maxLength: number): string {
+  if (value.length <= maxLength) return value;
+  if (maxLength <= 3) return ".".repeat(maxLength);
+  return `${value.slice(0, maxLength - 3)}...`;
 }
 
 export function formatTerminalPrompt(ownerName?: string): string {

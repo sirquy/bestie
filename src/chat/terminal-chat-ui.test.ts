@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { formatTerminalAssistantMessage, formatTerminalError, formatTerminalGoodbye, formatTerminalPrompt, formatTerminalToolActivity, renderTerminalChatHeader } from "./terminal-chat-ui.js";
+import { formatHeaderLine, formatTerminalAssistantMessage, formatTerminalError, formatTerminalGoodbye, formatTerminalPrompt, formatTerminalToolActivity, renderTerminalChatHeader } from "./terminal-chat-ui.js";
 
 test("terminal chat UI preserves readable non-interactive output", () => {
   assert.equal(formatTerminalPrompt("Andy"), "[YOU] Andy > ");
@@ -9,6 +9,13 @@ test("terminal chat UI preserves readable non-interactive output", () => {
   assert.equal(formatTerminalError("Provider unavailable."), "[FAIL] Provider unavailable.");
   assert.equal(formatTerminalToolActivity("Bea", "internal.read_file", "Reading README.md"), "[BOT] Bea > [TOOL] internal.read_file Reading README.md");
   assert.equal(formatTerminalGoodbye(), "Bye.");
+});
+
+test("terminal chat header keeps long metadata inside its fixed frame", () => {
+  const metadataLine = formatHeaderLine("  [ONLINE] Bestie with a deliberately long display name for Owner with a deliberately long display name | openai-compatible/a-deliberately-long-model-reference-that-would-overflow");
+  assert.equal(metadataLine.length, 70);
+  assert.equal(metadataLine.startsWith("|"), true);
+  assert.equal(metadataLine.endsWith("|"), true);
 });
 
 test("terminal chat UI renders session metadata in non-interactive mode", () => {
