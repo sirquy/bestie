@@ -9,7 +9,7 @@ import type { BrowserContext } from "playwright";
 
 import type { AppConfig } from "../runtime/config.js";
 import type { RuntimePaths } from "../runtime/paths.js";
-import { listBrowserPagesTool, openBrowserPageTool } from "./browser-tools.js";
+import { clickBrowserPageTool, listBrowserPagesTool, openBrowserPageTool, resetBrowserSessionTool, typeBrowserPageTool } from "./browser-tools.js";
 
 test("browser tools reject non-http URLs before launching", async () => {
   const paths = await createTempPaths();
@@ -34,13 +34,65 @@ test("browser open captures localhost screenshot evidence", async (t) => {
     }
 
     assert.equal(result.allowed, true);
-    assert.equal(result.reason, "Browser tools are allowed without approval.");
+    assert.equal(result.reason, "internal.browser_open is allowed by config.");
     assert.equal(result.title, "Bestie Browser");
     assert.match(result.text ?? "", /Hello browser tools/);
     assert.ok(result.screenshotPath?.endsWith(".png"));
     assert.ok(result.elements?.some((element) => element.kind === "button" && element.text === "Continue"));
   } finally {
     await server.close();
+    await rm(paths.rootDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+  }
+});
+
+
+test("browser write actions require approval by default and preserve sensitive input in approval payloads", async () => {
+  const paths = await createTempPaths();
+  const config = createConfig();
+  const approvals: Array<{ action: string; category: string; target?: string; payloadJson?: string }> = [];
+
+  try {
+    const deniedClick = await clickBrowserPageTool({ config, paths, selector: "button[type=submit]" });
+    assert.equal(deniedClick.allowed, false);
+    assert.match(deniedClick.reason, /no approver/);
+
+    const approvedType = await typeBrowserPageTool({
+      config,
+      paths,
+      selector: "input[name=password]",
+      text: "super-secret-value",
+      sensitive: true,
+      approver: async (request) => {
+        approvals.push(request);
+        return { approved: true };
+      },
+    });
+    assert.equal(approvedType.allowed, false, "Approval may succeed but a browser runtime is required to type.");
+    assert.equal(approvals.length, 1);
+    assert.equal(approvals[0]?.action, "internal.browser_type");
+    assert.equal(approvals[0]?.category, "external_write");
+    assert.doesNotMatch(approvals[0]?.payloadJson ?? "", /super-secret-value/);
+    assert.match(approvals[0]?.payloadJson ?? "", /\[redacted\]/);
+
+    const resetDenied = await resetBrowserSessionTool({ config, paths });
+    assert.equal(resetDenied.allowed, false);
+    assert.match(resetDenied.reason, /no approver/);
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+  }
+});
+
+test("browser policies can deny reads and allow explicit browser actions", async () => {
+  const paths = await createTempPaths();
+  try {
+    const denied = await openBrowserPageTool({ config: createConfig({ policies: { "internal.browser_open": "deny" } }), paths, url: "http://127.0.0.1:1/" });
+    assert.equal(denied.allowed, false);
+    assert.match(denied.reason, /denied by config/);
+
+    const reset = await resetBrowserSessionTool({ config: createConfig({ policies: { "internal.browser_reset": "allow" } }), paths });
+    assert.equal(reset.allowed, true);
+    assert.equal(reset.reason, "internal.browser_reset is allowed by config.");
+  } finally {
     await rm(paths.rootDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
   }
 });
@@ -68,8 +120,8 @@ test("browser tools attach to a configured loopback CDP browser", async (t) => {
     const page = context ? await context.newPage() : undefined;
     if (!page) throw new Error("Expected a browser context for CDP test.");
     await page.goto(server.url);
-    const config = createConfig();
-    config.internalTools = { browser: { cdpEndpoint: "http://127.0.0.1:9223" } };
+    const config = createConfig({ policies: { "internal.browser_list_pages": "allow" } });
+    config.internalTools = { ...config.internalTools, browser: { cdpEndpoint: "http://127.0.0.1:9223" } };
     const result = await listBrowserPagesTool({ config, paths });
     assert.equal(result.allowed, true);
     assert.ok(result.pages?.some((entry) => entry.title === "Configured browser"));

@@ -68,7 +68,7 @@ export async function startUiServer(options: UiServerOptions = {}): Promise<Runn
   const tunnel = await loadTunnelState(paths);
   const tunnelAccessVerifier = options.tunnelAccessVerifier ?? await loadTunnelAccessVerifier(paths);
   let originPolicy = createUiOriginPolicy({ localHost: host, localPort: requestedPort, tunnel });
-  const server = createServer((request, response) => handleRequest(request, response, auth, originPolicy, tunnelAccessVerifier));
+  const server = createServer((request, response) => handleRequest(request, response, auth, originPolicy, tunnelAccessVerifier, paths));
 
   await new Promise<void>((resolve, reject) => {
     server.once("error", reject);
@@ -95,14 +95,14 @@ export async function startUiServer(options: UiServerOptions = {}): Promise<Runn
   };
 }
 
-function handleRequest(request: IncomingMessage, response: ServerResponse, auth: UiAuthService, originPolicy: UiOriginPolicy, tunnelAccessVerifier?: TunnelAccessVerifier): void {
-  void handleRequestAsync(request, response, auth, originPolicy, tunnelAccessVerifier).catch((error: unknown) => {
+function handleRequest(request: IncomingMessage, response: ServerResponse, auth: UiAuthService, originPolicy: UiOriginPolicy, tunnelAccessVerifier: TunnelAccessVerifier | undefined, paths: RuntimePaths): void {
+  void handleRequestAsync(request, response, auth, originPolicy, tunnelAccessVerifier, paths).catch((error: unknown) => {
     const message = error instanceof Error ? error.message : "Unexpected UI server error.";
     sendJson(response, 500, { ok: false, error: message, code: "UiInternalError" });
   });
 }
 
-async function handleRequestAsync(request: IncomingMessage, response: ServerResponse, auth: UiAuthService, originPolicy: UiOriginPolicy, tunnelAccessVerifier?: TunnelAccessVerifier): Promise<void> {
+async function handleRequestAsync(request: IncomingMessage, response: ServerResponse, auth: UiAuthService, originPolicy: UiOriginPolicy, tunnelAccessVerifier: TunnelAccessVerifier | undefined, paths: RuntimePaths): Promise<void> {
   response.setHeader("x-robots-tag", NO_INDEX_HEADER_VALUE);
   const method = request.method ?? "GET";
   const url = new URL(request.url ?? "/", "http://127.0.0.1");
@@ -273,7 +273,7 @@ async function handleRequestAsync(request: IncomingMessage, response: ServerResp
   }
 
   if (method === "GET" && (url.pathname === "/api/status" || url.pathname === "/api/config/summary")) {
-    sendJson(response, 200, await getUiStatusSummary());
+    sendJson(response, 200, await getUiStatusSummary(paths));
     return;
   }
 
@@ -283,7 +283,7 @@ async function handleRequestAsync(request: IncomingMessage, response: ServerResp
       sendJson(response, 400, { ok: false, error: "agentName, ownerName, and provider are required.", code: "UiOnboardingInvalidRequest" });
       return;
     }
-    sendJson(response, 200, await runUiOnboarding({
+    sendJson(response, 200, await runUiOnboarding({ paths,
       agentName: body.agentName,
       ownerName: body.ownerName,
       provider: body.provider,
@@ -300,7 +300,7 @@ async function handleRequestAsync(request: IncomingMessage, response: ServerResp
   }
 
   if (method === "GET" && url.pathname === "/api/update") {
-    sendJson(response, 200, await getUiUpdateSummary());
+    sendJson(response, 200, await getUiUpdateSummary(paths));
     return;
   }
 
@@ -310,27 +310,27 @@ async function handleRequestAsync(request: IncomingMessage, response: ServerResp
       sendJson(response, 400, { ok: false, error: "Update requires confirm=true.", code: "UiUpdateConfirmationRequired" });
       return;
     }
-    sendJson(response, 200, await applyUiUpdate());
+    sendJson(response, 200, await applyUiUpdate(paths));
     return;
   }
 
   if (method === "GET" && url.pathname === "/api/doctor") {
-    sendJson(response, 200, await getUiDoctorSummary());
+    sendJson(response, 200, await getUiDoctorSummary(paths));
     return;
   }
 
   if (method === "GET" && url.pathname === "/api/character") {
-    sendJson(response, 200, await getUiCharacterSummary());
+    sendJson(response, 200, await getUiCharacterSummary(paths));
     return;
   }
 
   if (method === "GET" && url.pathname === "/api/channels") {
-    sendJson(response, 200, await getUiChannelSummary());
+    sendJson(response, 200, await getUiChannelSummary(paths));
     return;
   }
 
   if (method === "GET" && url.pathname === "/api/channels/config") {
-    sendJson(response, 200, await getUiChannelConfigSummary());
+    sendJson(response, 200, await getUiChannelConfigSummary(paths));
     return;
   }
 
@@ -340,27 +340,27 @@ async function handleRequestAsync(request: IncomingMessage, response: ServerResp
       sendJson(response, 400, { ok: false, error: "Channel config update requires channel, config, and confirm=true.", code: "UiChannelConfigInvalidRequest" });
       return;
     }
-    sendJson(response, 200, await updateUiChannelConfig({ channel: body.channel, config: body.config, confirm: true }));
+    sendJson(response, 200, await updateUiChannelConfig({ channel: body.channel, config: body.config, confirm: true, paths }));
     return;
   }
 
   if (method === "GET" && url.pathname === "/api/agents") {
-    sendJson(response, 200, await getUiAgentsSummary());
+    sendJson(response, 200, await getUiAgentsSummary(paths));
     return;
   }
 
   if (method === "GET" && url.pathname === "/api/approvals") {
-    sendJson(response, 200, await getUiApprovalsSummary());
+    sendJson(response, 200, await getUiApprovalsSummary(paths));
     return;
   }
 
   if (method === "GET" && url.pathname === "/api/mcp") {
-    sendJson(response, 200, await getUiMcpSummary());
+    sendJson(response, 200, await getUiMcpSummary(paths));
     return;
   }
 
   if (method === "GET" && url.pathname === "/api/tools") {
-    sendJson(response, 200, await getUiToolsSummary());
+    sendJson(response, 200, await getUiToolsSummary(paths));
     return;
   }
 
@@ -370,7 +370,7 @@ async function handleRequestAsync(request: IncomingMessage, response: ServerResp
       sendJson(response, 400, { ok: false, error: "Tool policy update requires tool and policy.", code: "UiToolPolicyInvalidRequest" });
       return;
     }
-    sendJson(response, 200, await updateUiToolPolicy({ tool: body.tool, policy: body.policy as "allow" | "ask" | "deny" }));
+    sendJson(response, 200, await updateUiToolPolicy({ tool: body.tool, policy: body.policy as "allow" | "ask" | "deny", paths }));
     return;
   }
 
@@ -381,6 +381,7 @@ async function handleRequestAsync(request: IncomingMessage, response: ServerResp
       return;
     }
     sendJson(response, 200, await updateUiToolsConfig({
+      paths,
       ...(Array.isArray(body.externalPaths) && body.externalPaths.every((path) => typeof path === "string") ? { externalPaths: body.externalPaths } : {}),
       ...(typeof body.execTimeoutMs === "number" ? { execTimeoutMs: body.execTimeoutMs } : {}),
       ...(typeof body.browserCdpEndpoint === "string" ? { browserCdpEndpoint: body.browserCdpEndpoint } : {}),
@@ -389,42 +390,42 @@ async function handleRequestAsync(request: IncomingMessage, response: ServerResp
   }
 
   if (method === "GET" && url.pathname === "/api/settings") {
-    sendJson(response, 200, await getUiSettingsSummary());
+    sendJson(response, 200, await getUiSettingsSummary(paths));
     return;
   }
 
   if (method === "GET" && url.pathname === "/api/skills") {
-    sendJson(response, 200, await getUiSkillsSummary());
+    sendJson(response, 200, await getUiSkillsSummary(paths));
     return;
   }
 
   if (method === "GET" && url.pathname === "/api/skills/library") {
-    sendJson(response, 200, await getUiSkillLibrary());
+    sendJson(response, 200, await getUiSkillLibrary(paths));
     return;
   }
 
   if (method === "GET" && url.pathname === "/api/skills/library/item") {
     const name = url.searchParams.get("name") ?? "";
     const sourceId = url.searchParams.get("sourceId") ?? undefined;
-    sendJson(response, 200, await getUiSkillLibraryItem(name, undefined, sourceId));
+    sendJson(response, 200, await getUiSkillLibraryItem(name, paths, sourceId));
     return;
   }
 
   if (method === "GET" && url.pathname === "/api/skills/library/diff") {
     const name = url.searchParams.get("name") ?? "";
     const sourceId = url.searchParams.get("sourceId") ?? undefined;
-    sendJson(response, 200, await getUiSkillLibraryDiff(name, undefined, sourceId));
+    sendJson(response, 200, await getUiSkillLibraryDiff(name, paths, sourceId));
     return;
   }
 
   if (method === "GET" && url.pathname === "/api/skills/item") {
     const name = url.searchParams.get("name") ?? "";
-    sendJson(response, 200, await getUiSkill(name));
+    sendJson(response, 200, await getUiSkill(name, paths));
     return;
   }
 
   if (method === "GET" && url.pathname === "/api/chat/sessions") {
-    sendJson(response, 200, await getUiChatSessions());
+    sendJson(response, 200, await getUiChatSessions(paths));
     return;
   }
 
@@ -434,7 +435,7 @@ async function handleRequestAsync(request: IncomingMessage, response: ServerResp
       sendJson(response, 400, { ok: false, error: "Chat search filter must be all|approval|cancelled|error|fork|retry.", code: "UiChatInvalidSearchFilter" });
       return;
     }
-    sendJson(response, 200, await searchUiChatSessions({ query: url.searchParams.get("q") ?? undefined, filter }));
+    sendJson(response, 200, await searchUiChatSessions({ query: url.searchParams.get("q") ?? undefined, filter, paths }));
     return;
   }
 
@@ -444,7 +445,7 @@ async function handleRequestAsync(request: IncomingMessage, response: ServerResp
       sendJson(response, 400, { ok: false, error: "Chat session requires numeric id.", code: "UiChatInvalidSession" });
       return;
     }
-    sendJson(response, 200, await getUiChatSessionMessages(id));
+    sendJson(response, 200, await getUiChatSessionMessages(id, paths));
     return;
   }
 
@@ -454,7 +455,7 @@ async function handleRequestAsync(request: IncomingMessage, response: ServerResp
       sendJson(response, 400, { ok: false, error: "Chat events require numeric sessionId.", code: "UiChatInvalidSession" });
       return;
     }
-    sendJson(response, 200, await getUiChatSessionEvents(id));
+    sendJson(response, 200, await getUiChatSessionEvents(id, paths));
     return;
   }
 
@@ -485,7 +486,7 @@ async function handleRequestAsync(request: IncomingMessage, response: ServerResp
   }
 
   if (method === "GET" && url.pathname === "/api/settings/tunnel") {
-    sendJson(response, 200, await getUiTunnelSummary());
+    sendJson(response, 200, await getUiTunnelSummary(paths));
     return;
   }
 
@@ -495,7 +496,7 @@ async function handleRequestAsync(request: IncomingMessage, response: ServerResp
       sendJson(response, 400, { ok: false, error: "Tunnel actions require action and confirm=true.", code: "UiTunnelInvalidAction" });
       return;
     }
-    sendJson(response, 200, await runUiTunnelAction({ action: body.action, confirm: true }));
+    sendJson(response, 200, await runUiTunnelAction({ action: body.action, confirm: true, paths }));
     return;
   }
 
@@ -510,7 +511,7 @@ async function handleRequestAsync(request: IncomingMessage, response: ServerResp
       return;
     }
 
-    sendJson(response, 200, await runUiApprovalAction({ action: body.action, id: body.id, confirm: true }));
+    sendJson(response, 200, await runUiApprovalAction({ action: body.action, id: body.id, confirm: true, paths }));
     return;
   }
 
@@ -521,7 +522,7 @@ async function handleRequestAsync(request: IncomingMessage, response: ServerResp
       return;
     }
     sendJson(response, 200, await runUiChat({
-      message: body.message,
+      paths, message: body.message,
       sessionId: typeof body.sessionId === "number" ? body.sessionId : undefined,
       history: Array.isArray(body.history) ? body.history.filter(isUiChatMessage) : [],
       attachments: Array.isArray(body.attachments) ? body.attachments.filter(isUiChatAttachment) : [],
@@ -538,7 +539,7 @@ async function handleRequestAsync(request: IncomingMessage, response: ServerResp
     const body = await readJsonBody(request);
     const title = isRecord(body) && typeof body.title === "string" ? body.title : undefined;
     const agentId = isRecord(body) && typeof body.agentId === "string" ? body.agentId : undefined;
-    sendJson(response, 200, await createUiChatSession(title, agentId));
+    sendJson(response, 200, await createUiChatSession(title, agentId, paths));
     return;
   }
 
@@ -548,7 +549,7 @@ async function handleRequestAsync(request: IncomingMessage, response: ServerResp
       sendJson(response, 400, { ok: false, error: "Chat export requires id.", code: "UiChatInvalidExport" });
       return;
     }
-    sendJson(response, 200, await exportUiChatSession(id));
+    sendJson(response, 200, await exportUiChatSession(id, paths));
     return;
   }
 
@@ -561,7 +562,7 @@ async function handleRequestAsync(request: IncomingMessage, response: ServerResp
     }
     const session = isRecord(source.session) ? source.session : undefined;
     const title = isRecord(body) && typeof body.title === "string" ? body.title : session && typeof session.title === "string" ? session.title : undefined;
-    sendJson(response, 200, await importUiChatSession({
+    sendJson(response, 200, await importUiChatSession({ paths,
       title,
       messages: source.messages.filter(isUiChatMessage),
       events: Array.isArray(source.events) ? source.events.filter(isRecord) : [],
@@ -575,7 +576,7 @@ async function handleRequestAsync(request: IncomingMessage, response: ServerResp
       sendJson(response, 400, { ok: false, error: "Chat session update requires id.", code: "UiChatInvalidSessionUpdate" });
       return;
     }
-    sendJson(response, 200, await updateUiChatSession({ id: body.id, title: typeof body.title === "string" ? body.title : undefined, pinned: typeof body.pinned === "boolean" ? body.pinned : undefined, toolsEnabled: typeof body.toolsEnabled === "boolean" ? body.toolsEnabled : undefined, memoryEnabled: typeof body.memoryEnabled === "boolean" ? body.memoryEnabled : undefined, reasoningLevel: isReasoningLevel(body.reasoningLevel) ? body.reasoningLevel : undefined, providerModelRef: typeof body.providerModelRef === "string" ? body.providerModelRef : undefined }));
+    sendJson(response, 200, await updateUiChatSession({ paths, id: body.id, title: typeof body.title === "string" ? body.title : undefined, pinned: typeof body.pinned === "boolean" ? body.pinned : undefined, toolsEnabled: typeof body.toolsEnabled === "boolean" ? body.toolsEnabled : undefined, memoryEnabled: typeof body.memoryEnabled === "boolean" ? body.memoryEnabled : undefined, reasoningLevel: isReasoningLevel(body.reasoningLevel) ? body.reasoningLevel : undefined, providerModelRef: typeof body.providerModelRef === "string" ? body.providerModelRef : undefined }));
     return;
   }
 
@@ -585,7 +586,7 @@ async function handleRequestAsync(request: IncomingMessage, response: ServerResp
       sendJson(response, 400, { ok: false, error: "Chat session delete requires id and confirm=true.", code: "UiChatInvalidSessionDelete" });
       return;
     }
-    sendJson(response, 200, await deleteUiChatSession(body.id));
+    sendJson(response, 200, await deleteUiChatSession(body.id, paths));
     return;
   }
 
@@ -595,7 +596,7 @@ async function handleRequestAsync(request: IncomingMessage, response: ServerResp
       sendJson(response, 400, { ok: false, error: "Chat retry requires sessionId and confirm=true.", code: "UiChatInvalidRetry" });
       return;
     }
-    sendJson(response, 200, await prepareUiChatRetry(body.sessionId, typeof body.messageId === "number" ? body.messageId : undefined));
+    sendJson(response, 200, await prepareUiChatRetry(body.sessionId, typeof body.messageId === "number" ? body.messageId : undefined, paths));
     return;
   }
 
@@ -605,7 +606,7 @@ async function handleRequestAsync(request: IncomingMessage, response: ServerResp
       sendJson(response, 400, { ok: false, error: "Chat replay requires sessionId, runId, and confirm=true.", code: "UiChatInvalidReplay" });
       return;
     }
-    sendJson(response, 200, await prepareUiChatRunReplay({ sessionId: body.sessionId, runId: body.runId }));
+    sendJson(response, 200, await prepareUiChatRunReplay({ sessionId: body.sessionId, runId: body.runId, paths }));
     return;
   }
 
@@ -615,7 +616,7 @@ async function handleRequestAsync(request: IncomingMessage, response: ServerResp
       sendJson(response, 400, { ok: false, error: "Chat fork requires sessionId, messageId, and confirm=true.", code: "UiChatInvalidFork" });
       return;
     }
-    sendJson(response, 200, await forkUiChatSession({ sessionId: body.sessionId, messageId: body.messageId, title: typeof body.title === "string" ? body.title : undefined }));
+    sendJson(response, 200, await forkUiChatSession({ paths, sessionId: body.sessionId, messageId: body.messageId, title: typeof body.title === "string" ? body.title : undefined }));
     return;
   }
 
@@ -625,7 +626,7 @@ async function handleRequestAsync(request: IncomingMessage, response: ServerResp
       sendJson(response, 400, { ok: false, error: "Chat continue requires sessionId, approvalId, and confirm=true.", code: "UiChatInvalidContinue" });
       return;
     }
-    sendJson(response, 200, await runUiChatContinue({ sessionId: body.sessionId, approvalId: body.approvalId }));
+    sendJson(response, 200, await runUiChatContinue({ sessionId: body.sessionId, approvalId: body.approvalId, paths }));
     return;
   }
 
@@ -645,7 +646,7 @@ async function handleRequestAsync(request: IncomingMessage, response: ServerResp
     });
     try {
       const result = await runUiChatContinue({
-        sessionId: body.sessionId,
+        paths, sessionId: body.sessionId,
         approvalId: body.approvalId,
         stream: true,
         onTimelineEvent: (event) => sendSseEvent(response, "timeline", event),
@@ -678,7 +679,7 @@ async function handleRequestAsync(request: IncomingMessage, response: ServerResp
     });
     try {
       const result = await runUiChat({
-        message: body.message,
+      paths,   message: body.message,
         sessionId: typeof body.sessionId === "number" ? body.sessionId : undefined,
         history: Array.isArray(body.history) ? body.history.filter(isUiChatMessage) : [],
         attachments: Array.isArray(body.attachments) ? body.attachments.filter(isUiChatAttachment) : [],
@@ -709,7 +710,7 @@ async function handleRequestAsync(request: IncomingMessage, response: ServerResp
       sendJson(response, 400, { ok: false, error: "Skill write requires name and content.", code: "UiSkillInvalidRequest" });
       return;
     }
-    sendJson(response, 200, await writeUiSkill({ name: body.name, content: body.content, previousName: typeof body.previousName === "string" ? body.previousName : undefined }));
+    sendJson(response, 200, await writeUiSkill({ name: body.name, content: body.content, previousName: typeof body.previousName === "string" ? body.previousName : undefined, paths }));
     return;
   }
 
@@ -719,7 +720,7 @@ async function handleRequestAsync(request: IncomingMessage, response: ServerResp
       sendJson(response, 400, { ok: false, error: "Skill delete requires name and confirm=true.", code: "UiSkillInvalidRequest" });
       return;
     }
-    sendJson(response, 200, await deleteUiSkill({ name: body.name }));
+    sendJson(response, 200, await deleteUiSkill({ name: body.name, paths }));
     return;
   }
 
@@ -729,7 +730,7 @@ async function handleRequestAsync(request: IncomingMessage, response: ServerResp
       sendJson(response, 400, { ok: false, error: "Skill uninstall requires name and confirm=true.", code: "UiSkillInvalidRequest" });
       return;
     }
-    sendJson(response, 200, await deleteUiSkill({ name: body.name }));
+    sendJson(response, 200, await deleteUiSkill({ name: body.name, paths }));
     return;
   }
 
@@ -739,7 +740,7 @@ async function handleRequestAsync(request: IncomingMessage, response: ServerResp
       sendJson(response, 400, { ok: false, error: "Skill toggle requires name, enabled, and confirm=true.", code: "UiSkillInvalidRequest" });
       return;
     }
-    sendJson(response, 200, await toggleUiSkillEnabled({ name: body.name, enabled: body.enabled, confirm: true }));
+    sendJson(response, 200, await toggleUiSkillEnabled({ name: body.name, enabled: body.enabled, confirm: true, paths }));
     return;
   }
 
@@ -749,7 +750,7 @@ async function handleRequestAsync(request: IncomingMessage, response: ServerResp
       sendJson(response, 400, { ok: false, error: "Skill install requires name and confirm=true.", code: "UiSkillInvalidRequest" });
       return;
     }
-    sendJson(response, 200, await installUiSkillFromLibrary({ name: body.name, sourceId: typeof body.sourceId === "string" ? body.sourceId : undefined, confirm: true }));
+    sendJson(response, 200, await installUiSkillFromLibrary({ name: body.name, sourceId: typeof body.sourceId === "string" ? body.sourceId : undefined, confirm: true, paths }));
     return;
   }
 
@@ -759,7 +760,7 @@ async function handleRequestAsync(request: IncomingMessage, response: ServerResp
       sendJson(response, 400, { ok: false, error: "Skill rollback requires name and confirm=true.", code: "UiSkillInvalidRequest" });
       return;
     }
-    sendJson(response, 200, await rollbackUiSkill({ name: body.name, confirm: true }));
+    sendJson(response, 200, await rollbackUiSkill({ name: body.name, confirm: true, paths }));
     return;
   }
 
@@ -769,7 +770,7 @@ async function handleRequestAsync(request: IncomingMessage, response: ServerResp
       sendJson(response, 400, { ok: false, error: "Remote skill registry test requires confirm=true.", code: "UiSkillInvalidRequest" });
       return;
     }
-    sendJson(response, 200, await testUiSkillRemoteRegistry({ confirm: true }));
+    sendJson(response, 200, await testUiSkillRemoteRegistry({ confirm: true, paths }));
     return;
   }
 
@@ -779,7 +780,7 @@ async function handleRequestAsync(request: IncomingMessage, response: ServerResp
       sendJson(response, 400, { ok: false, error: "Remote skill registry cache clear requires confirm=true.", code: "UiSkillInvalidRequest" });
       return;
     }
-    sendJson(response, 200, await clearUiSkillRemoteRegistryCache({ confirm: true }));
+    sendJson(response, 200, await clearUiSkillRemoteRegistryCache({ confirm: true, paths }));
     return;
   }
 
@@ -969,40 +970,40 @@ async function handleRequestAsync(request: IncomingMessage, response: ServerResp
     }
 
     sendJson(response, 200, await updateUiCharacter({
-      ...(typeof body.characterText === "string" ? { characterText: body.characterText } : {}),
+      paths, ...(typeof body.characterText === "string" ? { characterText: body.characterText } : {}),
       ...(typeof body.promptText === "string" ? { promptText: body.promptText } : {}),
     }));
     return;
   }
 
   if (method === "GET" && url.pathname === "/api/providers") {
-    sendJson(response, 200, await getUiProviderSummary());
+    sendJson(response, 200, await getUiProviderSummary(paths));
     return;
   }
 
   if (method === "GET" && url.pathname === "/api/memory") {
-    sendJson(response, 200, await getUiMemorySummary());
+    sendJson(response, 200, await getUiMemorySummary(paths));
     return;
   }
 
   if (method === "GET" && url.pathname === "/api/memory/search") {
-    sendJson(response, 200, await searchUiMemories(url.searchParams.get("q") ?? ""));
+    sendJson(response, 200, await searchUiMemories(url.searchParams.get("q") ?? "", paths));
     return;
   }
 
   if (method === "GET" && url.pathname === "/api/knowledge-graph") {
-    sendJson(response, 200, await getUiKnowledgeGraphSummary());
+    sendJson(response, 200, await getUiKnowledgeGraphSummary(paths));
     return;
   }
 
   if (method === "GET" && url.pathname === "/api/logs") {
     const requestedLines = Number(url.searchParams.get("lines"));
-    sendJson(response, 200, await getUiLogsSummary({ lines: Number.isFinite(requestedLines) ? requestedLines : undefined }));
+    sendJson(response, 200, await getUiLogsSummary({ lines: Number.isFinite(requestedLines) ? requestedLines : undefined, paths }));
     return;
   }
 
   if (method === "GET" && url.pathname === "/api/knowledge-graph/search") {
-    sendJson(response, 200, await searchUiKnowledgeGraph(url.searchParams.get("q") ?? ""));
+    sendJson(response, 200, await searchUiKnowledgeGraph(url.searchParams.get("q") ?? "", paths));
     return;
   }
 
@@ -1018,7 +1019,7 @@ async function handleRequestAsync(request: IncomingMessage, response: ServerResp
     }
 
     sendJson(response, 200, await runUiKnowledgeGraphAction({
-      action: body.action,
+      paths, action: body.action,
       confirm: true,
       ...(typeof body.id === "number" ? { id: body.id } : {}),
       ...(typeof body.primaryId === "number" ? { primaryId: body.primaryId } : {}),
@@ -1103,7 +1104,7 @@ async function handleRequestAsync(request: IncomingMessage, response: ServerResp
       return;
     }
 
-    sendJson(response, 200, await runUiDoctorFix({ confirm: true }));
+    sendJson(response, 200, await runUiDoctorFix({ confirm: true, paths }));
     return;
   }
 

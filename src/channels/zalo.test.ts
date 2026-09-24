@@ -159,7 +159,7 @@ test("createZaloOutboundAdapter omits Markdown formatting for Zalo Personal", as
 });
 
 test("handleZaloUpdate applies Zalo Personal group policy and mention gating", async () => {
-  const paths = fakePaths();
+  const paths = await createTempPaths();
   const sent: Array<{ chatId: string; text: string }> = [];
   const groupConfig: AppConfig = {
     ...config,
@@ -177,11 +177,15 @@ test("handleZaloUpdate applies Zalo Personal group policy and mention gating", a
     },
   };
 
-  assert.equal(await handleZaloUpdate({ update_id: 1, message: { from: { id: "member-1" }, chat: { id: "group-1", type: "group" }, text: "hello" } }, { config: groupConfig, paths, client: createRecordingClient(sent), channel: "zalo-personal" }), "ignored");
-  assert.equal(await handleZaloUpdate({ update_id: 2, message: { from: { id: "member-1" }, chat: { id: "group-2", type: "group" }, text: "@Miu hello" } }, { config: groupConfig, paths, client: createRecordingClient(sent), channel: "zalo-personal" }), "ignored");
-  assert.equal(await handleZaloUpdate({ update_id: 3, message: { from: { id: "member-2" }, chat: { id: "group-1", type: "group" }, text: "@Miu hello" } }, { config: groupConfig, paths, client: createRecordingClient(sent), channel: "zalo-personal", chatCompletion: async () => '{"answer":"must be ignored"}' }), "ignored");
-  assert.equal(await handleZaloUpdate({ update_id: 4, message: { from: { id: "member-1" }, chat: { id: "group-1", type: "group" }, text: "@Miu hello" } }, { config: groupConfig, paths, client: createRecordingClient(sent), channel: "zalo-personal", chatCompletion: async () => '{"answer":"hi"}' }), "replied");
-  assert.equal(sent.at(-1)?.chatId, "group-1");
+  try {
+    assert.equal(await handleZaloUpdate({ update_id: 1, message: { from: { id: "member-1" }, chat: { id: "group-1", type: "group" }, text: "hello" } }, { config: groupConfig, paths, client: createRecordingClient(sent), channel: "zalo-personal" }), "ignored");
+    assert.equal(await handleZaloUpdate({ update_id: 2, message: { from: { id: "member-1" }, chat: { id: "group-2", type: "group" }, text: "@Miu hello" } }, { config: groupConfig, paths, client: createRecordingClient(sent), channel: "zalo-personal" }), "ignored");
+    assert.equal(await handleZaloUpdate({ update_id: 3, message: { from: { id: "member-2" }, chat: { id: "group-1", type: "group" }, text: "@Miu hello" } }, { config: groupConfig, paths, client: createRecordingClient(sent), channel: "zalo-personal", chatCompletion: async () => '{"answer":"must be ignored"}' }), "ignored");
+    assert.equal(await handleZaloUpdate({ update_id: 4, message: { from: { id: "member-1" }, chat: { id: "group-1", type: "group" }, text: "@Miu hello" } }, { config: groupConfig, paths, client: createRecordingClient(sent), channel: "zalo-personal", chatCompletion: async () => '{"answer":"hi"}' }), "replied");
+    assert.equal(sent.at(-1)?.chatId, "group-1");
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
 });
 
 test("handleZaloUpdate blocks slash commands in Zalo Personal groups", async () => {

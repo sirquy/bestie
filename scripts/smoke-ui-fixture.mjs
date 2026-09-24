@@ -1,10 +1,15 @@
 import { mkdir, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
 import { resolve } from "node:path";
 
 import { SqliteMemoryStore } from "../dist/memory/sqlite-store.js";
 import { writeConfig } from "../dist/runtime/config.js";
 import { writeEnvFile } from "../dist/runtime/env.js";
 import { createRuntimePaths } from "./runtime-paths.mjs";
+
+const SMOKE_REMOTE_SKILLS = [
+  { name: "firecrawl", title: "Firecrawl Research", description: "Use Firecrawl for smoke-tested public web research.", category: "research", version: "1.0.0", author: "Bestie", trust: "official", risk: "medium", permissions: ["network"], changelog: "Smoke registry fixture.", content: "# firecrawl\n\nUse Firecrawl for public web research and extraction.\n" },
+];
 
 export async function seedUiSmokeRuntime(paths) {
   await mkdir(paths.appDir, { recursive: true });
@@ -26,6 +31,7 @@ export async function seedUiSmokeRuntime(paths) {
         },
       },
       memory: { writePolicy: "ask" },
+      skills: { registry: { remoteOfficial: { enabled: true, url: "https://skills.smoke.invalid/registry.json", checksumUrl: "https://skills.smoke.invalid/registry.sha256", installPolicy: "ask" } } },
       workspace: { defaultPath: ".bestie/workspace", externalPaths: ["../shared", "/tmp/bestie-ui-shared"] },
       internalTools: { policies: { "internal.exec": "ask", "internal.read_file": "allow", "internal.write_file": "deny" }, exec: { timeoutMs: 120_000 } },
       channels: {
@@ -44,6 +50,7 @@ export async function seedUiSmokeRuntime(paths) {
   await writeEnvFile({ OPENAI_API_KEY: "test-key", GEMINI_API_KEY: "test-gemini-key", BESTIE_TELEGRAM_BOT_TOKEN: "telegram-test-token", REMOTE_MCP_TOKEN: "remote-token-value" }, paths);
   await writeFile(paths.characterPath, `${JSON.stringify({ name: "Bestie", role: "AI best friend companion", language: "vi-first", personality: ["funny", "sharp"], tone: { roastLevel: 2, warmthLevel: 8, bluntnessLevel: 4, chaosLevel: 3 }, boundaries: { neverJokeAbout: ["harm"], dropJokesWhen: ["crisis"] }, ownerName: "Boss" }, null, 2)}\n`, { mode: 0o600 });
   await writeFile(paths.systemPromptPath, "You are Bestie.\n", { mode: 0o600 });
+  await seedVerifiedRemoteSkillRegistry(paths);
   await mkdir(resolve(paths.appDir, "skills", "smoke-skill"), { recursive: true });
   await writeFile(resolve(paths.appDir, "skills", "smoke-skill", "SKILL.md"), "# Smoke Skill\n\nUse for UI smoke testing.\n", { mode: 0o600 });
   const store = await SqliteMemoryStore.open(paths);
@@ -85,4 +92,49 @@ export async function seedUiSmokeRuntime(paths) {
 
 export function createUiSmokeRuntimePaths(root) {
   return createRuntimePaths(root);
+}
+
+
+async function seedVerifiedRemoteSkillRegistry(paths) {
+  const registryHash = hashSkillRegistry(SMOKE_REMOTE_SKILLS);
+  const snapshot = {
+    source: {
+      id: "bestie-smoke-registry",
+      name: "Bestie Smoke Skill Library",
+      kind: "remote",
+      enabled: true,
+      trust: "official",
+      skillCount: SMOKE_REMOTE_SKILLS.length,
+      verification: { status: "verified", method: "sha256-sidecar", detail: "Smoke registry checksum verified.", registryHash },
+      cache: { cachedAt: new Date().toISOString(), ageMs: 0, status: "fresh" },
+    },
+    skills: SMOKE_REMOTE_SKILLS,
+    validation: { ok: true, count: SMOKE_REMOTE_SKILLS.length, issues: [] },
+    registryHash,
+  };
+  await mkdir(paths.dataDir, { recursive: true });
+  await writeFile(resolve(paths.dataDir, "skill-remote-registry-cache.json"), `${JSON.stringify(snapshot, null, 2)}
+`, { mode: 0o600 });
+}
+
+function hashSkillRegistry(skills) {
+  return sha256(JSON.stringify(skills.map((skill) => ({
+    name: skill.name,
+    title: skill.title,
+    description: skill.description,
+    category: skill.category,
+    version: skill.version,
+    author: skill.author,
+    trust: skill.trust,
+    risk: skill.risk,
+    permissions: [...skill.permissions].sort(),
+    changelog: skill.changelog,
+    contentHash: sha256(skill.content.trim()),
+    files: skill.files?.map((file) => ({ path: file.path, hash: file.hash, contentUrl: file.contentUrl })),
+    bundleHash: skill.bundleHash,
+  }))));
+}
+
+function sha256(value) {
+  return createHash("sha256").update(value).digest("hex");
 }

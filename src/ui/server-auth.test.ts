@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { request as httpRequest } from "node:http";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import test from "node:test";
 
 import { getRuntimePaths } from "../runtime/paths.js";
@@ -40,6 +40,41 @@ test("UI server requires local unlock and validates same-origin CSRF mutations",
     assert.equal(blockedMutation.status, 403);
     const logout = await fetch(`${server.url}/api/auth/logout`, { method: "POST", headers: { cookie, origin: server.url, "x-bestie-csrf": setupBody.csrfToken ?? "" } });
     assert.equal(logout.status, 200);
+  } finally {
+    await server.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+
+test("UI server uses its supplied runtime paths for skill APIs", async () => {
+  const root = await mkdtemp(join(tmpdir(), "bestie-ui-server-paths-"));
+  const paths = getRuntimePaths(root);
+  await mkdir(paths.appDir, { recursive: true });
+  await writeFile(paths.configPath, `${JSON.stringify({
+    version: 2,
+    agent: { name: "Path Test", ownerName: "Boss", language: "vi", toneIntensity: 7 },
+    llm: {
+      primary: "openai/test-model",
+      authProfile: "openai:api-key",
+      profiles: { "openai:api-key": { provider: "openai-compatible", mode: "api-key", baseUrl: "https://example.test/v1", apiKeyEnv: "OPENAI_API_KEY" } },
+      modelCatalog: { "openai/test-model": { profile: "openai:api-key" } },
+    },
+  }, null, 2)}\n`);
+  await mkdir(resolve(paths.appDir, "skills", "custom-runtime-skill"), { recursive: true });
+  await writeFile(resolve(paths.appDir, "skills", "custom-runtime-skill", "SKILL.md"), "# Custom Runtime Skill\n\nOnly in the supplied runtime.\n");
+
+  const server = await startUiServer({ port: 0, paths });
+  try {
+    const setup = await fetch(`${server.url}/api/auth/setup`, { method: "POST", headers: { "content-type": "application/json", origin: server.url }, body: JSON.stringify({ pin: "123456" }) });
+    const cookie = setup.headers.get("set-cookie")?.split(";", 1)[0];
+    assert.equal(setup.status, 200);
+    assert.ok(cookie);
+
+    const skills = await fetch(`${server.url}/api/skills`, { headers: { cookie } });
+    const body = await skills.json() as { skills?: Array<{ name: string }> };
+    assert.equal(skills.status, 200);
+    assert.ok(body.skills?.some((skill) => skill.name === "custom-runtime-skill"));
   } finally {
     await server.close();
     await rm(root, { recursive: true, force: true });

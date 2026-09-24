@@ -56,19 +56,26 @@ test("logActionPermission writes redacted audit metadata", async () => {
 });
 
 test("reviewActionPermission returns allowed policy decisions without asking", async () => {
+  const paths = await createTempPaths();
   let asked = false;
-  const result = await reviewActionPermission(
-    { category: "read", action: "list local files", trusted: true },
-    {
-      approver: async () => {
-        asked = true;
-        return { approved: false };
-      },
-    },
-  );
 
-  assert.equal(result.decision, "allow");
-  assert.equal(asked, false);
+  try {
+    const result = await reviewActionPermission(
+      { category: "read", action: "list local files", trusted: true },
+      {
+        paths,
+        approver: async () => {
+          asked = true;
+          return { approved: false };
+        },
+      },
+    );
+
+    assert.equal(result.decision, "allow");
+    assert.equal(asked, false);
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
 });
 
 test("reviewActionPermission denies ask decisions when no approver exists", async () => {
@@ -86,17 +93,23 @@ test("reviewActionPermission denies ask decisions when no approver exists", asyn
 });
 
 test("reviewActionPermission uses approver decisions for ask outcomes", async () => {
-  const approved = await reviewActionPermission(
-    { category: "external_write", action: "send webhook" },
-    { approver: async () => ({ approved: true, reason: "Owner approved this webhook." }) },
-  );
-  const denied = await reviewActionPermission(
-    { category: "destructive", action: "delete data" },
-    { approver: async () => ({ approved: false, reason: "Owner rejected deletion." }) },
-  );
+  const paths = await createTempPaths();
 
-  assert.deepEqual(approved, { decision: "allow", reason: "Owner approved this webhook." });
-  assert.deepEqual(denied, { decision: "deny", reason: "Owner rejected deletion." });
+  try {
+    const approved = await reviewActionPermission(
+      { category: "external_write", action: "send webhook" },
+      { paths, approver: async () => ({ approved: true, reason: "Owner approved this webhook." }) },
+    );
+    const denied = await reviewActionPermission(
+      { category: "destructive", action: "delete data" },
+      { paths, approver: async () => ({ approved: false, reason: "Owner rejected deletion." }) },
+    );
+
+    assert.deepEqual(approved, { decision: "allow", reason: "Owner approved this webhook." });
+    assert.deepEqual(denied, { decision: "deny", reason: "Owner rejected deletion." });
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
 });
 
 async function createTempPaths(): Promise<RuntimePaths> {

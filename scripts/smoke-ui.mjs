@@ -15,9 +15,10 @@ const previousUserProfile = process.env.USERPROFILE;
 process.env.HOME = homeDir;
 process.env.USERPROFILE = homeDir;
 
-const server = await startUiServer({ port: 0 });
+const runtimePaths = createUiSmokeRuntimePaths(homeDir);
+await seedUiSmokeRuntime(runtimePaths);
+const server = await startUiServer({ port: 0, paths: runtimePaths });
 try {
-  await seedUiSmokeRuntime(createUiSmokeRuntimePaths(homeDir));
   await unlockUi(server.url);
   await assertJson(`${server.url}/api/health`, { ok: true, service: "bestie-ui" });
   await assertJson(`${server.url}/api/status`, { ok: true, provider: "openai-compatible", secretPresent: true });

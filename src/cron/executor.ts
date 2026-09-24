@@ -46,8 +46,10 @@ export interface CronAlertNotification {
 export type CronAlertNotifier = (notification: CronAlertNotification) => Promise<void>;
 
 export class CronExecutor {
-  private timer?: ReturnType<typeof setInterval>;
+  private timer?: ReturnType<typeof setTimeout>;
   private running = new Set<number>();
+  private tickInFlight?: Promise<void>;
+  private tickClearPromise?: Promise<void>;
   private readonly tickIntervalMs: number;
 
   constructor(private readonly options: CronExecutorOptions) {
@@ -55,15 +57,8 @@ export class CronExecutor {
   }
 
   start(): void {
-    this.tick();
-    this.timer = setInterval(() => {
-      this.tick().catch((error) => {
-        appendLog(
-          { event: "cron_tick_error", detail: { message: error instanceof Error ? error.message : "unknown error" } },
-          { paths: this.options.paths },
-        );
-      });
-    }, this.tickIntervalMs);
+    if (this.timer !== undefined) return;
+    this.scheduleNextTick(0);
   }
 
   stop(): void {
@@ -78,6 +73,38 @@ export class CronExecutor {
   }
 
   async tick(): Promise<void> {
+    if (this.tickInFlight) return this.tickInFlight;
+
+    const tick = this.runTick();
+    this.tickInFlight = tick;
+    const clear = tick.then(
+      () => undefined,
+      () => undefined,
+    ).then(() => {
+      if (this.tickInFlight === tick) this.tickInFlight = undefined;
+    });
+    this.tickClearPromise = clear;
+    return tick;
+  }
+
+  private scheduleNextTick(delayMs: number): void {
+    this.timer = setTimeout(() => {
+      void this.tick()
+        .catch((error) => this.logTickError(error))
+        .finally(() => {
+          if (this.timer !== undefined) this.scheduleNextTick(this.tickIntervalMs);
+        });
+    }, delayMs);
+  }
+
+  private async logTickError(error: unknown): Promise<void> {
+    await appendLog(
+      { event: "cron_tick_error", detail: { message: error instanceof Error ? error.message : "unknown error" } },
+      { paths: this.options.paths },
+    );
+  }
+
+  private async runTick(): Promise<void> {
     const store = await SqliteMemoryStore.open(this.options.paths);
 
     try {
@@ -142,8 +169,8 @@ export class CronExecutor {
       const log = store.createCronLog(job.id);
       logId = log.id;
 
-      appendLog(
-        { event: "cron_job_start", detail: { scheduleId: job.id, name: job.name, prompt: job.prompt.slice(0, 100) } },
+      await appendLog(
+        { event: "cron_job_start", detail: { scheduleId: job.id, name: job.name, promptLength: job.prompt.length } },
         { paths: this.options.paths },
       );
 
@@ -159,7 +186,7 @@ export class CronExecutor {
       store.updateCronRunResult(job.id, "ok");
       await this.notifyJobResult({ job, status: "ok", output });
 
-      appendLog(
+      await appendLog(
         { event: "cron_job_success", detail: { scheduleId: job.id, name: job.name, outputLength: output.length } },
         { paths: this.options.paths },
       );
@@ -171,7 +198,7 @@ export class CronExecutor {
       store.updateCronRunResult(job.id, "error", message);
       await this.notifyJobResult({ job, status: "error", error: message });
 
-      appendLog(
+      await appendLog(
         { event: "cron_job_failure", detail: { scheduleId: job.id, name: job.name, error: message } },
         { paths: this.options.paths },
       );

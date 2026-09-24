@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import test from "node:test";
@@ -362,6 +362,76 @@ test("CronExecutor alerts on consecutive memory hygiene score drops", async () =
 
     assert.equal(alerts.length, 1);
     assert.match(alerts[0], /score dropped consecutively: 92\/100 -> 81\/100 -> 72\/100/);
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("CronExecutor serializes overlapping ticks", async () => {
+  const paths = await createTempPaths();
+  let executions = 0;
+  let releaseRunner: (() => void) | undefined;
+  const runnerGate = new Promise<void>((resolve) => { releaseRunner = resolve; });
+
+  try {
+    const store = await SqliteMemoryStore.open(paths);
+    const schedule = store.addCronSchedule({
+      name: "Single-flight tick",
+      scheduleType: "interval",
+      scheduleValue: "1h",
+      prompt: "Run once",
+      nextRunAt: new Date(Date.now() - 60_000).toISOString(),
+    });
+    store.close();
+
+    const executor = new CronExecutor({
+      config: TEST_CONFIG,
+      paths,
+      isolatedChatRunner: async () => {
+        executions += 1;
+        await runnerGate;
+        return "done";
+      },
+    });
+
+    const first = executor.tick();
+    const second = executor.tick();
+
+    releaseRunner?.();
+    await Promise.all([first, second]);
+    assert.equal(executions, 1, "Concurrent callers must share one in-flight tick.");
+
+    const verifyStore = await SqliteMemoryStore.open(paths);
+    assert.equal(verifyStore.listCronLogs(schedule.id).length, 1);
+    verifyStore.close();
+  } finally {
+    await rm(paths.rootDir, { recursive: true, force: true });
+  }
+});
+
+test("CronExecutor logs cron metadata without private prompt content", async () => {
+  const paths = await createTempPaths();
+  const privatePrompt = "Private customer data: card 4242 4242 4242 4242";
+
+  try {
+    const store = await SqliteMemoryStore.open(paths);
+    store.addCronSchedule({
+      name: "Private prompt",
+      scheduleType: "once",
+      scheduleValue: new Date(Date.now() - 60_000).toISOString(),
+      prompt: privatePrompt,
+      nextRunAt: new Date(Date.now() - 60_000).toISOString(),
+    });
+    store.close();
+
+    const executor = new CronExecutor({ config: TEST_CONFIG, paths, isolatedChatRunner: async () => "done" });
+    await executor.tick();
+
+    const logText = await readFile(paths.appLogPath, "utf8");
+    assert.match(logText, /cron_job_start/);
+    assert.match(logText, /promptLength/);
+    assert.doesNotMatch(logText, /Private customer data/);
+    assert.doesNotMatch(logText, /4242 4242/);
   } finally {
     await rm(paths.rootDir, { recursive: true, force: true });
   }

@@ -1,5 +1,5 @@
 import type { ReactElement } from "react";
-import { useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import {
   ArrowUpCircle,
   Bot,
@@ -31,7 +31,6 @@ import { ChannelEditor } from "@/features/channels/ChannelEditor";
 import { CharacterPanel, CharacterPanelError } from "@/features/character/CharacterPanel";
 import { ChatPanel, ChatPanelError } from "@/features/chat/ChatPanel";
 import { DoctorPanel, DoctorPanelError } from "@/features/doctor/DoctorPanel";
-import { KnowledgePanel, KnowledgePanelError } from "@/features/knowledge/KnowledgePanel";
 import { LogsPanel, LogsPanelError } from "@/features/logs/LogsPanel";
 import { MemoryPanel, MemoryPanelError } from "@/features/memory/MemoryPanel";
 import { McpPanel, McpPanelError } from "@/features/mcp/McpPanel";
@@ -58,6 +57,16 @@ import { fetchJson, setCsrfToken, type JsonRecord } from "@/lib/api";
 import { alertDialog, confirmDialog } from "@/lib/dialogs";
 import { cn } from "@/lib/utils";
 import bestieAppIcon from "@/assets/bestie-app-icon.png";
+
+const KnowledgePanel = lazy(async () => {
+  const module = await import("@/features/knowledge/KnowledgePanel");
+  return { default: module.KnowledgePanel };
+});
+
+const KnowledgePanelError = lazy(async () => {
+  const module = await import("@/features/knowledge/KnowledgePanel");
+  return { default: module.KnowledgePanelError };
+});
 
 type PanelId =
   | "chat"
@@ -497,17 +506,19 @@ function App({ onLocked }: { onLocked: () => void }): ReactElement {
                   />
                 )
               ) : selectedPanel.id === "knowledge" ? (
-                activeError ? <KnowledgePanelError error={activeError} /> : (
-                  <KnowledgePanel
-                    data={activeData as unknown as KnowledgeGraphSummary | undefined}
-                    loading={Boolean(loadingPanels[selectedPanel.id])}
-                    onData={(data) => {
-                      setPanelData((current) => ({ ...current, knowledge: data as unknown as JsonRecord }));
-                      setPanelErrors((current) => ({ ...current, knowledge: undefined }));
-                    }}
-                    onLoading={(loading) => setLoadingPanels((current) => ({ ...current, knowledge: loading }))}
-                  />
-                )
+                <Suspense fallback={<PanelLoading label="Đang tải bản đồ tri thức..." />}>
+                  {activeError ? <KnowledgePanelError error={activeError} /> : (
+                    <KnowledgePanel
+                      data={activeData as unknown as KnowledgeGraphSummary | undefined}
+                      loading={Boolean(loadingPanels[selectedPanel.id])}
+                      onData={(data) => {
+                        setPanelData((current) => ({ ...current, knowledge: data as unknown as JsonRecord }));
+                        setPanelErrors((current) => ({ ...current, knowledge: undefined }));
+                      }}
+                      onLoading={(loading) => setLoadingPanels((current) => ({ ...current, knowledge: loading }))}
+                    />
+                  )}
+                </Suspense>
               ) : selectedPanel.id === "logs" ? (
                 activeError ? <LogsPanelError error={activeError} /> : (
                   <LogsPanel
@@ -580,6 +591,11 @@ function App({ onLocked }: { onLocked: () => void }): ReactElement {
       </div>
     </div>
   );
+}
+
+
+function PanelLoading({ label }: { label: string }): ReactElement {
+  return <div className="grid min-h-56 place-items-center rounded-2xl border border-white/10 bg-card/35 p-6 text-sm text-muted-foreground">{label}</div>;
 }
 
 function UpdateBanner({ summary, busy, onApply, onDismiss }: { summary: UpdateSummary; busy: boolean; onApply: () => void; onDismiss: () => void }): ReactElement {
